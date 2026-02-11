@@ -480,14 +480,26 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
         }
     )
     
+    # Update or create daily session with call stats
     await db.daily_sessions.update_one(
         {"user_id": current_user["id"], "date": today},
         {
             "$inc": {
                 "total_call_seconds": duration,
                 "calls_made": 1
+            },
+            "$setOnInsert": {
+                "user_name": current_user["name"],
+                "login_time": now,
+                "logout_time": None,
+                "total_login_seconds": 0,
+                "total_idle_seconds": 0,
+                "leads_updated": 0,
+                "last_activity": now,
+                "is_idle": False
             }
-        }
+        },
+        upsert=True
     )
     
     call_log = {
