@@ -1285,6 +1285,14 @@ async def get_dashboard_stats(
         ]
         status_counts = await db.leads.aggregate(pipeline).to_list(20)
         
+        # Get call outcome counts for this user
+        call_logs = await db.call_logs.find({"user_id": user_id, **calls_time_filter}).to_list(10000)
+        my_calls_connected = sum(1 for log in call_logs if log.get("outcome") == "connected")
+        my_calls_no_answer = sum(1 for log in call_logs if log.get("outcome") == "no_answer")
+        my_calls_wrong_number = sum(1 for log in call_logs if log.get("outcome") == "wrong_number")
+        my_calls_busy = sum(1 for log in call_logs if log.get("outcome") == "busy")
+        my_calls_voicemail = sum(1 for log in call_logs if log.get("outcome") == "voicemail")
+        
         session = await db.daily_sessions.find_one({
             "user_id": user_id,
             "date": today
@@ -1292,10 +1300,17 @@ async def get_dashboard_stats(
         
         return {
             "my_data": my_data,
-            "my_connected": my_connected,
+            "my_connected": len(call_logs),
             "my_interested": my_interested,
             "my_leads_generated": my_leads_generated,
-            "leads_by_status": {s["_id"]: s["count"] for s in status_counts},
+            "leads_by_status": {s["_id"]: s["count"] for s in status_counts if s["_id"]},
+            "call_outcomes": {
+                "connected": my_calls_connected,
+                "no_answer": my_calls_no_answer,
+                "wrong_number": my_calls_wrong_number,
+                "busy": my_calls_busy,
+                "voicemail": my_calls_voicemail
+            },
             "daily_session": serialize_doc(session) if session else None,
             "period": period
         }
