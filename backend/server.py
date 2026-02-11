@@ -372,7 +372,11 @@ async def start_call_session(data: CallSessionStart, current_user: dict = Depend
     })
     
     if existing:
-        session_age = (now - existing["start_time"]).total_seconds()
+        # Ensure start_time is timezone-aware
+        start_time = existing["start_time"]
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=timezone.utc)
+        session_age = (now - start_time).total_seconds()
         if session_age > 7200:
             await db.call_sessions.update_one(
                 {"_id": existing["_id"]},
