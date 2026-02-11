@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Database, Phone, TrendingUp, Users, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Database, Phone, TrendingUp, Users, Loader2, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
 import StatCard from '../../components/StatCard';
 
@@ -9,10 +9,15 @@ const AdminDashboard = () => {
   const [period, setPeriod] = useState('today');
   const [selectedTelecaller, setSelectedTelecaller] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async (showRefresh = false) => {
     try {
-      setIsLoading(true);
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
       const [statsRes, telecallersRes] = await Promise.all([
         api.get(`/dashboard/stats?period=${period}&telecaller_id=${selectedTelecaller}`),
         api.get('/users/telecallers'),
@@ -23,14 +28,19 @@ const AdminDashboard = () => {
       console.error('Error fetching dashboard data:', error);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [period, selectedTelecaller]);
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 30000);
+    const interval = setInterval(() => fetchData(true), 30000);
     return () => clearInterval(interval);
-  }, [period, selectedTelecaller]);
+  }, [fetchData]);
+
+  const handleRefresh = () => {
+    fetchData(true);
+  };
 
   const periods = [
     { id: 'today', label: 'Today' },
@@ -42,7 +52,17 @@ const AdminDashboard = () => {
 
   return (
     <div className="p-4" data-testid="admin-dashboard">
-      <h2 className="text-2xl font-bold text-gray-900 mb-4">Dashboard</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+        <button
+          onClick={handleRefresh}
+          disabled={isRefreshing || isLoading}
+          className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          data-testid="refresh-dashboard-btn"
+        >
+          <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
+        </button>
+      </div>
 
       {/* Period Filter */}
       <div className="flex flex-wrap gap-2 mb-4 overflow-x-auto pb-2 -mx-4 px-4">
