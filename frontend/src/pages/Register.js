@@ -66,13 +66,13 @@ const Register = () => {
           <form onSubmit={handleSubmit}>
             <div className="mb-4">
               <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <User className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Full Name"
-                  className="input-field pl-12"
+                  className="input-field pl-11"
                   data-testid="name-input"
                 />
               </div>
@@ -80,13 +80,13 @@ const Register = () => {
 
             <div className="mb-4">
               <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Email"
-                  className="input-field pl-12"
+                  className="input-field pl-11"
                   autoComplete="email"
                   data-testid="email-input"
                 />
@@ -95,13 +95,13 @@ const Register = () => {
 
             <div className="mb-4">
               <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Password"
-                  className="input-field pl-12 pr-12"
+                  className="input-field pl-11 pr-12"
                   autoComplete="new-password"
                   data-testid="password-input"
                 />
