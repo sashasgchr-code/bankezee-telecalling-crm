@@ -294,6 +294,31 @@ const AdminReports = () => {
                         </div>
                       </div>
 
+                      {/* Call Outcomes */}
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">CALL OUTCOMES</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { key: 'calls_connected', label: 'Connected', color: '#4CAF50' },
+                            { key: 'calls_no_answer', label: 'No Answer', color: '#FF9800' },
+                            { key: 'calls_wrong_number', label: 'Wrong Number', color: '#F44336' },
+                            { key: 'calls_busy', label: 'Busy', color: '#9E9E9E' },
+                            { key: 'calls_voicemail', label: 'Voicemail', color: '#2196F3' },
+                          ].map((outcome) => (
+                            <div 
+                              key={outcome.key}
+                              className="flex items-center justify-between p-2 rounded"
+                              style={{ backgroundColor: `${outcome.color}15` }}
+                            >
+                              <span className="text-xs text-gray-600">{outcome.label}</span>
+                              <span className="font-bold text-sm" style={{ color: outcome.color }}>
+                                {tc[outcome.key] || 0}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
                       {/* Follow-ups & Rate */}
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
