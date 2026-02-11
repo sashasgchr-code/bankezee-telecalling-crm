@@ -451,7 +451,12 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
     if session["end_time"]:
         raise HTTPException(status_code=400, detail="Call session already ended")
     
-    duration = int((now - session["start_time"]).total_seconds())
+    # Ensure start_time is timezone-aware
+    start_time = session["start_time"]
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    
+    duration = int((now - start_time).total_seconds())
     
     await db.call_sessions.update_one(
         {"_id": ObjectId(data.session_id)},
