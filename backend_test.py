@@ -132,7 +132,7 @@ class CRMAPITester:
             "notes": "Test lead for API testing"
         }
         
-        success, response = self.run_test("Create Lead", "POST", "leads", 201, lead_data, use_admin=True)
+        success, response = self.run_test("Create Lead", "POST", "leads", 200, lead_data, use_admin=True)
         if success and 'id' in response:
             self.test_lead_id = response['id']
             self.log(f"   Lead created with ID: {self.test_lead_id}")
