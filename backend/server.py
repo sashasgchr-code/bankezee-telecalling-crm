@@ -335,6 +335,15 @@ async def get_my_activity_stats(current_user: dict = Depends(get_current_user)):
         "end_time": None
     })
     
+    # Also get call stats directly from call_logs for today
+    call_logs_today = await db.call_logs.find({
+        "user_id": current_user["id"],
+        "created_at": {"$gte": today}
+    }).to_list(1000)
+    
+    calls_made_today = len(call_logs_today)
+    total_call_seconds_today = sum(log.get("duration", 0) or 0 for log in call_logs_today)
+    
     if session:
         login_time = session.get("login_time", now)
         # Ensure login_time is timezone-aware
@@ -342,28 +351,33 @@ async def get_my_activity_stats(current_user: dict = Depends(get_current_user)):
             login_time = login_time.replace(tzinfo=timezone.utc)
         current_login_seconds = (now - login_time).total_seconds()
         
+        # Use the higher value between session and actual call logs
+        actual_calls = max(session.get("calls_made", 0), calls_made_today)
+        actual_call_seconds = max(session.get("total_call_seconds", 0), total_call_seconds_today)
+        
         return {
             "date": today.isoformat(),
             "login_time": session.get("login_time"),
             "total_login_seconds": current_login_seconds,
-            "total_call_seconds": session.get("total_call_seconds", 0),
+            "total_call_seconds": actual_call_seconds,
             "total_idle_seconds": session.get("total_idle_seconds", 0),
-            "calls_made": session.get("calls_made", 0),
+            "calls_made": actual_calls,
             "leads_updated": session.get("leads_updated", 0),
             "is_idle": session.get("is_idle", False),
             "active_call": serialize_doc(active_call) if active_call else None
         }
     
+    # No session but might have call logs
     return {
         "date": today.isoformat(),
         "login_time": None,
         "total_login_seconds": 0,
-        "total_call_seconds": 0,
+        "total_call_seconds": total_call_seconds_today,
         "total_idle_seconds": 0,
-        "calls_made": 0,
+        "calls_made": calls_made_today,
         "leads_updated": 0,
         "is_idle": False,
-        "active_call": None
+        "active_call": serialize_doc(active_call) if active_call else None
     }
 
 # ===================== CALL SESSION TRACKING =====================
