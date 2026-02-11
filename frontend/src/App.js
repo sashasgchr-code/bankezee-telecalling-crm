@@ -1,53 +1,105 @@
 import { useEffect } from "react";
-import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import useAuthStore from "./store/authStore";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import AdminDashboard from "./pages/admin/Dashboard";
+import AdminLeads from "./pages/admin/Leads";
+import AdminUsers from "./pages/admin/Users";
+import AdminReports from "./pages/admin/Reports";
+import AdminSettings from "./pages/admin/Settings";
+import TelecallerDashboard from "./pages/telecaller/Dashboard";
+import TelecallerLeads from "./pages/telecaller/Leads";
+import TelecallerFollowUps from "./pages/telecaller/FollowUps";
+import TelecallerProfile from "./pages/telecaller/Profile";
+import LeadDetail from "./pages/LeadDetail";
+import AdminLayout from "./layouts/AdminLayout";
+import TelecallerLayout from "./layouts/TelecallerLayout";
+import LoadingScreen from "./components/LoadingScreen";
+import "./App.css";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+const ProtectedRoute = ({ children, requiredRole }) => {
+  const { isAuthenticated, user, isLoading } = useAuthStore();
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
 
-  return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
+  if (requiredRole && user?.role !== requiredRole) {
+    return <Navigate to={user?.role === 'admin' ? '/admin' : '/agent'} replace />;
+  }
+
+  return children;
 };
 
 function App() {
+  const { loadAuth, isLoading, isAuthenticated, user } = useAuthStore();
+
+  useEffect(() => {
+    loadAuth();
+  }, []);
+
+  if (isLoading) {
+    return <LoadingScreen />;
+  }
+
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        {/* Public Routes */}
+        <Route path="/login" element={
+          isAuthenticated ? (
+            <Navigate to={user?.role === 'admin' ? '/admin' : '/agent'} replace />
+          ) : (
+            <Login />
+          )
+        } />
+        <Route path="/register" element={
+          isAuthenticated ? (
+            <Navigate to={user?.role === 'admin' ? '/admin' : '/agent'} replace />
+          ) : (
+            <Register />
+          )
+        } />
+
+        {/* Admin Routes */}
+        <Route path="/admin" element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<AdminDashboard />} />
+          <Route path="leads" element={<AdminLeads />} />
+          <Route path="leads/:id" element={<LeadDetail />} />
+          <Route path="users" element={<AdminUsers />} />
+          <Route path="reports" element={<AdminReports />} />
+          <Route path="settings" element={<AdminSettings />} />
+        </Route>
+
+        {/* Telecaller/Agent Routes */}
+        <Route path="/agent" element={
+          <ProtectedRoute requiredRole="telecaller">
+            <TelecallerLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<TelecallerLeads />} />
+          <Route path="dashboard" element={<TelecallerDashboard />} />
+          <Route path="leads" element={<TelecallerLeads />} />
+          <Route path="leads/:id" element={<LeadDetail />} />
+          <Route path="followups" element={<TelecallerFollowUps />} />
+          <Route path="profile" element={<TelecallerProfile />} />
+        </Route>
+
+        {/* Default redirect */}
+        <Route path="*" element={
+          <Navigate to={isAuthenticated ? (user?.role === 'admin' ? '/admin' : '/agent') : '/login'} replace />
+        } />
+      </Routes>
+    </BrowserRouter>
   );
 }
 
