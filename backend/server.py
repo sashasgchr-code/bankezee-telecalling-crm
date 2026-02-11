@@ -1370,7 +1370,12 @@ async def get_telecaller_reports(
         if start_date:
             call_query["created_at"] = {"$gte": start_date}
         
-        user_total_calls = await db.call_logs.count_documents(call_query)
+        # Get call logs with duration
+        user_call_logs = await db.call_logs.find(call_query).to_list(10000)
+        user_total_calls = len(user_call_logs)
+        
+        # Calculate total call seconds from call_logs directly
+        user_call_seconds_from_logs = sum(log.get("duration", 0) or 0 for log in user_call_logs)
         
         connected_query = {**call_query, "outcome": "connected"}
         calls_connected = await db.call_logs.count_documents(connected_query)
@@ -1390,9 +1395,12 @@ async def get_telecaller_reports(
             session_query["date"] = {"$gte": start_date}
         
         sessions = await db.daily_sessions.find(session_query).to_list(100)
-        user_call_seconds = sum(s.get("total_call_seconds", 0) for s in sessions)
+        user_call_seconds_from_sessions = sum(s.get("total_call_seconds", 0) for s in sessions)
         user_idle_seconds = sum(s.get("total_idle_seconds", 0) for s in sessions)
         user_login_seconds = sum(s.get("total_login_seconds", 0) for s in sessions)
+        
+        # Use the higher value between sessions and actual call logs
+        user_call_seconds = max(user_call_seconds_from_sessions, user_call_seconds_from_logs)
         
         calls_to_lead_rate = (user_leads_generated / user_total_calls * 100) if user_total_calls > 0 else 0
         
