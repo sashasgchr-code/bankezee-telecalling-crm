@@ -1377,8 +1377,12 @@ async def get_telecaller_reports(
         # Calculate total call seconds from call_logs directly
         user_call_seconds_from_logs = sum(log.get("duration", 0) or 0 for log in user_call_logs)
         
-        connected_query = {**call_query, "outcome": "connected"}
-        calls_connected = await db.call_logs.count_documents(connected_query)
+        # Count call outcomes
+        calls_connected = sum(1 for log in user_call_logs if log.get("outcome") == "connected")
+        calls_no_answer = sum(1 for log in user_call_logs if log.get("outcome") == "no_answer")
+        calls_wrong_number = sum(1 for log in user_call_logs if log.get("outcome") == "wrong_number")
+        calls_busy = sum(1 for log in user_call_logs if log.get("outcome") == "busy")
+        calls_voicemail = sum(1 for log in user_call_logs if log.get("outcome") == "voicemail")
         
         follow_ups_pending = await db.follow_ups.count_documents({
             "user_id": user_id,
