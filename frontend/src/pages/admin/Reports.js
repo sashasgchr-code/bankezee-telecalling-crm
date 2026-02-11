@@ -58,33 +58,33 @@ const AdminReports = () => {
     // Create CSV content
     const headers = ['Name', 'Email', 'Status', 'Leads Assigned', 'Calls', 'Leads Generated', 'Interested', 'Talk Time', 'Idle Time', 'Conversion Rate'];
     const rows = reports.telecallers.map(tc => [
-      tc.user_name,
-      tc.user_email,
+      tc.user_name || '',
+      tc.user_email || '',
       tc.is_active ? 'Active' : 'Inactive',
-      tc.total_leads,
-      tc.total_calls,
-      tc.leads_generated,
-      tc.interested,
+      tc.total_leads || 0,
+      tc.total_calls || 0,
+      tc.leads_generated || 0,
+      tc.interested || 0,
       formatTimeForExcel(tc.total_call_seconds),
       formatTimeForExcel(tc.total_idle_seconds),
-      `${tc.calls_to_lead_rate.toFixed(1)}%`
+      `${(tc.calls_to_lead_rate || 0).toFixed(1)}%`
     ]);
 
-    // Add summary row
-    rows.push([]);
-    rows.push(['OVERALL SUMMARY']);
-    rows.push(['Total Calls', reports.overall.total_calls]);
-    rows.push(['Leads Generated', reports.overall.total_leads_generated]);
-    rows.push(['Total Talk Time', formatTimeForExcel(reports.overall.total_call_seconds)]);
-    rows.push(['Total Idle Time', formatTimeForExcel(reports.overall.total_idle_seconds)]);
-    rows.push(['Overall Conversion Rate', `${reports.overall.calls_to_lead_rate.toFixed(1)}%`]);
-
-    const csvContent = [
-      [`Telecaller Performance Report - ${periodLabel}`],
-      [],
-      headers,
-      ...rows
-    ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    // Build CSV string
+    let csvContent = `Telecaller Performance Report - ${periodLabel}\n\n`;
+    csvContent += headers.join(',') + '\n';
+    rows.forEach(row => {
+      csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+    });
+    
+    // Add summary
+    csvContent += '\n';
+    csvContent += 'OVERALL SUMMARY\n';
+    csvContent += `Total Calls,${reports.overall?.total_calls || 0}\n`;
+    csvContent += `Leads Generated,${reports.overall?.total_leads_generated || 0}\n`;
+    csvContent += `Total Talk Time,${formatTimeForExcel(reports.overall?.total_call_seconds)}\n`;
+    csvContent += `Total Idle Time,${formatTimeForExcel(reports.overall?.total_idle_seconds)}\n`;
+    csvContent += `Overall Conversion Rate,${(reports.overall?.calls_to_lead_rate || 0).toFixed(1)}%\n`;
 
     // Download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -92,10 +92,10 @@ const AdminReports = () => {
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
     link.setAttribute('download', `telecaller_report_${period}_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const periods = [
