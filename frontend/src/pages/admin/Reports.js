@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, Phone, TrendingUp, Loader2 } from 'lucide-react';
+import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download } from 'lucide-react';
 import api from '../../services/api';
 
 const AdminReports = () => {
   const [reports, setReports] = useState(null);
   const [period, setPeriod] = useState('today');
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedCards, setExpandedCards] = useState({});
 
   const fetchReports = async () => {
     try {
@@ -31,23 +32,102 @@ const AdminReports = () => {
     return `${mins}m`;
   };
 
+  const formatTimeForExcel = (seconds) => {
+    if (!seconds) return '0:00';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const toggleCard = (userId) => {
+    setExpandedCards(prev => ({
+      ...prev,
+      [userId]: !prev[userId]
+    }));
+  };
+
+  const downloadExcel = () => {
+    if (!reports || !reports.telecallers) return;
+
+    const periodLabel = periods.find(p => p.id === period)?.label || period;
+    
+    // Create CSV content
+    const headers = ['Name', 'Email', 'Status', 'Leads Assigned', 'Calls', 'Leads Generated', 'Interested', 'Talk Time', 'Idle Time', 'Conversion Rate'];
+    const rows = reports.telecallers.map(tc => [
+      tc.user_name,
+      tc.user_email,
+      tc.is_active ? 'Active' : 'Inactive',
+      tc.total_leads,
+      tc.total_calls,
+      tc.leads_generated,
+      tc.interested,
+      formatTimeForExcel(tc.total_call_seconds),
+      formatTimeForExcel(tc.total_idle_seconds),
+      `${tc.calls_to_lead_rate.toFixed(1)}%`
+    ]);
+
+    // Add summary row
+    rows.push([]);
+    rows.push(['OVERALL SUMMARY']);
+    rows.push(['Total Calls', reports.overall.total_calls]);
+    rows.push(['Leads Generated', reports.overall.total_leads_generated]);
+    rows.push(['Total Talk Time', formatTimeForExcel(reports.overall.total_call_seconds)]);
+    rows.push(['Total Idle Time', formatTimeForExcel(reports.overall.total_idle_seconds)]);
+    rows.push(['Overall Conversion Rate', `${reports.overall.calls_to_lead_rate.toFixed(1)}%`]);
+
+    const csvContent = [
+      [`Telecaller Performance Report - ${periodLabel}`],
+      [],
+      headers,
+      ...rows
+    ].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `telecaller_report_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const periods = [
     { id: 'today', label: 'Today' },
     { id: 'week', label: 'This Week' },
     { id: 'month', label: 'This Month' },
+    { id: 'three_months', label: 'Last 3 Months' },
+    { id: 'lifetime', label: 'Lifetime' },
   ];
 
   return (
     <div className="p-4" data-testid="admin-reports">
-      <h2 className="text-2xl font-bold text-gray-900 mb-4">Reports</h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-2xl font-bold text-gray-900">Reports</h2>
+        <button
+          onClick={downloadExcel}
+          disabled={!reports || isLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          data-testid="download-report-btn"
+        >
+          <Download size={18} />
+          Export
+        </button>
+      </div>
 
       {/* Period Filter */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {periods.map((p) => (
           <button
             key={p.id}
             onClick={() => setPeriod(p.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               period === p.id
                 ? 'bg-green-600 text-white'
                 : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
@@ -94,14 +174,18 @@ const AdminReports = () => {
           {/* Telecaller Performance */}
           <div className="card p-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Telecaller Performance</h3>
-            <div className="space-y-4">
+            <div className="space-y-2">
               {reports.telecallers.map((tc) => (
                 <div
                   key={tc.user_id}
-                  className={`p-4 bg-gray-50 rounded-lg ${!tc.is_active ? 'opacity-60' : ''}`}
+                  className={`bg-gray-50 rounded-lg overflow-hidden ${!tc.is_active ? 'opacity-60' : ''}`}
                   data-testid={`report-card-${tc.user_id}`}
                 >
-                  <div className="flex items-center justify-between mb-3">
+                  {/* Header - Always visible */}
+                  <button
+                    onClick={() => toggleCard(tc.user_id)}
+                    className="w-full p-4 flex items-center justify-between hover:bg-gray-100 transition-colors"
+                  >
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
                         tc.is_active ? 'bg-green-600' : 'bg-gray-400'
@@ -110,57 +194,81 @@ const AdminReports = () => {
                           {tc.user_name?.charAt(0).toUpperCase()}
                         </span>
                       </div>
-                      <div>
+                      <div className="text-left">
                         <p className="font-semibold text-gray-900">{tc.user_name}</p>
-                        <p className="text-xs text-gray-500">{tc.total_leads} leads assigned</p>
+                        <p className="text-xs text-gray-500">{tc.total_leads} leads • {tc.total_calls} calls</p>
                       </div>
                     </div>
-                    {!tc.is_active && (
-                      <span className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs">
-                        Inactive
-                      </span>
-                    )}
-                  </div>
+                    <div className="flex items-center gap-3">
+                      {!tc.is_active && (
+                        <span className="px-2 py-1 bg-gray-200 text-gray-600 rounded text-xs">
+                          Inactive
+                        </span>
+                      )}
+                      {expandedCards[tc.user_id] ? (
+                        <ChevronUp size={20} className="text-gray-500" />
+                      ) : (
+                        <ChevronDown size={20} className="text-gray-500" />
+                      )}
+                    </div>
+                  </button>
 
-                  <div className="grid grid-cols-4 gap-2">
-                    <div className="text-center p-2 bg-white rounded">
-                      <div className="flex items-center justify-center gap-1 text-green-600">
-                        <Phone size={14} />
-                        <span className="font-bold">{tc.total_calls}</span>
+                  {/* Expanded Content */}
+                  {expandedCards[tc.user_id] && (
+                    <div className="px-4 pb-4 pt-0">
+                      <div className="grid grid-cols-4 gap-2 mb-3">
+                        <div className="text-center p-2 bg-white rounded">
+                          <div className="flex items-center justify-center gap-1 text-green-600">
+                            <Phone size={14} />
+                            <span className="font-bold">{tc.total_calls}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">Calls</p>
+                        </div>
+                        <div className="text-center p-2 bg-white rounded">
+                          <div className="flex items-center justify-center gap-1 text-blue-600">
+                            <TrendingUp size={14} />
+                            <span className="font-bold">{tc.leads_generated}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">Leads</p>
+                        </div>
+                        <div className="text-center p-2 bg-white rounded">
+                          <div className="flex items-center justify-center gap-1 text-purple-600">
+                            <Clock size={14} />
+                            <span className="font-bold">{formatTime(tc.total_call_seconds)}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">Talk</p>
+                        </div>
+                        <div className="text-center p-2 bg-white rounded">
+                          <div className="flex items-center justify-center gap-1 text-orange-600">
+                            <Clock size={14} />
+                            <span className="font-bold">{formatTime(tc.total_idle_seconds)}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">Idle</p>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500">Calls</p>
-                    </div>
-                    <div className="text-center p-2 bg-white rounded">
-                      <div className="flex items-center justify-center gap-1 text-blue-600">
-                        <TrendingUp size={14} />
-                        <span className="font-bold">{tc.leads_generated}</span>
-                      </div>
-                      <p className="text-xs text-gray-500">Leads</p>
-                    </div>
-                    <div className="text-center p-2 bg-white rounded">
-                      <div className="flex items-center justify-center gap-1 text-purple-600">
-                        <Clock size={14} />
-                        <span className="font-bold">{formatTime(tc.total_call_seconds)}</span>
-                      </div>
-                      <p className="text-xs text-gray-500">Talk</p>
-                    </div>
-                    <div className="text-center p-2 bg-white rounded">
-                      <div className="flex items-center justify-center gap-1 text-orange-600">
-                        <Clock size={14} />
-                        <span className="font-bold">{formatTime(tc.total_idle_seconds)}</span>
-                      </div>
-                      <p className="text-xs text-gray-500">Idle</p>
-                    </div>
-                  </div>
 
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Call to Lead Rate</span>
-                      <span className="font-semibold text-gray-900">
-                        {tc.calls_to_lead_rate.toFixed(1)}%
-                      </span>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Interested</span>
+                          <span className="font-semibold text-gray-900">{tc.interested}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Follow-ups Pending</span>
+                          <span className="font-semibold text-gray-900">{tc.follow_ups_pending}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Follow-ups Completed</span>
+                          <span className="font-semibold text-gray-900">{tc.follow_ups_completed}</span>
+                        </div>
+                        <div className="flex justify-between pt-2 border-t border-gray-200">
+                          <span className="text-gray-500">Call to Lead Rate</span>
+                          <span className="font-semibold text-green-600">
+                            {tc.calls_to_lead_rate.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               ))}
 
