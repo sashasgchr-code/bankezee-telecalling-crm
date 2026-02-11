@@ -1,0 +1,214 @@
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2 } from 'lucide-react';
+import api from '../services/api';
+import { StatusColors, StatusLabels } from '../constants/colors';
+
+const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuration }) => {
+  const [outcome, setOutcome] = useState('connected');
+  const [notes, setNotes] = useState('');
+  const [newStatus, setNewStatus] = useState(lead?.status || 'contacted');
+  const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const statuses = ['new', 'contacted', 'interested', 'not_interested', 'follow_up', 'leads'];
+  
+  const callOutcomes = [
+    { id: 'connected', label: 'Connected', icon: CheckCircle },
+    { id: 'no_answer', label: 'No Answer', icon: XCircle },
+    { id: 'busy', label: 'Busy', icon: Clock },
+    { id: 'wrong_number', label: 'Wrong Number', icon: AlertCircle },
+    { id: 'voicemail', label: 'Voicemail', icon: Mic },
+  ];
+
+  useEffect(() => {
+    if (isOpen && lead) {
+      setNewStatus(lead.status === 'new' ? 'contacted' : lead.status);
+      setOutcome('connected');
+      setNotes('');
+      setScheduleFollowUp(false);
+      // Set default follow up date to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(10, 0, 0, 0);
+      setFollowUpDate(tomorrow.toISOString().slice(0, 16));
+    }
+  }, [isOpen, lead]);
+
+  const formatDuration = (seconds) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleSubmit = async () => {
+    if (!activeCall) return;
+
+    setIsSubmitting(true);
+    try {
+      // End call session
+      await api.post('/call-sessions/end', {
+        session_id: activeCall.id,
+        outcome: outcome,
+        notes: notes
+      });
+
+      // Update lead status if changed
+      if (lead && newStatus !== lead.status) {
+        await api.put(`/leads/${lead.id}`, {
+          status: newStatus,
+          notes: notes || lead.notes,
+        });
+      }
+
+      // Create follow-up if scheduled
+      if (scheduleFollowUp && lead && followUpDate) {
+        await api.post('/follow-ups', {
+          lead_id: lead.id,
+          scheduled_at: new Date(followUpDate).toISOString(),
+          notes: notes,
+        });
+      }
+
+      onCallEnded && onCallEnded();
+      onClose();
+    } catch (error) {
+      console.error('Error ending call:', error);
+      alert(error.response?.data?.detail || 'Failed to log call');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50" data-testid="call-modal">
+      <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[90vh] overflow-y-auto">
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white">
+          <h2 className="text-xl font-semibold text-gray-900">Log Call</h2>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-green-50 px-3 py-1.5 rounded-full">
+              <Clock size={16} className="text-green-600" />
+              <span className="text-green-600 font-semibold font-mono">
+                {formatDuration(callDuration)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-5">
+          {/* Lead Info */}
+          {lead && (
+            <div className="text-center pb-4 border-b border-gray-100">
+              <p className="text-lg font-semibold text-gray-900">{lead.name}</p>
+              <p className="text-gray-500">{lead.phone}</p>
+            </div>
+          )}
+
+          {/* Call Outcome */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Call Outcome</label>
+            <div className="flex flex-wrap gap-2">
+              {callOutcomes.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setOutcome(o.id)}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+                    outcome === o.id
+                      ? 'bg-green-600 text-white border-green-600'
+                      : 'border-green-600 text-green-600 hover:bg-green-50'
+                  }`}
+                >
+                  <o.icon size={16} />
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status Update */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Update Status</label>
+            <div className="flex flex-wrap gap-2">
+              {statuses.map((status) => (
+                <button
+                  key={status}
+                  onClick={() => setNewStatus(status)}
+                  className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
+                    newStatus === status
+                      ? 'text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                  style={{
+                    backgroundColor: newStatus === status ? StatusColors[status] : undefined
+                  }}
+                >
+                  {StatusLabels[status] || status.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Notes</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add call notes..."
+              className="input-field min-h-[80px] resize-none"
+              data-testid="call-notes-input"
+            />
+          </div>
+
+          {/* Follow Up */}
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={scheduleFollowUp}
+                onChange={(e) => setScheduleFollowUp(e.target.checked)}
+                className="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500"
+              />
+              <span className="text-gray-700 font-medium">Schedule Follow-up</span>
+            </label>
+            
+            {scheduleFollowUp && (
+              <div className="mt-3">
+                <input
+                  type="datetime-local"
+                  value={followUpDate}
+                  onChange={(e) => setFollowUpDate(e.target.value)}
+                  className="input-field"
+                  data-testid="follow-up-date"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Submit Button */}
+          <button
+            onClick={handleSubmit}
+            disabled={isSubmitting}
+            className="w-full btn-primary py-3 flex items-center justify-center gap-2"
+            data-testid="submit-call-btn"
+          >
+            {isSubmitting ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              'Save & End Call'
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CallModal;
