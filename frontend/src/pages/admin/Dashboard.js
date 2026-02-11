@@ -57,9 +57,7 @@ const AdminDashboard = () => {
     { key: 'interested', label: 'Interested', color: '#FF9800' },
     { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
     { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
-    { key: 'leads', label: 'Leads', color: '#4CAF50' },
-    { key: 'converted', label: 'Converted', color: '#00C853' },
-    { key: 'lost', label: 'Lost', color: '#F44336' },
+    { key: 'leads', label: 'Leads', color: '#00C853' },
   ];
 
   return (
