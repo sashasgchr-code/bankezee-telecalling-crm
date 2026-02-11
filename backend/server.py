@@ -337,6 +337,9 @@ async def get_my_activity_stats(current_user: dict = Depends(get_current_user)):
     
     if session:
         login_time = session.get("login_time", now)
+        # Ensure login_time is timezone-aware
+        if login_time.tzinfo is None:
+            login_time = login_time.replace(tzinfo=timezone.utc)
         current_login_seconds = (now - login_time).total_seconds()
         
         return {
