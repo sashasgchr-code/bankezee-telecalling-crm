@@ -236,6 +236,7 @@ const AdminReports = () => {
                   {/* Expanded Content */}
                   {expandedCards[tc.user_id] && (
                     <div className="px-4 pb-4 pt-0">
+                      {/* Call Stats Row */}
                       <div className="grid grid-cols-4 gap-2 mb-3">
                         <div className="text-center p-2 bg-white rounded">
                           <div className="flex items-center justify-center gap-1 text-green-600">
@@ -267,11 +268,34 @@ const AdminReports = () => {
                         </div>
                       </div>
 
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-500">Interested</span>
-                          <span className="font-semibold text-gray-900">{tc.interested}</span>
+                      {/* Status Breakdown */}
+                      <div className="mb-3">
+                        <p className="text-xs font-semibold text-gray-500 mb-2">STATUS BREAKDOWN</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { key: 'new', label: 'New', color: '#4CAF50' },
+                            { key: 'contacted', label: 'Contacted', color: '#2196F3' },
+                            { key: 'interested', label: 'Interested', color: '#FF9800' },
+                            { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
+                            { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
+                            { key: 'leads', label: 'Leads', color: '#00C853' },
+                          ].map((status) => (
+                            <div 
+                              key={status.key}
+                              className="flex items-center justify-between p-2 rounded"
+                              style={{ backgroundColor: `${status.color}15` }}
+                            >
+                              <span className="text-xs text-gray-600">{status.label}</span>
+                              <span className="font-bold text-sm" style={{ color: status.color }}>
+                                {tc.status_counts?.[status.key] || 0}
+                              </span>
+                            </div>
+                          ))}
                         </div>
+                      </div>
+
+                      {/* Follow-ups & Rate */}
+                      <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-500">Follow-ups Pending</span>
                           <span className="font-semibold text-gray-900">{tc.follow_ups_pending}</span>
@@ -283,7 +307,7 @@ const AdminReports = () => {
                         <div className="flex justify-between pt-2 border-t border-gray-200">
                           <span className="text-gray-500">Call to Lead Rate</span>
                           <span className="font-semibold text-green-600">
-                            {tc.calls_to_lead_rate.toFixed(1)}%
+                            {(tc.calls_to_lead_rate || 0).toFixed(1)}%
                           </span>
                         </div>
                       </div>
