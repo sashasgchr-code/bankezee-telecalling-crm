@@ -1308,6 +1308,11 @@ async def get_telecaller_reports(
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "month":
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    elif period == "three_months":
+        start_date = now - timedelta(days=90)
+        start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == "lifetime":
+        start_date = None
     else:
         start_date = None
     
