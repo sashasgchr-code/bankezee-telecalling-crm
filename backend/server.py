@@ -1402,6 +1402,14 @@ async def get_telecaller_reports(
         # Use the higher value between sessions and actual call logs
         user_call_seconds = max(user_call_seconds_from_sessions, user_call_seconds_from_logs)
         
+        # Get status breakdown for this telecaller
+        status_pipeline = [
+            {"$match": {"assigned_to": user_id}},
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+        ]
+        status_counts_raw = await db.leads.aggregate(status_pipeline).to_list(20)
+        user_status_counts = {s["_id"]: s["count"] for s in status_counts_raw if s["_id"]}
+        
         calls_to_lead_rate = (user_leads_generated / user_total_calls * 100) if user_total_calls > 0 else 0
         
         telecaller_reports.append({
@@ -1420,7 +1428,8 @@ async def get_telecaller_reports(
             "calls_to_lead_rate": calls_to_lead_rate,
             "total_call_seconds": user_call_seconds,
             "total_idle_seconds": user_idle_seconds,
-            "total_login_seconds": user_login_seconds
+            "total_login_seconds": user_login_seconds,
+            "status_counts": user_status_counts
         })
         
         total_calls += user_total_calls
