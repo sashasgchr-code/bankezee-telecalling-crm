@@ -9,7 +9,6 @@ const Register = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('telecaller');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -30,12 +29,9 @@ const Register = () => {
 
     setIsLoading(true);
     try {
-      const user = await register(email.trim().toLowerCase(), password, name.trim(), role);
-      if (user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/agent');
-      }
+      // Only telecallers can register through this form
+      await register(email.trim().toLowerCase(), password, name.trim(), 'telecaller');
+      navigate('/agent');
     } catch (err) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -54,7 +50,7 @@ const Register = () => {
 
         {/* Form */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Create Account</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Telecaller Registration</h2>
           <p className="text-gray-500 mb-6">Sign up to get started</p>
 
           {error && (
@@ -93,7 +89,7 @@ const Register = () => {
               </div>
             </div>
 
-            <div className="mb-4">
+            <div className="mb-6">
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none z-10" size={18} />
                 <input
@@ -111,34 +107,6 @@ const Register = () => {
                   className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole('telecaller')}
-                  className={`flex-1 py-3 rounded-lg border-2 font-semibold transition-colors ${
-                    role === 'telecaller'
-                      ? 'border-green-600 bg-green-600 text-white'
-                      : 'border-green-600 text-green-600 hover:bg-green-50'
-                  }`}
-                >
-                  Telecaller
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`flex-1 py-3 rounded-lg border-2 font-semibold transition-colors ${
-                    role === 'admin'
-                      ? 'border-green-600 bg-green-600 text-white'
-                      : 'border-green-600 text-green-600 hover:bg-green-50'
-                  }`}
-                >
-                  Admin
                 </button>
               </div>
             </div>
