@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Database, Phone, TrendingUp, Users, Loader2, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
-import StatCard from '../../components/StatCard';
+import { StatusColors, StatusLabels } from '../../constants/colors';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -48,6 +48,18 @@ const AdminDashboard = () => {
     { id: 'this_month', label: 'This Month' },
     { id: 'last_month', label: 'Last Month' },
     { id: 'all_time', label: 'All Time' },
+  ];
+
+  // All possible statuses for display
+  const allStatuses = [
+    { key: 'new', label: 'New', color: '#4CAF50' },
+    { key: 'contacted', label: 'Contacted', color: '#2196F3' },
+    { key: 'interested', label: 'Interested', color: '#FF9800' },
+    { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
+    { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
+    { key: 'leads', label: 'Leads', color: '#4CAF50' },
+    { key: 'converted', label: 'Converted', color: '#00C853' },
+    { key: 'lost', label: 'Lost', color: '#F44336' },
   ];
 
   return (
@@ -102,60 +114,67 @@ const AdminDashboard = () => {
         </div>
       ) : (
         <>
-          {/* Main Stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-            <StatCard
-              title="Total Data"
-              value={stats?.total_data || 0}
-              icon={Database}
-              color="#4CAF50"
-            />
-            <StatCard
-              title="Connected"
-              value={stats?.connected || 0}
-              icon={Phone}
-              color="#2196F3"
-            />
-            <StatCard
-              title="Leads Generated"
-              value={stats?.total_leads_generated || 0}
-              icon={TrendingUp}
-              color="#9C27B0"
-            />
-            <StatCard
-              title="Interested"
-              value={stats?.total_interested || 0}
-              icon={TrendingUp}
-              color="#FF9800"
-            />
+          {/* Main Stats Row */}
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="card p-4 text-center">
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-2">
+                <Database size={24} className="text-green-600" />
+              </div>
+              <p className="text-2xl font-bold text-gray-900">{stats?.total_data || 0}</p>
+              <p className="text-xs text-gray-500">Total Data</p>
+            </div>
+            <div className="card p-4 text-center">
+              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-2">
+                <Phone size={24} className="text-blue-600" />
+              </div>
+              <p className="text-2xl font-bold text-gray-900">{stats?.connected || 0}</p>
+              <p className="text-xs text-gray-500">Connected</p>
+            </div>
+          </div>
+
+          {/* Status Breakdown - All Statuses */}
+          <div className="card p-4 mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Status Breakdown</h3>
+            <div className="grid grid-cols-2 gap-3">
+              {allStatuses.map((status) => {
+                const count = stats?.leads_by_status?.[status.key] || 0;
+                return (
+                  <div 
+                    key={status.key} 
+                    className="flex items-center justify-between p-3 rounded-lg"
+                    style={{ backgroundColor: `${status.color}15` }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: status.color }}
+                      />
+                      <span className="text-sm text-gray-700">{status.label}</span>
+                    </div>
+                    <span className="font-bold" style={{ color: status.color }}>{count}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {/* Active Telecallers */}
-          <div className="card p-4 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Active Telecallers</h3>
-              <span className="bg-green-100 text-green-600 px-3 py-1 rounded-full text-sm font-semibold">
+          <div className="card p-4 mb-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Users size={20} className="text-purple-600" />
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">Active Telecallers</p>
+                  <p className="text-xs text-gray-500">Currently working</p>
+                </div>
+              </div>
+              <span className="text-2xl font-bold text-purple-600">
                 {stats?.active_telecallers || 0}
               </span>
             </div>
           </div>
-
-          {/* Status Breakdown */}
-          {stats?.leads_by_status && Object.keys(stats.leads_by_status).length > 0 && (
-            <div className="card p-4 mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Status Breakdown</h3>
-              <div className="space-y-3">
-                {Object.entries(stats.leads_by_status).map(([status, count]) => (
-                  <div key={status} className="flex items-center justify-between">
-                    <span className="text-sm capitalize text-gray-700">
-                      {status.replace('_', ' ')}
-                    </span>
-                    <span className="font-semibold text-gray-900">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Calls Per User */}
           {stats?.calls_per_user && Object.keys(stats.calls_per_user).length > 0 && (
@@ -163,9 +182,16 @@ const AdminDashboard = () => {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Calls by Telecaller</h3>
               <div className="space-y-3">
                 {Object.entries(stats.calls_per_user).map(([name, count]) => (
-                  <div key={name} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-700">{name}</span>
-                    <span className="font-semibold text-gray-900">{count} calls</span>
+                  <div key={name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center">
+                        <span className="text-white text-sm font-bold">
+                          {name.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="text-sm text-gray-700">{name}</span>
+                    </div>
+                    <span className="font-semibold text-green-600">{count} calls</span>
                   </div>
                 ))}
               </div>
