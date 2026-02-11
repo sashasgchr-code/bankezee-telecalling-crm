@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw } from 'lucide-react';
 import api from '../../services/api';
 
 const AdminReports = () => {
@@ -7,22 +7,32 @@ const AdminReports = () => {
   const [period, setPeriod] = useState('today');
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const fetchReports = async () => {
+  const fetchReports = useCallback(async (showRefresh = false) => {
     try {
-      setIsLoading(true);
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
       const response = await api.get(`/reports/telecallers?period=${period}`);
       setReports(response.data);
     } catch (error) {
       console.error('Error fetching reports:', error);
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  };
+  }, [period]);
 
   useEffect(() => {
     fetchReports();
-  }, [period]);
+  }, [fetchReports]);
+
+  const handleRefresh = () => {
+    fetchReports(true);
+  };
 
   const formatTime = (seconds) => {
     if (!seconds) return '0m';
