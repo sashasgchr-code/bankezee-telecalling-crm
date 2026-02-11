@@ -298,6 +298,9 @@ async def activity_ping(current_user: dict = Depends(get_current_user)):
     
     if session:
         last_activity = session.get("last_activity", now)
+        # Ensure last_activity is timezone-aware
+        if last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=timezone.utc)
         time_diff = (now - last_activity).total_seconds()
         
         if time_diff > 300:
