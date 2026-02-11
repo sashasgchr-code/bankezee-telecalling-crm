@@ -120,15 +120,25 @@ const AdminReports = () => {
     <div className="p-4" data-testid="admin-reports">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-gray-900">Reports</h2>
-        <button
-          onClick={downloadExcel}
-          disabled={!reports || isLoading}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          data-testid="download-report-btn"
-        >
-          <Download size={18} />
-          Export
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing || isLoading}
+            className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            data-testid="refresh-report-btn"
+          >
+            <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
+          </button>
+          <button
+            onClick={downloadExcel}
+            disabled={!reports || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            data-testid="download-report-btn"
+          >
+            <Download size={18} />
+            Export
+          </button>
+        </div>
       </div>
 
       {/* Period Filter */}
