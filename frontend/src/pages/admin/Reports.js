@@ -310,6 +310,7 @@ const AdminReports = () => {
                             { key: 'calls_wrong_number', label: 'Wrong Number', color: '#F44336' },
                             { key: 'calls_busy', label: 'Busy', color: '#9E9E9E' },
                             { key: 'calls_voicemail', label: 'Voicemail', color: '#2196F3' },
+                            { key: 'calls_presentation', label: 'Presentation', color: '#673AB7' },
                           ].map((outcome) => (
                             <div 
                               key={outcome.key}
