@@ -64,6 +64,9 @@ const TelecallerDashboard = () => {
     { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
     { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
     { key: 'leads', label: 'Leads', color: '#00C853' },
+    { key: 'not_answering', label: 'Not Answering', color: '#FF5722' },
+    { key: 'wrong_number', label: 'Wrong Number', color: '#F44336' },
+    { key: 'presentation', label: 'Presentation', color: '#673AB7' },
   ];
 
   // Call outcomes to display
@@ -73,7 +76,6 @@ const TelecallerDashboard = () => {
     { key: 'wrong_number', label: 'Wrong Number', color: '#F44336' },
     { key: 'busy', label: 'Busy', color: '#9E9E9E' },
     { key: 'voicemail', label: 'Voicemail', color: '#2196F3' },
-    { key: 'presentation', label: 'Presentation', color: '#673AB7' },
   ];
 
   return (
