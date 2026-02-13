@@ -1229,7 +1229,20 @@ async def get_dashboard_stats(
                 ]
         calls_per_user = await db.call_logs.aggregate(user_pipeline).to_list(100)
         
-        active_telecallers = await db.users.count_documents({"role": "telecaller", "is_active": True})
+        # Count telecallers who made at least 1 call in the selected period
+        if period == "all_time":
+            active_telecallers_pipeline = [
+                {"$group": {"_id": "$user_id"}},
+                {"$count": "count"}
+            ]
+        else:
+            active_telecallers_pipeline = [
+                {"$match": calls_time_query},
+                {"$group": {"_id": "$user_id"}},
+                {"$count": "count"}
+            ]
+        active_result = await db.call_logs.aggregate(active_telecallers_pipeline).to_list(1)
+        active_telecallers = active_result[0]["count"] if active_result else 0
         
         return {
             "total_data": total_data,
