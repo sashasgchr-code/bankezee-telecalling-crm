@@ -73,6 +73,7 @@ const TelecallerDashboard = () => {
     { key: 'wrong_number', label: 'Wrong Number', color: '#F44336' },
     { key: 'busy', label: 'Busy', color: '#9E9E9E' },
     { key: 'voicemail', label: 'Voicemail', color: '#2196F3' },
+    { key: 'presentation', label: 'Presentation', color: '#673AB7' },
   ];
 
   return (
