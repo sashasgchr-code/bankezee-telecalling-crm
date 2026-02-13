@@ -1424,6 +1424,7 @@ async def get_telecaller_reports(
         calls_wrong_number = sum(1 for log in user_call_logs if log.get("outcome") == "wrong_number")
         calls_busy = sum(1 for log in user_call_logs if log.get("outcome") == "busy")
         calls_voicemail = sum(1 for log in user_call_logs if log.get("outcome") == "voicemail")
+        calls_presentation = sum(1 for log in user_call_logs if log.get("outcome") == "presentation")
         
         follow_ups_pending = await db.follow_ups.count_documents({
             "user_id": user_id,
