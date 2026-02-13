@@ -54,10 +54,24 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 3. Agent logs outcome (Connected/No Answer/etc) → Updates status → Creates call log
 4. Idle time calculated between call_end_time and next call_start_time
 
+## Recent Bug Fixes (Feb 13, 2026)
+
+### Date Filtering Bug - FIXED ✅
+**Issue**: Dashboard and Report stats were not respecting date filters. Status breakdown was showing cumulative data instead of filtered data.
+
+**Root Cause**: MongoDB aggregation pipelines in `backend/server.py` were not applying date filters (`leads_time_filter`) to the status breakdown queries.
+
+**Files Modified**: `/app/backend/server.py`
+- Fixed `get_dashboard_stats()` - Added date filter to telecaller status breakdown (lines 1288-1297)
+- Fixed `get_telecaller_reports()` - Added date filter to lead counts and status breakdown (lines 1376-1437)
+
+**Verification**: All dashboard and report statistics now correctly filter by selected time period (Today, This Week, This Month, All Time).
+
 ## Prioritized Backlog
 
 ### P0 (Critical) - Completed ✅
 - All core features implemented and tested
+- Date filtering bug fixed
 
 ### P1 (High Priority) - Future
 - Call recordings integration (if needed)
@@ -70,6 +84,7 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 - Custom fields for leads
 - Lead scoring/qualification
 - Email templates
+- Refactor `backend/server.py` (1500+ lines) into modular structure using FastAPI's `APIRouter`
 
 ### P3 (Low Priority) - Future
 - WhatsApp integration
