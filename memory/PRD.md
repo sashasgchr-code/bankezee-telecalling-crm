@@ -78,6 +78,23 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 
 **New Status Options**: new, contacted, interested, not_interested, follow_up, leads, not_answering, wrong_number
 
+### Terminology Update - FIXED ✅
+**Change**: Changed "leads" terminology to "data" throughout the UI.
+
+**Files Modified**:
+- `/app/frontend/src/pages/admin/Leads.js` - "X leads" → "X data"
+- `/app/frontend/src/pages/telecaller/Leads.js` - "X leads assigned to you" → "X data assigned to you"
+- `/app/frontend/src/pages/admin/Reports.js` - "X leads • Y calls" → "X data • Y calls"
+
+### Added "Presentation" Call Outcome - FIXED ✅
+**Change**: Added "Presentation" as a new call outcome option.
+
+**Files Modified**:
+- `/app/frontend/src/components/CallModal.js` - Added presentation to callOutcomes
+- `/app/frontend/src/pages/telecaller/Dashboard.js` - Added presentation to call outcomes display
+- `/app/frontend/src/pages/admin/Reports.js` - Added calls_presentation to reports
+- `/app/backend/server.py` - Added presentation counting in reports
+
 ## Prioritized Backlog
 
 ### P0 (Critical) - Completed ✅
