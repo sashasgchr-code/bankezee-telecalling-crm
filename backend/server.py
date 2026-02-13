@@ -1263,8 +1263,6 @@ async def get_dashboard_stats(
         else:
             my_data = await db.leads.count_documents({"assigned_to": user_id, **leads_created_filter})
         
-        my_connected = await db.call_logs.count_documents({"user_id": user_id, **calls_time_filter})
-        
         if period == "all_time":
             my_interested = await db.leads.count_documents({"assigned_to": user_id, "status": "interested"})
         else:
