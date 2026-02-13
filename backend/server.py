@@ -1286,8 +1286,14 @@ async def get_dashboard_stats(
                 **leads_time_filter
             })
         
+        # Status breakdown - MUST apply date filter
+        if period == "all_time":
+            status_match = {"assigned_to": user_id}
+        else:
+            status_match = {"assigned_to": user_id, **leads_time_filter}
+        
         pipeline = [
-            {"$match": {"assigned_to": user_id}},
+            {"$match": status_match},
             {"$group": {"_id": "$status", "count": {"$sum": 1}}}
         ]
         status_counts = await db.leads.aggregate(pipeline).to_list(20)
@@ -1376,15 +1382,30 @@ async def get_telecaller_reports(
     for telecaller in telecallers:
         user_id = str(telecaller["_id"])
         
-        total_leads = await db.leads.count_documents({"assigned_to": user_id})
+        # Build lead time filter for this user
+        lead_base_filter = {"assigned_to": user_id}
+        if start_date:
+            lead_time_filter = {"assigned_to": user_id, "updated_at": {"$gte": start_date}}
+            lead_created_filter = {"assigned_to": user_id, "created_at": {"$gte": start_date}}
+        else:
+            lead_time_filter = lead_base_filter
+            lead_created_filter = lead_base_filter
         
+        # Total leads assigned (created in period)
+        if start_date:
+            total_leads = await db.leads.count_documents(lead_created_filter)
+        else:
+            total_leads = await db.leads.count_documents(lead_base_filter)
+        
+        # Leads generated - status updated to leads/converted within the period
         user_leads_generated = await db.leads.count_documents({
-            "assigned_to": user_id,
+            **lead_time_filter,
             "status": {"$in": ["leads", "converted"]}
         })
         
+        # Interested leads - status updated to interested within the period
         user_interested = await db.leads.count_documents({
-            "assigned_to": user_id,
+            **lead_time_filter,
             "status": "interested"
         })
         
@@ -1428,9 +1449,9 @@ async def get_telecaller_reports(
         # Use the higher value between sessions and actual call logs
         user_call_seconds = max(user_call_seconds_from_sessions, user_call_seconds_from_logs)
         
-        # Get status breakdown for this telecaller
+        # Get status breakdown for this telecaller - WITH date filter
         status_pipeline = [
-            {"$match": {"assigned_to": user_id}},
+            {"$match": lead_time_filter},
             {"$group": {"_id": "$status", "count": {"$sum": 1}}}
         ]
         status_counts_raw = await db.leads.aggregate(status_pipeline).to_list(20)
