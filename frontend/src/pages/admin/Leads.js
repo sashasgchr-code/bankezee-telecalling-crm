@@ -338,7 +338,7 @@ const AdminLeads = () => {
         </p>
       </div>
 
-      {/* Leads List */}
+      {/* Data List */}
       <div className="flex-1 overflow-auto p-4">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -346,7 +346,7 @@ const AdminLeads = () => {
           </div>
         ) : leads.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500">No leads found</p>
+            <p className="text-gray-500">No data found</p>
           </div>
         ) : (
           <div className="space-y-3">
