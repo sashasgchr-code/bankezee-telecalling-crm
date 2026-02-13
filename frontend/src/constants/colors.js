@@ -26,6 +26,7 @@ export const StatusColors = {
   leads: '#4CAF50',
   not_answering: '#FF5722',
   wrong_number: '#F44336',
+  presentation: '#673AB7',
 };
 
 export const StatusLabels = {
@@ -37,4 +38,5 @@ export const StatusLabels = {
   leads: 'Leads',
   not_answering: 'Not Answering',
   wrong_number: 'Wrong Number',
+  presentation: 'Presentation',
 };
