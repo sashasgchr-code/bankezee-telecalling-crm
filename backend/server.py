@@ -1473,6 +1473,7 @@ async def get_telecaller_reports(
             "calls_wrong_number": calls_wrong_number,
             "calls_busy": calls_busy,
             "calls_voicemail": calls_voicemail,
+            "calls_presentation": calls_presentation,
             "follow_ups_pending": follow_ups_pending,
             "follow_ups_completed": follow_ups_completed,
             "calls_to_lead_rate": calls_to_lead_rate,
