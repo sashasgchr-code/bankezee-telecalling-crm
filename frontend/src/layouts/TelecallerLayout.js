@@ -163,7 +163,7 @@ const TelecallerLayout = () => {
   };
 
   const navItems = [
-    { path: '/agent', icon: Phone, label: 'Leads', exact: true },
+    { path: '/agent', icon: Phone, label: 'Data', exact: true },
     { path: '/agent/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/agent/followups', icon: Calendar, label: 'Follow-ups' },
     { path: '/agent/profile', icon: User, label: 'Profile' },
