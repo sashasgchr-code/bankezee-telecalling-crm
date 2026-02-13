@@ -24,8 +24,8 @@ export const StatusColors = {
   not_interested: '#9E9E9E',
   follow_up: '#9C27B0',
   leads: '#4CAF50',
-  converted: '#4CAF50',
-  lost: '#F44336',
+  not_answering: '#FF5722',
+  wrong_number: '#F44336',
 };
 
 export const StatusLabels = {
@@ -35,6 +35,6 @@ export const StatusLabels = {
   not_interested: 'Not Interested',
   follow_up: 'Follow Up',
   leads: 'Leads',
-  converted: 'Converted',
-  lost: 'Lost',
+  not_answering: 'Not Answering',
+  wrong_number: 'Wrong Number',
 };
