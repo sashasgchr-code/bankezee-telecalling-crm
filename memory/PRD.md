@@ -67,6 +67,17 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 
 **Verification**: All dashboard and report statistics now correctly filter by selected time period (Today, This Week, This Month, All Time).
 
+### Status Options Update - FIXED ✅
+**Change**: Removed "Converted" and "Lost" status options from post-call modal and lead status updates. Replaced with "Not Answering" and "Wrong Number".
+
+**Files Modified**:
+- `/app/frontend/src/components/CallModal.js` - Updated statuses array
+- `/app/frontend/src/pages/LeadDetail.js` - Updated statuses array
+- `/app/frontend/src/pages/admin/Leads.js` - Updated statuses array
+- `/app/frontend/src/constants/colors.js` - Updated StatusColors and StatusLabels
+
+**New Status Options**: new, contacted, interested, not_interested, follow_up, leads, not_answering, wrong_number
+
 ## Prioritized Backlog
 
 ### P0 (Critical) - Completed ✅
