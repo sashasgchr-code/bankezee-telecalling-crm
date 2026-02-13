@@ -1303,7 +1303,6 @@ async def get_dashboard_stats(
         my_calls_wrong_number = sum(1 for log in call_logs if log.get("outcome") == "wrong_number")
         my_calls_busy = sum(1 for log in call_logs if log.get("outcome") == "busy")
         my_calls_voicemail = sum(1 for log in call_logs if log.get("outcome") == "voicemail")
-        my_calls_presentation = sum(1 for log in call_logs if log.get("outcome") == "presentation")
         
         session = await db.daily_sessions.find_one({
             "user_id": user_id,
@@ -1321,8 +1320,7 @@ async def get_dashboard_stats(
                 "no_answer": my_calls_no_answer,
                 "wrong_number": my_calls_wrong_number,
                 "busy": my_calls_busy,
-                "voicemail": my_calls_voicemail,
-                "presentation": my_calls_presentation
+                "voicemail": my_calls_voicemail
             },
             "daily_session": serialize_doc(session) if session else None,
             "period": period
