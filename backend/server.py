@@ -1191,11 +1191,18 @@ async def get_dashboard_stats(
                 "status": "interested"
             })
         
-        pipeline = [
-            {"$match": leads_filter} if leads_filter else {"$match": {}},
-            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
-        ]
-        if not leads_filter:
+        # Status breakdown - MUST apply date filter
+        if period == "all_time":
+            status_match = leads_filter if leads_filter else {}
+        else:
+            status_match = {**leads_filter, **leads_time_filter} if leads_filter else leads_time_filter
+        
+        if status_match:
+            pipeline = [
+                {"$match": status_match},
+                {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+            ]
+        else:
             pipeline = [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
         status_counts = await db.leads.aggregate(pipeline).to_list(20)
         
