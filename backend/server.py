@@ -1489,12 +1489,15 @@ async def get_telecaller_reports(
         total_call_seconds += user_call_seconds
         total_idle_seconds += user_idle_seconds
     
+    # Calculate total_leads for the period
+    total_leads_in_period = sum(t["total_leads"] for t in telecaller_reports)
+    
     telecaller_reports.sort(key=lambda x: x["total_calls"], reverse=True)
     
     overall_calls_to_lead_rate = (total_leads_generated / total_calls * 100) if total_calls > 0 else 0
     
     overall_stats = {
-        "total_leads": await db.leads.count_documents({}),
+        "total_leads": total_leads_in_period,
         "total_calls": total_calls,
         "total_leads_generated": total_leads_generated,
         "total_interested": total_interested,
