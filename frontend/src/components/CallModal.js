@@ -11,7 +11,7 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
   const [followUpDate, setFollowUpDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const statuses = ['new', 'contacted', 'interested', 'not_interested', 'follow_up', 'leads', 'not_answering', 'wrong_number'];
+  const statuses = ['new', 'contacted', 'interested', 'not_interested', 'follow_up', 'leads', 'not_answering', 'wrong_number', 'presentation'];
   
   const callOutcomes = [
     { id: 'connected', label: 'Connected', icon: CheckCircle },
@@ -19,7 +19,6 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
     { id: 'busy', label: 'Busy', icon: Clock },
     { id: 'wrong_number', label: 'Wrong Number', icon: AlertCircle },
     { id: 'voicemail', label: 'Voicemail', icon: Mic },
-    { id: 'presentation', label: 'Presentation', icon: Monitor },
   ];
 
   useEffect(() => {
