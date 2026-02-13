@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2 } from 'lucide-react';
+import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2, Monitor } from 'lucide-react';
 import api from '../services/api';
 import { StatusColors, StatusLabels } from '../constants/colors';
 
