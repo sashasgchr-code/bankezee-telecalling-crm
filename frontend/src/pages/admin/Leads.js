@@ -31,7 +31,7 @@ const AdminLeads = () => {
   const [importFile, setImportFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const statuses = ['new', 'contacted', 'interested', 'not_interested', 'follow_up', 'leads', 'converted', 'lost'];
+  const statuses = ['new', 'contacted', 'interested', 'not_interested', 'follow_up', 'leads', 'not_answering', 'wrong_number'];
 
   const fetchData = async () => {
     try {
