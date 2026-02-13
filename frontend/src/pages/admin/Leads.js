@@ -331,10 +331,10 @@ const AdminLeads = () => {
         </div>
       )}
 
-      {/* Lead Count */}
+      {/* Data Count */}
       <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
         <p className="text-sm text-gray-600">
-          <span className="font-semibold">{leads.length}</span> leads
+          <span className="font-semibold">{leads.length}</span> data
         </p>
       </div>
 

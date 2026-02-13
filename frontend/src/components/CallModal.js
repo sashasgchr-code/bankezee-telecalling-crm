@@ -19,6 +19,7 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
     { id: 'busy', label: 'Busy', icon: Clock },
     { id: 'wrong_number', label: 'Wrong Number', icon: AlertCircle },
     { id: 'voicemail', label: 'Voicemail', icon: Mic },
+    { id: 'presentation', label: 'Presentation', icon: CheckCircle },
   ];
 
   useEffect(() => {

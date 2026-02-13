@@ -222,7 +222,7 @@ const AdminReports = () => {
                       </div>
                       <div className="text-left">
                         <p className="font-semibold text-gray-900">{tc.user_name}</p>
-                        <p className="text-xs text-gray-500">{tc.total_leads} leads • {tc.total_calls} calls</p>
+                        <p className="text-xs text-gray-500">{tc.total_leads} data • {tc.total_calls} calls</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
