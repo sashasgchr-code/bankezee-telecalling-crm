@@ -1291,12 +1291,17 @@ async def get_dashboard_stats(
             leads_created_filter = {"created_at": {"$gte": start_date}}
             calls_time_filter = {"created_at": {"$gte": start_date}}
         
+        # Unused data = data in "new" status that was created BEFORE today (not today's data)
+        my_unused_data = await db.leads.count_documents({
+            "assigned_to": user_id, 
+            "status": "new",
+            "created_at": {"$lt": today}
+        })
+        
         if period == "all_time":
             my_data = await db.leads.count_documents({"assigned_to": user_id})
-            my_unused_data = await db.leads.count_documents({"assigned_to": user_id, "status": "new"})
         else:
             my_data = await db.leads.count_documents({"assigned_to": user_id, **leads_created_filter})
-            my_unused_data = await db.leads.count_documents({"assigned_to": user_id, **leads_created_filter, "status": "new"})
         
         if period == "all_time":
             my_interested = await db.leads.count_documents({"assigned_to": user_id, "status": "interested"})
