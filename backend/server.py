@@ -1290,8 +1290,8 @@ async def get_dashboard_stats(
             my_data = await db.leads.count_documents({"assigned_to": user_id})
             my_unused_data = await db.leads.count_documents({"assigned_to": user_id, "status": "new"})
         else:
-        else:
             my_data = await db.leads.count_documents({"assigned_to": user_id, **leads_created_filter})
+            my_unused_data = await db.leads.count_documents({"assigned_to": user_id, **leads_created_filter, "status": "new"})
         
         if period == "all_time":
             my_interested = await db.leads.count_documents({"assigned_to": user_id, "status": "interested"})
