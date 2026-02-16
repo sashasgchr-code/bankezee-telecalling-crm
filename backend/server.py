@@ -1445,7 +1445,9 @@ async def get_telecaller_reports(
         })
         
         call_query = {"user_id": user_id}
-        if start_date:
+        if start_date and end_date:
+            call_query["created_at"] = {"$gte": start_date, "$lt": end_date}
+        elif start_date:
             call_query["created_at"] = {"$gte": start_date}
         
         # Get call logs with duration
