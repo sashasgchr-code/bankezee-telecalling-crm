@@ -1175,12 +1175,17 @@ async def get_dashboard_stats(
             leads_created_filter = {"created_at": {"$gte": start_date}}
             calls_time_query = {"created_at": {"$gte": start_date}}
         
+        # Unused data = data in "new" status that was created BEFORE today (not today's data)
+        unused_data = await db.leads.count_documents({
+            **leads_filter, 
+            "status": "new",
+            "created_at": {"$lt": today}
+        })
+        
         if period == "all_time":
             total_data = await db.leads.count_documents(leads_filter)
-            unused_data = await db.leads.count_documents({**leads_filter, "status": "new"})
         else:
             total_data = await db.leads.count_documents({**leads_filter, **leads_created_filter})
-            unused_data = await db.leads.count_documents({**leads_filter, **leads_created_filter, "status": "new"})
         
         connected = await db.call_logs.count_documents({**calls_filter, **calls_time_query})
         
