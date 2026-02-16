@@ -1274,7 +1274,7 @@ async def get_dashboard_stats(
             leads_time_filter = {}
             leads_created_filter = {}
             calls_time_filter = {}
-        elif period == "last_month":
+        elif end_date:
             leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
             leads_created_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
             calls_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
