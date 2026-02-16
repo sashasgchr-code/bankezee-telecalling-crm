@@ -1128,6 +1128,7 @@ async def get_dashboard_stats(
 ):
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_naive = today.replace(tzinfo=None)  # For MongoDB comparison with naive datetimes
     
     # If custom date range is provided, use it
     if from_date and to_date:
