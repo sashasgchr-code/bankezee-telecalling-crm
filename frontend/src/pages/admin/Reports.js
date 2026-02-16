@@ -219,17 +219,6 @@ const AdminReports = () => {
           />
         </div>
       )}
-            onClick={() => setPeriod(p.id)}
-            className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-              period === p.id
-                ? 'bg-green-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
