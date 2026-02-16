@@ -1375,10 +1375,19 @@ async def get_recent_calls(limit: int = 10, current_user: dict = Depends(get_cur
 @router.get("/reports/telecallers")
 async def get_telecaller_reports(
     period: str = "today",
+    from_date: str = None,
+    to_date: str = None,
     current_user: dict = Depends(require_admin)
 ):
     now = datetime.now(timezone.utc)
-    if period == "today":
+    end_date = None
+    
+    # If custom date range is provided, use it
+    if from_date and to_date:
+        start_date = datetime.fromisoformat(from_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+        end_date = datetime.fromisoformat(to_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        period = "custom"
+    elif period == "today":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
     elif period == "week":
         start_date = now - timedelta(days=now.weekday())
@@ -1407,7 +1416,10 @@ async def get_telecaller_reports(
         
         # Build lead time filter for this user
         lead_base_filter = {"assigned_to": user_id}
-        if start_date:
+        if start_date and end_date:
+            lead_time_filter = {"assigned_to": user_id, "updated_at": {"$gte": start_date, "$lt": end_date}}
+            lead_created_filter = {"assigned_to": user_id, "created_at": {"$gte": start_date, "$lt": end_date}}
+        elif start_date:
             lead_time_filter = {"assigned_to": user_id, "updated_at": {"$gte": start_date}}
             lead_created_filter = {"assigned_to": user_id, "created_at": {"$gte": start_date}}
         else:
