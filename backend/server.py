@@ -1122,17 +1122,27 @@ async def get_statuses(current_user: dict = Depends(get_current_user)):
 async def get_dashboard_stats(
     period: str = "today",
     telecaller_id: str = None,
+    from_date: str = None,
+    to_date: str = None,
     current_user: dict = Depends(get_current_user)
 ):
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
-    if period == "today":
+    # If custom date range is provided, use it
+    if from_date and to_date:
+        start_date = datetime.fromisoformat(from_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+        end_date = datetime.fromisoformat(to_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        period = "custom"
+    elif period == "today":
         start_date = today
+        end_date = None
     elif period == "this_week":
         start_date = today - timedelta(days=today.weekday())
+        end_date = None
     elif period == "this_month":
         start_date = today.replace(day=1)
+        end_date = None
     elif period == "last_month":
         first_of_this_month = today.replace(day=1)
         last_month = first_of_this_month - timedelta(days=1)
@@ -1140,8 +1150,10 @@ async def get_dashboard_stats(
         end_date = first_of_this_month
     elif period == "all_time":
         start_date = None
+        end_date = None
     else:
         start_date = today
+        end_date = None
     
     if current_user["role"] == "admin":
         leads_filter = {}
@@ -1154,7 +1166,7 @@ async def get_dashboard_stats(
         if period == "all_time":
             leads_time_filter = {}
             calls_time_query = {}
-        elif period == "last_month":
+        elif end_date:
             leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
             leads_created_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
             calls_time_query = {"created_at": {"$gte": start_date, "$lt": end_date}}
