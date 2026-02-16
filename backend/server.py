@@ -1296,7 +1296,7 @@ async def get_dashboard_stats(
         my_unused_data = await db.leads.count_documents({
             "assigned_to": user_id, 
             "status": "new",
-            "created_at": {"$lt": today}
+            "created_at": {"$lt": today_naive}
         })
         
         if period == "all_time":
