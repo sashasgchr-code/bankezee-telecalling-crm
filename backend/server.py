@@ -1341,6 +1341,7 @@ async def get_dashboard_stats(
         
         return {
             "my_data": my_data,
+            "my_unused_data": my_unused_data,
             "my_connected": len(call_logs),
             "my_interested": my_interested,
             "my_leads_generated": my_leads_generated,
