@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Phone, Clock, TrendingUp, Target, Loader2, RefreshCw, PhoneOff, PhoneMissed } from 'lucide-react';
+import { Phone, Clock, TrendingUp, Target, Loader2, RefreshCw, PhoneOff, PhoneMissed, Calendar } from 'lucide-react';
 import api from '../../services/api';
 
 const TelecallerDashboard = () => {
@@ -9,6 +9,9 @@ const TelecallerDashboard = () => {
   const [period, setPeriod] = useState('today');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDateRange, setShowDateRange] = useState(false);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const fetchData = async (showRefresh = false) => {
     try {
@@ -17,8 +20,14 @@ const TelecallerDashboard = () => {
       } else {
         setIsLoading(true);
       }
+      
+      let url = `/dashboard/stats?period=${period}`;
+      if (showDateRange && fromDate && toDate) {
+        url = `/dashboard/stats?from_date=${fromDate}&to_date=${toDate}`;
+      }
+      
       const [statsRes, activityRes] = await Promise.all([
-        api.get(`/dashboard/stats?period=${period}`),
+        api.get(url),
         api.get('/activity/my-stats'),
       ]);
       setStats(statsRes.data);
@@ -35,10 +44,25 @@ const TelecallerDashboard = () => {
     fetchData();
     const interval = setInterval(() => fetchData(true), 30000);
     return () => clearInterval(interval);
-  }, [period]);
+  }, [period, showDateRange, fromDate, toDate]);
 
   const handleRefresh = () => {
     fetchData(true);
+  };
+
+  const handlePeriodChange = (newPeriod) => {
+    setShowDateRange(false);
+    setPeriod(newPeriod);
+  };
+
+  const handleDateRangeToggle = () => {
+    setShowDateRange(!showDateRange);
+    if (!showDateRange) {
+      const today = new Date().toISOString().split('T')[0];
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      setFromDate(weekAgo);
+      setToDate(today);
+    }
   };
 
   const formatTime = (seconds) => {
@@ -93,13 +117,13 @@ const TelecallerDashboard = () => {
       </div>
 
       {/* Period Filter */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-3">
         {periods.map((p) => (
           <button
             key={p.id}
-            onClick={() => setPeriod(p.id)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              period === p.id
+            onClick={() => handlePeriodChange(p.id)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              period === p.id && !showDateRange
                 ? 'bg-green-600 text-white'
                 : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
             }`}
@@ -107,7 +131,37 @@ const TelecallerDashboard = () => {
             {p.label}
           </button>
         ))}
+        <button
+          onClick={handleDateRangeToggle}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+            showDateRange
+              ? 'bg-green-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <Calendar size={14} />
+          Custom
+        </button>
       </div>
+
+      {/* Date Range Picker */}
+      {showDateRange && (
+        <div className="flex gap-2 mb-4 items-center flex-wrap">
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="input-field text-sm py-1.5"
+          />
+          <span className="text-gray-500 text-sm">to</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="input-field text-sm py-1.5"
+          />
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
