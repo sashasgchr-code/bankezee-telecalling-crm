@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw } from 'lucide-react';
+import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar } from 'lucide-react';
 import api from '../../services/api';
 
 const AdminReports = () => {
@@ -8,6 +8,9 @@ const AdminReports = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showDateRange, setShowDateRange] = useState(false);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
 
   const fetchReports = useCallback(async (showRefresh = false) => {
     try {
@@ -16,7 +19,13 @@ const AdminReports = () => {
       } else {
         setIsLoading(true);
       }
-      const response = await api.get(`/reports/telecallers?period=${period}`);
+      
+      let url = `/reports/telecallers?period=${period}`;
+      if (showDateRange && fromDate && toDate) {
+        url = `/reports/telecallers?from_date=${fromDate}&to_date=${toDate}`;
+      }
+      
+      const response = await api.get(url);
       setReports(response.data);
     } catch (error) {
       console.error('Error fetching reports:', error);
@@ -24,7 +33,7 @@ const AdminReports = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [period]);
+  }, [period, showDateRange, fromDate, toDate]);
 
   useEffect(() => {
     fetchReports();
@@ -32,6 +41,21 @@ const AdminReports = () => {
 
   const handleRefresh = () => {
     fetchReports(true);
+  };
+
+  const handlePeriodChange = (newPeriod) => {
+    setShowDateRange(false);
+    setPeriod(newPeriod);
+  };
+
+  const handleDateRangeToggle = () => {
+    setShowDateRange(!showDateRange);
+    if (!showDateRange) {
+      const today = new Date().toISOString().split('T')[0];
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      setFromDate(weekAgo);
+      setToDate(today);
+    }
   };
 
   const formatTime = (seconds) => {
@@ -63,7 +87,10 @@ const AdminReports = () => {
   const downloadExcel = () => {
     if (!reports || !reports.telecallers) return;
 
-    const periodLabel = periods.find(p => p.id === period)?.label || period;
+    let periodLabel = periods.find(p => p.id === period)?.label || period;
+    if (showDateRange && fromDate && toDate) {
+      periodLabel = `${fromDate} to ${toDate}`;
+    }
     
     // Create CSV content
     const headers = ['Name', 'Email', 'Status', 'Leads Assigned', 'Calls', 'Leads Generated', 'Interested', 'Talk Time', 'Idle Time', 'Conversion Rate'];
