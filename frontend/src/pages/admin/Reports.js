@@ -127,8 +127,11 @@ const AdminReports = () => {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
+    const filename = showDateRange && fromDate && toDate 
+      ? `telecaller_report_${fromDate}_to_${toDate}.csv`
+      : `telecaller_report_${period}_${new Date().toISOString().split('T')[0]}.csv`;
     link.setAttribute('href', url);
-    link.setAttribute('download', `telecaller_report_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', filename);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -169,10 +172,53 @@ const AdminReports = () => {
       </div>
 
       {/* Period Filter */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-3">
         {periods.map((p) => (
           <button
             key={p.id}
+            onClick={() => handlePeriodChange(p.id)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              period === p.id && !showDateRange
+                ? 'bg-green-600 text-white'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+        <button
+          onClick={handleDateRangeToggle}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+            showDateRange
+              ? 'bg-green-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <Calendar size={14} />
+          Custom
+        </button>
+      </div>
+
+      {/* Date Range Picker */}
+      {showDateRange && (
+        <div className="flex gap-2 mb-4 items-center flex-wrap">
+          <input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="input-field text-sm py-1.5"
+            data-testid="from-date"
+          />
+          <span className="text-gray-500 text-sm">to</span>
+          <input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="input-field text-sm py-1.5"
+            data-testid="to-date"
+          />
+        </div>
+      )}
             onClick={() => setPeriod(p.id)}
             className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
               period === p.id
