@@ -173,13 +173,20 @@ const AdminDashboard = () => {
       ) : (
         <>
           {/* Main Stats Row */}
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="card p-4 text-center">
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-2">
                 <Database size={24} className="text-green-600" />
               </div>
               <p className="text-2xl font-bold text-gray-900">{stats?.total_data || 0}</p>
               <p className="text-xs text-gray-500">Total Data</p>
+            </div>
+            <div className="card p-4 text-center">
+              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-2">
+                <Database size={24} className="text-orange-600" />
+              </div>
+              <p className="text-2xl font-bold text-orange-600">{stats?.unused_data || 0}</p>
+              <p className="text-xs text-gray-500">Unused Data</p>
             </div>
             <div className="card p-4 text-center">
               <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-2">
