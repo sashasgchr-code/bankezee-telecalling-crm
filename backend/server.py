@@ -431,9 +431,10 @@ async def get_my_session(current_user: dict = Depends(get_current_user)):
 async def get_activity_logs(
     date: str = None,
     user_id: str = None,
+    grouped: bool = True,
     current_user: dict = Depends(require_admin)
 ):
-    """Get activity logs (admin only)"""
+    """Get activity logs (admin only), optionally grouped by telecaller"""
     now = datetime.now(timezone.utc)
     
     if date:
@@ -450,7 +451,23 @@ async def get_activity_logs(
     if user_id:
         query["user_id"] = user_id
     
-    logs = await db.activity_logs.find(query).sort("timestamp", -1).to_list(500)
+    logs = await db.activity_logs.find(query).sort("timestamp", 1).to_list(500)
+    
+    if grouped:
+        # Group logs by user_id
+        grouped_logs = {}
+        for log in logs:
+            uid = log.get("user_id", "unknown")
+            user_name = log.get("user_name", "Unknown")
+            if uid not in grouped_logs:
+                grouped_logs[uid] = {
+                    "user_id": uid,
+                    "user_name": user_name,
+                    "activities": []
+                }
+            grouped_logs[uid]["activities"].append(serialize_doc(log))
+        
+        return list(grouped_logs.values())
     
     return [serialize_doc(log) for log in logs]
 
