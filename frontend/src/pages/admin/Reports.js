@@ -689,45 +689,46 @@ const AdminReports = () => {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="card">
-                <div className="p-4 border-b border-gray-100">
-                  <h3 className="text-lg font-semibold text-gray-900">Activity Log</h3>
-                  <p className="text-xs text-gray-500">Login, logout, and break activities</p>
+              {activityLogs.length > 0 ? (
+                activityLogs.map((group) => (
+                  <div key={group.user_id} className="card">
+                    <div className="p-4 border-b border-gray-100 bg-gray-50">
+                      <h3 className="text-lg font-semibold text-gray-900">{group.user_name}</h3>
+                      <p className="text-xs text-gray-500">{group.activities?.length || 0} activities</p>
+                    </div>
+                    
+                    <div className="divide-y divide-gray-100">
+                      {group.activities && group.activities.map((log, index) => (
+                        <div key={log.id || index} className="p-4 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              log.action === 'login' ? 'bg-green-100' :
+                              log.action === 'logout' ? 'bg-red-100' :
+                              log.action.includes('break') ? 'bg-orange-100' : 'bg-gray-100'
+                            }`}>
+                              {getActionIcon(log.action)}
+                            </div>
+                            <div>
+                              <p className="font-medium text-gray-900">{getActionLabel(log.action)}</p>
+                              {log.reason && (
+                                <p className="text-xs text-gray-400">Reason: {log.reason}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-medium text-gray-900">{formatTimestamp(log.timestamp)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="card p-8 text-center">
+                  <Activity size={32} className="mx-auto text-gray-300 mb-2" />
+                  <p className="text-gray-500">No activity logs for this date</p>
                 </div>
-                
-                {activityLogs.length > 0 ? (
-                  <div className="divide-y divide-gray-100">
-                    {activityLogs.map((log, index) => (
-                      <div key={log.id || index} className="p-4 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                            log.action === 'login' ? 'bg-green-100' :
-                            log.action === 'logout' ? 'bg-red-100' :
-                            log.action.includes('break') ? 'bg-orange-100' : 'bg-gray-100'
-                          }`}>
-                            {getActionIcon(log.action)}
-                          </div>
-                          <div>
-                            <p className="font-medium text-gray-900">{log.user_name || 'Unknown'}</p>
-                            <p className="text-sm text-gray-500">{getActionLabel(log.action)}</p>
-                            {log.reason && (
-                              <p className="text-xs text-gray-400">Reason: {log.reason}</p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-medium text-gray-900">{formatTimestamp(log.timestamp)}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center">
-                    <Activity size={32} className="mx-auto text-gray-300 mb-2" />
-                    <p className="text-gray-500">No activity logs for this date</p>
-                  </div>
-                )}
-              </div>
+              )}
             </div>
           )}
         </>
