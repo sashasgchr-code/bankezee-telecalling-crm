@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff } from 'lucide-react';
+import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import CallModal from '../components/CallModal';
 
 const TelecallerLayout = () => {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   
   // Active call state
@@ -15,10 +15,25 @@ const TelecallerLayout = () => {
   const [showCallModal, setShowCallModal] = useState(false);
   const [currentLead, setCurrentLead] = useState(null);
   
+  // Break state
+  const [onBreak, setOnBreak] = useState(false);
+  const [sessionInfo, setSessionInfo] = useState(null);
+  
   // Refs
   const callTimerRef = useRef(null);
   const wasInCallRef = useRef(false);
   const activityTimerRef = useRef(null);
+
+  // Fetch session info
+  const fetchSessionInfo = useCallback(async () => {
+    try {
+      const response = await api.get('/activity/my-session');
+      setSessionInfo(response.data);
+      setOnBreak(response.data.on_break || false);
+    } catch (error) {
+      console.log('Failed to fetch session info');
+    }
+  }, []);
 
   // Activity ping
   useEffect(() => {
@@ -31,6 +46,7 @@ const TelecallerLayout = () => {
     };
 
     sendActivityPing();
+    fetchSessionInfo();
     activityTimerRef.current = setInterval(sendActivityPing, 120000);
 
     return () => {
@@ -38,7 +54,30 @@ const TelecallerLayout = () => {
         clearInterval(activityTimerRef.current);
       }
     };
-  }, []);
+  }, [fetchSessionInfo]);
+
+  // Handle break toggle
+  const handleBreakToggle = async () => {
+    try {
+      const action = onBreak ? 'end' : 'start';
+      await api.post('/activity/break', { action });
+      setOnBreak(!onBreak);
+      fetchSessionInfo();
+    } catch (error) {
+      console.error('Failed to toggle break:', error);
+    }
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await api.post('/auth/logout');
+    } catch (error) {
+      console.log('Logout API call failed');
+    }
+    logout();
+    navigate('/login');
+  };
 
   // Check for active call on load
   useEffect(() => {
