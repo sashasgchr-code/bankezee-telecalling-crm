@@ -556,17 +556,26 @@ const AdminReports = () => {
           >
             <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
           </button>
-          {activeTab === 'summary' && (
-            <button
-              onClick={downloadExcel}
-              disabled={!reports || isLoading}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              data-testid="download-report-btn"
-            >
-              <Download size={18} />
-              Export
-            </button>
-          )}
+          <button
+            onClick={downloadExcel}
+            disabled={!reports || isLoading}
+            className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            data-testid="download-csv-btn"
+            title="Export to CSV"
+          >
+            <Download size={16} />
+            CSV
+          </button>
+          <button
+            onClick={downloadPDF}
+            disabled={!reports || isLoading}
+            className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            data-testid="download-pdf-btn"
+            title="Export to PDF"
+          >
+            <FileText size={16} />
+            PDF
+          </button>
         </div>
       </div>
 
