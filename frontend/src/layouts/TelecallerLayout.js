@@ -217,17 +217,52 @@ const TelecallerLayout = () => {
             <h1 className="text-xl font-bold text-green-600">BANKEZEE</h1>
             <p className="text-xs text-gray-500 -mt-1">Connect</p>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-gray-900">{user?.name}</p>
-              <p className="text-xs text-gray-500">Telecaller</p>
-            </div>
-            <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center">
-              <span className="text-white font-bold">
+          <div className="flex items-center gap-2">
+            {/* Break Button */}
+            <button
+              onClick={handleBreakToggle}
+              disabled={activeCall}
+              className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                onBreak
+                  ? 'bg-orange-500 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              } ${activeCall ? 'opacity-50 cursor-not-allowed' : ''}`}
+              data-testid="break-btn"
+            >
+              <Coffee size={14} />
+              {onBreak ? 'End Break' : 'Break'}
+            </button>
+            
+            {/* Logout Button */}
+            <button
+              onClick={handleLogout}
+              className="p-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              data-testid="logout-btn"
+            >
+              <LogOut size={16} />
+            </button>
+            
+            <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center">
+              <span className="text-white font-bold text-sm">
                 {user?.name?.charAt(0).toUpperCase()}
               </span>
             </div>
           </div>
+        </div>
+
+        {/* Break Banner */}
+        {onBreak && (
+          <div className="bg-orange-500 px-4 py-2 flex items-center justify-center gap-2">
+            <Coffee size={16} className="text-white" />
+            <span className="text-white text-sm font-medium">You are on break</span>
+            <button
+              onClick={handleBreakToggle}
+              className="ml-2 px-3 py-1 bg-white/20 hover:bg-white/30 rounded-full text-white text-xs font-medium"
+            >
+              End Break
+            </button>
+          </div>
+        )}
         </div>
 
         {/* Active Call Banner */}
