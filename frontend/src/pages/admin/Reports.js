@@ -175,7 +175,7 @@ const AdminReports = () => {
     }
     
     // Create CSV content
-    const headers = ['Name', 'Email', 'Status', 'Leads Assigned', 'Calls', 'Leads Generated', 'Interested', 'Talk Time', 'Idle Time', 'Conversion Rate'];
+    const headers = ['Name', 'Email', 'Status', 'Data Assigned', 'Calls', 'Leads', 'File', 'Talk Time', 'Conversion Rate'];
     const rows = reports.telecallers.map(tc => [
       tc.user_name || '',
       tc.user_email || '',
@@ -183,9 +183,8 @@ const AdminReports = () => {
       tc.total_leads || 0,
       tc.total_calls || 0,
       tc.leads_generated || 0,
-      tc.interested || 0,
+      tc.file || 0,
       formatTimeForExcel(tc.total_call_seconds),
-      formatTimeForExcel(tc.total_idle_seconds),
       `${(tc.calls_to_lead_rate || 0).toFixed(1)}%`
     ]);
 
@@ -202,7 +201,6 @@ const AdminReports = () => {
     csvContent += `Total Calls,${reports.overall?.total_calls || 0}\n`;
     csvContent += `Leads Generated,${reports.overall?.total_leads_generated || 0}\n`;
     csvContent += `Total Talk Time,${formatTimeForExcel(reports.overall?.total_call_seconds)}\n`;
-    csvContent += `Total Idle Time,${formatTimeForExcel(reports.overall?.total_idle_seconds)}\n`;
     csvContent += `Overall Conversion Rate,${(reports.overall?.calls_to_lead_rate || 0).toFixed(1)}%\n`;
 
     // Download
@@ -218,6 +216,323 @@ const AdminReports = () => {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+  };
+
+  const downloadPDF = async () => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let yPos = 15;
+
+    // Color definitions
+    const colors = {
+      primary: [76, 175, 80],      // Green
+      secondary: [33, 150, 243],   // Blue
+      orange: [255, 152, 0],       // Orange
+      purple: [156, 39, 176],      // Purple
+      teal: [0, 150, 136],         // Teal
+      gray: [158, 158, 158],       // Gray
+      red: [244, 67, 54],          // Red
+      indigo: [103, 58, 183],      // Indigo
+    };
+
+    let periodLabel = periods.find(p => p.id === period)?.label || period;
+    if (showDateRange && fromDate && toDate) {
+      periodLabel = `${fromDate} to ${toDate}`;
+    }
+
+    // Header
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, pageWidth, 25, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(18);
+    doc.setFont('helvetica', 'bold');
+    doc.text('BANKEZEE Connect - Performance Report', pageWidth / 2, 12, { align: 'center' });
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Period: ${periodLabel} | Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, 20, { align: 'center' });
+    yPos = 35;
+
+    // SUMMARY TAB
+    if (reports) {
+      // Overall Performance Section
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Overall Performance', 14, yPos);
+      yPos += 8;
+
+      // Performance metrics boxes
+      const metrics = [
+        { label: 'Total Calls', value: reports.overall?.total_calls || 0, color: colors.primary },
+        { label: 'Leads', value: reports.overall?.total_leads_generated || 0, color: colors.secondary },
+        { label: 'File', value: reports.overall?.total_file || 0, color: colors.orange },
+        { label: 'Presentations', value: reports.overall?.total_presentations || 0, color: colors.indigo },
+        { label: 'Talk Time', value: formatTime(reports.overall?.total_call_seconds), color: colors.purple },
+        { label: 'Conversion', value: `${(reports.overall?.calls_to_lead_rate || 0).toFixed(1)}%`, color: colors.teal },
+      ];
+
+      const boxWidth = 28;
+      const boxHeight = 18;
+      const startX = 14;
+      metrics.forEach((metric, i) => {
+        const x = startX + (i * (boxWidth + 4));
+        doc.setFillColor(...metric.color);
+        doc.roundedRect(x, yPos, boxWidth, boxHeight, 2, 2, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(String(metric.value), x + boxWidth / 2, yPos + 8, { align: 'center' });
+        doc.setFontSize(6);
+        doc.setFont('helvetica', 'normal');
+        doc.text(metric.label, x + boxWidth / 2, yPos + 14, { align: 'center' });
+      });
+      yPos += boxHeight + 10;
+
+      // Telecaller Performance Table
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Telecaller Performance', 14, yPos);
+      yPos += 6;
+
+      const tableData = reports.telecallers.map(tc => [
+        tc.user_name || '',
+        tc.is_active ? 'Active' : 'Inactive',
+        tc.total_calls || 0,
+        tc.leads_generated || 0,
+        tc.file || 0,
+        tc.presentations || 0,
+        formatTime(tc.total_call_seconds),
+        `${(tc.calls_to_lead_rate || 0).toFixed(1)}%`
+      ]);
+
+      doc.autoTable({
+        startY: yPos,
+        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk Time', 'Conv %']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+        bodyStyles: { fontSize: 8 },
+        columnStyles: {
+          0: { cellWidth: 35 },
+          1: { cellWidth: 18 },
+          2: { cellWidth: 15, halign: 'center' },
+          3: { cellWidth: 15, halign: 'center' },
+          4: { cellWidth: 15, halign: 'center' },
+          5: { cellWidth: 15, halign: 'center' },
+          6: { cellWidth: 22, halign: 'center' },
+          7: { cellWidth: 18, halign: 'center' },
+        },
+        didParseCell: function(data) {
+          if (data.section === 'body') {
+            if (data.column.index === 1) {
+              data.cell.styles.textColor = data.cell.raw === 'Active' ? colors.primary : colors.gray;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            if (data.column.index === 2) data.cell.styles.textColor = colors.primary;
+            if (data.column.index === 3) data.cell.styles.textColor = colors.secondary;
+            if (data.column.index === 4) data.cell.styles.textColor = colors.orange;
+            if (data.column.index === 5) data.cell.styles.textColor = colors.indigo;
+            if (data.column.index === 6) data.cell.styles.textColor = colors.purple;
+            if (data.column.index === 7) data.cell.styles.textColor = colors.teal;
+          }
+        }
+      });
+      yPos = doc.lastAutoTable.finalY + 10;
+    }
+
+    // HOURLY REPORT (new page)
+    if (hourlyReports) {
+      doc.addPage();
+      yPos = 15;
+
+      // Header for hourly report
+      doc.setFillColor(...colors.secondary);
+      doc.rect(0, 0, pageWidth, 20, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Hourly Report - ${hourlyDate}`, pageWidth / 2, 13, { align: 'center' });
+      yPos = 30;
+
+      // Overall Hourly Activity Table
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Overall Hourly Activity', 14, yPos);
+      yPos += 6;
+
+      if (hourlyReports.overall_hourly && hourlyReports.overall_hourly.length > 0) {
+        const hourlyData = hourlyReports.overall_hourly.map(h => [
+          h.hour_label,
+          h.calls || 0,
+          h.connected || 0,
+          h.presentations || 0,
+          h.leads || 0,
+          h.file || 0
+        ]);
+
+        doc.autoTable({
+          startY: yPos,
+          head: [['Hour', 'Calls', 'Connected', 'Presentations', 'Leads', 'File']],
+          body: hourlyData,
+          theme: 'grid',
+          headStyles: { fillColor: colors.secondary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+          bodyStyles: { fontSize: 9, halign: 'center' },
+          columnStyles: {
+            0: { cellWidth: 25, halign: 'left' },
+          },
+          didParseCell: function(data) {
+            if (data.section === 'body') {
+              if (data.column.index === 1) data.cell.styles.textColor = colors.secondary;
+              if (data.column.index === 2) data.cell.styles.textColor = colors.primary;
+              if (data.column.index === 3) data.cell.styles.textColor = colors.indigo;
+              if (data.column.index === 4) data.cell.styles.textColor = colors.teal;
+              if (data.column.index === 5) data.cell.styles.textColor = colors.orange;
+            }
+          }
+        });
+        yPos = doc.lastAutoTable.finalY + 10;
+      }
+
+      // Caller-wise Hourly Report
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Caller-wise Hourly Breakdown', 14, yPos);
+      yPos += 6;
+
+      if (hourlyReports.telecallers) {
+        hourlyReports.telecallers.forEach(tc => {
+          if (tc.hourly_breakdown && tc.hourly_breakdown.length > 0) {
+            // Check if we need a new page
+            if (yPos > 250) {
+              doc.addPage();
+              yPos = 15;
+            }
+
+            doc.setFillColor(240, 240, 240);
+            doc.rect(14, yPos - 4, pageWidth - 28, 8, 'F');
+            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'bold');
+            doc.text(`${tc.user_name} - ${tc.total_calls} calls, ${tc.total_connected} connected`, 16, yPos);
+            yPos += 6;
+
+            const tcHourlyData = tc.hourly_breakdown.map(hb => [
+              hb.hour_label,
+              hb.calls || 0,
+              hb.connected || 0,
+              hb.presentations || 0,
+              hb.leads || 0,
+              hb.file || 0
+            ]);
+
+            doc.autoTable({
+              startY: yPos,
+              head: [['Hour', 'Calls', 'Connected', 'Pres', 'Leads', 'File']],
+              body: tcHourlyData,
+              theme: 'grid',
+              headStyles: { fillColor: colors.gray, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+              bodyStyles: { fontSize: 8, halign: 'center' },
+              columnStyles: { 0: { cellWidth: 20, halign: 'left' } },
+              margin: { left: 14, right: 14 },
+              didParseCell: function(data) {
+                if (data.section === 'body') {
+                  if (data.column.index === 1) data.cell.styles.textColor = colors.secondary;
+                  if (data.column.index === 2) data.cell.styles.textColor = colors.primary;
+                  if (data.column.index === 3) data.cell.styles.textColor = colors.indigo;
+                  if (data.column.index === 4) data.cell.styles.textColor = colors.teal;
+                  if (data.column.index === 5) data.cell.styles.textColor = colors.orange;
+                }
+              }
+            });
+            yPos = doc.lastAutoTable.finalY + 8;
+          }
+        });
+      }
+    }
+
+    // ACTIVITY LOG (new page)
+    if (activityLogs && activityLogs.length > 0) {
+      doc.addPage();
+      yPos = 15;
+
+      // Header for activity log
+      doc.setFillColor(...colors.purple);
+      doc.rect(0, 0, pageWidth, 20, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Activity Log - ${activityDate}`, pageWidth / 2, 13, { align: 'center' });
+      yPos = 30;
+
+      activityLogs.forEach(group => {
+        if (yPos > 260) {
+          doc.addPage();
+          yPos = 15;
+        }
+
+        // User header
+        doc.setFillColor(240, 240, 240);
+        doc.rect(14, yPos - 4, pageWidth - 28, 8, 'F');
+        doc.setTextColor(0, 0, 0);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(`${group.user_name} - ${group.activities?.length || 0} activities`, 16, yPos);
+        yPos += 8;
+
+        if (group.activities) {
+          const activityData = group.activities.map(log => {
+            let action = log.action;
+            if (action === 'login') action = 'Logged In';
+            else if (action === 'logout') action = 'Logged Out';
+            else if (action === 'break_start') action = 'Break Started';
+            else if (action === 'break_end') action = 'Break Ended';
+            
+            const time = log.timestamp ? new Date(log.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : '';
+            return [action, log.reason || '-', time];
+          });
+
+          doc.autoTable({
+            startY: yPos,
+            head: [['Action', 'Reason', 'Time']],
+            body: activityData,
+            theme: 'grid',
+            headStyles: { fillColor: colors.purple, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
+            bodyStyles: { fontSize: 9 },
+            columnStyles: {
+              0: { cellWidth: 40 },
+              1: { cellWidth: 80 },
+              2: { cellWidth: 30, halign: 'center' }
+            },
+            margin: { left: 14, right: 14 },
+            didParseCell: function(data) {
+              if (data.section === 'body' && data.column.index === 0) {
+                if (data.cell.raw === 'Logged In') data.cell.styles.textColor = colors.primary;
+                else if (data.cell.raw === 'Logged Out') data.cell.styles.textColor = colors.red;
+                else if (data.cell.raw.includes('Break')) data.cell.styles.textColor = colors.orange;
+              }
+            }
+          });
+          yPos = doc.lastAutoTable.finalY + 10;
+        }
+      });
+    }
+
+    // Footer on all pages
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, doc.internal.pageSize.getHeight() - 10, { align: 'center' });
+      doc.text('BANKEZEE Connect CRM', 14, doc.internal.pageSize.getHeight() - 10);
+    }
+
+    // Download
+    const filename = `bankezee_report_${new Date().toISOString().split('T')[0]}.pdf`;
+    doc.save(filename);
   };
 
   const periods = [
