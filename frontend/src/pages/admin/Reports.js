@@ -90,14 +90,42 @@ const AdminReports = () => {
   const handleRefresh = () => {
     if (activeTab === 'summary') {
       fetchReports(true);
-    } else {
+    } else if (activeTab === 'hourly') {
       fetchHourlyReports(true);
+    } else if (activeTab === 'activity') {
+      fetchActivityLogs(true);
     }
   };
 
   const handlePeriodChange = (newPeriod) => {
     setShowDateRange(false);
     setPeriod(newPeriod);
+  };
+
+  const getActionIcon = (action) => {
+    switch (action) {
+      case 'login': return <LogIn size={14} className="text-green-600" />;
+      case 'logout': return <LogOut size={14} className="text-red-600" />;
+      case 'break_start': return <Coffee size={14} className="text-orange-600" />;
+      case 'break_end': return <Coffee size={14} className="text-blue-600" />;
+      default: return <Activity size={14} className="text-gray-600" />;
+    }
+  };
+
+  const getActionLabel = (action) => {
+    switch (action) {
+      case 'login': return 'Logged In';
+      case 'logout': return 'Logged Out';
+      case 'break_start': return 'Break Started';
+      case 'break_end': return 'Break Ended';
+      default: return action;
+    }
+  };
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
   };
 
   const handleDateRangeToggle = () => {
