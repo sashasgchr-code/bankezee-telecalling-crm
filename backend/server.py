@@ -1568,6 +1568,128 @@ async def get_telecaller_reports(
         "period": period
     }
 
+@router.get("/reports/hourly")
+async def get_hourly_report(
+    date: str = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get hourly breakdown of calls and status updates for each telecaller"""
+    now = datetime.now(timezone.utc)
+    
+    if date:
+        target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    else:
+        target_date = now
+    
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    start_naive = start_of_day.replace(tzinfo=None)
+    end_naive = end_of_day.replace(tzinfo=None)
+    
+    telecallers = await db.users.find({"role": "telecaller"}).to_list(100)
+    
+    hourly_data = []
+    
+    for telecaller in telecallers:
+        user_id = str(telecaller["_id"])
+        user_name = telecaller.get("name", telecaller.get("email", "Unknown"))
+        
+        # Get all calls for this user on this day
+        user_calls = await db.call_logs.find({
+            "user_id": user_id,
+            "created_at": {"$gte": start_naive, "$lt": end_naive}
+        }).to_list(10000)
+        
+        # Get all leads updated by this user on this day
+        user_leads_updated = await db.leads.find({
+            "assigned_to": user_id,
+            "updated_at": {"$gte": start_naive, "$lt": end_naive}
+        }).to_list(10000)
+        
+        # Group by hour
+        hours = {}
+        for hour in range(24):
+            hours[hour] = {
+                "calls": 0,
+                "connected": 0,
+                "no_answer": 0,
+                "leads_updated": 0,
+                "interested": 0,
+                "not_interested": 0,
+                "leads_generated": 0
+            }
+        
+        for call in user_calls:
+            call_time = call.get("created_at")
+            if call_time:
+                hour = call_time.hour
+                hours[hour]["calls"] += 1
+                outcome = call.get("outcome", "")
+                if outcome == "connected":
+                    hours[hour]["connected"] += 1
+                elif outcome == "no_answer":
+                    hours[hour]["no_answer"] += 1
+        
+        for lead in user_leads_updated:
+            update_time = lead.get("updated_at")
+            if update_time:
+                hour = update_time.hour
+                hours[hour]["leads_updated"] += 1
+                status = lead.get("status", "")
+                if status == "interested":
+                    hours[hour]["interested"] += 1
+                elif status == "not_interested":
+                    hours[hour]["not_interested"] += 1
+                elif status in ["leads", "converted"]:
+                    hours[hour]["leads_generated"] += 1
+        
+        # Convert to list format
+        hourly_breakdown = []
+        for hour in range(24):
+            if hours[hour]["calls"] > 0 or hours[hour]["leads_updated"] > 0:
+                hourly_breakdown.append({
+                    "hour": hour,
+                    "hour_label": f"{hour:02d}:00",
+                    **hours[hour]
+                })
+        
+        total_calls = sum(h["calls"] for h in hours.values())
+        total_connected = sum(h["connected"] for h in hours.values())
+        
+        hourly_data.append({
+            "user_id": user_id,
+            "user_name": user_name,
+            "total_calls": total_calls,
+            "total_connected": total_connected,
+            "hourly_breakdown": hourly_breakdown
+        })
+    
+    # Sort by total calls
+    hourly_data.sort(key=lambda x: x["total_calls"], reverse=True)
+    
+    # Overall hourly summary
+    overall_hours = {}
+    for hour in range(24):
+        overall_hours[hour] = {"calls": 0, "connected": 0, "leads_updated": 0}
+    
+    for tc in hourly_data:
+        for hb in tc["hourly_breakdown"]:
+            hour = hb["hour"]
+            overall_hours[hour]["calls"] += hb["calls"]
+            overall_hours[hour]["connected"] += hb["connected"]
+            overall_hours[hour]["leads_updated"] += hb["leads_updated"]
+    
+    overall_hourly = [
+        {"hour": h, "hour_label": f"{h:02d}:00", **overall_hours[h]}
+        for h in range(24) if overall_hours[h]["calls"] > 0 or overall_hours[h]["leads_updated"] > 0
+    ]
+    
+    return {
+        "date": target_date.strftime("%Y-%m-%d"),
+        "telecallers": hourly_data,
+        "overall_hourly": overall_hourly
+    }
+
 @router.get("/reports/daily-summary")
 async def get_daily_summary(
     date: Optional[str] = None,
