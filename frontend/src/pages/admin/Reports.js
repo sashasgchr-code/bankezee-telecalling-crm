@@ -465,7 +465,7 @@ const AdminReports = () => {
                           {[
                             { key: 'new', label: 'New', color: '#4CAF50' },
                             { key: 'contacted', label: 'Contacted', color: '#2196F3' },
-                            { key: 'interested', label: 'Interested', color: '#FF9800' },
+                            { key: 'file', label: 'File', color: '#FF9800' },
                             { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
                             { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
                             { key: 'leads', label: 'Leads', color: '#00C853' },
