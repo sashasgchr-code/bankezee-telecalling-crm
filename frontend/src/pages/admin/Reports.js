@@ -306,7 +306,7 @@ const AdminReports = () => {
         `${(tc.calls_to_lead_rate || 0).toFixed(1)}%`
       ]);
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: yPos,
         head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk Time', 'Conv %']],
         body: tableData,
@@ -372,7 +372,7 @@ const AdminReports = () => {
           h.file || 0
         ]);
 
-        doc.autoTable({
+        autoTable(doc, {
           startY: yPos,
           head: [['Hour', 'Calls', 'Connected', 'Presentations', 'Leads', 'File']],
           body: hourlyData,
@@ -428,7 +428,7 @@ const AdminReports = () => {
               hb.file || 0
             ]);
 
-            doc.autoTable({
+            autoTable(doc, {
               startY: yPos,
               head: [['Hour', 'Calls', 'Connected', 'Pres', 'Leads', 'File']],
               body: tcHourlyData,
@@ -494,7 +494,7 @@ const AdminReports = () => {
             return [action, log.reason || '-', time];
           });
 
-          doc.autoTable({
+          autoTable(doc, {
             startY: yPos,
             head: [['Action', 'Reason', 'Time']],
             body: activityData,
