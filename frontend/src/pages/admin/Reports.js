@@ -189,66 +189,97 @@ const AdminReports = () => {
           >
             <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
           </button>
-          <button
-            onClick={downloadExcel}
-            disabled={!reports || isLoading}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            data-testid="download-report-btn"
-          >
-            <Download size={18} />
-            Export
-          </button>
+          {activeTab === 'summary' && (
+            <button
+              onClick={downloadExcel}
+              disabled={!reports || isLoading}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              data-testid="download-report-btn"
+            >
+              <Download size={18} />
+              Export
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Period Filter */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {periods.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => handlePeriodChange(p.id)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-              period === p.id && !showDateRange
-                ? 'bg-green-600 text-white'
-                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+      {/* Tab Selector */}
+      <div className="flex gap-2 mb-4">
         <button
-          onClick={handleDateRangeToggle}
-          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
-            showDateRange
+          onClick={() => setActiveTab('summary')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'summary'
               ? 'bg-green-600 text-white'
               : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
           }`}
         >
-          <Calendar size={14} />
-          Custom
+          <TrendingUp size={16} />
+          Summary
+        </button>
+        <button
+          onClick={() => setActiveTab('hourly')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'hourly'
+              ? 'bg-green-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <BarChart3 size={16} />
+          Hourly
         </button>
       </div>
 
-      {/* Date Range Picker */}
-      {showDateRange && (
-        <div className="flex gap-2 mb-4 items-center flex-wrap">
-          <input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="input-field text-sm py-1.5"
-            data-testid="from-date"
-          />
-          <span className="text-gray-500 text-sm">to</span>
-          <input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="input-field text-sm py-1.5"
-            data-testid="to-date"
-          />
-        </div>
-      )}
+      {/* Summary Tab Content */}
+      {activeTab === 'summary' && (
+        <>
+          {/* Period Filter */}
+          <div className="flex flex-wrap gap-2 mb-3">
+            {periods.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => handlePeriodChange(p.id)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  period === p.id && !showDateRange
+                    ? 'bg-green-600 text-white'
+                    : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+            <button
+              onClick={handleDateRangeToggle}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors flex items-center gap-1 ${
+                showDateRange
+                  ? 'bg-green-600 text-white'
+                  : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <Calendar size={14} />
+              Custom
+            </button>
+          </div>
+
+          {/* Date Range Picker */}
+          {showDateRange && (
+            <div className="flex gap-2 mb-4 items-center flex-wrap">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="input-field text-sm py-1.5"
+                data-testid="from-date"
+              />
+              <span className="text-gray-500 text-sm">to</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="input-field text-sm py-1.5"
+                data-testid="to-date"
+              />
+            </div>
+          )}
 
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
