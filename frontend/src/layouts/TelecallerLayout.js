@@ -263,7 +263,6 @@ const TelecallerLayout = () => {
             </button>
           </div>
         )}
-        </div>
 
         {/* Active Call Banner */}
         {activeCall && (
