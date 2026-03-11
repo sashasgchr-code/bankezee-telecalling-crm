@@ -279,6 +279,172 @@ async def change_password(data: ChangePassword, current_user: dict = Depends(get
     
     return {"message": "Password changed successfully"}
 
+@router.post("/auth/logout")
+async def logout(current_user: dict = Depends(get_current_user)):
+    """Record logout time for the user"""
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Update daily session with logout time
+    session = await db.daily_sessions.find_one({
+        "user_id": current_user["id"],
+        "date": today
+    })
+    
+    if session:
+        login_time = session.get("login_time", now)
+        if login_time.tzinfo is None:
+            login_time = login_time.replace(tzinfo=timezone.utc)
+        
+        total_login_seconds = (now - login_time).total_seconds()
+        
+        await db.daily_sessions.update_one(
+            {"_id": session["_id"]},
+            {"$set": {
+                "logout_time": now,
+                "total_login_seconds": total_login_seconds
+            }}
+        )
+    
+    # Record logout in activity log
+    await db.activity_logs.insert_one({
+        "user_id": current_user["id"],
+        "user_name": current_user.get("name", ""),
+        "action": "logout",
+        "timestamp": now,
+        "date": today
+    })
+    
+    return {"message": "Logged out successfully"}
+
+class BreakAction(BaseModel):
+    action: str  # "start" or "end"
+    reason: str = None
+
+@router.post("/activity/break")
+async def record_break(data: BreakAction, current_user: dict = Depends(get_current_user)):
+    """Record break start or end"""
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    session = await db.daily_sessions.find_one({
+        "user_id": current_user["id"],
+        "date": today
+    })
+    
+    if data.action == "start":
+        # Start break
+        await db.activity_logs.insert_one({
+            "user_id": current_user["id"],
+            "user_name": current_user.get("name", ""),
+            "action": "break_start",
+            "reason": data.reason,
+            "timestamp": now,
+            "date": today
+        })
+        
+        if session:
+            await db.daily_sessions.update_one(
+                {"_id": session["_id"]},
+                {"$set": {
+                    "on_break": True,
+                    "break_start_time": now
+                }}
+            )
+        
+        return {"message": "Break started", "break_start_time": now.isoformat()}
+    
+    elif data.action == "end":
+        # End break
+        await db.activity_logs.insert_one({
+            "user_id": current_user["id"],
+            "user_name": current_user.get("name", ""),
+            "action": "break_end",
+            "timestamp": now,
+            "date": today
+        })
+        
+        if session:
+            break_start = session.get("break_start_time")
+            break_duration = 0
+            
+            if break_start:
+                if break_start.tzinfo is None:
+                    break_start = break_start.replace(tzinfo=timezone.utc)
+                break_duration = (now - break_start).total_seconds()
+            
+            total_break_seconds = session.get("total_break_seconds", 0) + break_duration
+            
+            await db.daily_sessions.update_one(
+                {"_id": session["_id"]},
+                {"$set": {
+                    "on_break": False,
+                    "break_start_time": None,
+                    "total_break_seconds": total_break_seconds
+                }}
+            )
+        
+        return {"message": "Break ended", "break_duration_seconds": break_duration}
+    
+    raise HTTPException(status_code=400, detail="Invalid action. Use 'start' or 'end'")
+
+@router.get("/activity/my-session")
+async def get_my_session(current_user: dict = Depends(get_current_user)):
+    """Get current user's session info for today"""
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    session = await db.daily_sessions.find_one({
+        "user_id": current_user["id"],
+        "date": today
+    })
+    
+    if not session:
+        return {
+            "login_time": None,
+            "on_break": False,
+            "total_break_seconds": 0,
+            "total_call_seconds": 0
+        }
+    
+    return {
+        "login_time": session.get("login_time").isoformat() if session.get("login_time") else None,
+        "logout_time": session.get("logout_time").isoformat() if session.get("logout_time") else None,
+        "on_break": session.get("on_break", False),
+        "break_start_time": session.get("break_start_time").isoformat() if session.get("break_start_time") else None,
+        "total_break_seconds": session.get("total_break_seconds", 0),
+        "total_call_seconds": session.get("total_call_seconds", 0),
+        "total_idle_seconds": session.get("total_idle_seconds", 0),
+        "calls_made": session.get("calls_made", 0)
+    }
+
+@router.get("/activity/logs")
+async def get_activity_logs(
+    date: str = None,
+    user_id: str = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get activity logs (admin only)"""
+    now = datetime.now(timezone.utc)
+    
+    if date:
+        target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    else:
+        target_date = now
+    
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    start_naive = start_of_day.replace(tzinfo=None)
+    end_naive = end_of_day.replace(tzinfo=None)
+    
+    query = {"timestamp": {"$gte": start_naive, "$lt": end_naive}}
+    if user_id:
+        query["user_id"] = user_id
+    
+    logs = await db.activity_logs.find(query).sort("timestamp", -1).to_list(500)
+    
+    return [serialize_doc(log) for log in logs]
+
 # ===================== ACTIVITY TRACKING =====================
 
 @router.post("/activity/ping")
