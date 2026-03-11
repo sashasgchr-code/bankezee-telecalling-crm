@@ -277,6 +277,17 @@ const AdminReports = () => {
           <BarChart3 size={16} />
           Hourly
         </button>
+        <button
+          onClick={() => setActiveTab('activity')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'activity'
+              ? 'bg-green-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <Activity size={16} />
+          Activity
+        </button>
       </div>
 
       {/* Summary Tab Content */}
