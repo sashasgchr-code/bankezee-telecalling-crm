@@ -1283,7 +1283,7 @@ async def get_statuses(current_user: dict = Depends(get_current_user)):
     return [
         {"id": "new", "name": "New", "color": "#4CAF50"},
         {"id": "contacted", "name": "Contacted", "color": "#2196F3"},
-        {"id": "interested", "name": "Interested", "color": "#FF9800"},
+        {"id": "file", "name": "File", "color": "#FF9800"},
         {"id": "not_interested", "name": "Not Interested", "color": "#9E9E9E"},
         {"id": "follow_up", "name": "Follow Up", "color": "#9C27B0"},
         {"id": "converted", "name": "Converted", "color": "#4CAF50"},
@@ -1787,11 +1787,9 @@ async def get_hourly_report(
             hours[hour] = {
                 "calls": 0,
                 "connected": 0,
-                "no_answer": 0,
-                "leads_updated": 0,
-                "interested": 0,
-                "not_interested": 0,
-                "leads_generated": 0
+                "presentations": 0,
+                "leads": 0,
+                "file": 0
             }
         
         for call in user_calls:
@@ -1802,26 +1800,23 @@ async def get_hourly_report(
                 outcome = call.get("outcome", "")
                 if outcome == "connected":
                     hours[hour]["connected"] += 1
-                elif outcome == "no_answer":
-                    hours[hour]["no_answer"] += 1
         
         for lead in user_leads_updated:
             update_time = lead.get("updated_at")
             if update_time:
                 hour = update_time.hour
-                hours[hour]["leads_updated"] += 1
                 status = lead.get("status", "")
-                if status == "interested":
-                    hours[hour]["interested"] += 1
-                elif status == "not_interested":
-                    hours[hour]["not_interested"] += 1
+                if status == "presentation":
+                    hours[hour]["presentations"] += 1
                 elif status in ["leads", "converted"]:
-                    hours[hour]["leads_generated"] += 1
+                    hours[hour]["leads"] += 1
+                elif status == "file":
+                    hours[hour]["file"] += 1
         
         # Convert to list format
         hourly_breakdown = []
         for hour in range(24):
-            if hours[hour]["calls"] > 0 or hours[hour]["leads_updated"] > 0:
+            if hours[hour]["calls"] > 0 or hours[hour]["presentations"] > 0 or hours[hour]["leads"] > 0 or hours[hour]["file"] > 0:
                 hourly_breakdown.append({
                     "hour": hour,
                     "hour_label": f"{hour:02d}:00",
@@ -1830,12 +1825,18 @@ async def get_hourly_report(
         
         total_calls = sum(h["calls"] for h in hours.values())
         total_connected = sum(h["connected"] for h in hours.values())
+        total_presentations = sum(h["presentations"] for h in hours.values())
+        total_leads = sum(h["leads"] for h in hours.values())
+        total_file = sum(h["file"] for h in hours.values())
         
         hourly_data.append({
             "user_id": user_id,
             "user_name": user_name,
             "total_calls": total_calls,
             "total_connected": total_connected,
+            "total_presentations": total_presentations,
+            "total_leads": total_leads,
+            "total_file": total_file,
             "hourly_breakdown": hourly_breakdown
         })
     
@@ -1845,18 +1846,20 @@ async def get_hourly_report(
     # Overall hourly summary
     overall_hours = {}
     for hour in range(24):
-        overall_hours[hour] = {"calls": 0, "connected": 0, "leads_updated": 0}
+        overall_hours[hour] = {"calls": 0, "connected": 0, "presentations": 0, "leads": 0, "file": 0}
     
     for tc in hourly_data:
         for hb in tc["hourly_breakdown"]:
             hour = hb["hour"]
             overall_hours[hour]["calls"] += hb["calls"]
             overall_hours[hour]["connected"] += hb["connected"]
-            overall_hours[hour]["leads_updated"] += hb["leads_updated"]
+            overall_hours[hour]["presentations"] += hb["presentations"]
+            overall_hours[hour]["leads"] += hb["leads"]
+            overall_hours[hour]["file"] += hb["file"]
     
     overall_hourly = [
         {"hour": h, "hour_label": f"{h:02d}:00", **overall_hours[h]}
-        for h in range(24) if overall_hours[h]["calls"] > 0 or overall_hours[h]["leads_updated"] > 0
+        for h in range(24) if overall_hours[h]["calls"] > 0 or overall_hours[h]["presentations"] > 0 or overall_hours[h]["leads"] > 0
     ]
     
     return {
