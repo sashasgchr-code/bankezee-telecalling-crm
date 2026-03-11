@@ -887,109 +887,379 @@ const AdminReports = () => {
               <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
             </div>
           ) : hourlyReports ? (
-            <div className="space-y-4">
-              {/* Overall Hourly Summary */}
-              {hourlyReports.overall_hourly && hourlyReports.overall_hourly.length > 0 && (
-                <div className="card p-4">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Overall Hourly Activity</h3>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-200">
-                          <th className="text-left py-2 px-2 font-medium text-gray-600">Hour</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-600">Calls</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-600">Connected</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-600">Presentations</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-600">Leads</th>
-                          <th className="text-center py-2 px-2 font-medium text-gray-600">File</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {hourlyReports.overall_hourly.map((h) => (
-                          <tr key={h.hour} className="border-b border-gray-100">
-                            <td className="py-2 px-2 font-medium text-gray-700">{h.hour_label}</td>
-                            <td className="py-2 px-2 text-center text-blue-600 font-semibold">{h.calls}</td>
-                            <td className="py-2 px-2 text-center text-green-600 font-semibold">{h.connected || 0}</td>
-                            <td className="py-2 px-2 text-center text-indigo-600 font-semibold">{h.presentations || 0}</td>
-                            <td className="py-2 px-2 text-center text-teal-600 font-semibold">{h.leads || 0}</td>
-                            <td className="py-2 px-2 text-center text-orange-600 font-semibold">{h.file || 0}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+            <div className="space-y-6">
+              {/* Get all unique hours that have activity */}
+              {(() => {
+                const allHours = new Set();
+                hourlyReports.telecallers?.forEach(tc => {
+                  tc.hourly_breakdown?.forEach(hb => allHours.add(hb.hour));
+                });
+                const sortedHours = Array.from(allHours).sort((a, b) => a - b);
+                
+                // Create a lookup map for each telecaller's hourly data
+                const getHourData = (tc, hour) => {
+                  const hb = tc.hourly_breakdown?.find(h => h.hour === hour);
+                  return hb || { calls: 0, connected: 0, presentations: 0, leads: 0, file: 0 };
+                };
 
-              {/* Telecaller-wise Hourly Breakdown */}
-              <div className="space-y-3">
-                <h3 className="text-lg font-semibold text-gray-900">Caller-wise Hourly Report</h3>
-                {hourlyReports.telecallers && hourlyReports.telecallers.map((tc) => (
-                  <div key={tc.user_id} className="card overflow-hidden">
-                    <div
-                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
-                      onClick={() => setExpandedHourlyCards(prev => ({
-                        ...prev,
-                        [tc.user_id]: !prev[tc.user_id]
-                      }))}
-                    >
-                      <div>
-                        <p className="font-semibold text-gray-900">{tc.user_name}</p>
-                        <p className="text-xs text-gray-500">
-                          {tc.total_calls} calls • {tc.total_connected} connected • {tc.total_presentations || 0} pres • {tc.total_leads || 0} leads • {tc.total_file || 0} file
-                        </p>
+                return (
+                  <>
+                    {/* Calls Matrix Table */}
+                    <div className="card overflow-hidden">
+                      <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3">
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                          <Phone size={20} />
+                          Calls by Hour
+                        </h3>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-green-600">{tc.total_calls} calls</span>
-                        {expandedHourlyCards[tc.user_id] ? (
-                          <ChevronUp size={20} className="text-gray-500" />
-                        ) : (
-                          <ChevronDown size={20} className="text-gray-500" />
-                        )}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-blue-50">
+                              <th className="text-left py-3 px-4 font-semibold text-blue-900 sticky left-0 bg-blue-50 min-w-[140px]">Telecaller</th>
+                              {sortedHours.map(hour => (
+                                <th key={hour} className="text-center py-3 px-2 font-semibold text-blue-900 min-w-[60px]">
+                                  {`${hour.toString().padStart(2, '0')}:00`}
+                                </th>
+                              ))}
+                              <th className="text-center py-3 px-3 font-bold text-blue-900 bg-blue-100 min-w-[70px]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hourlyReports.telecallers?.map((tc, idx) => (
+                              <tr key={tc.user_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className={`py-3 px-4 font-medium text-gray-900 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  {tc.user_name}
+                                </td>
+                                {sortedHours.map(hour => {
+                                  const data = getHourData(tc, hour);
+                                  return (
+                                    <td key={hour} className="text-center py-3 px-2">
+                                      {data.calls > 0 ? (
+                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-semibold">
+                                          {data.calls}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-300">-</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="text-center py-3 px-3 bg-blue-50">
+                                  <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-blue-600 text-white font-bold">
+                                    {tc.total_calls}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {/* Totals Row */}
+                            <tr className="bg-blue-100 font-bold">
+                              <td className="py-3 px-4 text-blue-900 sticky left-0 bg-blue-100">TOTAL</td>
+                              {sortedHours.map(hour => {
+                                const total = hourlyReports.telecallers?.reduce((sum, tc) => sum + getHourData(tc, hour).calls, 0) || 0;
+                                return (
+                                  <td key={hour} className="text-center py-3 px-2 text-blue-900">
+                                    {total > 0 ? total : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center py-3 px-3 bg-blue-200">
+                                <span className="text-blue-900 text-lg">
+                                  {hourlyReports.telecallers?.reduce((sum, tc) => sum + tc.total_calls, 0) || 0}
+                                </span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
                     </div>
 
-                    {expandedHourlyCards[tc.user_id] && (
-                      <div className="px-4 pb-4 border-t border-gray-100 pt-3">
-                        {tc.hourly_breakdown && tc.hourly_breakdown.length > 0 ? (
-                          <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="border-b border-gray-200">
-                                  <th className="text-left py-2 px-2 font-medium text-gray-600">Hour</th>
-                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Calls</th>
-                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Connected</th>
-                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Pres</th>
-                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Leads</th>
-                                  <th className="text-center py-2 px-2 font-medium text-gray-600">File</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {tc.hourly_breakdown.map((hb) => (
-                                  <tr key={hb.hour} className="border-b border-gray-100">
-                                    <td className="py-2 px-2 font-medium text-gray-700">{hb.hour_label}</td>
-                                    <td className="py-2 px-2 text-center text-blue-600">{hb.calls}</td>
-                                    <td className="py-2 px-2 text-center text-green-600">{hb.connected || 0}</td>
-                                    <td className="py-2 px-2 text-center text-indigo-600">{hb.presentations || 0}</td>
-                                    <td className="py-2 px-2 text-center text-teal-600">{hb.leads || 0}</td>
-                                    <td className="py-2 px-2 text-center text-orange-600">{hb.file || 0}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-500 text-center">No activity for this day</p>
-                        )}
+                    {/* Connected Matrix Table */}
+                    <div className="card overflow-hidden">
+                      <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3">
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                          <Phone size={20} />
+                          Connected Calls by Hour
+                        </h3>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-green-50">
+                              <th className="text-left py-3 px-4 font-semibold text-green-900 sticky left-0 bg-green-50 min-w-[140px]">Telecaller</th>
+                              {sortedHours.map(hour => (
+                                <th key={hour} className="text-center py-3 px-2 font-semibold text-green-900 min-w-[60px]">
+                                  {`${hour.toString().padStart(2, '0')}:00`}
+                                </th>
+                              ))}
+                              <th className="text-center py-3 px-3 font-bold text-green-900 bg-green-100 min-w-[70px]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hourlyReports.telecallers?.map((tc, idx) => (
+                              <tr key={tc.user_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className={`py-3 px-4 font-medium text-gray-900 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  {tc.user_name}
+                                </td>
+                                {sortedHours.map(hour => {
+                                  const data = getHourData(tc, hour);
+                                  return (
+                                    <td key={hour} className="text-center py-3 px-2">
+                                      {data.connected > 0 ? (
+                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-green-100 text-green-700 font-semibold">
+                                          {data.connected}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-300">-</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="text-center py-3 px-3 bg-green-50">
+                                  <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-green-600 text-white font-bold">
+                                    {tc.total_connected}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {/* Totals Row */}
+                            <tr className="bg-green-100 font-bold">
+                              <td className="py-3 px-4 text-green-900 sticky left-0 bg-green-100">TOTAL</td>
+                              {sortedHours.map(hour => {
+                                const total = hourlyReports.telecallers?.reduce((sum, tc) => sum + getHourData(tc, hour).connected, 0) || 0;
+                                return (
+                                  <td key={hour} className="text-center py-3 px-2 text-green-900">
+                                    {total > 0 ? total : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center py-3 px-3 bg-green-200">
+                                <span className="text-green-900 text-lg">
+                                  {hourlyReports.telecallers?.reduce((sum, tc) => sum + tc.total_connected, 0) || 0}
+                                </span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
 
-                {(!hourlyReports.telecallers || hourlyReports.telecallers.length === 0) && (
-                  <p className="text-center text-gray-500 py-4">No hourly data available</p>
-                )}
-              </div>
+                    {/* Presentations Matrix Table */}
+                    <div className="card overflow-hidden">
+                      <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-4 py-3">
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                          <TrendingUp size={20} />
+                          Presentations by Hour
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-indigo-50">
+                              <th className="text-left py-3 px-4 font-semibold text-indigo-900 sticky left-0 bg-indigo-50 min-w-[140px]">Telecaller</th>
+                              {sortedHours.map(hour => (
+                                <th key={hour} className="text-center py-3 px-2 font-semibold text-indigo-900 min-w-[60px]">
+                                  {`${hour.toString().padStart(2, '0')}:00`}
+                                </th>
+                              ))}
+                              <th className="text-center py-3 px-3 font-bold text-indigo-900 bg-indigo-100 min-w-[70px]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hourlyReports.telecallers?.map((tc, idx) => (
+                              <tr key={tc.user_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className={`py-3 px-4 font-medium text-gray-900 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  {tc.user_name}
+                                </td>
+                                {sortedHours.map(hour => {
+                                  const data = getHourData(tc, hour);
+                                  return (
+                                    <td key={hour} className="text-center py-3 px-2">
+                                      {data.presentations > 0 ? (
+                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 font-semibold">
+                                          {data.presentations}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-300">-</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="text-center py-3 px-3 bg-indigo-50">
+                                  <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-indigo-600 text-white font-bold">
+                                    {tc.total_presentations || 0}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {/* Totals Row */}
+                            <tr className="bg-indigo-100 font-bold">
+                              <td className="py-3 px-4 text-indigo-900 sticky left-0 bg-indigo-100">TOTAL</td>
+                              {sortedHours.map(hour => {
+                                const total = hourlyReports.telecallers?.reduce((sum, tc) => sum + getHourData(tc, hour).presentations, 0) || 0;
+                                return (
+                                  <td key={hour} className="text-center py-3 px-2 text-indigo-900">
+                                    {total > 0 ? total : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center py-3 px-3 bg-indigo-200">
+                                <span className="text-indigo-900 text-lg">
+                                  {hourlyReports.telecallers?.reduce((sum, tc) => sum + (tc.total_presentations || 0), 0) || 0}
+                                </span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Leads Matrix Table */}
+                    <div className="card overflow-hidden">
+                      <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-4 py-3">
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                          <TrendingUp size={20} />
+                          Leads by Hour
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-teal-50">
+                              <th className="text-left py-3 px-4 font-semibold text-teal-900 sticky left-0 bg-teal-50 min-w-[140px]">Telecaller</th>
+                              {sortedHours.map(hour => (
+                                <th key={hour} className="text-center py-3 px-2 font-semibold text-teal-900 min-w-[60px]">
+                                  {`${hour.toString().padStart(2, '0')}:00`}
+                                </th>
+                              ))}
+                              <th className="text-center py-3 px-3 font-bold text-teal-900 bg-teal-100 min-w-[70px]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hourlyReports.telecallers?.map((tc, idx) => (
+                              <tr key={tc.user_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className={`py-3 px-4 font-medium text-gray-900 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  {tc.user_name}
+                                </td>
+                                {sortedHours.map(hour => {
+                                  const data = getHourData(tc, hour);
+                                  return (
+                                    <td key={hour} className="text-center py-3 px-2">
+                                      {data.leads > 0 ? (
+                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-teal-100 text-teal-700 font-semibold">
+                                          {data.leads}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-300">-</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="text-center py-3 px-3 bg-teal-50">
+                                  <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-teal-600 text-white font-bold">
+                                    {tc.total_leads || 0}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {/* Totals Row */}
+                            <tr className="bg-teal-100 font-bold">
+                              <td className="py-3 px-4 text-teal-900 sticky left-0 bg-teal-100">TOTAL</td>
+                              {sortedHours.map(hour => {
+                                const total = hourlyReports.telecallers?.reduce((sum, tc) => sum + getHourData(tc, hour).leads, 0) || 0;
+                                return (
+                                  <td key={hour} className="text-center py-3 px-2 text-teal-900">
+                                    {total > 0 ? total : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center py-3 px-3 bg-teal-200">
+                                <span className="text-teal-900 text-lg">
+                                  {hourlyReports.telecallers?.reduce((sum, tc) => sum + (tc.total_leads || 0), 0) || 0}
+                                </span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* File Matrix Table */}
+                    <div className="card overflow-hidden">
+                      <div className="bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3">
+                        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                          <FileText size={20} />
+                          File by Hour
+                        </h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="bg-orange-50">
+                              <th className="text-left py-3 px-4 font-semibold text-orange-900 sticky left-0 bg-orange-50 min-w-[140px]">Telecaller</th>
+                              {sortedHours.map(hour => (
+                                <th key={hour} className="text-center py-3 px-2 font-semibold text-orange-900 min-w-[60px]">
+                                  {`${hour.toString().padStart(2, '0')}:00`}
+                                </th>
+                              ))}
+                              <th className="text-center py-3 px-3 font-bold text-orange-900 bg-orange-100 min-w-[70px]">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {hourlyReports.telecallers?.map((tc, idx) => (
+                              <tr key={tc.user_id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                <td className={`py-3 px-4 font-medium text-gray-900 sticky left-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                  {tc.user_name}
+                                </td>
+                                {sortedHours.map(hour => {
+                                  const data = getHourData(tc, hour);
+                                  return (
+                                    <td key={hour} className="text-center py-3 px-2">
+                                      {data.file > 0 ? (
+                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-orange-100 text-orange-700 font-semibold">
+                                          {data.file}
+                                        </span>
+                                      ) : (
+                                        <span className="text-gray-300">-</span>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="text-center py-3 px-3 bg-orange-50">
+                                  <span className="inline-flex items-center justify-center px-3 py-1 rounded-full bg-orange-500 text-white font-bold">
+                                    {tc.total_file || 0}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                            {/* Totals Row */}
+                            <tr className="bg-orange-100 font-bold">
+                              <td className="py-3 px-4 text-orange-900 sticky left-0 bg-orange-100">TOTAL</td>
+                              {sortedHours.map(hour => {
+                                const total = hourlyReports.telecallers?.reduce((sum, tc) => sum + getHourData(tc, hour).file, 0) || 0;
+                                return (
+                                  <td key={hour} className="text-center py-3 px-2 text-orange-900">
+                                    {total > 0 ? total : '-'}
+                                  </td>
+                                );
+                              })}
+                              <td className="text-center py-3 px-3 bg-orange-200">
+                                <span className="text-orange-900 text-lg">
+                                  {hourlyReports.telecallers?.reduce((sum, tc) => sum + (tc.total_file || 0), 0) || 0}
+                                </span>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              {(!hourlyReports.telecallers || hourlyReports.telecallers.length === 0) && (
+                <p className="text-center text-gray-500 py-4">No hourly data available</p>
+              )}
             </div>
           ) : null}
         </>
