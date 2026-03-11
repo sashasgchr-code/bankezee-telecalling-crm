@@ -20,7 +20,7 @@ export const Colors = {
 export const StatusColors = {
   new: '#4CAF50',
   contacted: '#2196F3',
-  interested: '#FF9800',
+  file: '#FF9800',
   not_interested: '#9E9E9E',
   follow_up: '#9C27B0',
   leads: '#4CAF50',
@@ -32,7 +32,7 @@ export const StatusColors = {
 export const StatusLabels = {
   new: 'New',
   contacted: 'Contacted',
-  interested: 'Interested',
+  file: 'File',
   not_interested: 'Not Interested',
   follow_up: 'Follow Up',
   leads: 'Leads',
