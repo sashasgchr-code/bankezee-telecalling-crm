@@ -351,26 +351,28 @@ const AdminReports = () => {
               {/* Overall Stats */}
               <div className="card p-4 mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Overall Performance</h3>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
                   <div className="text-center">
                     <p className="text-xl font-bold text-green-600">{reports.overall.total_calls}</p>
                     <p className="text-xs text-gray-500">Total Calls</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xl font-bold text-blue-600">{reports.overall.total_leads_generated}</p>
-                    <p className="text-xs text-gray-500">Leads Generated</p>
+                    <p className="text-xs text-gray-500">Leads</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-orange-600">{reports.overall.total_file || 0}</p>
+                    <p className="text-xs text-gray-500">File</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-indigo-600">{reports.overall.total_presentations || 0}</p>
+                    <p className="text-xs text-gray-500">Presentations</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xl font-bold text-purple-600">
                       {formatTime(reports.overall.total_call_seconds)}
                     </p>
                     <p className="text-xs text-gray-500">Talk Time</p>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xl font-bold text-orange-600">
-                      {formatTime(reports.overall.total_idle_seconds)}
-                    </p>
-                    <p className="text-xs text-gray-500">Idle Time</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xl font-bold text-teal-600">
