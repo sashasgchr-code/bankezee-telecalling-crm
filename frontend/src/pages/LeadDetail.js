@@ -25,7 +25,7 @@ const LeadDetail = () => {
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpNotes, setFollowUpNotes] = useState('');
 
-  const statuses = ['new', 'contacted', 'interested', 'not_interested', 'follow_up', 'leads', 'not_answering', 'wrong_number', 'presentation'];
+  const statuses = ['new', 'contacted', 'file', 'not_interested', 'follow_up', 'leads', 'not_answering', 'wrong_number', 'presentation'];
 
   const fetchData = async () => {
     try {
