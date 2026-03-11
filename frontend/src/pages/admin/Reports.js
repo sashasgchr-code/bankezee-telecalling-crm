@@ -479,7 +479,112 @@ const AdminReports = () => {
             </div>
           </div>
         </>
-      ) : null}
+      )}
+
+      {/* Hourly Tab Content */}
+      {activeTab === 'hourly' && (
+        <>
+          {/* Date Picker for Hourly */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm text-gray-600">Select Date:</span>
+            <input
+              type="date"
+              value={hourlyDate}
+              onChange={(e) => setHourlyDate(e.target.value)}
+              className="input-field text-sm py-1.5"
+            />
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+            </div>
+          ) : hourlyReports ? (
+            <div className="space-y-4">
+              {/* Overall Hourly Summary */}
+              {hourlyReports.overall_hourly && hourlyReports.overall_hourly.length > 0 && (
+                <div className="card p-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Overall Hourly Activity</h3>
+                  <div className="overflow-x-auto">
+                    <div className="flex gap-2 min-w-max">
+                      {hourlyReports.overall_hourly.map((h) => (
+                        <div key={h.hour} className="flex flex-col items-center p-2 bg-gray-50 rounded-lg min-w-[60px]">
+                          <span className="text-xs font-medium text-gray-500">{h.hour_label}</span>
+                          <span className="text-lg font-bold text-blue-600">{h.calls}</span>
+                          <span className="text-xs text-gray-400">calls</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Telecaller-wise Hourly Breakdown */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold text-gray-900">Caller-wise Hourly Report</h3>
+                {hourlyReports.telecallers && hourlyReports.telecallers.map((tc) => (
+                  <div key={tc.user_id} className="card overflow-hidden">
+                    <div
+                      className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50"
+                      onClick={() => setExpandedHourlyCards(prev => ({
+                        ...prev,
+                        [tc.user_id]: !prev[tc.user_id]
+                      }))}
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">{tc.user_name}</p>
+                        <p className="text-xs text-gray-500">
+                          {tc.total_calls} calls • {tc.total_connected} connected
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold text-green-600">{tc.total_calls} calls</span>
+                        {expandedHourlyCards[tc.user_id] ? (
+                          <ChevronUp size={20} className="text-gray-500" />
+                        ) : (
+                          <ChevronDown size={20} className="text-gray-500" />
+                        )}
+                      </div>
+                    </div>
+
+                    {expandedHourlyCards[tc.user_id] && (
+                      <div className="px-4 pb-4 border-t border-gray-100 pt-3">
+                        {tc.hourly_breakdown && tc.hourly_breakdown.length > 0 ? (
+                          <div className="space-y-2">
+                            <p className="text-xs font-semibold text-gray-500 mb-2">HOURLY BREAKDOWN</p>
+                            <div className="grid grid-cols-2 gap-2">
+                              {tc.hourly_breakdown.map((hb) => (
+                                <div key={hb.hour} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                  <span className="text-sm font-medium text-gray-700">{hb.hour_label}</span>
+                                  <div className="flex gap-3 text-xs">
+                                    <span className="text-blue-600">{hb.calls} calls</span>
+                                    {hb.connected > 0 && (
+                                      <span className="text-green-600">{hb.connected} conn</span>
+                                    )}
+                                    {hb.interested > 0 && (
+                                      <span className="text-orange-600">{hb.interested} int</span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500 text-center">No activity for this day</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {(!hourlyReports.telecallers || hourlyReports.telecallers.length === 0) && (
+                  <p className="text-center text-gray-500 py-4">No hourly data available</p>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
     </div>
   );
 };
