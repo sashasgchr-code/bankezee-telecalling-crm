@@ -428,35 +428,31 @@ const AdminReports = () => {
                   {/* Expanded Content */}
                   {expandedCards[tc.user_id] && (
                     <div className="px-4 pb-4 pt-0">
-                      {/* Call Stats Row */}
-                      <div className="grid grid-cols-4 gap-2 mb-3">
-                        <div className="text-center p-2 bg-white rounded">
-                          <div className="flex items-center justify-center gap-1 text-green-600">
-                            <Phone size={14} />
-                            <span className="font-bold">{tc.total_calls}</span>
-                          </div>
+                      {/* Main Performance Stats - Matching Overall Stats Layout */}
+                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-4 p-3 bg-white rounded-lg">
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-green-600">{tc.total_calls}</p>
                           <p className="text-xs text-gray-500">Calls</p>
                         </div>
-                        <div className="text-center p-2 bg-white rounded">
-                          <div className="flex items-center justify-center gap-1 text-blue-600">
-                            <TrendingUp size={14} />
-                            <span className="font-bold">{tc.leads_generated}</span>
-                          </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-blue-600">{tc.leads_generated}</p>
                           <p className="text-xs text-gray-500">Leads</p>
                         </div>
-                        <div className="text-center p-2 bg-white rounded">
-                          <div className="flex items-center justify-center gap-1 text-purple-600">
-                            <Clock size={14} />
-                            <span className="font-bold">{formatTime(tc.total_call_seconds)}</span>
-                          </div>
-                          <p className="text-xs text-gray-500">Talk</p>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-orange-600">{tc.file || 0}</p>
+                          <p className="text-xs text-gray-500">File</p>
                         </div>
-                        <div className="text-center p-2 bg-white rounded">
-                          <div className="flex items-center justify-center gap-1 text-orange-600">
-                            <Clock size={14} />
-                            <span className="font-bold">{formatTime(tc.total_idle_seconds)}</span>
-                          </div>
-                          <p className="text-xs text-gray-500">Idle</p>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-indigo-600">{tc.presentations || 0}</p>
+                          <p className="text-xs text-gray-500">Presentations</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-purple-600">{formatTime(tc.total_call_seconds)}</p>
+                          <p className="text-xs text-gray-500">Talk Time</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-teal-600">{(tc.calls_to_lead_rate || 0).toFixed(1)}%</p>
+                          <p className="text-xs text-gray-500">Conversion</p>
                         </div>
                       </div>
 
