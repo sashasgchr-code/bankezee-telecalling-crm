@@ -567,15 +567,30 @@ const AdminReports = () => {
                 <div className="card p-4">
                   <h3 className="text-lg font-semibold text-gray-900 mb-3">Overall Hourly Activity</h3>
                   <div className="overflow-x-auto">
-                    <div className="flex gap-2 min-w-max">
-                      {hourlyReports.overall_hourly.map((h) => (
-                        <div key={h.hour} className="flex flex-col items-center p-2 bg-gray-50 rounded-lg min-w-[60px]">
-                          <span className="text-xs font-medium text-gray-500">{h.hour_label}</span>
-                          <span className="text-lg font-bold text-blue-600">{h.calls}</span>
-                          <span className="text-xs text-gray-400">calls</span>
-                        </div>
-                      ))}
-                    </div>
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-2 px-2 font-medium text-gray-600">Hour</th>
+                          <th className="text-center py-2 px-2 font-medium text-gray-600">Calls</th>
+                          <th className="text-center py-2 px-2 font-medium text-gray-600">Connected</th>
+                          <th className="text-center py-2 px-2 font-medium text-gray-600">Presentations</th>
+                          <th className="text-center py-2 px-2 font-medium text-gray-600">Leads</th>
+                          <th className="text-center py-2 px-2 font-medium text-gray-600">File</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {hourlyReports.overall_hourly.map((h) => (
+                          <tr key={h.hour} className="border-b border-gray-100">
+                            <td className="py-2 px-2 font-medium text-gray-700">{h.hour_label}</td>
+                            <td className="py-2 px-2 text-center text-blue-600 font-semibold">{h.calls}</td>
+                            <td className="py-2 px-2 text-center text-green-600 font-semibold">{h.connected || 0}</td>
+                            <td className="py-2 px-2 text-center text-indigo-600 font-semibold">{h.presentations || 0}</td>
+                            <td className="py-2 px-2 text-center text-teal-600 font-semibold">{h.leads || 0}</td>
+                            <td className="py-2 px-2 text-center text-orange-600 font-semibold">{h.file || 0}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
               )}
@@ -595,7 +610,7 @@ const AdminReports = () => {
                       <div>
                         <p className="font-semibold text-gray-900">{tc.user_name}</p>
                         <p className="text-xs text-gray-500">
-                          {tc.total_calls} calls • {tc.total_connected} connected
+                          {tc.total_calls} calls • {tc.total_connected} connected • {tc.total_presentations || 0} pres • {tc.total_leads || 0} leads • {tc.total_file || 0} file
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -611,24 +626,31 @@ const AdminReports = () => {
                     {expandedHourlyCards[tc.user_id] && (
                       <div className="px-4 pb-4 border-t border-gray-100 pt-3">
                         {tc.hourly_breakdown && tc.hourly_breakdown.length > 0 ? (
-                          <div className="space-y-2">
-                            <p className="text-xs font-semibold text-gray-500 mb-2">HOURLY BREAKDOWN</p>
-                            <div className="grid grid-cols-2 gap-2">
-                              {tc.hourly_breakdown.map((hb) => (
-                                <div key={hb.hour} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
-                                  <span className="text-sm font-medium text-gray-700">{hb.hour_label}</span>
-                                  <div className="flex gap-3 text-xs">
-                                    <span className="text-blue-600">{hb.calls} calls</span>
-                                    {hb.connected > 0 && (
-                                      <span className="text-green-600">{hb.connected} conn</span>
-                                    )}
-                                    {hb.interested > 0 && (
-                                      <span className="text-orange-600">{hb.interested} int</span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="border-b border-gray-200">
+                                  <th className="text-left py-2 px-2 font-medium text-gray-600">Hour</th>
+                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Calls</th>
+                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Connected</th>
+                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Pres</th>
+                                  <th className="text-center py-2 px-2 font-medium text-gray-600">Leads</th>
+                                  <th className="text-center py-2 px-2 font-medium text-gray-600">File</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {tc.hourly_breakdown.map((hb) => (
+                                  <tr key={hb.hour} className="border-b border-gray-100">
+                                    <td className="py-2 px-2 font-medium text-gray-700">{hb.hour_label}</td>
+                                    <td className="py-2 px-2 text-center text-blue-600">{hb.calls}</td>
+                                    <td className="py-2 px-2 text-center text-green-600">{hb.connected || 0}</td>
+                                    <td className="py-2 px-2 text-center text-indigo-600">{hb.presentations || 0}</td>
+                                    <td className="py-2 px-2 text-center text-teal-600">{hb.leads || 0}</td>
+                                    <td className="py-2 px-2 text-center text-orange-600">{hb.file || 0}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         ) : (
                           <p className="text-sm text-gray-500 text-center">No activity for this day</p>
