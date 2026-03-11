@@ -1616,7 +1616,8 @@ async def get_telecaller_reports(
     telecaller_reports = []
     total_calls = 0
     total_leads_generated = 0
-    total_interested = 0
+    total_file = 0
+    total_presentations = 0
     total_call_seconds = 0
     total_idle_seconds = 0
     
@@ -1647,10 +1648,16 @@ async def get_telecaller_reports(
             "status": {"$in": ["leads", "converted"]}
         })
         
-        # Interested leads - status updated to interested within the period
-        user_interested = await db.leads.count_documents({
+        # File leads - status updated to file within the period
+        user_file = await db.leads.count_documents({
             **lead_time_filter,
-            "status": "interested"
+            "status": "file"
+        })
+        
+        # Presentation leads - status updated to presentation within the period
+        user_presentations = await db.leads.count_documents({
+            **lead_time_filter,
+            "status": "presentation"
         })
         
         call_query = {"user_id": user_id}
@@ -1713,7 +1720,8 @@ async def get_telecaller_reports(
             "last_activity": telecaller.get("last_activity"),
             "total_leads": total_leads,
             "leads_generated": user_leads_generated,
-            "interested": user_interested,
+            "file": user_file,
+            "presentations": user_presentations,
             "total_calls": user_total_calls,
             "calls_connected": calls_connected,
             "calls_no_answer": calls_no_answer,
@@ -1731,7 +1739,8 @@ async def get_telecaller_reports(
         
         total_calls += user_total_calls
         total_leads_generated += user_leads_generated
-        total_interested += user_interested
+        total_file += user_file
+        total_presentations += user_presentations
         total_call_seconds += user_call_seconds
         total_idle_seconds += user_idle_seconds
     
@@ -1746,7 +1755,8 @@ async def get_telecaller_reports(
         "total_leads": total_leads_in_period,
         "total_calls": total_calls,
         "total_leads_generated": total_leads_generated,
-        "total_interested": total_interested,
+        "total_file": total_file,
+        "total_presentations": total_presentations,
         "active_telecallers": len([t for t in telecallers if t.get("is_active", True)]),
         "avg_calls_per_user": total_calls / len(telecallers) if telecallers else 0,
         "calls_to_lead_rate": overall_calls_to_lead_rate,
