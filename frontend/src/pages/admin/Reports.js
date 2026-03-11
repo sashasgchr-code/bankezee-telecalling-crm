@@ -59,13 +59,33 @@ const AdminReports = () => {
     }
   }, [hourlyDate]);
 
+  const fetchActivityLogs = useCallback(async (showRefresh = false) => {
+    try {
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      
+      const response = await api.get(`/activity/logs?date=${activityDate}`);
+      setActivityLogs(response.data);
+    } catch (error) {
+      console.error('Error fetching activity logs:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [activityDate]);
+
   useEffect(() => {
     if (activeTab === 'summary') {
       fetchReports();
-    } else {
+    } else if (activeTab === 'hourly') {
       fetchHourlyReports();
+    } else if (activeTab === 'activity') {
+      fetchActivityLogs();
     }
-  }, [activeTab, fetchReports, fetchHourlyReports]);
+  }, [activeTab, fetchReports, fetchHourlyReports, fetchActivityLogs]);
 
   const handleRefresh = () => {
     if (activeTab === 'summary') {
