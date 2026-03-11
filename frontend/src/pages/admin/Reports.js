@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3, Activity, LogIn, LogOut, Coffee } from 'lucide-react';
+import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3, Activity, LogIn, LogOut, Coffee, FileText } from 'lucide-react';
 import api from '../../services/api';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 
 const AdminReports = () => {
   const [reports, setReports] = useState(null);
