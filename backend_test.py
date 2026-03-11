@@ -7,7 +7,7 @@ from datetime import datetime
 import time
 
 class CRMAPITester:
-    def __init__(self, base_url="https://crm-callmate.preview.emergentagent.com"):
+    def __init__(self, base_url="https://leadtrack-mobile-1.preview.emergentagent.com"):
         self.base_url = base_url
         self.token = None
         self.admin_token = None

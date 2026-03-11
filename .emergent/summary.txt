@@ -2,97 +2,83 @@
 The user wants to migrate an existing Expo React Native mobile CRM app, tele-connect-13, into a fully responsive React web application optimized for mobile browsers. This is a platform migration, not a redesign, and the web app must replicate the mobile app's functionality exactly.
 
 **PRODUCT REQUIREMENTS:**
--   **Exact Replication:** Replicate all existing features, workflows, and logic from the mobile app.
-    -   Admin dashboard
-    -   Agent dashboard
-    -   Lead management
-    -   Authentication
-    -   Reports & Filters
-    -   Status updates
--   **Call System:**
-    -   When an agent clicks CALL, trigger the existing backend logic to log the call and open the phone's native dialer using .
-    -   Use browser focus/visibility change to detect when the agent returns to the app after a call.
-    -   Show a post-call modal (Did you complete the call?) with End Call and Not Connected options.
-    -   These options should trigger the existing backend logic for ending calls and setting the correct status (, ).
--   **Idle Time Tracking:** Reuse the existing backend system to calculate idle time between calls for each agent.
--   **Dashboards:** Agent and Admin dashboards must be identical to the mobile app in terms of data displayed.
--   **Technical Requirements:**
-    -   Use existing APIs and database structure.
-    -   All timestamps must be server-generated.
-    -   Mobile-first responsive UI for Chrome/Safari on mobile.
+-   **Exact Replication:** Replicate all existing features, including Admin/Agent dashboards, lead management, authentication, reports, and the call system.
+-   **Call System:** Use  links to open the native dialer and browser visibility to track call status.
+-   **Idle Time Tracking:** Reuse the existing backend logic.
+-   **Dashboards & Reports:** Replicate mobile app data displays.
+-   **Technical Stack:** Use existing APIs and database structure, with a mobile-first responsive UI.
+-   **Iterative Requests:** The user has provided numerous follow-up requests to add new features and refine existing ones, such as changing terminology, adding new reports, and implementing detailed activity tracking.
 
 **User's preferred language**: English
 
 **what currently exists?**
-A fully functional React web application with a Python (FastAPI) backend and MongoDB database has been built. The application replicates the core CRM functionality of the original mobile app, including user authentication (Admin and Telecaller roles), lead management, call logging, and dashboards for both user types. The UI is mobile-responsive. Recent changes have added more detailed reporting, export functionality, and data refresh capabilities.
+A comprehensive and functional React web application with a FastAPI backend and MongoDB database. The application has evolved significantly beyond the initial migration to include:
+-   Admin and Telecaller roles with distinct dashboards and layouts.
+-   Advanced reporting with summary, hourly, and activity log tabs.
+-   Custom date range filters across all dashboards and reports.
+-   Detailed telecaller activity tracking, including login/logout times and a break management system.
+-   Custom metrics like Active Telecallers (based on recent calls) and Unused Data (based on data age and 'new' status).
+-   Terminology has been updated from Leads to Data throughout the application.
 
 **Last working item**:
--   **Last item agent was working:** The agent was in the middle of fixing two related bugs reported by the user concerning data filtering on the dashboards and reports.
-    1.  **Status Breakdown Not Respecting Date Filter:** On the dashboards, the status breakdown statistics were not updating when the date filter was changed. They continued to show cumulative data instead of filtered data.
-    2.  **Incorrect Leads Count:** The Leads Generated count was not decrementing when a lead's status was changed from Lead to something else, resulting in an inflated count.
-
-    The agent identified that the backend aggregation pipelines in  were not correctly applying the date filters. The agent applied a fix to the  function for the Admin Dashboard and was about to apply the same fix to the telecaller stats endpoint.
+-   **Last item agent was working:** The agent had just started to work on a new four-part feature request from the user to refine the reporting functionality.
+    1.  Remove the interested category from all call statistics.
+    2.  Update the hourly report to show columns for , , , and . The user also mentioned file, which requires clarification.
+    3.  Restructure the individual caller-wise statistics on the Summary report to match the detailed layout of the Overall Stats section.
+    4.  Group the activity log report by individual telecallers.
 -   **Status:** IN PROGRESS
 -   **Agent Testing Done:** N
 -   **Which testing method agent to use?** both
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1:** (P0) Dashboard and Report stats do not respect date filters.
--   **Issue 2:** (P0) Leads Generated count is incorrect as it counts historical status instead of the final status.
+-   **Issue 1:** (P0) Implement the user's latest four-part reporting enhancement request.
 
 **Issues Detail:**
 -   **Issue 1:**
-    -   **Attempted fixes:** The agent started fixing this by adding the date filter match stage to the MongoDB aggregation pipeline in the  function in .
+    -   **Attempted fixes:** The agent began by viewing the  function in  to plan the backend changes for the hourly report columns. No code has been modified for this request yet.
     -   **Next debug checklist:**
-        1.  Apply the same date filtering logic to the  function in  to fix the telecaller dashboard.
-        2.  Verify that the  function correctly filters all its stats, including the status breakdown, by the selected .
-        3.  Thoroughly test both Admin and Telecaller dashboards and the Admin Reports page by changing the date filters and ensuring all stats (especially status breakdowns) update correctly.
-    -   **Why fix this issue and what will be achieved with the fix?** To ensure that users can view accurate, time-filtered performance data, which is a critical function for a CRM dashboard.
+        1.  Ask the user for clarification on what file means in the context of the hourly report.
+        2.  **Backend:**
+            -   Modify  in  to add aggregation for leads with  and .
+            -   Modify  in  to remove the interested count and restructure the per-telecaller object to match the  object.
+            -   Modify  in  to return data grouped by .
+        3.  **Frontend ():**
+            -   Update the Activity tab to render logs grouped by telecaller.
+            -   Update the Hourly tab table to include Presentations and Leads columns.
+            -   Redesign the telecaller cards in the Summary tab to display a full breakdown of stats, mirroring the Overall Performance section.
+    -   **Why fix this issue and what will be achieved with the fix?** To provide more granular and better-structured reports that align with the user's specific analytical requirements.
     -   **Status:** IN PROGRESS
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on other issue:** None
-
--   **Issue 2:**
-    -   **Attempted fixes:** This issue is related to Issue 1. The fix involves ensuring that lead counts are based on the *current* status within the filtered date range, which the agent was starting to address.
-    -   **Next debug checklist:**
-        1.  Ensure the aggregation pipeline that counts leads for the reports () only considers leads where the *current* status is 'Lead'.
-        2.  This is not just about filtering by date, but ensuring the count is based on the final state of the leads, not their history. The current implementation of status breakdown seems correct, but the overall Leads Generated count might be calculated differently and needs to be checked.
-    -   **Why fix this issue and what will be achieved with the fix?** This will provide accurate lead generation metrics, preventing managers from seeing inflated numbers.
-    -   **Status:** IN PROGRESS
-    -   **Is recurring issue?** N
-    -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on other issue:** None
+    -   **Blocked on other issue:** User clarification is needed for the term file.
 
 **In progress Task List**:
 None.
 
 **Upcoming and Future Tasks**
-None mentioned by the user.
+-   **P2:** Refactor the monolithic  file into a modular structure using FastAPI's .
+-   **P2:** Refactor the large  component by extracting the logic for each tab into its own sub-component.
 
 **Completed work in this session**
-- **Full App Migration:** Migrated the Expo React Native CRM to a React web application with a FastAPI backend.
-- **Feature Implementation:**
-  - Implemented Admin and Telecaller dashboards, lead management, and user profiles.
-  - Replicated the call logging system using  links and the browser Visibility API.
-- **Reporting Enhancements:**
-  - Added collapsible cards, an Export to CSV button, and extended time filters (Last 3 Months, Lifetime) to the Admin Reports page ().
-  - Added detailed stats for Wrong Number and Not Answering to both Admin and Telecaller dashboards.
-  - Added Idle Time to the overall performance stats on the Admin Reports page.
-- **Bug Fixes & UX Improvements:**
-  - Fixed UI overlap issue on the Login page ().
-  - Fixed a  by making all datetimes timezone-aware in .
-  - Added a startup script in  to create/update admin accounts, resolving login issues on the deployed version.
-  - Added refresh buttons to the Dashboard and Reports pages to manually fetch fresh data.
-  - Fixed an issue where call time was not updating on dashboards by using  for daily sessions in .
-- **User & Auth Management:**
-  - Removed the Admin role option from the registration page.
-  - Added a Change Password feature for all users.
-  - Handled user requests for creating and deleting specific admin accounts.
+-   **Reporting & Dashboard Features:**
+    -   **Date Range Filters:** Implemented custom  and  filters on Admin Dashboard, Telecaller Dashboard, and Admin Reports.
+    -   **Unused Data Metric:** Added a metric to dashboards showing data with 'new' status created *before* the current day.
+    -   **Active Telecallers Logic:** The metric now correctly shows telecallers who have made at least one call within the selected time period.
+    -   **New Report Tabs:** Added Hourly and Activity tabs to the Admin Reports page.
+    -   **Sample Data:** Implemented a script to populate the new reports with sample data for demonstration.
+-   **Telecaller Activity Tracking:**
+    -   Implemented backend and frontend logic for telecallers to log in, log out, and take breaks (with a reason).
+    -   All activities are recorded and displayed in the new Activity tab on the Admin Reports page.
+-   **UI/UX & Terminology:**
+    -   Changed all instances of Leads to Data across the application, including navigation, page titles, and placeholders.
+    -   Moved Presentation from a call outcome to a lead status option.
+    -   Added Not Answering as a filter option on the telecaller's data page.
+-   **Bug Fixes:**
+    -   Fixed a critical bug where dashboard and report statistics did not respect the selected date filters.
 
 **Earlier issues found/mentioned but not fixed**
-None were missed; the last reported issues are currently in progress.
+None.
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** N/A
@@ -106,80 +92,70 @@ None were missed; the last reported issues are currently in progress.
 -   **Frontend:** React, TailwindCSS, 
 -   **Backend:** Python, FastAPI
 -   **Database:** MongoDB
--   **Authentication:** JWT (JSON Web Tokens)
--   **Call Handling:** Utilizes  links to open the native phone dialer and the browser's Page Visibility API to trigger post-call actions.
+-   **Authentication:** JWT
+-   **Real-time UI:** UI components for break tracking and activity logs update based on backend state.
 
 **key DB schema**
--   **users:** 
--   **leads:** 
--   **call_sessions:** 
--   **call_logs:** 
--   **daily_sessions:** 
--   **follow_ups:** 
+-   **activity_logs:** 
+-   **sessions:** 
+-    collection now includes .
 
 **changes in tech stack**
--   The application platform was migrated from **Expo React Native** to a **React (web) + FastAPI** stack.
+-   None.
 
 **All files of reference**
--   : The single backend file containing all API endpoints, database logic, and authentication. It was created by porting logic from the mobile app's backend and has been modified extensively to add features and fix bugs.
--   : The main router for the frontend application.
--   : The admin dashboard component. Recently updated to show more status counts.
--   : The telecaller dashboard component. Recently updated to show call outcomes.
--   : The admin reports page. Heavily modified to add collapsible cards, export functionality, new filters, and more detailed stats.
--   : The login component.
--   : The registration component, modified to remove the Admin role option.
+-   : Heavily modified to add new endpoints and logic for activity tracking, hourly reports, and refined dashboard stats.
+-   : Significantly refactored to support three tabs (Summary, Hourly, Activity), each with its own state management and data fetching.
+-   : Modified to add the UI and logic for the telecaller break and logout functionality.
+-   : Updated to incorporate the date range filter and display the Unused Data metric.
+-   : Updated with the date range filter and Unused Data metric.
 
-**Areas that need refactoring**
--   The  file is over 1500 lines long and contains all backend logic. It should be broken down into a more modular structure using FastAPI's  for different resources (e.g., , , ) and separating business logic into service layers.
+**Areas that need refactoring**:
+-   The  file is now over 1900 lines and critically needs to be broken down into separate routers (e.g., , , ) and service files.
+-   The  component is over 600 lines; the logic for each of the three tabs should be extracted into separate child components to improve readability and maintenance.
 
 **key api endpoints**
--   
--   
--   
--    (for admin)
--    (for telecaller)
--    (for admin reports page)
--    (GET, POST)
--   
--   
--   
--   
+-   **New:**
+    -    (POST): Starts or ends a telecaller's break.
+    -    (POST): Records a telecaller's logout time.
+    -    (GET): Fetches data for the hourly report.
+    -    (GET): Fetches telecaller activity data.
+-   **Modified:**
+    -   All dashboard and report endpoints (, ) now accept optional  and  parameters.
+    -    (POST): Now creates an entry in the  collection.
 
 **Critical Info for New Agent**
--   **Database Distinction:** Be aware that the local preview environment uses a local MongoDB instance (), while the deployed application () uses a separate, provisioned cloud MongoDB. Changes made to the local DB will not affect the deployed version.
--   **Admin Account Sync:** An  function exists in  to create/update a predefined list of admin accounts. This was added to fix password issues on the deployed application. Any changes to admin credentials should be made here to be persistent across deployments.
--   **Date/Time Handling:** All  operations on the backend must be timezone-aware () to prevent  when performing calculations with stored (naive) and current (aware) datetimes. The agent has already fixed this in several places, but be mindful of it if adding new date-related logic.
+-   **Unused Data Logic:** This metric is specifically defined as data items with  that were created *before* the current day. The backend query uses a naive datetime for comparison to handle potential timezone mismatches with data stored in MongoDB.
+-   **Active Telecallers Logic:** This metric is defined as telecallers who have made at least one call ( entry) within the selected time period. It is no longer a simple count of active user accounts.
+-   **Monolithic Backend:** Be aware that all backend logic resides in the single  file. When adding or modifying features, you will need to navigate this large file carefully.
 
 **documents and test reports created in this job**
 -   
--   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Idle time stats should be added to admin/telecaller reports. (COMPLETED)
-2.  **User:** Reports the dashboard  doesn't respect the date filter and the  is incorrect because it counts historical status changes. (IN PROGRESS)
-3.  **User:** After agent fixes idle time, asks for all stats to be shown on the telecaller dashboard. (COMPLETED)
-4.  **User:** Requests wrong number and not answering stats to be added to reports. (COMPLETED)
-5.  **User:** Requests all stats/parameters on the admin reports page for each telecaller. (COMPLETED)
-6.  **User:** Asks why call times aren't reflected in dashboard stats. (COMPLETED)
-7.  **User:** Wants Converted and Lost statuses removed from the admin dashboard. (COMPLETED)
-8.  **User:** After agent provides a screenshot of the dashboard, asks for all statuses to be displayed. (COMPLETED)
-9.  **User:** Reports that the login for  is still invalid on the deployed site. (COMPLETED - Resolved by adding startup script to sync admins)
-10. **User:** Reports that the login for  is showing as invalid. (COMPLETED - Identified as a browser cache/local vs deployed DB issue)
+1.  **User:** Move Presentation from a call outcome to a lead status. (COMPLETED)
+2.  **User:** Active Telecallers should only show people who made at least one call in the selected time period. (COMPLETED)
+3.  **User:** Add a Not Answering filter option to the telecaller view. (COMPLETED)
+4.  **User:** Add date range filters (from/to) to both dashboards and the admin reports page, and make the export button respect the range. (COMPLETED)
+5.  **User:** Add an Unused Data metric. (CLARIFIED & COMPLETED)
+6.  **User:** Clarified that Unused Data should only count data created *before* today that is still in new status. (COMPLETED)
+7.  **User:** Add hourly updates and a separate daily report with caller-wise, hourly updates. (COMPLETED - Implemented as Hourly tab in Reports).
+8.  **User:** Add tracking for login time, call start time, breaks, and logout time. (COMPLETED - Implemented break/login/logout tracking and an Activity tab in Reports).
+9.  **User:** Show sample data in the new hourly and activity tabs. (COMPLETED)
+10. **User:** Request for 4 changes: remove interested from stats, update hourly report columns, make caller stats look like overall stats, and group activity by caller. (IN PROGRESS)
 
 **Project Health Check:**
--   **Broken:**
-    -   Dashboard and report filtering logic is partially broken, as it does not correctly apply date filters to all statistics.
--   **Mocked:**
-    -   None.
+-   **Broken:** None. The application is stable and functional.
+-   **Mocked:** None.
 
 **3rd Party Integrations**
 None.
 
 **Testing status**
--   **Testing agent used after significant changes:** YES (once, early in the process)
+-   **Testing agent used after significant changes:** NO
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None
--   **Known regressions:** The dashboard/report filtering bug can be considered a regression as more features were added.
+-   **Known regressions:** None
 
 **Credentials to test flow:**
 | Role | Email | Password |
@@ -189,4 +165,4 @@ None.
 | **Telecaller**|  |  |
 
 **What agent forgot to execute**
-The agent was in the middle of fixing the date filtering issue. It had patched the  function in  but had not yet applied the same fix to the  function or fully verified the  function. The fix is incomplete.</analysis>
+The agent was at the very beginning of implementing the user's latest four-part request. It has not yet made any code changes and is pending clarification from the user on one of the requirements (file).</analysis>
