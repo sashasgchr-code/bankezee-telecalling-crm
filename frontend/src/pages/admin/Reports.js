@@ -479,6 +479,8 @@ const AdminReports = () => {
             </div>
           </div>
         </>
+      ) : null}
+        </>
       )}
 
       {/* Hourly Tab Content */}
