@@ -338,7 +338,7 @@ const AdminReports = () => {
           }
         }
       });
-      yPos = doc.previousAutoTable.finalY + 10;
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
     // HOURLY REPORT (new page)
@@ -392,7 +392,7 @@ const AdminReports = () => {
             }
           }
         });
-        yPos = doc.previousAutoTable.finalY + 10;
+        yPos = doc.lastAutoTable.finalY + 10;
       }
 
       // Caller-wise Hourly Report
@@ -447,7 +447,7 @@ const AdminReports = () => {
                 }
               }
             });
-            yPos = doc.previousAutoTable.finalY + 8;
+            yPos = doc.lastAutoTable.finalY + 8;
           }
         });
       }
@@ -515,7 +515,7 @@ const AdminReports = () => {
               }
             }
           });
-          yPos = doc.previousAutoTable.finalY + 10;
+          yPos = doc.lastAutoTable.finalY + 10;
         }
       });
     }
