@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar } from 'lucide-react';
+import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3 } from 'lucide-react';
 import api from '../../services/api';
 
 const AdminReports = () => {
   const [reports, setReports] = useState(null);
+  const [hourlyReports, setHourlyReports] = useState(null);
   const [period, setPeriod] = useState('today');
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState({});
@@ -11,6 +12,9 @@ const AdminReports = () => {
   const [showDateRange, setShowDateRange] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [activeTab, setActiveTab] = useState('summary'); // 'summary' or 'hourly'
+  const [hourlyDate, setHourlyDate] = useState(new Date().toISOString().split('T')[0]);
+  const [expandedHourlyCards, setExpandedHourlyCards] = useState({});
 
   const fetchReports = useCallback(async (showRefresh = false) => {
     try {
@@ -35,12 +39,38 @@ const AdminReports = () => {
     }
   }, [period, showDateRange, fromDate, toDate]);
 
+  const fetchHourlyReports = useCallback(async (showRefresh = false) => {
+    try {
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      
+      const response = await api.get(`/reports/hourly?date=${hourlyDate}`);
+      setHourlyReports(response.data);
+    } catch (error) {
+      console.error('Error fetching hourly reports:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [hourlyDate]);
+
   useEffect(() => {
-    fetchReports();
-  }, [fetchReports]);
+    if (activeTab === 'summary') {
+      fetchReports();
+    } else {
+      fetchHourlyReports();
+    }
+  }, [activeTab, fetchReports, fetchHourlyReports]);
 
   const handleRefresh = () => {
-    fetchReports(true);
+    if (activeTab === 'summary') {
+      fetchReports(true);
+    } else {
+      fetchHourlyReports(true);
+    }
   };
 
   const handlePeriodChange = (newPeriod) => {
