@@ -1395,12 +1395,12 @@ async def get_dashboard_stats(
             })
         
         if period == "all_time":
-            total_interested = await db.leads.count_documents({**leads_filter, "status": "interested"})
+            total_file = await db.leads.count_documents({**leads_filter, "status": "file"})
         else:
-            total_interested = await db.leads.count_documents({
+            total_file = await db.leads.count_documents({
                 **leads_filter, 
                 **leads_time_filter,
-                "status": "interested"
+                "status": "file"
             })
         
         # Status breakdown - MUST apply date filter
@@ -1461,7 +1461,7 @@ async def get_dashboard_stats(
             "unused_data": unused_data,
             "connected": connected,
             "total_leads_generated": total_leads_generated,
-            "total_interested": total_interested,
+            "total_file": total_file,
             "leads_by_status": {s["_id"]: s["count"] for s in status_counts},
             "calls_per_user": {c["_id"]: c["count"] for c in calls_per_user},
             "active_telecallers": active_telecallers,
@@ -1497,11 +1497,11 @@ async def get_dashboard_stats(
             my_data = await db.leads.count_documents({"assigned_to": user_id, **leads_created_filter})
         
         if period == "all_time":
-            my_interested = await db.leads.count_documents({"assigned_to": user_id, "status": "interested"})
+            my_file = await db.leads.count_documents({"assigned_to": user_id, "status": "file"})
         else:
-            my_interested = await db.leads.count_documents({
+            my_file = await db.leads.count_documents({
                 "assigned_to": user_id, 
-                "status": "interested",
+                "status": "file",
                 **leads_time_filter
             })
         
@@ -1546,7 +1546,7 @@ async def get_dashboard_stats(
             "my_data": my_data,
             "my_unused_data": my_unused_data,
             "my_connected": len(call_logs),
-            "my_interested": my_interested,
+            "my_file": my_file,
             "my_leads_generated": my_leads_generated,
             "leads_by_status": {s["_id"]: s["count"] for s in status_counts if s["_id"]},
             "call_outcomes": {
