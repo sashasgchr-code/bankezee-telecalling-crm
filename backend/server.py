@@ -219,6 +219,15 @@ async def login(credentials: UserLogin):
         {"$set": {"last_login": now, "last_activity": now}}
     )
     
+    # Record login in activity logs
+    await db.activity_logs.insert_one({
+        "user_id": str(user["_id"]),
+        "user_name": user.get("name", ""),
+        "action": "login",
+        "timestamp": now,
+        "date": today
+    })
+    
     if user.get("role") == "telecaller":
         existing_session = await db.daily_sessions.find_one({
             "user_id": str(user["_id"]),
