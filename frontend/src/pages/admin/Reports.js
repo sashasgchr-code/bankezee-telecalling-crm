@@ -317,13 +317,14 @@ const AdminReports = () => {
         bodyStyles: { fontSize: 7 },
         columnStyles: {
           0: { cellWidth: 32 },
-          1: { cellWidth: 16 },
+          1: { cellWidth: 14 },
           2: { cellWidth: 12, halign: 'center' },
           3: { cellWidth: 12, halign: 'center' },
-          4: { cellWidth: 15, halign: 'center' },
-          5: { cellWidth: 15, halign: 'center' },
-          6: { cellWidth: 22, halign: 'center' },
+          4: { cellWidth: 12, halign: 'center' },
+          5: { cellWidth: 12, halign: 'center' },
+          6: { cellWidth: 18, halign: 'center' },
           7: { cellWidth: 18, halign: 'center' },
+          8: { cellWidth: 16, halign: 'center' },
         },
         didParseCell: function(data) {
           if (data.section === 'body') {
@@ -336,7 +337,8 @@ const AdminReports = () => {
             if (data.column.index === 4) data.cell.styles.textColor = colors.orange;
             if (data.column.index === 5) data.cell.styles.textColor = colors.indigo;
             if (data.column.index === 6) data.cell.styles.textColor = colors.purple;
-            if (data.column.index === 7) data.cell.styles.textColor = colors.teal;
+            if (data.column.index === 7) data.cell.styles.textColor = colors.red;
+            if (data.column.index === 8) data.cell.styles.textColor = colors.teal;
           }
         }
       });
