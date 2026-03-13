@@ -80,26 +80,24 @@ const TelecallerDashboard = () => {
     { id: 'all_time', label: 'All Time' },
   ];
 
-  // All statuses to display
+  // All statuses to display (Update statuses shown when connected)
   const allStatuses = [
     { key: 'new', label: 'New', color: '#4CAF50' },
-    { key: 'contacted', label: 'Contacted', color: '#2196F3' },
-    { key: 'file', label: 'File', color: '#FF9800' },
     { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
     { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
-    { key: 'leads', label: 'Leads', color: '#00C853' },
-    { key: 'not_answering', label: 'Not Answering', color: '#FF5722' },
-    { key: 'wrong_number', label: 'Wrong Number', color: '#F44336' },
     { key: 'presentation', label: 'Presentation', color: '#673AB7' },
+    { key: 'leads', label: 'Lead', color: '#00C853' },
+    { key: 'file', label: 'File', color: '#FF9800' },
   ];
 
   // Call outcomes to display
   const callOutcomes = [
     { key: 'connected', label: 'Connected', color: '#4CAF50' },
-    { key: 'no_answer', label: 'No Answer', color: '#FF9800' },
-    { key: 'wrong_number', label: 'Wrong Number', color: '#F44336' },
-    { key: 'busy', label: 'Busy', color: '#9E9E9E' },
-    { key: 'voicemail', label: 'Voicemail', color: '#2196F3' },
+    { key: 'not_connecting', label: 'Not Connecting', color: '#9E9E9E' },
+    { key: 'no_answer', label: 'No Answer', color: '#F44336' },
+    { key: 'busy', label: 'Busy', color: '#FF9800' },
+    { key: 'wrong_number', label: 'Wrong Number', color: '#E91E63' },
+    { key: 'voicemail', label: 'Voicemail', color: '#9C27B0' },
   ];
 
   return (
