@@ -610,23 +610,32 @@ const AdminReports = () => {
       doc.text('Daily login, break, and logout times', pageWidth - 14, 15, { align: 'right' });
       yPos = 30;
 
-      // Build table data - one row per telecaller
+      // Build table data - one row per telecaller, showing ALL breaks
       const activityTableData = activityLogs.map(group => {
         const loginTime = group.activities?.find(a => a.action === 'login')?.timestamp;
-        const breakStart = group.activities?.find(a => a.action === 'break_start')?.timestamp;
-        const breakEnd = group.activities?.find(a => a.action === 'break_end')?.timestamp;
         const logoutTime = group.activities?.find(a => a.action === 'logout')?.timestamp;
+        // Get ALL break starts and ends
+        const breakStarts = group.activities?.filter(a => a.action === 'break_start') || [];
+        const breakEnds = group.activities?.filter(a => a.action === 'break_end') || [];
         
         const formatTime = (ts) => {
           if (!ts) return '-';
           return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
         };
+
+        // Format multiple breaks as comma-separated times
+        const breakStartTimes = breakStarts.length > 0 
+          ? breakStarts.map(bs => formatTime(bs.timestamp)).join(', ') 
+          : '-';
+        const breakEndTimes = breakEnds.length > 0 
+          ? breakEnds.map(be => formatTime(be.timestamp)).join(', ') 
+          : '-';
         
         return [
           group.user_name,
           formatTime(loginTime),
-          formatTime(breakStart),
-          formatTime(breakEnd),
+          breakStartTimes,
+          breakEndTimes,
           formatTime(logoutTime)
         ];
       });
