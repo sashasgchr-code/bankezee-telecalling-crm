@@ -1320,15 +1320,25 @@ async def delete_follow_up(follow_up_id: str, current_user: dict = Depends(get_c
 
 @router.get("/statuses")
 async def get_statuses(current_user: dict = Depends(get_current_user)):
+    # Update statuses - used when call is connected
     return [
-        {"id": "new", "name": "New", "color": "#4CAF50"},
-        {"id": "contacted", "name": "Contacted", "color": "#2196F3"},
-        {"id": "file", "name": "File", "color": "#FF9800"},
         {"id": "not_interested", "name": "Not Interested", "color": "#9E9E9E"},
         {"id": "follow_up", "name": "Follow Up", "color": "#9C27B0"},
-        {"id": "converted", "name": "Converted", "color": "#4CAF50"},
-        {"id": "lost", "name": "Lost", "color": "#F44336"},
-        {"id": "leads", "name": "Leads", "color": "#4CAF50"}
+        {"id": "presentation", "name": "Presentation", "color": "#673AB7"},
+        {"id": "leads", "name": "Lead", "color": "#00C853"},
+        {"id": "file", "name": "File", "color": "#FF9800"}
+    ]
+
+@router.get("/call-outcomes")
+async def get_call_outcomes(current_user: dict = Depends(get_current_user)):
+    # Call outcomes
+    return [
+        {"id": "connected", "name": "Connected", "color": "#4CAF50"},
+        {"id": "not_connecting", "name": "Not Connecting", "color": "#9E9E9E"},
+        {"id": "no_answer", "name": "No Answer", "color": "#F44336"},
+        {"id": "busy", "name": "Busy", "color": "#FF9800"},
+        {"id": "wrong_number", "name": "Wrong Number", "color": "#E91E63"},
+        {"id": "voicemail", "name": "Voicemail", "color": "#9C27B0"}
     ]
 
 # ===================== DASHBOARD & REPORTING =====================
