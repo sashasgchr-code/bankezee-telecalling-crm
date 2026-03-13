@@ -12,73 +12,79 @@ The user wants to migrate an existing Expo React Native mobile CRM app, tele-con
 **User's preferred language**: English
 
 **what currently exists?**
-A comprehensive and functional React web application with a FastAPI backend and MongoDB database. The application has evolved significantly beyond the initial migration to include:
+A comprehensive and functional React web application with a FastAPI backend and MongoDB database. The application has evolved significantly to include:
 -   Admin and Telecaller roles with distinct dashboards and layouts.
--   Advanced reporting with summary, hourly, and activity log tabs.
--   Custom date range filters across all dashboards and reports.
--   Detailed telecaller activity tracking, including login/logout times and a break management system.
--   Custom metrics like Active Telecallers (based on recent calls) and Unused Data (based on data age and 'new' status).
--   Terminology has been updated from Leads to Data throughout the application.
+-   Advanced reporting for Summary, Hourly, and Activity logs, with custom date range filters.
+-   All reports can be exported to CSV or a color-coded, well-formatted PDF.
+-   The Hourly and Activity reports use a matrix/tabular format, showing telecallers in rows and time/activity types in columns.
+-   Detailed telecaller activity tracking, including login/logout times and a break management system. All timestamps are displayed in IST (UTC+5:30).
+-   Custom metrics like Idle Time, File Ratio, Active Telecallers, and Unused Data.
+-   A refined call logging system with specific Call Outcomes and Update Status options, where the status update is only available for Connected calls.
 
 **Last working item**:
--   **Last item agent was working:** The agent had just started to work on a new four-part feature request from the user to refine the reporting functionality.
-    1.  Remove the interested category from all call statistics.
-    2.  Update the hourly report to show columns for , , , and . The user also mentioned file, which requires clarification.
-    3.  Restructure the individual caller-wise statistics on the Summary report to match the detailed layout of the Overall Stats section.
-    4.  Group the activity log report by individual telecallers.
+-   **Last item agent was working:** The agent was addressing the user's request to fix incorrect break time capturing and remove the Break Reason column from the Activity Log. The agent has removed the column from the UI on the Reports page but has not yet removed it from the PDF export. The root cause of the incorrect break time capture has not been fully diagnosed or fixed.
 -   **Status:** IN PROGRESS
 -   **Agent Testing Done:** N
 -   **Which testing method agent to use?** both
 -   **User Testing Done:** N
 
 **All Pending/In progress Issue list**:
--   **Issue 1:** (P0) Implement the user's latest four-part reporting enhancement request.
+-   **Issue 1:** (P0) Telecaller break times are not being captured or displayed correctly in the Activity Log report.
+-   **Issue 2:** (P1) The Break Reason column needs to be removed from the PDF export of the Activity Log.
 
 **Issues Detail:**
 -   **Issue 1:**
-    -   **Attempted fixes:** The agent began by viewing the  function in  to plan the backend changes for the hourly report columns. No code has been modified for this request yet.
+    -   **Attempted fixes:** The agent reviewed the backend code ( and activity log endpoints in ) and concluded it seemed correct. The agent suspected a frontend issue in how break activities are found and displayed in  but did not complete the investigation. The timezone issue was fixed globally, which may have been part of the problem, but the user's report came *after* that fix.
     -   **Next debug checklist:**
-        1.  Ask the user for clarification on what file means in the context of the hourly report.
-        2.  **Backend:**
-            -   Modify  in  to add aggregation for leads with  and .
-            -   Modify  in  to remove the interested count and restructure the per-telecaller object to match the  object.
-            -   Modify  in  to return data grouped by .
-        3.  **Frontend ():**
-            -   Update the Activity tab to render logs grouped by telecaller.
-            -   Update the Hourly tab table to include Presentations and Leads columns.
-            -   Redesign the telecaller cards in the Summary tab to display a full breakdown of stats, mirroring the Overall Performance section.
-    -   **Why fix this issue and what will be achieved with the fix?** To provide more granular and better-structured reports that align with the user's specific analytical requirements.
+        1.  **Backend ():** Re-verify the logic in the  endpoint. Add print statements or logging to trace the  and  actions, ensuring they are saved correctly to the  collection.
+        2.  **Backend ():** Check the  endpoint. Ensure it fetches  and  activities correctly for each user.
+        3.  **Frontend ():** In the  tab component, inspect the  data received from the backend. Verify that the  logic correctly identifies 'break_start' and 'break_end' activities for each telecaller to display in the table.
+    -   **Why fix this issue and what will be achieved with the fix?** To ensure accurate tracking and reporting of telecaller productivity and adherence.
     -   **Status:** IN PROGRESS
     -   **Is recurring issue?** N
     -   **Should Test frontend/backend/both after fix?** Both
-    -   **Blocked on other issue:** User clarification is needed for the term file.
+    -   **Blocked on other issue:** None
+-   **Issue 2:**
+    -   **Attempted fixes:** The agent removed the Break Reason column from the frontend UI table in the  tab within .
+    -   **Next debug checklist:**
+        1.  **Frontend ():** Locate the  function.
+        2.  Find the section that generates the Activity Log table for the PDF.
+        3.  Remove the Break Reason column from the  and  definitions of the  call for the activity log.
+    -   **Why fix this issue and what will be achieved with the fix?** To align the PDF report with the updated UI and user requirements.
+    -   **Status:** IN PROGRESS
+    -   **Is recurring issue?** N
+    -   **Should Test frontend/backend/both after fix?** Frontend
+    -   **Blocked on other issue:** None
 
 **In progress Task List**:
 None.
 
 **Upcoming and Future Tasks**
--   **P2:** Refactor the monolithic  file into a modular structure using FastAPI's .
--   **P2:** Refactor the large  component by extracting the logic for each tab into its own sub-component.
+-   **P1:** Refactor the monolithic  file into a modular structure using FastAPI's  (e.g., , , ).
+-   **P1:** Refactor the large  component by extracting the logic for each tab (Summary, Hourly, Activity) into its own sub-component.
+-   **P2:** Dark mode toggle.
+-   **P3:** WhatsApp integration.
+-   **P3:** SMS notifications for follow-ups.
 
 **Completed work in this session**
--   **Reporting & Dashboard Features:**
-    -   **Date Range Filters:** Implemented custom  and  filters on Admin Dashboard, Telecaller Dashboard, and Admin Reports.
-    -   **Unused Data Metric:** Added a metric to dashboards showing data with 'new' status created *before* the current day.
-    -   **Active Telecallers Logic:** The metric now correctly shows telecallers who have made at least one call within the selected time period.
-    -   **New Report Tabs:** Added Hourly and Activity tabs to the Admin Reports page.
-    -   **Sample Data:** Implemented a script to populate the new reports with sample data for demonstration.
--   **Telecaller Activity Tracking:**
-    -   Implemented backend and frontend logic for telecallers to log in, log out, and take breaks (with a reason).
-    -   All activities are recorded and displayed in the new Activity tab on the Admin Reports page.
--   **UI/UX & Terminology:**
-    -   Changed all instances of Leads to Data across the application, including navigation, page titles, and placeholders.
-    -   Moved Presentation from a call outcome to a lead status option.
-    -   Added Not Answering as a filter option on the telecaller's data page.
--   **Bug Fixes:**
-    -   Fixed a critical bug where dashboard and report statistics did not respect the selected date filters.
+-   **Reporting Overhaul:**
+    -   Replaced Interested status with a new File status across all stats, reports, and UI.
+    -   Redesigned the Hourly Report into a compact matrix with callers as rows, hours as column groups, and  (Calls/Presentations/Leads/File) as sub-columns.
+    -   Redesigned the Activity Log into a tabular format with callers as rows and activity types (Login, Break, Logout) as columns.
+-   **PDF Export:**
+    -   Implemented PDF export functionality for reports using  and .
+    -   Engineered the PDF export to exactly replicate the complex, color-coded matrix designs of the Hourly and Activity reports from the UI.
+-   **Metric & Logic Changes:**
+    -   Implemented Idle Time calculation () and added it to all relevant dashboards, reports, and PDFs.
+    -   Changed the Conversion Rate metric to File Ratio () throughout the application.
+-   **Call System Refinement:**
+    -   Updated Call Outcomes and Update Status options as per new user requirements.
+    -   Implemented conditional logic in the  to only show the Update Status field when the call outcome is Connected.
+-   **Bug Fixes & Technical Debt:**
+    -   **Timezone Fix:** Resolved a critical bug where reports showed UTC time instead of local time. A global IST (UTC+5:30) conversion was implemented on the backend for all timestamps.
 
 **Earlier issues found/mentioned but not fixed**
-None.
+The core issue of telecaller activity is not capturing break times correctly is still outstanding, as noted in the pending issues list.
 
 **Known issue recurrence from previous fork**
 -   **Issue recurrence in previous fork:** N/A
@@ -89,73 +95,78 @@ None.
 
 
 **Key Technical Concepts**
--   **Frontend:** React, TailwindCSS, 
+-   **Frontend:** React, TailwindCSS, , , 
 -   **Backend:** Python, FastAPI
 -   **Database:** MongoDB
 -   **Authentication:** JWT
--   **Real-time UI:** UI components for break tracking and activity logs update based on backend state.
 
 **key DB schema**
--   **activity_logs:** 
--   **sessions:** 
--    collection now includes .
+-   **activity_logs:**  (The  field is now obsolete).
+-   **sessions:** .
+-   **call_logs:** 
 
 **changes in tech stack**
--   None.
+-   **Frontend:** Added  and  for PDF generation.
 
 **All files of reference**
--   : Heavily modified to add new endpoints and logic for activity tracking, hourly reports, and refined dashboard stats.
--   : Significantly refactored to support three tabs (Summary, Hourly, Activity), each with its own state management and data fetching.
--   : Modified to add the UI and logic for the telecaller break and logout functionality.
--   : Updated to incorporate the date range filter and display the Unused Data metric.
--   : Updated with the date range filter and Unused Data metric.
+-   : All backend logic resides here; heavily modified for new metrics, timezone fixes, and reporting logic.
+-   : Contains all logic for the three report tabs (Summary, Hourly, Activity) and the PDF export functionality. It is extremely large and complex.
+-   : Updated with new call outcomes and conditional UI logic.
+-   : Updated with new status/outcome keys and colors.
+-   The following files were updated to reflect the new status/metric terminology:
+    -   
+    -   
+    -   
+    -   
+    -   
 
 **Areas that need refactoring**:
--   The  file is now over 1900 lines and critically needs to be broken down into separate routers (e.g., , , ) and service files.
--   The  component is over 600 lines; the logic for each of the three tabs should be extracted into separate child components to improve readability and maintenance.
+-   **CRITICAL:**  is over 2000 lines. It must be broken down into separate routers and service files to be maintainable.
+-   **CRITICAL:**  is over 1300 lines and handles logic for three distinct tabs plus complex PDF generation. It should be split into smaller, manageable components (e.g., , , ,  hook).
 
 **key api endpoints**
--   **New:**
-    -    (POST): Starts or ends a telecaller's break.
-    -    (POST): Records a telecaller's logout time.
-    -    (GET): Fetches data for the hourly report.
-    -    (GET): Fetches telecaller activity data.
--   **Modified:**
-    -   All dashboard and report endpoints (, ) now accept optional  and  parameters.
-    -    (POST): Now creates an entry in the  collection.
+-   No new endpoints were created, but many were significantly modified to return new metrics (, ), different data structures (grouped activity logs), and handle timezone conversions.
+    -   
+    -   
+    -   
+    -    (PUT)
+    -   
 
 **Critical Info for New Agent**
--   **Unused Data Logic:** This metric is specifically defined as data items with  that were created *before* the current day. The backend query uses a naive datetime for comparison to handle potential timezone mismatches with data stored in MongoDB.
--   **Active Telecallers Logic:** This metric is defined as telecallers who have made at least one call ( entry) within the selected time period. It is no longer a simple count of active user accounts.
--   **Monolithic Backend:** Be aware that all backend logic resides in the single  file. When adding or modifying features, you will need to navigate this large file carefully.
+-   **Timezone is IST:** All timestamps sent from the backend are now converted to IST (UTC+5:30). A global helper  and constant  were added to  to handle this. The frontend should expect IST-formatted strings.
+-   **New Metrics:**  is calculated as (Login Duration - Talk Time - Break Time). Conversion Rate has been replaced by  ().
+-   **Complex Report Components:** The Hourly and Activity reports in  are complex matrix-style tables. The PDF generation code for these is tightly coupled and mirrors this complexity. Be cautious when editing.
+-   **Production Environment:** The user has a live version of this app. If they report an issue, first clarify if it's on the dev environment you have access to or their production URL. You cannot access or debug the production environment.
 
 **documents and test reports created in this job**
+-    (updated)
 -   
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User:** Move Presentation from a call outcome to a lead status. (COMPLETED)
-2.  **User:** Active Telecallers should only show people who made at least one call in the selected time period. (COMPLETED)
-3.  **User:** Add a Not Answering filter option to the telecaller view. (COMPLETED)
-4.  **User:** Add date range filters (from/to) to both dashboards and the admin reports page, and make the export button respect the range. (COMPLETED)
-5.  **User:** Add an Unused Data metric. (CLARIFIED & COMPLETED)
-6.  **User:** Clarified that Unused Data should only count data created *before* today that is still in new status. (COMPLETED)
-7.  **User:** Add hourly updates and a separate daily report with caller-wise, hourly updates. (COMPLETED - Implemented as Hourly tab in Reports).
-8.  **User:** Add tracking for login time, call start time, breaks, and logout time. (COMPLETED - Implemented break/login/logout tracking and an Activity tab in Reports).
-9.  **User:** Show sample data in the new hourly and activity tabs. (COMPLETED)
-10. **User:** Request for 4 changes: remove interested from stats, update hourly report columns, make caller stats look like overall stats, and group activity by caller. (IN PROGRESS)
+1.  **User:** Redesign the hourly report to have one row per caller, with metrics (Calls, Presentations, Leads, Files) as sub-columns for each hour. (COMPLETED)
+2.  **User:** times are not capturing correctly - Provided screenshots showing a timezone mismatch between activity logs and hourly reports. (COMPLETED - Fixed by converting all backend timestamps to IST).
+3.  **User:** Include the new matrix-style hourly report in the PDF export. (COMPLETED)
+4.  **User:** the time should be according to IST - Follow-up to ensure all times are fixed. (COMPLETED - A global fix was applied).
+5.  **User:** Calculate and display idle time (Login - Talk Time) everywhere talk time is shown. (COMPLETED - Implemented as Login - Talk Time - Break Time).
+6.  **User:** Change the Conversion Rate to Call to File Ratio. (COMPLETED)
+7.  **User:** Make the hourly report in the PDF export match the exact design of the UI. (COMPLETED)
+8.  **User:** Redesign the activity log into a tabular format, with callers as rows and activities as columns. (COMPLETED)
+9.  **User:** Update the call outcomes and statuses, and only show the status field when a call is connected. (COMPLETED)
+10. **User:** telecaller activity is not capturing break times correctly and also remove the reson for break column, just times are fine (IN PROGRESS)
 
 **Project Health Check:**
--   **Broken:** None. The application is stable and functional.
+-   **Broken:** The capture and display of telecaller break times in the Activity Log is reported as incorrect by the user and needs investigation.
 -   **Mocked:** None.
 
 **3rd Party Integrations**
-None.
+-   
+-   
 
 **Testing status**
--   **Testing agent used after significant changes:** NO
+-   **Testing agent used after significant changes:** YES, but only after the initial set of reporting changes. Numerous features (PDF export, Idle Time, metric changes, UI redesigns, timezone fix) were added afterward and tested manually via screenshots.
 -   **Troubleshoot agent used after agent stuck in loop:** NO
 -   **Test files created:** None
--   **Known regressions:** None
+-   **Known regressions:** None confirmed, but the user-reported break time issue might be a regression.
 
 **Credentials to test flow:**
 | Role | Email | Password |
@@ -165,4 +176,4 @@ None.
 | **Telecaller**|  |  |
 
 **What agent forgot to execute**
-The agent was at the very beginning of implementing the user's latest four-part request. It has not yet made any code changes and is pending clarification from the user on one of the requirements (file).</analysis>
+The agent was in the middle of a two-part task. It removed the Break Reason column from the live UI but did not remove it from the PDF export code in . More importantly, it did not fully diagnose or fix the user's primary complaint that break times are being captured incorrectly.</analysis>
