@@ -1006,10 +1006,11 @@ const AdminReports = () => {
                         <div className="grid grid-cols-3 gap-2">
                           {[
                             { key: 'calls_connected', label: 'Connected', color: '#4CAF50' },
-                            { key: 'calls_no_answer', label: 'No Answer', color: '#FF9800' },
-                            { key: 'calls_wrong_number', label: 'Wrong Number', color: '#F44336' },
-                            { key: 'calls_busy', label: 'Busy', color: '#9E9E9E' },
-                            { key: 'calls_voicemail', label: 'Voicemail', color: '#2196F3' },
+                            { key: 'calls_not_connecting', label: 'Not Connecting', color: '#9E9E9E' },
+                            { key: 'calls_no_answer', label: 'No Answer', color: '#F44336' },
+                            { key: 'calls_busy', label: 'Busy', color: '#FF9800' },
+                            { key: 'calls_wrong_number', label: 'Wrong Number', color: '#E91E63' },
+                            { key: 'calls_voicemail', label: 'Voicemail', color: '#9C27B0' },
                           ].map((outcome) => (
                             <div 
                               key={outcome.key}
