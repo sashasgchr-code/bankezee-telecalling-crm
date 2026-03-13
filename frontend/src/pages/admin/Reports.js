@@ -1212,39 +1212,101 @@ const AdminReports = () => {
           ) : (
             <div className="space-y-4">
               {activityLogs.length > 0 ? (
-                activityLogs.map((group) => (
-                  <div key={group.user_id} className="card">
-                    <div className="p-4 border-b border-gray-100 bg-gray-50">
-                      <h3 className="text-lg font-semibold text-gray-900">{group.user_name}</h3>
-                      <p className="text-xs text-gray-500">{group.activities?.length || 0} activities</p>
-                    </div>
-                    
-                    <div className="divide-y divide-gray-100">
-                      {group.activities && group.activities.map((log, index) => (
-                        <div key={log.id || index} className="p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              log.action === 'login' ? 'bg-green-100' :
-                              log.action === 'logout' ? 'bg-red-100' :
-                              log.action.includes('break') ? 'bg-orange-100' : 'bg-gray-100'
-                            }`}>
-                              {getActionIcon(log.action)}
-                            </div>
-                            <div>
-                              <p className="font-medium text-gray-900">{getActionLabel(log.action)}</p>
-                              {log.reason && (
-                                <p className="text-xs text-gray-400">Reason: {log.reason}</p>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-medium text-gray-900">{formatTimestamp(log.timestamp)}</p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                <div className="card overflow-hidden">
+                  <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-4 py-3">
+                    <h3 className="text-lg font-semibold text-white">Telecaller Activity Log</h3>
+                    <p className="text-purple-100 text-xs mt-1">Daily login, break, and logout times</p>
                   </div>
-                ))
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="text-left py-3 px-4 font-bold text-gray-800 border-b-2 border-gray-300 sticky left-0 bg-gray-100 min-w-[150px] z-10">
+                            Telecaller
+                          </th>
+                          <th className="text-center py-3 px-4 font-bold text-green-700 border-b-2 border-gray-300 min-w-[100px]">
+                            <div className="flex items-center justify-center gap-1">
+                              <LogIn size={14} />
+                              Login
+                            </div>
+                          </th>
+                          <th className="text-center py-3 px-4 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[100px]">
+                            <div className="flex items-center justify-center gap-1">
+                              <Coffee size={14} />
+                              Break Start
+                            </div>
+                          </th>
+                          <th className="text-center py-3 px-4 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[100px]">
+                            <div className="flex items-center justify-center gap-1">
+                              <Coffee size={14} />
+                              Break End
+                            </div>
+                          </th>
+                          <th className="text-center py-3 px-4 font-bold text-red-600 border-b-2 border-gray-300 min-w-[100px]">
+                            <div className="flex items-center justify-center gap-1">
+                              <LogOut size={14} />
+                              Logout
+                            </div>
+                          </th>
+                          <th className="text-center py-3 px-4 font-bold text-gray-700 border-b-2 border-gray-300 min-w-[100px]">
+                            Break Reason
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activityLogs.map((group, idx) => {
+                          // Extract activity times for this user
+                          const loginTime = group.activities?.find(a => a.action === 'login')?.timestamp;
+                          const breakStart = group.activities?.find(a => a.action === 'break_start')?.timestamp;
+                          const breakEnd = group.activities?.find(a => a.action === 'break_end')?.timestamp;
+                          const logoutTime = group.activities?.find(a => a.action === 'logout')?.timestamp;
+                          const breakReason = group.activities?.find(a => a.action === 'break_start')?.reason;
+                          
+                          return (
+                            <tr key={group.user_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50 transition-colors`}>
+                              <td className={`py-3 px-4 font-semibold text-gray-900 sticky left-0 z-10 border-b border-gray-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                {group.user_name}
+                              </td>
+                              <td className="py-3 px-4 text-center border-b border-gray-200">
+                                {loginTime ? (
+                                  <span className="inline-block px-3 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
+                                    {formatTimestamp(loginTime)}
+                                  </span>
+                                ) : <span className="text-gray-300">-</span>}
+                              </td>
+                              <td className="py-3 px-4 text-center border-b border-gray-200">
+                                {breakStart ? (
+                                  <span className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
+                                    {formatTimestamp(breakStart)}
+                                  </span>
+                                ) : <span className="text-gray-300">-</span>}
+                              </td>
+                              <td className="py-3 px-4 text-center border-b border-gray-200">
+                                {breakEnd ? (
+                                  <span className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
+                                    {formatTimestamp(breakEnd)}
+                                  </span>
+                                ) : <span className="text-gray-300">-</span>}
+                              </td>
+                              <td className="py-3 px-4 text-center border-b border-gray-200">
+                                {logoutTime ? (
+                                  <span className="inline-block px-3 py-1 rounded-full bg-red-100 text-red-700 font-semibold text-xs">
+                                    {formatTimestamp(logoutTime)}
+                                  </span>
+                                ) : <span className="text-gray-300">-</span>}
+                              </td>
+                              <td className="py-3 px-4 text-center border-b border-gray-200">
+                                {breakReason ? (
+                                  <span className="text-gray-600 text-xs">{breakReason}</span>
+                                ) : <span className="text-gray-300">-</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               ) : (
                 <div className="card p-8 text-center">
                   <Activity size={32} className="mx-auto text-gray-300 mb-2" />
