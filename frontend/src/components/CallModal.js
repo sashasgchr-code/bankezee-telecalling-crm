@@ -173,30 +173,32 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
             />
           </div>
 
-          {/* Follow Up */}
-          <div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={scheduleFollowUp}
-                onChange={(e) => setScheduleFollowUp(e.target.checked)}
-                className="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500"
-              />
-              <span className="text-gray-700 font-medium">Schedule Follow-up</span>
-            </label>
-            
-            {scheduleFollowUp && (
-              <div className="mt-3">
+          {/* Follow Up - Only shown when call is Connected */}
+          {outcome === 'connected' && (
+            <div>
+              <label className="flex items-center gap-2 cursor-pointer">
                 <input
-                  type="datetime-local"
-                  value={followUpDate}
-                  onChange={(e) => setFollowUpDate(e.target.value)}
-                  className="input-field"
-                  data-testid="follow-up-date"
+                  type="checkbox"
+                  checked={scheduleFollowUp}
+                  onChange={(e) => setScheduleFollowUp(e.target.checked)}
+                  className="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500"
                 />
-              </div>
-            )}
-          </div>
+                <span className="text-gray-700 font-medium">Schedule Follow-up</span>
+              </label>
+              
+              {scheduleFollowUp && (
+                <div className="mt-3">
+                  <input
+                    type="datetime-local"
+                    value={followUpDate}
+                    onChange={(e) => setFollowUpDate(e.target.value)}
+                    className="input-field"
+                    data-testid="follow-up-date"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Submit Button */}
           <button
