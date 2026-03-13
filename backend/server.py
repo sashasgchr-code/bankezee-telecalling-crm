@@ -1710,6 +1710,7 @@ async def get_telecaller_reports(
         
         # Count call outcomes
         calls_connected = sum(1 for log in user_call_logs if log.get("outcome") == "connected")
+        calls_not_connecting = sum(1 for log in user_call_logs if log.get("outcome") == "not_connecting")
         calls_no_answer = sum(1 for log in user_call_logs if log.get("outcome") == "no_answer")
         calls_wrong_number = sum(1 for log in user_call_logs if log.get("outcome") == "wrong_number")
         calls_busy = sum(1 for log in user_call_logs if log.get("outcome") == "busy")
