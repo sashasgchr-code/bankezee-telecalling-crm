@@ -126,7 +126,7 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
                     outcome === o.id
                       ? 'bg-green-600 text-white border-green-600'
-                      : 'border-green-600 text-green-600 hover:bg-green-50'
+                      : 'border-gray-300 text-gray-600 hover:bg-gray-50'
                   }`}
                 >
                   <o.icon size={16} />
@@ -136,28 +136,30 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
             </div>
           </div>
 
-          {/* Status Update */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Update Status</label>
-            <div className="flex flex-wrap gap-2">
-              {statuses.map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setNewStatus(status)}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
-                    newStatus === status
-                      ? 'text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
-                  style={{
-                    backgroundColor: newStatus === status ? StatusColors[status] : undefined
-                  }}
-                >
-                  {StatusLabels[status] || status.replace('_', ' ')}
-                </button>
-              ))}
+          {/* Status Update - Only shown when call is Connected */}
+          {outcome === 'connected' && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Update Status</label>
+              <div className="flex flex-wrap gap-2">
+                {updateStatuses.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setNewStatus(status)}
+                    className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
+                      newStatus === status
+                        ? 'text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                    style={{
+                      backgroundColor: newStatus === status ? StatusColors[status] : undefined
+                    }}
+                  >
+                    {StatusLabels[status] || status.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Notes */}
           <div>
