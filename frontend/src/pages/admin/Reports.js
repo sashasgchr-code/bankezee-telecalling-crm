@@ -592,71 +592,114 @@ const AdminReports = () => {
       }
     }
 
-    // ACTIVITY LOG (new page)
+    // ACTIVITY LOG (new page) - Tabular format matching UI
     if (activityLogs && activityLogs.length > 0) {
       doc.addPage();
       yPos = 15;
 
       // Header for activity log
       doc.setFillColor(...colors.purple);
-      doc.rect(0, 0, pageWidth, 20, 'F');
+      doc.rect(0, 0, pageWidth, 22, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
+      doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Activity Log - ${activityDate}`, pageWidth / 2, 13, { align: 'center' });
+      doc.text('Telecaller Activity Log', 14, 12);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Date: ${activityDate}`, 14, 18);
+      doc.text('Daily login, break, and logout times', pageWidth - 14, 15, { align: 'right' });
       yPos = 30;
 
-      activityLogs.forEach(group => {
-        if (yPos > 260) {
-          doc.addPage();
-          yPos = 15;
-        }
+      // Build table data - one row per telecaller
+      const activityTableData = activityLogs.map(group => {
+        const loginTime = group.activities?.find(a => a.action === 'login')?.timestamp;
+        const breakStart = group.activities?.find(a => a.action === 'break_start')?.timestamp;
+        const breakEnd = group.activities?.find(a => a.action === 'break_end')?.timestamp;
+        const logoutTime = group.activities?.find(a => a.action === 'logout')?.timestamp;
+        const breakReason = group.activities?.find(a => a.action === 'break_start')?.reason || '-';
+        
+        const formatTime = (ts) => {
+          if (!ts) return '-';
+          return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        };
+        
+        return [
+          group.user_name,
+          formatTime(loginTime),
+          formatTime(breakStart),
+          formatTime(breakEnd),
+          formatTime(logoutTime),
+          breakReason
+        ];
+      });
 
-        // User header
-        doc.setFillColor(240, 240, 240);
-        doc.rect(14, yPos - 4, pageWidth - 28, 8, 'F');
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${group.user_name} - ${group.activities?.length || 0} activities`, 16, yPos);
-        yPos += 8;
-
-        if (group.activities) {
-          const activityData = group.activities.map(log => {
-            let action = log.action;
-            if (action === 'login') action = 'Logged In';
-            else if (action === 'logout') action = 'Logged Out';
-            else if (action === 'break_start') action = 'Break Started';
-            else if (action === 'break_end') action = 'Break Ended';
-            
-            const time = log.timestamp ? new Date(log.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }) : '';
-            return [action, log.reason || '-', time];
-          });
-
-          autoTable(doc, {
-            startY: yPos,
-            head: [['Action', 'Reason', 'Time']],
-            body: activityData,
-            theme: 'grid',
-            headStyles: { fillColor: colors.purple, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
-            bodyStyles: { fontSize: 9 },
-            columnStyles: {
-              0: { cellWidth: 40 },
-              1: { cellWidth: 80 },
-              2: { cellWidth: 30, halign: 'center' }
-            },
-            margin: { left: 14, right: 14 },
-            didParseCell: function(data) {
-              if (data.section === 'body' && data.column.index === 0) {
-                if (data.cell.raw === 'Logged In') data.cell.styles.textColor = colors.primary;
-                else if (data.cell.raw === 'Logged Out') data.cell.styles.textColor = colors.red;
-                else if (data.cell.raw.includes('Break')) data.cell.styles.textColor = colors.orange;
-              }
+      autoTable(doc, {
+        startY: yPos,
+        head: [['Telecaller', 'Login', 'Break Start', 'Break End', 'Logout', 'Break Reason']],
+        body: activityTableData,
+        theme: 'grid',
+        styles: {
+          lineColor: [200, 200, 200],
+          lineWidth: 0.5,
+        },
+        headStyles: { 
+          fillColor: [240, 240, 240], 
+          textColor: [50, 50, 50], 
+          fontStyle: 'bold', 
+          fontSize: 9,
+          halign: 'center'
+        },
+        bodyStyles: { fontSize: 9, halign: 'center', cellPadding: 4 },
+        columnStyles: {
+          0: { cellWidth: 45, halign: 'left', fontStyle: 'bold' },
+          1: { cellWidth: 25 },
+          2: { cellWidth: 25 },
+          3: { cellWidth: 25 },
+          4: { cellWidth: 25 },
+          5: { cellWidth: 45, halign: 'left' }
+        },
+        margin: { left: 14, right: 14 },
+        didParseCell: function(data) {
+          if (data.section === 'body') {
+            // Telecaller name column
+            if (data.column.index === 0) {
+              data.cell.styles.halign = 'left';
+              data.cell.styles.fontStyle = 'bold';
             }
-          });
-          yPos = doc.lastAutoTable.finalY + 10;
+            // Login column - green
+            if (data.column.index === 1 && data.cell.raw !== '-') {
+              data.cell.styles.textColor = colors.primary;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Break Start column - orange
+            if (data.column.index === 2 && data.cell.raw !== '-') {
+              data.cell.styles.textColor = colors.orange;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Break End column - orange
+            if (data.column.index === 3 && data.cell.raw !== '-') {
+              data.cell.styles.textColor = colors.orange;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Logout column - red
+            if (data.column.index === 4 && data.cell.raw !== '-') {
+              data.cell.styles.textColor = colors.red;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Alternating row colors
+            if (data.row.index % 2 === 1) {
+              data.cell.styles.fillColor = [250, 250, 250];
+            }
+          }
+          // Style header columns
+          if (data.section === 'head') {
+            if (data.column.index === 1) data.cell.styles.textColor = colors.primary;
+            if (data.column.index === 2 || data.column.index === 3) data.cell.styles.textColor = colors.orange;
+            if (data.column.index === 4) data.cell.styles.textColor = colors.red;
+          }
         }
       });
+      yPos = doc.lastAutoTable.finalY + 10;
     }
 
     // Footer on all pages
