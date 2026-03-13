@@ -133,7 +133,23 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 - Frontend: 100% pass rate
 - All 4 reporting enhancements verified
 
-## Latest Updates (Mar 11, 2026)
+## Latest Updates (Mar 13, 2026)
+
+### Bug Fixes - COMPLETED ✅
+1. **Break Time Capture Issue (P0) - VERIFIED WORKING**
+   - Investigated the break time capture functionality
+   - Backend `/api/activity/break` endpoint was functioning correctly
+   - Break times (break_start, break_end) are properly saved to `activity_logs` collection
+   - Frontend displays break times correctly in Activity Log table
+   - Issue root cause: No telecallers had previously taken breaks in test environment
+
+2. **Removed "Break Reason" Column from PDF Export (P1) - COMPLETED**
+   - Removed `breakReason` field from PDF export data in `Reports.js`
+   - Updated PDF table headers to remove "Break Reason" column
+   - Adjusted column widths for better presentation (5 columns instead of 6)
+   - Activity Log PDF now matches UI: Telecaller, Login, Break Start, Break End, Logout
+
+### Previous Updates (Mar 11, 2026)
 - Added PDF export functionality with color-coded reports
 - PDF includes Summary, Hourly, and Activity reports with professional formatting
 - Both CSV and PDF export buttons available on Reports page
