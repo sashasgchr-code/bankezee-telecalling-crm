@@ -1259,102 +1259,115 @@ const AdminReports = () => {
           ) : (
             <div className="space-y-4">
               {activityLogs.length > 0 ? (
-                <div className="card overflow-hidden">
-                  <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-4 py-3">
-                    <h3 className="text-lg font-semibold text-white">Telecaller Activity Log</h3>
-                    <p className="text-purple-100 text-xs mt-1">Daily login, break, and logout times</p>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm border-collapse">
-                      <thead>
-                        <tr className="bg-gray-100">
-                          <th className="text-left py-3 px-4 font-bold text-gray-800 border-b-2 border-gray-300 sticky left-0 bg-gray-100 min-w-[150px] z-10">
-                            Telecaller
-                          </th>
-                          <th className="text-center py-3 px-4 font-bold text-green-700 border-b-2 border-gray-300 min-w-[100px]">
-                            <div className="flex items-center justify-center gap-1">
-                              <LogIn size={14} />
-                              Login
-                            </div>
-                          </th>
-                          <th className="text-center py-3 px-4 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[100px]">
-                            <div className="flex items-center justify-center gap-1">
-                              <Coffee size={14} />
-                              Break Start
-                            </div>
-                          </th>
-                          <th className="text-center py-3 px-4 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[100px]">
-                            <div className="flex items-center justify-center gap-1">
-                              <Coffee size={14} />
-                              Break End
-                            </div>
-                          </th>
-                          <th className="text-center py-3 px-4 font-bold text-red-600 border-b-2 border-gray-300 min-w-[100px]">
-                            <div className="flex items-center justify-center gap-1">
-                              <LogOut size={14} />
-                              Logout
-                            </div>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {activityLogs.map((group, idx) => {
-                          // Extract activity times for this user - get ALL occurrences
-                          const activities = group.activities || [];
-                          const loginActivity = activities.find(a => a.action === 'login');
-                          const logoutActivity = activities.find(a => a.action === 'logout');
-                          // Get ALL break starts and ends
-                          const breakStarts = activities.filter(a => a.action === 'break_start');
-                          const breakEnds = activities.filter(a => a.action === 'break_end');
-                          
-                          return (
-                            <tr key={group.user_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50 transition-colors`}>
-                              <td className={`py-3 px-4 font-semibold text-gray-900 sticky left-0 z-10 border-b border-gray-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                                {group.user_name}
-                              </td>
-                              <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {loginActivity?.timestamp ? (
-                                  <span className="inline-block px-3 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
-                                    {formatTimestamp(loginActivity.timestamp)}
-                                  </span>
-                                ) : <span className="text-gray-300">-</span>}
-                              </td>
-                              <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {breakStarts.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1 justify-center">
-                                    {breakStarts.map((bs, i) => (
-                                      <span key={i} className="inline-block px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
-                                        {formatTimestamp(bs.timestamp)}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : <span className="text-gray-300">-</span>}
-                              </td>
-                              <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {breakEnds.length > 0 ? (
-                                  <div className="flex flex-wrap gap-1 justify-center">
-                                    {breakEnds.map((be, i) => (
-                                      <span key={i} className="inline-block px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
-                                        {formatTimestamp(be.timestamp)}
-                                      </span>
-                                    ))}
-                                  </div>
-                                ) : <span className="text-gray-300">-</span>}
-                              </td>
-                              <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {logoutActivity?.timestamp ? (
-                                  <span className="inline-block px-3 py-1 rounded-full bg-red-100 text-red-700 font-semibold text-xs">
-                                    {formatTimestamp(logoutActivity.timestamp)}
-                                  </span>
-                                ) : <span className="text-gray-300">-</span>}
-                              </td>
+                (() => {
+                  // Calculate max breaks across all telecallers
+                  const maxBreaks = Math.max(
+                    ...activityLogs.map(group => {
+                      const breakStarts = (group.activities || []).filter(a => a.action === 'break_start');
+                      return breakStarts.length;
+                    }),
+                    1 // At least show 1 break column
+                  );
+                  
+                  return (
+                    <div className="card overflow-hidden">
+                      <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-4 py-3">
+                        <h3 className="text-lg font-semibold text-white">Telecaller Activity Log</h3>
+                        <p className="text-purple-100 text-xs mt-1">Daily login, break, and logout times</p>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm border-collapse">
+                          <thead>
+                            <tr className="bg-gray-100">
+                              <th className="text-left py-3 px-4 font-bold text-gray-800 border-b-2 border-gray-300 sticky left-0 bg-gray-100 min-w-[150px] z-10">
+                                Telecaller
+                              </th>
+                              <th className="text-center py-3 px-4 font-bold text-green-700 border-b-2 border-gray-300 min-w-[90px]">
+                                <div className="flex items-center justify-center gap-1">
+                                  <LogIn size={14} />
+                                  Login
+                                </div>
+                              </th>
+                              {/* Dynamic break columns */}
+                              {Array.from({ length: maxBreaks }, (_, i) => (
+                                <React.Fragment key={`break-header-${i}`}>
+                                  <th className="text-center py-3 px-3 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[85px]">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <Coffee size={12} />
+                                      Break {i + 1} From
+                                    </div>
+                                  </th>
+                                  <th className="text-center py-3 px-3 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[85px]">
+                                    <div className="flex items-center justify-center gap-1">
+                                      <Coffee size={12} />
+                                      Break {i + 1} To
+                                    </div>
+                                  </th>
+                                </React.Fragment>
+                              ))}
+                              <th className="text-center py-3 px-4 font-bold text-red-600 border-b-2 border-gray-300 min-w-[90px]">
+                                <div className="flex items-center justify-center gap-1">
+                                  <LogOut size={14} />
+                                  Logout
+                                </div>
+                              </th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                          </thead>
+                          <tbody>
+                            {activityLogs.map((group, idx) => {
+                              const activities = group.activities || [];
+                              const loginActivity = activities.find(a => a.action === 'login');
+                              const logoutActivity = activities.find(a => a.action === 'logout');
+                              const breakStarts = activities.filter(a => a.action === 'break_start');
+                              const breakEnds = activities.filter(a => a.action === 'break_end');
+                              
+                              return (
+                                <tr key={group.user_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50 transition-colors`}>
+                                  <td className={`py-3 px-4 font-semibold text-gray-900 sticky left-0 z-10 border-b border-gray-200 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+                                    {group.user_name}
+                                  </td>
+                                  <td className="py-3 px-4 text-center border-b border-gray-200">
+                                    {loginActivity?.timestamp ? (
+                                      <span className="inline-block px-2 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
+                                        {formatTimestamp(loginActivity.timestamp)}
+                                      </span>
+                                    ) : <span className="text-gray-300">-</span>}
+                                  </td>
+                                  {/* Dynamic break cells */}
+                                  {Array.from({ length: maxBreaks }, (_, i) => (
+                                    <React.Fragment key={`break-cell-${group.user_id}-${i}`}>
+                                      <td className="py-3 px-3 text-center border-b border-gray-200">
+                                        {breakStarts[i]?.timestamp ? (
+                                          <span className="inline-block px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
+                                            {formatTimestamp(breakStarts[i].timestamp)}
+                                          </span>
+                                        ) : <span className="text-gray-300">-</span>}
+                                      </td>
+                                      <td className="py-3 px-3 text-center border-b border-gray-200">
+                                        {breakEnds[i]?.timestamp ? (
+                                          <span className="inline-block px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
+                                            {formatTimestamp(breakEnds[i].timestamp)}
+                                          </span>
+                                        ) : <span className="text-gray-300">-</span>}
+                                      </td>
+                                    </React.Fragment>
+                                  ))}
+                                  <td className="py-3 px-4 text-center border-b border-gray-200">
+                                    {logoutActivity?.timestamp ? (
+                                      <span className="inline-block px-2 py-1 rounded-full bg-red-100 text-red-700 font-semibold text-xs">
+                                        {formatTimestamp(logoutActivity.timestamp)}
+                                      </span>
+                                    ) : <span className="text-gray-300">-</span>}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()
               ) : (
                 <div className="card p-8 text-center">
                   <Activity size={32} className="mx-auto text-gray-300 mb-2" />
