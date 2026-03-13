@@ -1719,11 +1719,14 @@ async def get_telecaller_reports(
         
         sessions = await db.daily_sessions.find(session_query).to_list(100)
         user_call_seconds_from_sessions = sum(s.get("total_call_seconds", 0) for s in sessions)
-        user_idle_seconds = sum(s.get("total_idle_seconds", 0) for s in sessions)
         user_login_seconds = sum(s.get("total_login_seconds", 0) for s in sessions)
+        user_break_seconds = sum(s.get("total_break_seconds", 0) for s in sessions)
         
         # Use the higher value between sessions and actual call logs
         user_call_seconds = max(user_call_seconds_from_sessions, user_call_seconds_from_logs)
+        
+        # Calculate idle time = Login Time - Talk Time - Break Time
+        user_idle_seconds = max(0, user_login_seconds - user_call_seconds - user_break_seconds)
         
         # Get status breakdown for this telecaller - WITH date filter
         status_pipeline = [
