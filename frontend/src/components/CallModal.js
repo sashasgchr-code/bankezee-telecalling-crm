@@ -54,23 +54,24 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
 
     setIsSubmitting(true);
     try {
-      // End call session
+      // End call session with duration (talk time includes dialing time)
       await api.post('/call-sessions/end', {
         session_id: activeCall.id,
         outcome: outcome,
-        notes: notes
+        notes: notes,
+        duration: callDuration // Include full duration from dial to end
       });
 
-      // Update lead status if changed
-      if (lead && newStatus !== lead.status) {
+      // Only update lead status if call was connected
+      if (outcome === 'connected' && lead && newStatus !== lead.status) {
         await api.put(`/leads/${lead.id}`, {
           status: newStatus,
           notes: notes || lead.notes,
         });
       }
 
-      // Create follow-up if scheduled
-      if (scheduleFollowUp && lead && followUpDate) {
+      // Create follow-up if scheduled (only for connected calls)
+      if (outcome === 'connected' && scheduleFollowUp && lead && followUpDate) {
         await api.post('/follow-ups', {
           lead_id: lead.id,
           scheduled_at: new Date(followUpDate).toISOString(),
