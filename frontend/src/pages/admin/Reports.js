@@ -268,21 +268,22 @@ const AdminReports = () => {
         { label: 'File', value: reports.overall?.total_file || 0, color: colors.orange },
         { label: 'Presentations', value: reports.overall?.total_presentations || 0, color: colors.indigo },
         { label: 'Talk Time', value: formatTime(reports.overall?.total_call_seconds), color: colors.purple },
+        { label: 'Idle Time', value: formatTime(reports.overall?.total_idle_seconds), color: colors.red },
         { label: 'Conversion', value: `${(reports.overall?.calls_to_lead_rate || 0).toFixed(1)}%`, color: colors.teal },
       ];
 
-      const boxWidth = 28;
+      const boxWidth = 25;
       const boxHeight = 18;
       const startX = 14;
       metrics.forEach((metric, i) => {
-        const x = startX + (i * (boxWidth + 4));
+        const x = startX + (i * (boxWidth + 3));
         doc.setFillColor(...metric.color);
         doc.roundedRect(x, yPos, boxWidth, boxHeight, 2, 2, 'F');
         doc.setTextColor(255, 255, 255);
-        doc.setFontSize(12);
+        doc.setFontSize(11);
         doc.setFont('helvetica', 'bold');
         doc.text(String(metric.value), x + boxWidth / 2, yPos + 8, { align: 'center' });
-        doc.setFontSize(6);
+        doc.setFontSize(5);
         doc.setFont('helvetica', 'normal');
         doc.text(metric.label, x + boxWidth / 2, yPos + 14, { align: 'center' });
       });
@@ -303,21 +304,22 @@ const AdminReports = () => {
         tc.file || 0,
         tc.presentations || 0,
         formatTime(tc.total_call_seconds),
+        formatTime(tc.total_idle_seconds),
         `${(tc.calls_to_lead_rate || 0).toFixed(1)}%`
       ]);
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk Time', 'Conv %']],
+        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Idle', 'Conv %']],
         body: tableData,
         theme: 'grid',
-        headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-        bodyStyles: { fontSize: 8 },
+        headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
+        bodyStyles: { fontSize: 7 },
         columnStyles: {
-          0: { cellWidth: 35 },
-          1: { cellWidth: 18 },
-          2: { cellWidth: 15, halign: 'center' },
-          3: { cellWidth: 15, halign: 'center' },
+          0: { cellWidth: 32 },
+          1: { cellWidth: 16 },
+          2: { cellWidth: 12, halign: 'center' },
+          3: { cellWidth: 12, halign: 'center' },
           4: { cellWidth: 15, halign: 'center' },
           5: { cellWidth: 15, halign: 'center' },
           6: { cellWidth: 22, halign: 'center' },
