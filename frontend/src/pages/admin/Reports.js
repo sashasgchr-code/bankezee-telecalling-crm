@@ -980,14 +980,11 @@ const AdminReports = () => {
                         <div className="grid grid-cols-3 gap-2">
                           {[
                             { key: 'new', label: 'New', color: '#4CAF50' },
-                            { key: 'contacted', label: 'Contacted', color: '#2196F3' },
-                            { key: 'file', label: 'File', color: '#FF9800' },
                             { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
                             { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
-                            { key: 'leads', label: 'Leads', color: '#00C853' },
-                            { key: 'not_answering', label: 'Not Answering', color: '#FF5722' },
-                            { key: 'wrong_number', label: 'Wrong Number', color: '#F44336' },
                             { key: 'presentation', label: 'Presentation', color: '#673AB7' },
+                            { key: 'leads', label: 'Lead', color: '#00C853' },
+                            { key: 'file', label: 'File', color: '#FF9800' },
                           ].map((status) => (
                             <div 
                               key={status.key}
