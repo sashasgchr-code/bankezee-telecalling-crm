@@ -48,11 +48,34 @@ app.add_middleware(
 
 router = APIRouter(prefix="/api")
 
-# Helper to serialize ObjectId
+# IST timezone offset (UTC+5:30)
+IST_OFFSET = timedelta(hours=5, minutes=30)
+
+def convert_to_ist(dt):
+    """Convert a datetime to IST"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    ist_time = dt + IST_OFFSET
+    return ist_time.replace(tzinfo=None)  # Return naive datetime for JSON serialization
+
+# Helper to serialize ObjectId and convert timestamps to IST
 def serialize_doc(doc):
     if doc is None:
         return None
     doc["id"] = str(doc.pop("_id"))
+    # Convert timestamp fields to IST
+    if "timestamp" in doc and doc["timestamp"]:
+        doc["timestamp"] = convert_to_ist(doc["timestamp"]).isoformat()
+    if "created_at" in doc and doc["created_at"]:
+        doc["created_at"] = convert_to_ist(doc["created_at"]).isoformat()
+    if "updated_at" in doc and doc["updated_at"]:
+        doc["updated_at"] = convert_to_ist(doc["updated_at"]).isoformat()
+    if "login_time" in doc and doc["login_time"]:
+        doc["login_time"] = convert_to_ist(doc["login_time"]).isoformat()
+    if "logout_time" in doc and doc["logout_time"]:
+        doc["logout_time"] = convert_to_ist(doc["logout_time"]).isoformat()
     return doc
 
 def serialize_docs(docs):
