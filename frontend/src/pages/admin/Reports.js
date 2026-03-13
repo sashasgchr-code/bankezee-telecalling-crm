@@ -269,7 +269,7 @@ const AdminReports = () => {
         { label: 'Presentations', value: reports.overall?.total_presentations || 0, color: colors.indigo },
         { label: 'Talk Time', value: formatTime(reports.overall?.total_call_seconds), color: colors.purple },
         { label: 'Idle Time', value: formatTime(reports.overall?.total_idle_seconds), color: colors.red },
-        { label: 'Conversion', value: `${(reports.overall?.calls_to_lead_rate || 0).toFixed(1)}%`, color: colors.teal },
+        { label: 'File Ratio', value: `${(reports.overall?.calls_to_file_ratio || 0).toFixed(1)}%`, color: colors.teal },
       ];
 
       const boxWidth = 25;
