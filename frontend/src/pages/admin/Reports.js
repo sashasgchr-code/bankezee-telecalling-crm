@@ -347,109 +347,146 @@ const AdminReports = () => {
       yPos = 15;
 
       // Header for hourly report
-      doc.setFillColor(...colors.secondary);
+      doc.setFillColor(...colors.primary);
       doc.rect(0, 0, pageWidth, 20, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Hourly Report - ${hourlyDate}`, pageWidth / 2, 13, { align: 'center' });
-      yPos = 30;
+      doc.text(`Caller-wise Hourly Report - ${hourlyDate}`, pageWidth / 2, 13, { align: 'center' });
+      yPos = 28;
 
-      // Overall Hourly Activity Table
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Overall Hourly Activity', 14, yPos);
-      yPos += 6;
+      // Legend
+      doc.setTextColor(100, 100, 100);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text('C = Calls, P = Presentations, L = Leads, F = File', 14, yPos);
+      yPos += 8;
 
-      if (hourlyReports.overall_hourly && hourlyReports.overall_hourly.length > 0) {
-        const hourlyData = hourlyReports.overall_hourly.map(h => [
-          h.hour_label,
-          h.calls || 0,
-          h.connected || 0,
-          h.presentations || 0,
-          h.leads || 0,
-          h.file || 0
-        ]);
+      // Get all unique hours
+      const allHours = new Set();
+      hourlyReports.telecallers?.forEach(tc => {
+        tc.hourly_breakdown?.forEach(hb => allHours.add(hb.hour));
+      });
+      const sortedHours = Array.from(allHours).sort((a, b) => a - b);
+
+      const getHourData = (tc, hour) => {
+        const hb = tc.hourly_breakdown?.find(h => h.hour === hour);
+        return hb || { calls: 0, presentations: 0, leads: 0, file: 0 };
+      };
+
+      if (sortedHours.length > 0 && hourlyReports.telecallers?.length > 0) {
+        // Build header row with hours
+        const headerRow1 = ['Telecaller'];
+        sortedHours.forEach(hour => {
+          headerRow1.push(`${hour.toString().padStart(2, '0')}:00`);
+        });
+        headerRow1.push('TOTAL');
+
+        // Build sub-header row with C P L F
+        const headerRow2 = [''];
+        sortedHours.forEach(() => {
+          headerRow2.push('C  P  L  F');
+        });
+        headerRow2.push('C  P  L  F');
+
+        // Build data rows
+        const bodyData = [];
+        
+        hourlyReports.telecallers.forEach(tc => {
+          const row = [tc.user_name];
+          sortedHours.forEach(hour => {
+            const data = getHourData(tc, hour);
+            const c = data.calls || '-';
+            const p = data.presentations || '-';
+            const l = data.leads || '-';
+            const f = data.file || '-';
+            row.push(`${c}  ${p}  ${l}  ${f}`);
+          });
+          // Add totals
+          const totalC = tc.total_calls || 0;
+          const totalP = tc.total_presentations || 0;
+          const totalL = tc.total_leads || 0;
+          const totalF = tc.total_file || 0;
+          row.push(`${totalC}  ${totalP}  ${totalL}  ${totalF}`);
+          bodyData.push(row);
+        });
+
+        // Add TOTAL row
+        const totalRow = ['TOTAL'];
+        sortedHours.forEach(hour => {
+          const totals = hourlyReports.telecallers.reduce((acc, tc) => {
+            const data = getHourData(tc, hour);
+            return {
+              calls: acc.calls + (data.calls || 0),
+              presentations: acc.presentations + (data.presentations || 0),
+              leads: acc.leads + (data.leads || 0),
+              file: acc.file + (data.file || 0)
+            };
+          }, { calls: 0, presentations: 0, leads: 0, file: 0 });
+          const c = totals.calls || '-';
+          const p = totals.presentations || '-';
+          const l = totals.leads || '-';
+          const f = totals.file || '-';
+          totalRow.push(`${c}  ${p}  ${l}  ${f}`);
+        });
+        // Grand totals
+        const grandC = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_calls || 0), 0);
+        const grandP = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_presentations || 0), 0);
+        const grandL = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_leads || 0), 0);
+        const grandF = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_file || 0), 0);
+        totalRow.push(`${grandC}  ${grandP}  ${grandL}  ${grandF}`);
+        bodyData.push(totalRow);
+
+        // Calculate column widths
+        const telecallerColWidth = 40;
+        const hourColWidth = Math.min(22, (pageWidth - telecallerColWidth - 30) / (sortedHours.length + 1));
+        
+        const columnStyles = { 0: { cellWidth: telecallerColWidth, halign: 'left' } };
+        for (let i = 1; i <= sortedHours.length + 1; i++) {
+          columnStyles[i] = { cellWidth: hourColWidth, halign: 'center', fontSize: 7 };
+        }
 
         autoTable(doc, {
           startY: yPos,
-          head: [['Hour', 'Calls', 'Connected', 'Presentations', 'Leads', 'File']],
-          body: hourlyData,
+          head: [headerRow1, headerRow2],
+          body: bodyData,
           theme: 'grid',
-          headStyles: { fillColor: colors.secondary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 9 },
-          bodyStyles: { fontSize: 9, halign: 'center' },
-          columnStyles: {
-            0: { cellWidth: 25, halign: 'left' },
+          headStyles: { 
+            fillColor: colors.primary, 
+            textColor: [255, 255, 255], 
+            fontStyle: 'bold', 
+            fontSize: 7,
+            halign: 'center'
           },
+          bodyStyles: { fontSize: 7, halign: 'center' },
+          columnStyles: columnStyles,
+          margin: { left: 10, right: 10 },
           didParseCell: function(data) {
-            if (data.section === 'body') {
-              if (data.column.index === 1) data.cell.styles.textColor = colors.secondary;
-              if (data.column.index === 2) data.cell.styles.textColor = colors.primary;
-              if (data.column.index === 3) data.cell.styles.textColor = colors.indigo;
-              if (data.column.index === 4) data.cell.styles.textColor = colors.teal;
-              if (data.column.index === 5) data.cell.styles.textColor = colors.orange;
+            // Style the TOTAL row
+            if (data.section === 'body' && data.row.index === bodyData.length - 1) {
+              data.cell.styles.fillColor = colors.primary;
+              data.cell.styles.textColor = [255, 255, 255];
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Style the TOTAL column
+            if (data.section === 'body' && data.column.index === sortedHours.length + 1) {
+              if (data.row.index !== bodyData.length - 1) {
+                data.cell.styles.fillColor = [240, 240, 240];
+                data.cell.styles.fontStyle = 'bold';
+              }
+            }
+            // Style telecaller name column
+            if (data.section === 'body' && data.column.index === 0) {
+              data.cell.styles.halign = 'left';
+              data.cell.styles.fontStyle = 'bold';
             }
           }
         });
         yPos = doc.lastAutoTable.finalY + 10;
-      }
-
-      // Caller-wise Hourly Report
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Caller-wise Hourly Breakdown', 14, yPos);
-      yPos += 6;
-
-      if (hourlyReports.telecallers) {
-        hourlyReports.telecallers.forEach(tc => {
-          if (tc.hourly_breakdown && tc.hourly_breakdown.length > 0) {
-            // Check if we need a new page
-            if (yPos > 250) {
-              doc.addPage();
-              yPos = 15;
-            }
-
-            doc.setFillColor(240, 240, 240);
-            doc.rect(14, yPos - 4, pageWidth - 28, 8, 'F');
-            doc.setTextColor(0, 0, 0);
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'bold');
-            doc.text(`${tc.user_name} - ${tc.total_calls} calls, ${tc.total_connected} connected`, 16, yPos);
-            yPos += 6;
-
-            const tcHourlyData = tc.hourly_breakdown.map(hb => [
-              hb.hour_label,
-              hb.calls || 0,
-              hb.connected || 0,
-              hb.presentations || 0,
-              hb.leads || 0,
-              hb.file || 0
-            ]);
-
-            autoTable(doc, {
-              startY: yPos,
-              head: [['Hour', 'Calls', 'Connected', 'Pres', 'Leads', 'File']],
-              body: tcHourlyData,
-              theme: 'grid',
-              headStyles: { fillColor: colors.gray, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
-              bodyStyles: { fontSize: 8, halign: 'center' },
-              columnStyles: { 0: { cellWidth: 20, halign: 'left' } },
-              margin: { left: 14, right: 14 },
-              didParseCell: function(data) {
-                if (data.section === 'body') {
-                  if (data.column.index === 1) data.cell.styles.textColor = colors.secondary;
-                  if (data.column.index === 2) data.cell.styles.textColor = colors.primary;
-                  if (data.column.index === 3) data.cell.styles.textColor = colors.indigo;
-                  if (data.column.index === 4) data.cell.styles.textColor = colors.teal;
-                  if (data.column.index === 5) data.cell.styles.textColor = colors.orange;
-                }
-              }
-            });
-            yPos = doc.lastAutoTable.finalY + 8;
-          }
-        });
+      } else {
+        doc.setTextColor(100, 100, 100);
+        doc.setFontSize(10);
+        doc.text('No hourly data available', pageWidth / 2, yPos + 20, { align: 'center' });
       }
     }
 
