@@ -1565,6 +1565,7 @@ async def get_dashboard_stats(
         # Get call outcome counts for this user
         call_logs = await db.call_logs.find({"user_id": user_id, **calls_time_filter}).to_list(10000)
         my_calls_connected = sum(1 for log in call_logs if log.get("outcome") == "connected")
+        my_calls_not_connecting = sum(1 for log in call_logs if log.get("outcome") == "not_connecting")
         my_calls_no_answer = sum(1 for log in call_logs if log.get("outcome") == "no_answer")
         my_calls_wrong_number = sum(1 for log in call_logs if log.get("outcome") == "wrong_number")
         my_calls_busy = sum(1 for log in call_logs if log.get("outcome") == "busy")
@@ -1584,6 +1585,7 @@ async def get_dashboard_stats(
             "leads_by_status": {s["_id"]: s["count"] for s in status_counts if s["_id"]},
             "call_outcomes": {
                 "connected": my_calls_connected,
+                "not_connecting": my_calls_not_connecting,
                 "no_answer": my_calls_no_answer,
                 "wrong_number": my_calls_wrong_number,
                 "busy": my_calls_busy,
