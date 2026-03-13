@@ -1293,9 +1293,10 @@ const AdminReports = () => {
                           // Extract activity times for this user - get ALL occurrences
                           const activities = group.activities || [];
                           const loginActivity = activities.find(a => a.action === 'login');
-                          const breakStartActivity = activities.find(a => a.action === 'break_start');
-                          const breakEndActivity = activities.find(a => a.action === 'break_end');
                           const logoutActivity = activities.find(a => a.action === 'logout');
+                          // Get ALL break starts and ends
+                          const breakStarts = activities.filter(a => a.action === 'break_start');
+                          const breakEnds = activities.filter(a => a.action === 'break_end');
                           
                           return (
                             <tr key={group.user_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50 transition-colors`}>
@@ -1310,17 +1311,25 @@ const AdminReports = () => {
                                 ) : <span className="text-gray-300">-</span>}
                               </td>
                               <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {breakStartActivity?.timestamp ? (
-                                  <span className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
-                                    {formatTimestamp(breakStartActivity.timestamp)}
-                                  </span>
+                                {breakStarts.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 justify-center">
+                                    {breakStarts.map((bs, i) => (
+                                      <span key={i} className="inline-block px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
+                                        {formatTimestamp(bs.timestamp)}
+                                      </span>
+                                    ))}
+                                  </div>
                                 ) : <span className="text-gray-300">-</span>}
                               </td>
                               <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {breakEndActivity?.timestamp ? (
-                                  <span className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
-                                    {formatTimestamp(breakEndActivity.timestamp)}
-                                  </span>
+                                {breakEnds.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1 justify-center">
+                                    {breakEnds.map((be, i) => (
+                                      <span key={i} className="inline-block px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
+                                        {formatTimestamp(be.timestamp)}
+                                      </span>
+                                    ))}
+                                  </div>
                                 ) : <span className="text-gray-300">-</span>}
                               </td>
                               <td className="py-3 px-4 text-center border-b border-gray-200">
