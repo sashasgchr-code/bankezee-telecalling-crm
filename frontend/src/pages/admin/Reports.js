@@ -592,14 +592,24 @@ const AdminReports = () => {
       }
     }
 
-    // ACTIVITY LOG (new page) - Tabular format matching UI
+    // ACTIVITY LOG (new page) - Tabular format with separate columns for each break
     if (activityLogs && activityLogs.length > 0) {
-      doc.addPage();
+      doc.addPage('l'); // Landscape for wider table with multiple break columns
+      const landPageWidth = doc.internal.pageSize.getWidth();
       yPos = 15;
+
+      // Calculate max breaks across all telecallers
+      const maxBreaks = Math.max(
+        ...activityLogs.map(group => {
+          const breakStarts = (group.activities || []).filter(a => a.action === 'break_start');
+          return breakStarts.length;
+        }),
+        1
+      );
 
       // Header for activity log
       doc.setFillColor(...colors.purple);
-      doc.rect(0, 0, pageWidth, 22, 'F');
+      doc.rect(0, 0, landPageWidth, 22, 'F');
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
@@ -607,64 +617,73 @@ const AdminReports = () => {
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       doc.text(`Date: ${activityDate}`, 14, 18);
-      doc.text('Daily login, break, and logout times', pageWidth - 14, 15, { align: 'right' });
+      doc.text('Daily login, break, and logout times', landPageWidth - 14, 15, { align: 'right' });
       yPos = 30;
 
-      // Build table data - one row per telecaller, showing ALL breaks
+      const formatTime = (ts) => {
+        if (!ts) return '-';
+        return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      };
+
+      // Build dynamic headers
+      const headers = ['Telecaller', 'Login'];
+      for (let i = 0; i < maxBreaks; i++) {
+        headers.push(`Break ${i + 1} From`);
+        headers.push(`Break ${i + 1} To`);
+      }
+      headers.push('Logout');
+
+      // Build table data with dynamic break columns
       const activityTableData = activityLogs.map(group => {
         const loginTime = group.activities?.find(a => a.action === 'login')?.timestamp;
         const logoutTime = group.activities?.find(a => a.action === 'logout')?.timestamp;
-        // Get ALL break starts and ends
         const breakStarts = group.activities?.filter(a => a.action === 'break_start') || [];
         const breakEnds = group.activities?.filter(a => a.action === 'break_end') || [];
         
-        const formatTime = (ts) => {
-          if (!ts) return '-';
-          return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        };
-
-        // Format multiple breaks as comma-separated times
-        const breakStartTimes = breakStarts.length > 0 
-          ? breakStarts.map(bs => formatTime(bs.timestamp)).join(', ') 
-          : '-';
-        const breakEndTimes = breakEnds.length > 0 
-          ? breakEnds.map(be => formatTime(be.timestamp)).join(', ') 
-          : '-';
-        
-        return [
-          group.user_name,
-          formatTime(loginTime),
-          breakStartTimes,
-          breakEndTimes,
-          formatTime(logoutTime)
-        ];
+        const row = [group.user_name, formatTime(loginTime)];
+        for (let i = 0; i < maxBreaks; i++) {
+          row.push(formatTime(breakStarts[i]?.timestamp));
+          row.push(formatTime(breakEnds[i]?.timestamp));
+        }
+        row.push(formatTime(logoutTime));
+        return row;
       });
+
+      // Calculate column widths
+      const telecallerColWidth = 40;
+      const loginLogoutColWidth = 22;
+      const breakColWidth = 22;
+      
+      const columnStyles = {
+        0: { cellWidth: telecallerColWidth, halign: 'left', fontStyle: 'bold' },
+        1: { cellWidth: loginLogoutColWidth }
+      };
+      
+      for (let i = 0; i < maxBreaks * 2; i++) {
+        columnStyles[2 + i] = { cellWidth: breakColWidth };
+      }
+      columnStyles[2 + maxBreaks * 2] = { cellWidth: loginLogoutColWidth };
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Telecaller', 'Login', 'Break Start', 'Break End', 'Logout']],
+        head: [headers],
         body: activityTableData,
         theme: 'grid',
         styles: {
           lineColor: [200, 200, 200],
           lineWidth: 0.5,
+          fontSize: 8,
         },
         headStyles: { 
           fillColor: [240, 240, 240], 
           textColor: [50, 50, 50], 
           fontStyle: 'bold', 
-          fontSize: 9,
+          fontSize: 7,
           halign: 'center'
         },
-        bodyStyles: { fontSize: 9, halign: 'center', cellPadding: 4 },
-        columnStyles: {
-          0: { cellWidth: 50, halign: 'left', fontStyle: 'bold' },
-          1: { cellWidth: 30 },
-          2: { cellWidth: 30 },
-          3: { cellWidth: 30 },
-          4: { cellWidth: 30 }
-        },
-        margin: { left: 14, right: 14 },
+        bodyStyles: { fontSize: 8, halign: 'center', cellPadding: 3 },
+        columnStyles: columnStyles,
+        margin: { left: 10, right: 10 },
         didParseCell: function(data) {
           if (data.section === 'body') {
             // Telecaller name column
@@ -677,18 +696,13 @@ const AdminReports = () => {
               data.cell.styles.textColor = colors.primary;
               data.cell.styles.fontStyle = 'bold';
             }
-            // Break Start column - orange
-            if (data.column.index === 2 && data.cell.raw !== '-') {
+            // Break columns - orange (indices 2 to 2 + maxBreaks*2 - 1)
+            if (data.column.index >= 2 && data.column.index < 2 + maxBreaks * 2 && data.cell.raw !== '-') {
               data.cell.styles.textColor = colors.orange;
               data.cell.styles.fontStyle = 'bold';
             }
-            // Break End column - orange
-            if (data.column.index === 3 && data.cell.raw !== '-') {
-              data.cell.styles.textColor = colors.orange;
-              data.cell.styles.fontStyle = 'bold';
-            }
-            // Logout column - red
-            if (data.column.index === 4 && data.cell.raw !== '-') {
+            // Logout column - red (last column)
+            if (data.column.index === 2 + maxBreaks * 2 && data.cell.raw !== '-') {
               data.cell.styles.textColor = colors.red;
               data.cell.styles.fontStyle = 'bold';
             }
@@ -700,8 +714,8 @@ const AdminReports = () => {
           // Style header columns
           if (data.section === 'head') {
             if (data.column.index === 1) data.cell.styles.textColor = colors.primary;
-            if (data.column.index === 2 || data.column.index === 3) data.cell.styles.textColor = colors.orange;
-            if (data.column.index === 4) data.cell.styles.textColor = colors.red;
+            if (data.column.index >= 2 && data.column.index < 2 + maxBreaks * 2) data.cell.styles.textColor = colors.orange;
+            if (data.column.index === 2 + maxBreaks * 2) data.cell.styles.textColor = colors.red;
           }
         }
       });
