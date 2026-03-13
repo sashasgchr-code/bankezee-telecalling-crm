@@ -305,12 +305,12 @@ const AdminReports = () => {
         tc.presentations || 0,
         formatTime(tc.total_call_seconds),
         formatTime(tc.total_idle_seconds),
-        `${(tc.calls_to_lead_rate || 0).toFixed(1)}%`
+        `${(tc.calls_to_file_ratio || 0).toFixed(1)}%`
       ]);
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Idle', 'Conv %']],
+        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Idle', 'File %']],
         body: tableData,
         theme: 'grid',
         headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
