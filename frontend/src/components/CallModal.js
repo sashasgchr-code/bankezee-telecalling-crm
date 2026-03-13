@@ -1,29 +1,32 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2 } from 'lucide-react';
+import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2, PhoneOff } from 'lucide-react';
 import api from '../services/api';
 import { StatusColors, StatusLabels } from '../constants/colors';
 
 const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuration }) => {
   const [outcome, setOutcome] = useState('connected');
   const [notes, setNotes] = useState('');
-  const [newStatus, setNewStatus] = useState(lead?.status || 'contacted');
+  const [newStatus, setNewStatus] = useState(lead?.status || 'not_interested');
   const [scheduleFollowUp, setScheduleFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const statuses = ['new', 'contacted', 'interested', 'not_interested', 'follow_up', 'leads', 'not_answering', 'wrong_number', 'presentation'];
+  // Update Status options - only shown when call is connected
+  const updateStatuses = ['not_interested', 'follow_up', 'presentation', 'leads', 'file'];
   
+  // Call Outcomes
   const callOutcomes = [
-    { id: 'connected', label: 'Connected', icon: CheckCircle },
-    { id: 'no_answer', label: 'No Answer', icon: XCircle },
-    { id: 'busy', label: 'Busy', icon: Clock },
-    { id: 'wrong_number', label: 'Wrong Number', icon: AlertCircle },
-    { id: 'voicemail', label: 'Voicemail', icon: Mic },
+    { id: 'connected', label: 'Connected', icon: CheckCircle, color: 'green' },
+    { id: 'not_connecting', label: 'Not Connecting', icon: PhoneOff, color: 'gray' },
+    { id: 'no_answer', label: 'No Answer', icon: XCircle, color: 'red' },
+    { id: 'busy', label: 'Busy', icon: Clock, color: 'orange' },
+    { id: 'wrong_number', label: 'Wrong Number', icon: AlertCircle, color: 'red' },
+    { id: 'voicemail', label: 'Voicemail', icon: Mic, color: 'purple' },
   ];
 
   useEffect(() => {
     if (isOpen && lead) {
-      setNewStatus(lead.status === 'new' ? 'contacted' : lead.status);
+      setNewStatus(lead.status === 'new' || lead.status === 'contacted' ? 'not_interested' : lead.status);
       setOutcome('connected');
       setNotes('');
       setScheduleFollowUp(false);
