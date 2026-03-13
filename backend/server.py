@@ -1764,6 +1764,7 @@ async def get_telecaller_reports(
             "presentations": user_presentations,
             "total_calls": user_total_calls,
             "calls_connected": calls_connected,
+            "calls_not_connecting": calls_not_connecting,
             "calls_no_answer": calls_no_answer,
             "calls_wrong_number": calls_wrong_number,
             "calls_busy": calls_busy,
