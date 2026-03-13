@@ -616,7 +616,6 @@ const AdminReports = () => {
         const breakStart = group.activities?.find(a => a.action === 'break_start')?.timestamp;
         const breakEnd = group.activities?.find(a => a.action === 'break_end')?.timestamp;
         const logoutTime = group.activities?.find(a => a.action === 'logout')?.timestamp;
-        const breakReason = group.activities?.find(a => a.action === 'break_start')?.reason || '-';
         
         const formatTime = (ts) => {
           if (!ts) return '-';
@@ -628,14 +627,13 @@ const AdminReports = () => {
           formatTime(loginTime),
           formatTime(breakStart),
           formatTime(breakEnd),
-          formatTime(logoutTime),
-          breakReason
+          formatTime(logoutTime)
         ];
       });
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Telecaller', 'Login', 'Break Start', 'Break End', 'Logout', 'Break Reason']],
+        head: [['Telecaller', 'Login', 'Break Start', 'Break End', 'Logout']],
         body: activityTableData,
         theme: 'grid',
         styles: {
@@ -651,12 +649,11 @@ const AdminReports = () => {
         },
         bodyStyles: { fontSize: 9, halign: 'center', cellPadding: 4 },
         columnStyles: {
-          0: { cellWidth: 45, halign: 'left', fontStyle: 'bold' },
-          1: { cellWidth: 25 },
-          2: { cellWidth: 25 },
-          3: { cellWidth: 25 },
-          4: { cellWidth: 25 },
-          5: { cellWidth: 45, halign: 'left' }
+          0: { cellWidth: 50, halign: 'left', fontStyle: 'bold' },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 30 },
+          3: { cellWidth: 30 },
+          4: { cellWidth: 30 }
         },
         margin: { left: 14, right: 14 },
         didParseCell: function(data) {
