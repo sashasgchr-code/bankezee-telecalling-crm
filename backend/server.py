@@ -1736,7 +1736,8 @@ async def get_telecaller_reports(
         status_counts_raw = await db.leads.aggregate(status_pipeline).to_list(20)
         user_status_counts = {s["_id"]: s["count"] for s in status_counts_raw if s["_id"]}
         
-        calls_to_lead_rate = (user_leads_generated / user_total_calls * 100) if user_total_calls > 0 else 0
+        # Calculate call to file ratio instead of call to lead rate
+        calls_to_file_ratio = (user_file / user_total_calls * 100) if user_total_calls > 0 else 0
         
         telecaller_reports.append({
             "user_id": user_id,
@@ -1756,7 +1757,7 @@ async def get_telecaller_reports(
             "calls_voicemail": calls_voicemail,
             "follow_ups_pending": follow_ups_pending,
             "follow_ups_completed": follow_ups_completed,
-            "calls_to_lead_rate": calls_to_lead_rate,
+            "calls_to_file_ratio": calls_to_file_ratio,
             "total_call_seconds": user_call_seconds,
             "total_idle_seconds": user_idle_seconds,
             "total_login_seconds": user_login_seconds,
@@ -1775,7 +1776,8 @@ async def get_telecaller_reports(
     
     telecaller_reports.sort(key=lambda x: x["total_calls"], reverse=True)
     
-    overall_calls_to_lead_rate = (total_leads_generated / total_calls * 100) if total_calls > 0 else 0
+    # Calculate overall call to file ratio
+    overall_calls_to_file_ratio = (total_file / total_calls * 100) if total_calls > 0 else 0
     
     overall_stats = {
         "total_leads": total_leads_in_period,
@@ -1785,7 +1787,7 @@ async def get_telecaller_reports(
         "total_presentations": total_presentations,
         "active_telecallers": len([t for t in telecallers if t.get("is_active", True)]),
         "avg_calls_per_user": total_calls / len(telecallers) if telecallers else 0,
-        "calls_to_lead_rate": overall_calls_to_lead_rate,
+        "calls_to_file_ratio": overall_calls_to_file_ratio,
         "total_call_seconds": total_call_seconds,
         "total_idle_seconds": total_idle_seconds
     }
