@@ -1801,9 +1801,6 @@ async def get_hourly_report(
     """Get hourly breakdown of calls and status updates for each telecaller"""
     now = datetime.now(timezone.utc)
     
-    # IST timezone offset (UTC+5:30)
-    IST_OFFSET = timedelta(hours=5, minutes=30)
-    
     if date:
         target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
     else:
