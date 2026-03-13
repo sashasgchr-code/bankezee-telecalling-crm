@@ -345,26 +345,27 @@ const AdminReports = () => {
       yPos = doc.lastAutoTable.finalY + 10;
     }
 
-    // HOURLY REPORT (new page)
+    // HOURLY REPORT (new page) - Matching UI Design Exactly
     if (hourlyReports) {
-      doc.addPage();
+      doc.addPage('l'); // Landscape for wider table
+      const landPageWidth = doc.internal.pageSize.getWidth();
       yPos = 15;
 
-      // Header for hourly report
+      // Header for hourly report - Green gradient style
       doc.setFillColor(...colors.primary);
-      doc.rect(0, 0, pageWidth, 20, 'F');
+      doc.rect(0, 0, landPageWidth, 22, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
+      doc.setFontSize(14);
       doc.setFont('helvetica', 'bold');
-      doc.text(`Caller-wise Hourly Report - ${hourlyDate}`, pageWidth / 2, 13, { align: 'center' });
-      yPos = 28;
-
-      // Legend
-      doc.setTextColor(100, 100, 100);
+      doc.text('Caller-wise Hourly Report', 14, 12);
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
-      doc.text('C = Calls, P = Presentations, L = Leads, F = File', 14, yPos);
-      yPos += 8;
+      doc.text(`Date: ${hourlyDate}`, 14, 18);
+      
+      // Legend on right side of header
+      doc.setFontSize(7);
+      doc.text('C = Calls, P = Presentations, L = Leads, F = File', landPageWidth - 14, 15, { align: 'right' });
+      yPos = 30;
 
       // Get all unique hours
       const allHours = new Set();
@@ -379,103 +380,181 @@ const AdminReports = () => {
       };
 
       if (sortedHours.length > 0 && hourlyReports.telecallers?.length > 0) {
-        // Build header row with hours
+        // Calculate column widths for landscape
+        const telecallerColWidth = 45;
+        const numHourCols = sortedHours.length + 1; // +1 for TOTAL
+        const availableWidth = landPageWidth - telecallerColWidth - 20;
+        const hourColWidth = Math.max(28, Math.min(40, availableWidth / numHourCols));
+
+        // Build header rows
         const headerRow1 = ['Telecaller'];
         sortedHours.forEach(hour => {
           headerRow1.push(`${hour.toString().padStart(2, '0')}:00`);
         });
         headerRow1.push('TOTAL');
 
-        // Build sub-header row with C P L F
         const headerRow2 = [''];
-        sortedHours.forEach(() => {
-          headerRow2.push('C  P  L  F');
-        });
-        headerRow2.push('C  P  L  F');
+        for (let i = 0; i < sortedHours.length + 1; i++) {
+          headerRow2.push('C   P   L   F');
+        }
 
-        // Build data rows
+        // Build data rows with formatted values
         const bodyData = [];
         
         hourlyReports.telecallers.forEach(tc => {
           const row = [tc.user_name];
           sortedHours.forEach(hour => {
             const data = getHourData(tc, hour);
-            const c = data.calls || '-';
-            const p = data.presentations || '-';
-            const l = data.leads || '-';
-            const f = data.file || '-';
-            row.push(`${c}  ${p}  ${l}  ${f}`);
+            const c = data.calls > 0 ? data.calls : '-';
+            const p = data.presentations > 0 ? data.presentations : '-';
+            const l = data.leads > 0 ? data.leads : '-';
+            const f = data.file > 0 ? data.file : '-';
+            row.push({ c, p, l, f });
           });
-          // Add totals
-          const totalC = tc.total_calls || 0;
-          const totalP = tc.total_presentations || 0;
-          const totalL = tc.total_leads || 0;
-          const totalF = tc.total_file || 0;
-          row.push(`${totalC}  ${totalP}  ${totalL}  ${totalF}`);
+          // Totals column
+          row.push({ 
+            c: tc.total_calls || 0, 
+            p: tc.total_presentations || 0, 
+            l: tc.total_leads || 0, 
+            f: tc.total_file || 0 
+          });
           bodyData.push(row);
         });
 
-        // Add TOTAL row
+        // TOTAL row
         const totalRow = ['TOTAL'];
         sortedHours.forEach(hour => {
           const totals = hourlyReports.telecallers.reduce((acc, tc) => {
             const data = getHourData(tc, hour);
             return {
-              calls: acc.calls + (data.calls || 0),
-              presentations: acc.presentations + (data.presentations || 0),
-              leads: acc.leads + (data.leads || 0),
-              file: acc.file + (data.file || 0)
+              c: acc.c + (data.calls || 0),
+              p: acc.p + (data.presentations || 0),
+              l: acc.l + (data.leads || 0),
+              f: acc.f + (data.file || 0)
             };
-          }, { calls: 0, presentations: 0, leads: 0, file: 0 });
-          const c = totals.calls || '-';
-          const p = totals.presentations || '-';
-          const l = totals.leads || '-';
-          const f = totals.file || '-';
-          totalRow.push(`${c}  ${p}  ${l}  ${f}`);
+          }, { c: 0, p: 0, l: 0, f: 0 });
+          totalRow.push(totals);
         });
         // Grand totals
-        const grandC = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_calls || 0), 0);
-        const grandP = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_presentations || 0), 0);
-        const grandL = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_leads || 0), 0);
-        const grandF = hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_file || 0), 0);
-        totalRow.push(`${grandC}  ${grandP}  ${grandL}  ${grandF}`);
+        totalRow.push({
+          c: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_calls || 0), 0),
+          p: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_presentations || 0), 0),
+          l: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_leads || 0), 0),
+          f: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_file || 0), 0)
+        });
         bodyData.push(totalRow);
 
-        // Calculate column widths
-        const telecallerColWidth = 40;
-        const hourColWidth = Math.min(22, (pageWidth - telecallerColWidth - 30) / (sortedHours.length + 1));
-        
-        const columnStyles = { 0: { cellWidth: telecallerColWidth, halign: 'left' } };
+        // Convert to string format for table
+        const tableBodyData = bodyData.map(row => {
+          return row.map((cell, idx) => {
+            if (idx === 0) return cell; // Telecaller name
+            if (typeof cell === 'object') {
+              const c = cell.c > 0 ? cell.c : '-';
+              const p = cell.p > 0 ? cell.p : '-';
+              const l = cell.l > 0 ? cell.l : '-';
+              const f = cell.f > 0 ? cell.f : '-';
+              return `${c}   ${p}   ${l}   ${f}`;
+            }
+            return cell;
+          });
+        });
+
+        const columnStyles = { 
+          0: { cellWidth: telecallerColWidth, halign: 'left', fontStyle: 'bold' } 
+        };
         for (let i = 1; i <= sortedHours.length + 1; i++) {
-          columnStyles[i] = { cellWidth: hourColWidth, halign: 'center', fontSize: 7 };
+          columnStyles[i] = { cellWidth: hourColWidth, halign: 'center', fontSize: 8 };
         }
 
         autoTable(doc, {
           startY: yPos,
           head: [headerRow1, headerRow2],
-          body: bodyData,
+          body: tableBodyData,
           theme: 'grid',
+          styles: {
+            lineColor: [200, 200, 200],
+            lineWidth: 0.5,
+          },
           headStyles: { 
-            fillColor: colors.primary, 
-            textColor: [255, 255, 255], 
+            fillColor: [240, 240, 240], 
+            textColor: [50, 50, 50], 
             fontStyle: 'bold', 
-            fontSize: 7,
+            fontSize: 8,
             halign: 'center'
           },
-          bodyStyles: { fontSize: 7, halign: 'center' },
+          bodyStyles: { fontSize: 8, halign: 'center', cellPadding: 3 },
           columnStyles: columnStyles,
           margin: { left: 10, right: 10 },
+          didDrawCell: function(data) {
+            // Custom drawing for data cells with colored values
+            if (data.section === 'body' && data.column.index > 0) {
+              const cellText = data.cell.text[0];
+              if (cellText && cellText.includes('   ')) {
+                // Clear the default text
+                doc.setFillColor(data.row.index === tableBodyData.length - 1 ? colors.primary[0] : 255, 
+                                 data.row.index === tableBodyData.length - 1 ? colors.primary[1] : 255, 
+                                 data.row.index === tableBodyData.length - 1 ? colors.primary[2] : 255);
+                const cellX = data.cell.x;
+                const cellY = data.cell.y;
+                const cellW = data.cell.width;
+                const cellH = data.cell.height;
+                
+                // Parse values
+                const parts = cellText.split('   ').map(p => p.trim());
+                if (parts.length === 4) {
+                  const [c, p, l, f] = parts;
+                  const spacing = cellW / 4;
+                  const baseY = cellY + cellH / 2 + 1;
+                  
+                  doc.setFontSize(8);
+                  doc.setFont('helvetica', 'bold');
+                  
+                  // Draw C value (blue)
+                  if (data.row.index === tableBodyData.length - 1) {
+                    doc.setTextColor(200, 220, 255);
+                  } else {
+                    doc.setTextColor(...colors.secondary);
+                  }
+                  doc.text(c, cellX + spacing * 0.5, baseY, { align: 'center' });
+                  
+                  // Draw P value (indigo)
+                  if (data.row.index === tableBodyData.length - 1) {
+                    doc.setTextColor(200, 200, 255);
+                  } else {
+                    doc.setTextColor(...colors.indigo);
+                  }
+                  doc.text(p, cellX + spacing * 1.5, baseY, { align: 'center' });
+                  
+                  // Draw L value (teal)
+                  if (data.row.index === tableBodyData.length - 1) {
+                    doc.setTextColor(200, 255, 230);
+                  } else {
+                    doc.setTextColor(...colors.teal);
+                  }
+                  doc.text(l, cellX + spacing * 2.5, baseY, { align: 'center' });
+                  
+                  // Draw F value (orange)
+                  if (data.row.index === tableBodyData.length - 1) {
+                    doc.setTextColor(255, 220, 180);
+                  } else {
+                    doc.setTextColor(...colors.orange);
+                  }
+                  doc.text(f, cellX + spacing * 3.5, baseY, { align: 'center' });
+                }
+              }
+            }
+          },
           didParseCell: function(data) {
             // Style the TOTAL row
-            if (data.section === 'body' && data.row.index === bodyData.length - 1) {
+            if (data.section === 'body' && data.row.index === tableBodyData.length - 1) {
               data.cell.styles.fillColor = colors.primary;
               data.cell.styles.textColor = [255, 255, 255];
               data.cell.styles.fontStyle = 'bold';
             }
             // Style the TOTAL column
             if (data.section === 'body' && data.column.index === sortedHours.length + 1) {
-              if (data.row.index !== bodyData.length - 1) {
-                data.cell.styles.fillColor = [240, 240, 240];
+              if (data.row.index !== tableBodyData.length - 1) {
+                data.cell.styles.fillColor = [245, 245, 245];
                 data.cell.styles.fontStyle = 'bold';
               }
             }
@@ -483,6 +562,25 @@ const AdminReports = () => {
             if (data.section === 'body' && data.column.index === 0) {
               data.cell.styles.halign = 'left';
               data.cell.styles.fontStyle = 'bold';
+              if (data.row.index % 2 === 1 && data.row.index !== tableBodyData.length - 1) {
+                data.cell.styles.fillColor = [250, 250, 250];
+              }
+            }
+            // Alternating row colors
+            if (data.section === 'body' && data.row.index !== tableBodyData.length - 1) {
+              if (data.row.index % 2 === 1) {
+                data.cell.styles.fillColor = [250, 250, 250];
+              }
+            }
+            // Hide default text for CPLF cells - we'll draw custom
+            if (data.section === 'body' && data.column.index > 0) {
+              data.cell.styles.textColor = [255, 255, 255, 0]; // Transparent
+            }
+          },
+          willDrawCell: function(data) {
+            // Redraw TOTAL row text color
+            if (data.section === 'body' && data.row.index === tableBodyData.length - 1 && data.column.index === 0) {
+              data.cell.styles.textColor = [255, 255, 255];
             }
           }
         });
@@ -490,7 +588,7 @@ const AdminReports = () => {
       } else {
         doc.setTextColor(100, 100, 100);
         doc.setFontSize(10);
-        doc.text('No hourly data available', pageWidth / 2, yPos + 20, { align: 'center' });
+        doc.text('No hourly data available', landPageWidth / 2, yPos + 20, { align: 'center' });
       }
     }
 
