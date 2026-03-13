@@ -1778,6 +1778,9 @@ async def get_hourly_report(
     """Get hourly breakdown of calls and status updates for each telecaller"""
     now = datetime.now(timezone.utc)
     
+    # IST timezone offset (UTC+5:30)
+    IST_OFFSET = timedelta(hours=5, minutes=30)
+    
     if date:
         target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
     else:
@@ -1808,7 +1811,7 @@ async def get_hourly_report(
             "updated_at": {"$gte": start_naive, "$lt": end_naive}
         }).to_list(10000)
         
-        # Group by hour
+        # Group by hour (in IST)
         hours = {}
         for hour in range(24):
             hours[hour] = {
@@ -1822,7 +1825,11 @@ async def get_hourly_report(
         for call in user_calls:
             call_time = call.get("created_at")
             if call_time:
-                hour = call_time.hour
+                # Convert UTC time to IST
+                if call_time.tzinfo is None:
+                    call_time = call_time.replace(tzinfo=timezone.utc)
+                ist_time = call_time + IST_OFFSET
+                hour = ist_time.hour
                 hours[hour]["calls"] += 1
                 outcome = call.get("outcome", "")
                 if outcome == "connected":
@@ -1831,7 +1838,11 @@ async def get_hourly_report(
         for lead in user_leads_updated:
             update_time = lead.get("updated_at")
             if update_time:
-                hour = update_time.hour
+                # Convert UTC time to IST
+                if update_time.tzinfo is None:
+                    update_time = update_time.replace(tzinfo=timezone.utc)
+                ist_time = update_time + IST_OFFSET
+                hour = ist_time.hour
                 status = lead.get("status", "")
                 if status == "presentation":
                     hours[hour]["presentations"] += 1
