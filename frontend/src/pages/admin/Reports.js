@@ -828,8 +828,8 @@ const AdminReports = () => {
                           <p className="text-xs text-gray-500">Idle Time</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-lg font-bold text-teal-600">{(tc.calls_to_lead_rate || 0).toFixed(1)}%</p>
-                          <p className="text-xs text-gray-500">Conversion</p>
+                          <p className="text-lg font-bold text-teal-600">{(tc.calls_to_file_ratio || 0).toFixed(1)}%</p>
+                          <p className="text-xs text-gray-500">File Ratio</p>
                         </div>
                       </div>
 
