@@ -1289,19 +1289,16 @@ const AdminReports = () => {
                               Logout
                             </div>
                           </th>
-                          <th className="text-center py-3 px-4 font-bold text-gray-700 border-b-2 border-gray-300 min-w-[100px]">
-                            Break Reason
-                          </th>
                         </tr>
                       </thead>
                       <tbody>
                         {activityLogs.map((group, idx) => {
-                          // Extract activity times for this user
-                          const loginTime = group.activities?.find(a => a.action === 'login')?.timestamp;
-                          const breakStart = group.activities?.find(a => a.action === 'break_start')?.timestamp;
-                          const breakEnd = group.activities?.find(a => a.action === 'break_end')?.timestamp;
-                          const logoutTime = group.activities?.find(a => a.action === 'logout')?.timestamp;
-                          const breakReason = group.activities?.find(a => a.action === 'break_start')?.reason;
+                          // Extract activity times for this user - get ALL occurrences
+                          const activities = group.activities || [];
+                          const loginActivity = activities.find(a => a.action === 'login');
+                          const breakStartActivity = activities.find(a => a.action === 'break_start');
+                          const breakEndActivity = activities.find(a => a.action === 'break_end');
+                          const logoutActivity = activities.find(a => a.action === 'logout');
                           
                           return (
                             <tr key={group.user_id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-purple-50 transition-colors`}>
@@ -1309,36 +1306,31 @@ const AdminReports = () => {
                                 {group.user_name}
                               </td>
                               <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {loginTime ? (
+                                {loginActivity?.timestamp ? (
                                   <span className="inline-block px-3 py-1 rounded-full bg-green-100 text-green-700 font-semibold text-xs">
-                                    {formatTimestamp(loginTime)}
+                                    {formatTimestamp(loginActivity.timestamp)}
                                   </span>
                                 ) : <span className="text-gray-300">-</span>}
                               </td>
                               <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {breakStart ? (
+                                {breakStartActivity?.timestamp ? (
                                   <span className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
-                                    {formatTimestamp(breakStart)}
+                                    {formatTimestamp(breakStartActivity.timestamp)}
                                   </span>
                                 ) : <span className="text-gray-300">-</span>}
                               </td>
                               <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {breakEnd ? (
+                                {breakEndActivity?.timestamp ? (
                                   <span className="inline-block px-3 py-1 rounded-full bg-orange-100 text-orange-700 font-semibold text-xs">
-                                    {formatTimestamp(breakEnd)}
+                                    {formatTimestamp(breakEndActivity.timestamp)}
                                   </span>
                                 ) : <span className="text-gray-300">-</span>}
                               </td>
                               <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {logoutTime ? (
+                                {logoutActivity?.timestamp ? (
                                   <span className="inline-block px-3 py-1 rounded-full bg-red-100 text-red-700 font-semibold text-xs">
-                                    {formatTimestamp(logoutTime)}
+                                    {formatTimestamp(logoutActivity.timestamp)}
                                   </span>
-                                ) : <span className="text-gray-300">-</span>}
-                              </td>
-                              <td className="py-3 px-4 text-center border-b border-gray-200">
-                                {breakReason ? (
-                                  <span className="text-gray-600 text-xs">{breakReason}</span>
                                 ) : <span className="text-gray-300">-</span>}
                               </td>
                             </tr>
