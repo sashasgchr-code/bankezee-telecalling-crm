@@ -1,9 +1,10 @@
 import React from 'react';
-import { Phone, MapPin } from 'lucide-react';
-import { StatusColors, StatusLabels } from '../constants/colors';
+import { Phone, MapPin, PhoneOff } from 'lucide-react';
+import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
 
 const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
   const statusColor = StatusColors[lead.status] || '#757575';
+  const outcomeColor = lead.last_call_outcome ? (OutcomeColors[lead.last_call_outcome] || '#757575') : null;
   
   const handleCall = (e) => {
     e.stopPropagation();
@@ -32,12 +33,23 @@ const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
               <p className="text-sm text-gray-500">{lead.phone}</p>
             </div>
           </div>
-          <span 
-            className="px-2 py-1 rounded text-xs font-semibold uppercase ml-2 flex-shrink-0"
-            style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
-          >
-            {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
-          </span>
+          <div className="flex flex-col items-end gap-1 ml-2 flex-shrink-0">
+            <span 
+              className="px-2 py-1 rounded text-xs font-semibold uppercase"
+              style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
+            >
+              {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
+            </span>
+            {lead.last_call_outcome && (
+              <span 
+                className="px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1"
+                style={{ backgroundColor: `${outcomeColor}15`, color: outcomeColor }}
+              >
+                <PhoneOff size={10} />
+                {OutcomeLabels[lead.last_call_outcome] || lead.last_call_outcome?.replace('_', ' ')}
+              </span>
+            )}
+          </div>
         </div>
         
         {lead.city && (
