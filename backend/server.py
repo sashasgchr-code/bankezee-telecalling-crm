@@ -119,6 +119,7 @@ class LeadUpdate(BaseModel):
     notes: Optional[str] = None
     custom_fields: Optional[dict] = None
     assigned_to: Optional[str] = None
+    last_call_outcome: Optional[str] = None
 
 class LeadAssign(BaseModel):
     lead_ids: List[str]
