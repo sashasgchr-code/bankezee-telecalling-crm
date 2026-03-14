@@ -62,10 +62,27 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
         duration: callDuration // Include full duration from dial to end
       });
 
-      // Only update lead status if call was connected
-      if (outcome === 'connected' && lead && newStatus !== lead.status) {
+      // Update lead status based on call outcome
+      if (lead) {
+        let statusToUpdate = null;
+        
+        if (outcome === 'connected') {
+          // For connected calls, use the selected status
+          if (newStatus !== lead.status) {
+            statusToUpdate = newStatus;
+          }
+        } else {
+          // For non-connected outcomes, update status to 'contacted' if currently 'new'
+          // This ensures the lead is no longer shown as "new" after a call attempt
+          if (lead.status === 'new') {
+            statusToUpdate = 'contacted';
+          }
+        }
+        
+        // Always update last_call_outcome so it shows on the card
         await api.put(`/leads/${lead.id}`, {
-          status: newStatus,
+          ...(statusToUpdate && { status: statusToUpdate }),
+          last_call_outcome: outcome,
           notes: notes || lead.notes,
         });
       }
