@@ -1735,6 +1735,8 @@ async def get_telecaller_reports(
         
         session_query = {"user_id": user_id}
         if start_date and end_date:
+            # For daily_sessions, the date field is stored as midnight datetime
+            # Ensure we compare dates properly
             session_query["date"] = {"$gte": start_date, "$lt": end_date}
         elif start_date:
             session_query["date"] = {"$gte": start_date}
@@ -1744,8 +1746,9 @@ async def get_telecaller_reports(
         user_login_seconds = sum(s.get("total_login_seconds", 0) for s in sessions)
         user_break_seconds = sum(s.get("total_break_seconds", 0) for s in sessions)
         
-        # Use the higher value between sessions and actual call logs
-        user_call_seconds = max(user_call_seconds_from_sessions, user_call_seconds_from_logs)
+        # For talk time, ONLY use call_logs for the filtered period (more reliable)
+        # Don't use daily_sessions as they may have accumulated data
+        user_call_seconds = user_call_seconds_from_logs
         
         # Calculate idle time = Login Time - Talk Time - Break Time
         user_idle_seconds = max(0, user_login_seconds - user_call_seconds - user_break_seconds)
