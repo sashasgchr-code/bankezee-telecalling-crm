@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff } from 'lucide-react';
 import api from '../services/api';
-import { StatusColors, StatusLabels } from '../constants/colors';
+import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
 import { format, parseISO } from 'date-fns';
 import useAuthStore from '../store/authStore';
 
