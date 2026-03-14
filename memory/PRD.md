@@ -133,21 +133,36 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 - Frontend: 100% pass rate
 - All 4 reporting enhancements verified
 
-## Latest Updates (Mar 13, 2026)
+## Latest Updates (Mar 14, 2026)
 
-### Bug Fixes - COMPLETED ✅
+### New Feature: Call Outcome Display on Lead Cards - COMPLETED ✅
+1. **Lead Status Updates on Call Outcome**
+   - When a call is logged with outcome (No Answer, Busy, etc.), the lead's `last_call_outcome` is saved
+   - If the lead was "new" and call was NOT connected, status changes to "contacted"
+   - For connected calls, the manually selected status is applied as before
+
+2. **Lead Card Enhancement**
+   - Lead cards now display BOTH the status badge AND the last call outcome
+   - Last call outcome shown as a small badge with phone icon below the status
+   - Color-coded based on outcome type (red for No Answer, orange for Busy, etc.)
+
+3. **Lead Detail Page Enhancement**
+   - Lead detail page now shows last call outcome badge next to status
+   - Both badges displayed in a flex container for better layout
+
+### Bug Fixes (Mar 13, 2026)
+
 1. **Break Time Capture Issue (P0) - VERIFIED WORKING**
-   - Investigated the break time capture functionality
-   - Backend `/api/activity/break` endpoint was functioning correctly
-   - Break times (break_start, break_end) are properly saved to `activity_logs` collection
-   - Frontend displays break times correctly in Activity Log table
-   - Issue root cause: No telecallers had previously taken breaks in test environment
+   - Backend `/api/activity/break` endpoint functioning correctly
+   - Break times properly saved and displayed in Activity Log
 
-2. **Removed "Break Reason" Column from PDF Export (P1) - COMPLETED**
-   - Removed `breakReason` field from PDF export data in `Reports.js`
-   - Updated PDF table headers to remove "Break Reason" column
-   - Adjusted column widths for better presentation (5 columns instead of 6)
-   - Activity Log PDF now matches UI: Telecaller, Login, Break Start, Break End, Logout
+2. **Activity Log Multiple Breaks - COMPLETED**
+   - Activity Log now shows separate columns for each break: Break 1 From/To, Break 2 From/To, etc.
+   - Dynamic columns based on maximum breaks taken by any telecaller that day
+   - Both UI and PDF export updated to use this format
+
+3. **Removed "Break Reason" Column from PDF Export (P1) - COMPLETED**
+   - Activity Log PDF matches UI format
 
 ### Previous Updates (Mar 11, 2026)
 - Added PDF export functionality with color-coded reports
