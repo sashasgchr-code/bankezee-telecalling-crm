@@ -3,8 +3,14 @@ import { Phone, MapPin, PhoneOff } from 'lucide-react';
 import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
 
 const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
-  const statusColor = StatusColors[lead.status] || '#757575';
-  const outcomeColor = lead.last_call_outcome ? (OutcomeColors[lead.last_call_outcome] || '#757575') : null;
+  // If there's a call outcome, prioritize showing it
+  const hasCallOutcome = lead.last_call_outcome;
+  const primaryColor = hasCallOutcome 
+    ? (OutcomeColors[lead.last_call_outcome] || '#757575')
+    : (StatusColors[lead.status] || '#757575');
+  const primaryLabel = hasCallOutcome
+    ? (OutcomeLabels[lead.last_call_outcome] || lead.last_call_outcome?.replace('_', ' '))
+    : (StatusLabels[lead.status] || lead.status?.replace('_', ' '));
   
   const handleCall = (e) => {
     e.stopPropagation();
@@ -22,7 +28,7 @@ const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
           <div className="flex items-center flex-1 min-w-0">
             <div 
               className="w-11 h-11 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: statusColor }}
+              style={{ backgroundColor: primaryColor }}
             >
               <span className="text-white font-bold text-lg">
                 {lead.name?.charAt(0).toUpperCase()}
@@ -34,19 +40,24 @@ const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1 ml-2 flex-shrink-0">
+            {/* Primary badge - show call outcome if available, otherwise status */}
             <span 
-              className="px-2 py-1 rounded text-xs font-semibold uppercase"
-              style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
+              className="px-2 py-1 rounded text-xs font-semibold uppercase flex items-center gap-1"
+              style={{ backgroundColor: `${primaryColor}20`, color: primaryColor }}
             >
-              {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
+              {hasCallOutcome && <PhoneOff size={12} />}
+              {primaryLabel}
             </span>
-            {lead.last_call_outcome && (
+            {/* Show status as secondary if there's a call outcome */}
+            {hasCallOutcome && (
               <span 
-                className="px-2 py-0.5 rounded text-xs font-medium flex items-center gap-1"
-                style={{ backgroundColor: `${outcomeColor}15`, color: outcomeColor }}
+                className="px-2 py-0.5 rounded text-xs font-medium"
+                style={{ 
+                  backgroundColor: `${StatusColors[lead.status] || '#757575'}15`, 
+                  color: StatusColors[lead.status] || '#757575' 
+                }}
               >
-                <PhoneOff size={10} />
-                {OutcomeLabels[lead.last_call_outcome] || lead.last_call_outcome?.replace('_', ' ')}
+                {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
               </span>
             )}
           </div>
