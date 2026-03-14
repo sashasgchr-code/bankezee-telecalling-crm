@@ -608,11 +608,20 @@ const AdminReports = () => {
         return row;
       });
 
-      // Calculate column widths dynamically to fit all columns
+      // Calculate column widths dynamically to fit all columns - ensuring nothing gets cut off
       const totalCols = 2 + maxBreaks * 2 + 1; // Telecaller + Login + breaks + Logout
-      const telecallerColWidth = 45;
-      const availableWidth = landPageWidth - telecallerColWidth - 20;
-      const otherColWidth = Math.max(20, availableWidth / (totalCols - 1));
+      const landMargin = 8;
+      const usableWidth = landPageWidth - (landMargin * 2);
+      
+      // Adjust font and cell padding based on number of columns
+      const needsCompactMode = totalCols > 7;
+      const fontSize = needsCompactMode ? 7 : 8;
+      const cellPadding = needsCompactMode ? 2 : 3;
+      
+      // Calculate column widths to ensure everything fits
+      const telecallerColWidth = needsCompactMode ? 35 : 45;
+      const availableForOthers = usableWidth - telecallerColWidth;
+      const otherColWidth = availableForOthers / (totalCols - 1);
       
       const columnStyles = {
         0: { cellWidth: telecallerColWidth, halign: 'left', fontStyle: 'bold' },
@@ -626,23 +635,25 @@ const AdminReports = () => {
         head: [headers],
         body: activityTableData,
         theme: 'grid',
+        tableWidth: usableWidth,
         styles: {
           lineColor: [220, 220, 220],
           lineWidth: 0.3,
-          fontSize: 8,
-          cellPadding: 3,
+          fontSize: fontSize,
+          cellPadding: cellPadding,
+          overflow: 'linebreak',
         },
         headStyles: { 
           fillColor: [245, 245, 245], 
           textColor: [60, 60, 60], 
           fontStyle: 'bold', 
-          fontSize: 8,
+          fontSize: fontSize,
           halign: 'center',
-          cellPadding: 3,
+          cellPadding: cellPadding,
         },
-        bodyStyles: { fontSize: 9, halign: 'center', cellPadding: 4 },
+        bodyStyles: { fontSize: fontSize, halign: 'center', cellPadding: cellPadding },
         columnStyles: columnStyles,
-        margin: { left: 10, right: 10 },
+        margin: { left: landMargin, right: landMargin },
         didParseCell: function(data) {
           if (data.section === 'body') {
             // Telecaller name column
