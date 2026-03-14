@@ -1634,18 +1634,24 @@ async def get_telecaller_reports(
         period = "custom"
     elif period == "today":
         start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = start_date + timedelta(days=1)
     elif period == "week":
         start_date = now - timedelta(days=now.weekday())
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = now + timedelta(days=1)
     elif period == "month":
         start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end_date = now + timedelta(days=1)
     elif period == "three_months":
         start_date = now - timedelta(days=90)
         start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_date = now + timedelta(days=1)
     elif period == "lifetime":
         start_date = None
+        end_date = None
     else:
         start_date = None
+        end_date = None
     
     telecallers = await db.users.find({"role": "telecaller"}).to_list(100)
     
