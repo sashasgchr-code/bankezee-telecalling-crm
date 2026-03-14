@@ -1734,7 +1734,9 @@ async def get_telecaller_reports(
         })
         
         session_query = {"user_id": user_id}
-        if start_date:
+        if start_date and end_date:
+            session_query["date"] = {"$gte": start_date, "$lt": end_date}
+        elif start_date:
             session_query["date"] = {"$gte": start_date}
         
         sessions = await db.daily_sessions.find(session_query).to_list(100)
