@@ -551,7 +551,7 @@ const AdminReports = () => {
       }
     }
 
-    // ACTIVITY LOG (new page) - Tabular format with separate columns for each break
+    // ACTIVITY LOG (new page) - Tabular format with separate columns for each break - Matching UI Design
     if (activityLogs && activityLogs.length > 0) {
       doc.addPage('l'); // Landscape for wider table with multiple break columns
       const landPageWidth = doc.internal.pageSize.getWidth();
@@ -566,25 +566,25 @@ const AdminReports = () => {
         1
       );
 
-      // Header for activity log
+      // Header for activity log - Purple gradient style matching UI
       doc.setFillColor(...colors.purple);
-      doc.rect(0, 0, landPageWidth, 22, 'F');
+      doc.rect(0, 0, landPageWidth, 28, 'F');
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(14);
+      doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
-      doc.text('Telecaller Activity Log', 14, 12);
-      doc.setFontSize(8);
+      doc.text('Telecaller Activity Log', 14, 14);
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      doc.text(`Date: ${activityDate}`, 14, 18);
-      doc.text('Daily login, break, and logout times', landPageWidth - 14, 15, { align: 'right' });
-      yPos = 30;
+      doc.text('Daily login, break, and logout times', 14, 23);
+      doc.text(`Date: ${activityDate}`, landPageWidth - 14, 14, { align: 'right' });
+      yPos = 36;
 
       const formatTime = (ts) => {
         if (!ts) return '-';
         return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
       };
 
-      // Build dynamic headers
+      // Build dynamic headers matching UI exactly
       const headers = ['Telecaller', 'Login'];
       for (let i = 0; i < maxBreaks; i++) {
         headers.push(`Break ${i + 1} From`);
@@ -608,20 +608,18 @@ const AdminReports = () => {
         return row;
       });
 
-      // Calculate column widths
-      const telecallerColWidth = 40;
-      const loginLogoutColWidth = 22;
-      const breakColWidth = 22;
+      // Calculate column widths dynamically to fit all columns
+      const totalCols = 2 + maxBreaks * 2 + 1; // Telecaller + Login + breaks + Logout
+      const telecallerColWidth = 45;
+      const availableWidth = landPageWidth - telecallerColWidth - 20;
+      const otherColWidth = Math.max(20, availableWidth / (totalCols - 1));
       
       const columnStyles = {
         0: { cellWidth: telecallerColWidth, halign: 'left', fontStyle: 'bold' },
-        1: { cellWidth: loginLogoutColWidth }
       };
-      
-      for (let i = 0; i < maxBreaks * 2; i++) {
-        columnStyles[2 + i] = { cellWidth: breakColWidth };
+      for (let i = 1; i < totalCols; i++) {
+        columnStyles[i] = { cellWidth: otherColWidth, halign: 'center' };
       }
-      columnStyles[2 + maxBreaks * 2] = { cellWidth: loginLogoutColWidth };
 
       autoTable(doc, {
         startY: yPos,
@@ -629,18 +627,20 @@ const AdminReports = () => {
         body: activityTableData,
         theme: 'grid',
         styles: {
-          lineColor: [200, 200, 200],
-          lineWidth: 0.5,
+          lineColor: [220, 220, 220],
+          lineWidth: 0.3,
           fontSize: 8,
+          cellPadding: 3,
         },
         headStyles: { 
-          fillColor: [240, 240, 240], 
-          textColor: [50, 50, 50], 
+          fillColor: [245, 245, 245], 
+          textColor: [60, 60, 60], 
           fontStyle: 'bold', 
-          fontSize: 7,
-          halign: 'center'
+          fontSize: 8,
+          halign: 'center',
+          cellPadding: 3,
         },
-        bodyStyles: { fontSize: 8, halign: 'center', cellPadding: 3 },
+        bodyStyles: { fontSize: 9, halign: 'center', cellPadding: 4 },
         columnStyles: columnStyles,
         margin: { left: 10, right: 10 },
         didParseCell: function(data) {
@@ -650,27 +650,27 @@ const AdminReports = () => {
               data.cell.styles.halign = 'left';
               data.cell.styles.fontStyle = 'bold';
             }
-            // Login column - green
+            // Login column - green background and text like UI
             if (data.column.index === 1 && data.cell.raw !== '-') {
               data.cell.styles.textColor = colors.primary;
               data.cell.styles.fontStyle = 'bold';
             }
-            // Break columns - orange (indices 2 to 2 + maxBreaks*2 - 1)
+            // Break columns - orange text like UI (indices 2 to 2 + maxBreaks*2 - 1)
             if (data.column.index >= 2 && data.column.index < 2 + maxBreaks * 2 && data.cell.raw !== '-') {
               data.cell.styles.textColor = colors.orange;
               data.cell.styles.fontStyle = 'bold';
             }
-            // Logout column - red (last column)
+            // Logout column - red text like UI (last column)
             if (data.column.index === 2 + maxBreaks * 2 && data.cell.raw !== '-') {
               data.cell.styles.textColor = colors.red;
               data.cell.styles.fontStyle = 'bold';
             }
             // Alternating row colors
             if (data.row.index % 2 === 1) {
-              data.cell.styles.fillColor = [250, 250, 250];
+              data.cell.styles.fillColor = [252, 252, 252];
             }
           }
-          // Style header columns
+          // Style header columns with matching colors
           if (data.section === 'head') {
             if (data.column.index === 1) data.cell.styles.textColor = colors.primary;
             if (data.column.index >= 2 && data.column.index < 2 + maxBreaks * 2) data.cell.styles.textColor = colors.orange;
