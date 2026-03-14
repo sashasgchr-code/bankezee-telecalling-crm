@@ -124,6 +124,11 @@ const LeadDetail = () => {
 
   if (!lead) return null;
 
+  // Determine primary display - call outcome takes priority
+  const hasCallOutcome = lead.last_call_outcome;
+  const primaryColor = hasCallOutcome 
+    ? (OutcomeColors[lead.last_call_outcome] || '#757575')
+    : (StatusColors[lead.status] || '#757575');
   const statusColor = StatusColors[lead.status] || '#757575';
 
   return (
