@@ -199,12 +199,26 @@ const LeadDetail = () => {
               ) : (
                 <h2 className="text-xl font-bold text-gray-900">{lead.name}</h2>
               )}
-              <span
-                className="inline-block px-3 py-1 rounded-full text-sm font-semibold mt-2"
-                style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
-              >
-                {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
-              </span>
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                <span
+                  className="inline-block px-3 py-1 rounded-full text-sm font-semibold"
+                  style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
+                >
+                  {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
+                </span>
+                {lead.last_call_outcome && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
+                    style={{ 
+                      backgroundColor: `${OutcomeColors[lead.last_call_outcome] || '#757575'}15`, 
+                      color: OutcomeColors[lead.last_call_outcome] || '#757575' 
+                    }}
+                  >
+                    <PhoneOff size={12} />
+                    {OutcomeLabels[lead.last_call_outcome] || lead.last_call_outcome?.replace('_', ' ')}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
