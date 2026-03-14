@@ -187,7 +187,7 @@ const LeadDetail = () => {
           <div className="flex items-center gap-4 mb-4">
             <div
               className="w-16 h-16 rounded-full flex items-center justify-center"
-              style={{ backgroundColor: statusColor }}
+              style={{ backgroundColor: primaryColor }}
             >
               <span className="text-2xl font-bold text-white">
                 {lead.name?.charAt(0).toUpperCase()}
@@ -205,22 +205,33 @@ const LeadDetail = () => {
                 <h2 className="text-xl font-bold text-gray-900">{lead.name}</h2>
               )}
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                <span
-                  className="inline-block px-3 py-1 rounded-full text-sm font-semibold"
-                  style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
-                >
-                  {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
-                </span>
-                {lead.last_call_outcome && (
+                {/* Primary badge - show call outcome if available */}
+                {hasCallOutcome ? (
+                  <>
+                    <span
+                      className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold"
+                      style={{ 
+                        backgroundColor: `${OutcomeColors[lead.last_call_outcome] || '#757575'}20`, 
+                        color: OutcomeColors[lead.last_call_outcome] || '#757575' 
+                      }}
+                    >
+                      <PhoneOff size={14} />
+                      {OutcomeLabels[lead.last_call_outcome] || lead.last_call_outcome?.replace('_', ' ')}
+                    </span>
+                    {/* Show status as secondary */}
+                    <span
+                      className="inline-block px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ backgroundColor: `${statusColor}15`, color: statusColor }}
+                    >
+                      {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
+                    </span>
+                  </>
+                ) : (
                   <span
-                    className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium"
-                    style={{ 
-                      backgroundColor: `${OutcomeColors[lead.last_call_outcome] || '#757575'}15`, 
-                      color: OutcomeColors[lead.last_call_outcome] || '#757575' 
-                    }}
+                    className="inline-block px-3 py-1 rounded-full text-sm font-semibold"
+                    style={{ backgroundColor: `${statusColor}20`, color: statusColor }}
                   >
-                    <PhoneOff size={12} />
-                    {OutcomeLabels[lead.last_call_outcome] || lead.last_call_outcome?.replace('_', ' ')}
+                    {StatusLabels[lead.status] || lead.status?.replace('_', ' ')}
                   </span>
                 )}
               </div>
