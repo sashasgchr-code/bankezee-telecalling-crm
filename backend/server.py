@@ -1242,6 +1242,90 @@ async def get_lead_call_logs(lead_id: str, current_user: dict = Depends(get_curr
     logs = await db.call_logs.find({"lead_id": lead_id}).sort("created_at", -1).to_list(100)
     return serialize_docs(logs)
 
+@router.get("/reports/detailed-calls")
+async def get_detailed_call_report(
+    from_date: str = None,
+    to_date: str = None,
+    telecaller_id: str = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get detailed call report with customer info, call outcome, duration, and caller name"""
+    now = datetime.now(timezone.utc)
+    
+    # Build date filter
+    query = {}
+    if from_date and to_date:
+        start_date = datetime.fromisoformat(from_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+        end_date = datetime.fromisoformat(to_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        query["created_at"] = {"$gte": start_date, "$lt": end_date}
+    elif from_date:
+        start_date = datetime.fromisoformat(from_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
+        query["created_at"] = {"$gte": start_date}
+    else:
+        # Default to today
+        today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        query["created_at"] = {"$gte": today}
+    
+    # Filter by telecaller if specified
+    if telecaller_id and telecaller_id != "all":
+        query["user_id"] = telecaller_id
+    
+    # Fetch call logs
+    call_logs = await db.call_logs.find(query).sort("created_at", -1).to_list(10000)
+    
+    # Enrich with lead information
+    detailed_calls = []
+    for log in call_logs:
+        lead_id = log.get("lead_id")
+        lead = None
+        if lead_id:
+            try:
+                lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+            except:
+                pass
+        
+        # Convert timestamp to IST for display
+        call_time = log.get("created_at")
+        if call_time:
+            call_time_ist = to_ist(call_time) if call_time.tzinfo else to_ist(call_time.replace(tzinfo=timezone.utc))
+        else:
+            call_time_ist = None
+        
+        detailed_calls.append({
+            "id": str(log.get("_id", "")),
+            "call_date": call_time_ist.strftime("%Y-%m-%d") if call_time_ist else "",
+            "call_time": call_time_ist.strftime("%I:%M %p") if call_time_ist else "",
+            "caller_name": log.get("user_name", "Unknown"),
+            "caller_id": log.get("user_id", ""),
+            "customer_name": lead.get("name", "Unknown") if lead else log.get("lead_name", "Unknown"),
+            "customer_phone": lead.get("phone", "") if lead else log.get("lead_phone", ""),
+            "customer_email": lead.get("email", "") if lead else "",
+            "customer_city": lead.get("city", "") if lead else "",
+            "customer_source": lead.get("source", "") if lead else "",
+            "lead_status": lead.get("status", "") if lead else "",
+            "call_outcome": log.get("outcome", ""),
+            "call_duration_seconds": log.get("duration", 0) or 0,
+            "call_duration_formatted": format_duration(log.get("duration", 0) or 0),
+            "notes": log.get("notes", ""),
+        })
+    
+    return {
+        "calls": detailed_calls,
+        "total_count": len(detailed_calls),
+        "from_date": from_date,
+        "to_date": to_date
+    }
+
+def format_duration(seconds):
+    """Format seconds into human readable duration"""
+    if not seconds:
+        return "0s"
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    if minutes > 0:
+        return f"{minutes}m {secs}s"
+    return f"{secs}s"
+
 # ===================== FOLLOW-UPS =====================
 
 @router.post("/follow-ups")
