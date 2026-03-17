@@ -141,6 +141,8 @@ class CallSessionEnd(BaseModel):
     session_id: str
     outcome: str
     notes: Optional[str] = None
+    duration: Optional[int] = None
+    form_filling_seconds: Optional[int] = None
 
 class ActivityPing(BaseModel):
     pass  # Just a heartbeat
