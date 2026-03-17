@@ -1510,6 +1510,21 @@ const AdminReports = () => {
                                       </span>
                                     ) : <span className="text-gray-300">-</span>}
                                   </td>
+                                  <td className="py-3 px-3 text-center border-b border-gray-200">
+                                    <span className="inline-block px-2 py-1 rounded-full bg-purple-100 text-purple-700 font-semibold text-xs">
+                                      {formatTime(group.total_call_seconds)}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 text-center border-b border-gray-200">
+                                    <span className="inline-block px-2 py-1 rounded-full bg-amber-100 text-amber-700 font-semibold text-xs">
+                                      {formatTime(group.total_break_seconds)}
+                                    </span>
+                                  </td>
+                                  <td className="py-3 px-3 text-center border-b border-gray-200">
+                                    <span className="inline-block px-2 py-1 rounded-full bg-pink-100 text-pink-700 font-semibold text-xs">
+                                      {formatTime(group.total_form_filling_seconds)}
+                                    </span>
+                                  </td>
                                 </tr>
                               );
                             })}
