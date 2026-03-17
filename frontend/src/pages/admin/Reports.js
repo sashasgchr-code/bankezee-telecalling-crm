@@ -84,6 +84,42 @@ const AdminReports = () => {
     }
   }, [activityDate]);
 
+  const fetchDetailedCalls = useCallback(async (showRefresh = false) => {
+    try {
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      
+      let url = `/reports/detailed-calls?from_date=${callsFromDate}&to_date=${callsToDate}`;
+      if (selectedTelecaller && selectedTelecaller !== 'all') {
+        url += `&telecaller_id=${selectedTelecaller}`;
+      }
+      
+      const response = await api.get(url);
+      setDetailedCalls(response.data);
+    } catch (error) {
+      console.error('Error fetching detailed calls:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [callsFromDate, callsToDate, selectedTelecaller]);
+
+  const fetchTelecallers = useCallback(async () => {
+    try {
+      const response = await api.get('/users?role=telecaller');
+      setTelecallers(response.data || []);
+    } catch (error) {
+      console.error('Error fetching telecallers:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchTelecallers();
+  }, [fetchTelecallers]);
+
   useEffect(() => {
     if (activeTab === 'summary') {
       fetchReports();
@@ -91,8 +127,10 @@ const AdminReports = () => {
       fetchHourlyReports();
     } else if (activeTab === 'activity') {
       fetchActivityLogs();
+    } else if (activeTab === 'calls') {
+      fetchDetailedCalls();
     }
-  }, [activeTab, fetchReports, fetchHourlyReports, fetchActivityLogs]);
+  }, [activeTab, fetchReports, fetchHourlyReports, fetchActivityLogs, fetchDetailedCalls]);
 
   const handleRefresh = () => {
     if (activeTab === 'summary') {
