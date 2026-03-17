@@ -1932,6 +1932,9 @@ async def get_telecaller_reports(
     # Calculate overall average call time
     overall_avg_call_time_seconds = (total_call_seconds / total_calls) if total_calls > 0 else 0
     
+    # Calculate overall average form filling time
+    overall_avg_form_filling_seconds = (total_form_filling_seconds / total_calls) if total_calls > 0 else 0
+    
     overall_stats = {
         "total_leads": total_leads_in_period,
         "total_calls": total_calls,
@@ -1943,7 +1946,9 @@ async def get_telecaller_reports(
         "calls_to_file_ratio": overall_calls_to_file_ratio,
         "total_call_seconds": total_call_seconds,
         "total_idle_seconds": total_idle_seconds,
-        "avg_call_time_seconds": overall_avg_call_time_seconds
+        "total_form_filling_seconds": total_form_filling_seconds,
+        "avg_call_time_seconds": overall_avg_call_time_seconds,
+        "avg_form_filling_seconds": overall_avg_form_filling_seconds
     }
     
     return {
