@@ -1616,6 +1616,9 @@ const AdminReports = () => {
                             <td className="py-2 px-3 border-b border-gray-200 text-center font-medium text-purple-700">
                               {call.call_duration_formatted || '0s'}
                             </td>
+                            <td className="py-2 px-3 border-b border-gray-200 text-center font-medium text-pink-600">
+                              {call.form_filling_formatted || '0s'}
+                            </td>
                             <td className="py-2 px-3 border-b border-gray-200 text-center">
                               <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
                                 call.lead_status === 'new' ? 'bg-blue-100 text-blue-700' :
