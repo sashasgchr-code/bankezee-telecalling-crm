@@ -342,6 +342,7 @@ const AdminReports = () => {
       red: [244, 67, 54],          // Red
       indigo: [103, 58, 183],      // Indigo
       cyan: [0, 188, 212],         // Cyan
+      pink: [233, 30, 99],         // Pink
     };
 
     let periodLabel = periods.find(p => p.id === period)?.label || period;
