@@ -849,7 +849,7 @@ const AdminReports = () => {
               {/* Overall Stats */}
               <div className="card p-4 mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Overall Performance</h3>
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-3">
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
                   <div className="text-center">
                     <p className="text-xl font-bold text-green-600">{reports.overall.total_calls}</p>
                     <p className="text-xs text-gray-500">Total Calls</p>
@@ -871,6 +871,12 @@ const AdminReports = () => {
                       {formatTime(reports.overall.total_call_seconds)}
                     </p>
                     <p className="text-xs text-gray-500">Talk Time</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xl font-bold text-cyan-600">
+                      {formatTime(reports.overall.avg_call_time_seconds)}
+                    </p>
+                    <p className="text-xs text-gray-500">Avg Call</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xl font-bold text-red-500">
