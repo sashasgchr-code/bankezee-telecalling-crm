@@ -1316,7 +1316,7 @@ async def get_detailed_call_report(
         # Convert timestamp to IST for display
         call_time = log.get("created_at")
         if call_time:
-            call_time_ist = to_ist(call_time) if call_time.tzinfo else to_ist(call_time.replace(tzinfo=timezone.utc))
+            call_time_ist = convert_to_ist(call_time)
         else:
             call_time_ist = None
         
