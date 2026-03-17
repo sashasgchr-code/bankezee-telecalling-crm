@@ -36,6 +36,8 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
       tomorrow.setDate(tomorrow.getDate() + 1);
       tomorrow.setHours(10, 0, 0, 0);
       setFollowUpDate(tomorrow.toISOString().slice(0, 16));
+      // Track when form opened (this is when the call ended and form filling starts)
+      setFormOpenTime(Date.now());
     }
   }, [isOpen, lead]);
 
