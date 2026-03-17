@@ -380,6 +380,7 @@ const AdminReports = () => {
         { label: 'Talk Time', value: formatTime(reports.overall?.total_call_seconds), color: colors.purple },
         { label: 'Avg Call', value: formatTime(reports.overall?.avg_call_time_seconds), color: colors.cyan },
         { label: 'Idle Time', value: formatTime(reports.overall?.total_idle_seconds), color: colors.red },
+        { label: 'Avg Form', value: formatTime(reports.overall?.avg_form_filling_seconds), color: colors.pink },
         { label: 'File Ratio', value: `${(reports.overall?.calls_to_file_ratio || 0).toFixed(1)}%`, color: colors.teal },
       ];
 
