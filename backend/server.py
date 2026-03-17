@@ -493,6 +493,28 @@ async def get_activity_logs(
                 }
             grouped_logs[uid]["activities"].append(serialize_doc(log))
         
+        # Enrich with daily session stats (call time, break time, form filling time)
+        for uid, data in grouped_logs.items():
+            # Get daily session for this user on this date
+            session = await db.daily_sessions.find_one({
+                "user_id": uid,
+                "date": {"$gte": start_date, "$lt": end_date}
+            })
+            
+            if session:
+                data["total_call_seconds"] = session.get("total_call_seconds", 0)
+                data["total_break_seconds"] = session.get("total_break_seconds", 0)
+                data["total_form_filling_seconds"] = session.get("total_form_filling_seconds", 0)
+            else:
+                # Fallback: calculate from call_logs for this user on this date
+                call_logs = await db.call_logs.find({
+                    "user_id": uid,
+                    "created_at": {"$gte": start_date, "$lt": end_date}
+                }).to_list(1000)
+                data["total_call_seconds"] = sum(log.get("duration", 0) or 0 for log in call_logs)
+                data["total_form_filling_seconds"] = sum(log.get("form_filling_seconds", 0) or 0 for log in call_logs)
+                data["total_break_seconds"] = 0
+        
         return list(grouped_logs.values())
     
     return [serialize_doc(log) for log in logs]
