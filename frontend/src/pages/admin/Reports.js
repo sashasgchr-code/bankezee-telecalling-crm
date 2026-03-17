@@ -1005,6 +1005,12 @@ const AdminReports = () => {
                     <p className="text-xs text-gray-500">Idle Time</p>
                   </div>
                   <div className="text-center">
+                    <p className="text-xl font-bold text-pink-600">
+                      {formatTime(reports.overall.avg_form_filling_seconds)}
+                    </p>
+                    <p className="text-xs text-gray-500">Avg Form</p>
+                  </div>
+                  <div className="text-center">
                     <p className="text-xl font-bold text-teal-600">
                       {(reports.overall.calls_to_file_ratio || 0).toFixed(1)}%
                     </p>
