@@ -709,6 +709,18 @@ const AdminReports = () => {
         headers.push(`Break ${i + 1} To`);
       }
       headers.push('Logout');
+      headers.push('Call Time');
+      headers.push('Break Time');
+      headers.push('Form Fill');
+
+      // Helper to format seconds to readable time
+      const formatDuration = (seconds) => {
+        if (!seconds) return '0m';
+        const mins = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        if (mins > 0) return `${mins}m ${secs}s`;
+        return `${secs}s`;
+      };
 
       // Build table data with dynamic break columns
       const activityTableData = activityLogs.map(group => {
@@ -723,11 +735,14 @@ const AdminReports = () => {
           row.push(formatTime(breakEnds[i]?.timestamp));
         }
         row.push(formatTime(logoutTime));
+        row.push(formatDuration(group.total_call_seconds));
+        row.push(formatDuration(group.total_break_seconds));
+        row.push(formatDuration(group.total_form_filling_seconds));
         return row;
       });
 
       // Calculate column widths dynamically to fit all columns - ensuring nothing gets cut off
-      const totalCols = 2 + maxBreaks * 2 + 1; // Telecaller + Login + breaks + Logout
+      const totalCols = 2 + maxBreaks * 2 + 1 + 3; // Telecaller + Login + breaks + Logout + 3 new cols
       const landMargin = 8;
       const usableWidth = landPageWidth - (landMargin * 2);
       
