@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3, Activity, LogIn, LogOut, Coffee, FileText } from 'lucide-react';
+import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3, Activity, LogIn, LogOut, Coffee, FileText, PhoneCall, User } from 'lucide-react';
 import api from '../../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -8,6 +8,9 @@ const AdminReports = () => {
   const [reports, setReports] = useState(null);
   const [hourlyReports, setHourlyReports] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
+  const [detailedCalls, setDetailedCalls] = useState(null);
+  const [telecallers, setTelecallers] = useState([]);
+  const [selectedTelecaller, setSelectedTelecaller] = useState('all');
   const [period, setPeriod] = useState('today');
   const [isLoading, setIsLoading] = useState(true);
   const [expandedCards, setExpandedCards] = useState({});
@@ -15,9 +18,11 @@ const AdminReports = () => {
   const [showDateRange, setShowDateRange] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'hourly', or 'activity'
+  const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'hourly', 'activity', or 'calls'
   const [hourlyDate, setHourlyDate] = useState(new Date().toISOString().split('T')[0]);
   const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
+  const [callsFromDate, setCallsFromDate] = useState(new Date().toISOString().split('T')[0]);
+  const [callsToDate, setCallsToDate] = useState(new Date().toISOString().split('T')[0]);
   const [expandedHourlyCards, setExpandedHourlyCards] = useState({});
 
   const fetchReports = useCallback(async (showRefresh = false) => {
