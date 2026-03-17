@@ -418,27 +418,29 @@ const AdminReports = () => {
         formatTime(tc.total_call_seconds),
         formatTime(tc.avg_call_time_seconds),
         formatTime(tc.total_idle_seconds),
+        formatTime(tc.avg_form_filling_seconds),
         `${(tc.calls_to_file_ratio || 0).toFixed(1)}%`
       ]);
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Avg', 'Idle', 'File %']],
+        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Avg', 'Idle', 'Form', 'File %']],
         body: tableData,
         theme: 'grid',
-        headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
-        bodyStyles: { fontSize: 7 },
+        headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6 },
+        bodyStyles: { fontSize: 6 },
         columnStyles: {
-          0: { cellWidth: 30 },
-          1: { cellWidth: 13 },
-          2: { cellWidth: 11, halign: 'center' },
-          3: { cellWidth: 11, halign: 'center' },
-          4: { cellWidth: 11, halign: 'center' },
-          5: { cellWidth: 11, halign: 'center' },
-          6: { cellWidth: 16, halign: 'center' },
-          7: { cellWidth: 14, halign: 'center' },
-          8: { cellWidth: 16, halign: 'center' },
-          9: { cellWidth: 14, halign: 'center' },
+          0: { cellWidth: 28 },
+          1: { cellWidth: 12 },
+          2: { cellWidth: 10, halign: 'center' },
+          3: { cellWidth: 10, halign: 'center' },
+          4: { cellWidth: 10, halign: 'center' },
+          5: { cellWidth: 10, halign: 'center' },
+          6: { cellWidth: 14, halign: 'center' },
+          7: { cellWidth: 12, halign: 'center' },
+          8: { cellWidth: 14, halign: 'center' },
+          9: { cellWidth: 12, halign: 'center' },
+          10: { cellWidth: 12, halign: 'center' },
         },
         didParseCell: function(data) {
           if (data.section === 'body') {
@@ -453,7 +455,8 @@ const AdminReports = () => {
             if (data.column.index === 6) data.cell.styles.textColor = colors.purple;
             if (data.column.index === 7) data.cell.styles.textColor = colors.cyan;
             if (data.column.index === 8) data.cell.styles.textColor = colors.red;
-            if (data.column.index === 9) data.cell.styles.textColor = colors.teal;
+            if (data.column.index === 9) data.cell.styles.textColor = colors.pink;
+            if (data.column.index === 10) data.cell.styles.textColor = colors.teal;
           }
         }
       });
