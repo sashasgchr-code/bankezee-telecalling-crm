@@ -836,6 +836,17 @@ const AdminReports = () => {
           <Activity size={16} />
           Activity
         </button>
+        <button
+          onClick={() => setActiveTab('calls')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'calls'
+              ? 'bg-green-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <PhoneCall size={16} />
+          Call Log
+        </button>
       </div>
 
       {/* Summary Tab Content */}
