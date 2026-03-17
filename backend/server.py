@@ -1786,6 +1786,9 @@ async def get_telecaller_reports(
         # Calculate call to file ratio instead of call to lead rate
         calls_to_file_ratio = (user_file / user_total_calls * 100) if user_total_calls > 0 else 0
         
+        # Calculate average call time (in seconds)
+        avg_call_time_seconds = (user_call_seconds / user_total_calls) if user_total_calls > 0 else 0
+        
         telecaller_reports.append({
             "user_id": user_id,
             "user_name": telecaller.get("name", "Unknown"),
@@ -1809,6 +1812,7 @@ async def get_telecaller_reports(
             "total_call_seconds": user_call_seconds,
             "total_idle_seconds": user_idle_seconds,
             "total_login_seconds": user_login_seconds,
+            "avg_call_time_seconds": avg_call_time_seconds,
             "status_counts": user_status_counts
         })
         
