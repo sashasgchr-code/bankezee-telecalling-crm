@@ -498,13 +498,13 @@ async def get_activity_logs(
             # Get daily session for this user on this date
             session = await db.daily_sessions.find_one({
                 "user_id": uid,
-                "date": {"$gte": start_date, "$lt": end_date}
+                "date": {"$gte": start_of_day, "$lt": end_of_day}
             })
             
             # Always calculate from call_logs for accuracy (more reliable than daily_sessions)
             call_logs = await db.call_logs.find({
                 "user_id": uid,
-                "created_at": {"$gte": start_date, "$lt": end_date}
+                "created_at": {"$gte": start_of_day, "$lt": end_of_day}
             }).to_list(1000)
             
             data["total_call_seconds"] = sum(log.get("duration", 0) or 0 for log in call_logs)
