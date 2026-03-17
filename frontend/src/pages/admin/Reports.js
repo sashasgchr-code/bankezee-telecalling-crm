@@ -1586,7 +1586,8 @@ const AdminReports = () => {
                           <th className="text-left py-3 px-3 font-bold text-gray-800 border-b-2 border-gray-300 min-w-[120px]">Mobile</th>
                           <th className="text-left py-3 px-3 font-bold text-gray-800 border-b-2 border-gray-300 min-w-[100px]">City</th>
                           <th className="text-center py-3 px-3 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[110px]">Call Outcome</th>
-                          <th className="text-center py-3 px-3 font-bold text-purple-600 border-b-2 border-gray-300 min-w-[90px]">Duration</th>
+                          <th className="text-center py-3 px-3 font-bold text-purple-600 border-b-2 border-gray-300 min-w-[80px]">Duration</th>
+                          <th className="text-center py-3 px-3 font-bold text-pink-600 border-b-2 border-gray-300 min-w-[80px]">Form Time</th>
                           <th className="text-center py-3 px-3 font-bold text-teal-600 border-b-2 border-gray-300 min-w-[100px]">Lead Status</th>
                         </tr>
                       </thead>
