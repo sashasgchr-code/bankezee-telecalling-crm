@@ -1433,6 +1433,149 @@ const AdminReports = () => {
           )}
         </>
       )}
+
+      {/* Call Log Tab Content */}
+      {activeTab === 'calls' && (
+        <>
+          {/* Date Filter and Telecaller Filter */}
+          <div className="card p-4 mb-4">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                <input
+                  type="date"
+                  value={callsFromDate}
+                  onChange={(e) => setCallsFromDate(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                <input
+                  type="date"
+                  value={callsToDate}
+                  onChange={(e) => setCallsToDate(e.target.value)}
+                  className="input-field"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Telecaller</label>
+                <select
+                  value={selectedTelecaller}
+                  onChange={(e) => setSelectedTelecaller(e.target.value)}
+                  className="input-field min-w-[180px]"
+                >
+                  <option value="all">All Telecallers</option>
+                  {telecallers.map(tc => (
+                    <option key={tc.id} value={tc.id}>{tc.name}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                onClick={() => fetchDetailedCalls(true)}
+                className="btn-primary flex items-center gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Load
+              </button>
+              <button
+                onClick={() => downloadCallsCSV()}
+                disabled={!detailedCalls?.calls?.length}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Download size={16} />
+                Download CSV
+              </button>
+            </div>
+          </div>
+
+          {/* Call Log Table */}
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {detailedCalls?.calls?.length > 0 ? (
+                <div className="card overflow-hidden">
+                  <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3">
+                    <h3 className="text-lg font-semibold text-white">Detailed Call Report</h3>
+                    <p className="text-blue-100 text-xs mt-1">
+                      {detailedCalls.total_count} calls from {callsFromDate} to {callsToDate}
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-gray-100">
+                          <th className="text-left py-3 px-3 font-bold text-gray-800 border-b-2 border-gray-300 min-w-[100px]">Date</th>
+                          <th className="text-left py-3 px-3 font-bold text-gray-800 border-b-2 border-gray-300 min-w-[80px]">Time</th>
+                          <th className="text-left py-3 px-3 font-bold text-green-700 border-b-2 border-gray-300 min-w-[130px]">
+                            <div className="flex items-center gap-1"><User size={14} />Caller</div>
+                          </th>
+                          <th className="text-left py-3 px-3 font-bold text-blue-700 border-b-2 border-gray-300 min-w-[150px]">Customer Name</th>
+                          <th className="text-left py-3 px-3 font-bold text-gray-800 border-b-2 border-gray-300 min-w-[120px]">Mobile</th>
+                          <th className="text-left py-3 px-3 font-bold text-gray-800 border-b-2 border-gray-300 min-w-[100px]">City</th>
+                          <th className="text-center py-3 px-3 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[110px]">Call Outcome</th>
+                          <th className="text-center py-3 px-3 font-bold text-purple-600 border-b-2 border-gray-300 min-w-[90px]">Duration</th>
+                          <th className="text-center py-3 px-3 font-bold text-teal-600 border-b-2 border-gray-300 min-w-[100px]">Lead Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {detailedCalls.calls.map((call, idx) => (
+                          <tr key={call.id} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-blue-50 transition-colors`}>
+                            <td className="py-2 px-3 border-b border-gray-200 text-gray-700">{call.call_date}</td>
+                            <td className="py-2 px-3 border-b border-gray-200 text-gray-700">{call.call_time}</td>
+                            <td className="py-2 px-3 border-b border-gray-200 font-medium text-green-700">{call.caller_name}</td>
+                            <td className="py-2 px-3 border-b border-gray-200 font-medium text-gray-900">{call.customer_name}</td>
+                            <td className="py-2 px-3 border-b border-gray-200 text-gray-700">{call.customer_phone}</td>
+                            <td className="py-2 px-3 border-b border-gray-200 text-gray-600">{call.customer_city || '-'}</td>
+                            <td className="py-2 px-3 border-b border-gray-200 text-center">
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${
+                                call.call_outcome === 'connected' ? 'bg-green-100 text-green-700' :
+                                call.call_outcome === 'no_answer' ? 'bg-red-100 text-red-700' :
+                                call.call_outcome === 'busy' ? 'bg-orange-100 text-orange-700' :
+                                call.call_outcome === 'not_connecting' ? 'bg-gray-100 text-gray-700' :
+                                call.call_outcome === 'wrong_number' ? 'bg-purple-100 text-purple-700' :
+                                call.call_outcome === 'voicemail' ? 'bg-blue-100 text-blue-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>
+                                {call.call_outcome?.replace('_', ' ') || '-'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3 border-b border-gray-200 text-center font-medium text-purple-700">
+                              {call.call_duration_formatted || '0s'}
+                            </td>
+                            <td className="py-2 px-3 border-b border-gray-200 text-center">
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                                call.lead_status === 'new' ? 'bg-blue-100 text-blue-700' :
+                                call.lead_status === 'contacted' ? 'bg-yellow-100 text-yellow-700' :
+                                call.lead_status === 'follow_up' ? 'bg-orange-100 text-orange-700' :
+                                call.lead_status === 'presentation' ? 'bg-indigo-100 text-indigo-700' :
+                                call.lead_status === 'leads' ? 'bg-teal-100 text-teal-700' :
+                                call.lead_status === 'file' ? 'bg-green-100 text-green-700' :
+                                call.lead_status === 'not_interested' ? 'bg-red-100 text-red-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>
+                                {call.lead_status?.replace('_', ' ') || '-'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <div className="card p-8 text-center">
+                  <PhoneCall size={32} className="mx-auto text-gray-300 mb-2" />
+                  <p className="text-gray-500">No call records for the selected period</p>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 };
