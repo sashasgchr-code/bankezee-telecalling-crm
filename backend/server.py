@@ -501,18 +501,19 @@ async def get_activity_logs(
                 "date": {"$gte": start_date, "$lt": end_date}
             })
             
+            # Always calculate from call_logs for accuracy (more reliable than daily_sessions)
+            call_logs = await db.call_logs.find({
+                "user_id": uid,
+                "created_at": {"$gte": start_date, "$lt": end_date}
+            }).to_list(1000)
+            
+            data["total_call_seconds"] = sum(log.get("duration", 0) or 0 for log in call_logs)
+            data["total_form_filling_seconds"] = sum(log.get("form_filling_seconds", 0) or 0 for log in call_logs)
+            
+            # Break time from daily_sessions (tracked separately)
             if session:
-                data["total_call_seconds"] = session.get("total_call_seconds", 0)
                 data["total_break_seconds"] = session.get("total_break_seconds", 0)
-                data["total_form_filling_seconds"] = session.get("total_form_filling_seconds", 0)
             else:
-                # Fallback: calculate from call_logs for this user on this date
-                call_logs = await db.call_logs.find({
-                    "user_id": uid,
-                    "created_at": {"$gte": start_date, "$lt": end_date}
-                }).to_list(1000)
-                data["total_call_seconds"] = sum(log.get("duration", 0) or 0 for log in call_logs)
-                data["total_form_filling_seconds"] = sum(log.get("form_filling_seconds", 0) or 0 for log in call_logs)
                 data["total_break_seconds"] = 0
         
         return list(grouped_logs.values())
