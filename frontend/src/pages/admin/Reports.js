@@ -139,6 +139,8 @@ const AdminReports = () => {
       fetchHourlyReports(true);
     } else if (activeTab === 'activity') {
       fetchActivityLogs(true);
+    } else if (activeTab === 'calls') {
+      fetchDetailedCalls(true);
     }
   };
 
