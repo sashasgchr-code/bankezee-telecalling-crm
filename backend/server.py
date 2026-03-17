@@ -1752,6 +1752,7 @@ async def get_telecaller_reports(
     total_presentations = 0
     total_call_seconds = 0
     total_idle_seconds = 0
+    total_form_filling_seconds = 0
     
     for telecaller in telecallers:
         user_id = str(telecaller["_id"])
