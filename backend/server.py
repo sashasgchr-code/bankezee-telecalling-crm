@@ -1802,8 +1802,9 @@ async def get_telecaller_reports(
         user_call_logs = await db.call_logs.find(call_query).to_list(10000)
         user_total_calls = len(user_call_logs)
         
-        # Calculate total call seconds from call_logs directly
+        # Calculate total call seconds and form filling seconds from call_logs directly
         user_call_seconds_from_logs = sum(log.get("duration", 0) or 0 for log in user_call_logs)
+        user_form_filling_seconds = sum(log.get("form_filling_seconds", 0) or 0 for log in user_call_logs)
         
         # Count call outcomes
         calls_connected = sum(1 for log in user_call_logs if log.get("outcome") == "connected")
