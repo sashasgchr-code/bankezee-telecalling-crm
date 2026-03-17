@@ -969,7 +969,7 @@ const AdminReports = () => {
               {/* Overall Stats */}
               <div className="card p-4 mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Overall Performance</h3>
-                <div className="grid grid-cols-4 sm:grid-cols-8 gap-3">
+                <div className="grid grid-cols-3 sm:grid-cols-9 gap-3">
                   <div className="text-center">
                     <p className="text-xl font-bold text-green-600">{reports.overall.total_calls}</p>
                     <p className="text-xs text-gray-500">Total Calls</p>
