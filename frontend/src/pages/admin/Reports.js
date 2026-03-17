@@ -279,6 +279,8 @@ const AdminReports = () => {
       'Call Outcome',
       'Duration (seconds)',
       'Duration',
+      'Form Time (seconds)',
+      'Form Time',
       'Lead Status',
       'Notes'
     ];
@@ -295,6 +297,8 @@ const AdminReports = () => {
       call.call_outcome?.replace('_', ' ') || '',
       call.call_duration_seconds || 0,
       call.call_duration_formatted || '0s',
+      call.form_filling_seconds || 0,
+      call.form_filling_formatted || '0s',
       call.lead_status?.replace('_', ' ') || '',
       (call.notes || '').replace(/"/g, "'").replace(/\n/g, ' ')
     ]);
