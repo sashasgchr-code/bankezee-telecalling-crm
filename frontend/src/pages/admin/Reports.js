@@ -1444,6 +1444,24 @@ const AdminReports = () => {
                                   Logout
                                 </div>
                               </th>
+                              <th className="text-center py-3 px-3 font-bold text-purple-600 border-b-2 border-gray-300 min-w-[90px]">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Phone size={14} />
+                                  Call Time
+                                </div>
+                              </th>
+                              <th className="text-center py-3 px-3 font-bold text-amber-600 border-b-2 border-gray-300 min-w-[90px]">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Coffee size={14} />
+                                  Break Time
+                                </div>
+                              </th>
+                              <th className="text-center py-3 px-3 font-bold text-pink-600 border-b-2 border-gray-300 min-w-[90px]">
+                                <div className="flex items-center justify-center gap-1">
+                                  <Clock size={14} />
+                                  Form Filling
+                                </div>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
