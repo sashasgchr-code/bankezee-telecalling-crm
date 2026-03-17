@@ -1880,6 +1880,9 @@ async def get_telecaller_reports(
         # Calculate average call time (in seconds)
         avg_call_time_seconds = (user_call_seconds / user_total_calls) if user_total_calls > 0 else 0
         
+        # Calculate average form filling time (in seconds)
+        avg_form_filling_seconds = (user_form_filling_seconds / user_total_calls) if user_total_calls > 0 else 0
+        
         telecaller_reports.append({
             "user_id": user_id,
             "user_name": telecaller.get("name", "Unknown"),
@@ -1903,7 +1906,9 @@ async def get_telecaller_reports(
             "total_call_seconds": user_call_seconds,
             "total_idle_seconds": user_idle_seconds,
             "total_login_seconds": user_login_seconds,
+            "total_form_filling_seconds": user_form_filling_seconds,
             "avg_call_time_seconds": avg_call_time_seconds,
+            "avg_form_filling_seconds": avg_form_filling_seconds,
             "status_counts": user_status_counts
         })
         
@@ -1913,6 +1918,7 @@ async def get_telecaller_reports(
         total_presentations += user_presentations
         total_call_seconds += user_call_seconds
         total_idle_seconds += user_idle_seconds
+        total_form_filling_seconds += user_form_filling_seconds
     
     # Calculate total_leads for the period
     total_leads_in_period = sum(t["total_leads"] for t in telecaller_reports)
