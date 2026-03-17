@@ -1736,18 +1736,40 @@ async def get_telecaller_reports(
         session_query = {"user_id": user_id}
         if start_date and end_date:
             # For daily_sessions, the date field is stored as midnight datetime
-            # Ensure we compare dates properly
             session_query["date"] = {"$gte": start_date, "$lt": end_date}
         elif start_date:
             session_query["date"] = {"$gte": start_date}
         
         sessions = await db.daily_sessions.find(session_query).to_list(100)
         user_call_seconds_from_sessions = sum(s.get("total_call_seconds", 0) for s in sessions)
-        user_login_seconds = sum(s.get("total_login_seconds", 0) for s in sessions)
         user_break_seconds = sum(s.get("total_break_seconds", 0) for s in sessions)
         
-        # For talk time, ONLY use call_logs for the filtered period (more reliable)
-        # Don't use daily_sessions as they may have accumulated data
+        # Calculate login seconds dynamically for active sessions (not yet logged out)
+        # This is more accurate than using stored total_login_seconds which is only updated on logout
+        user_login_seconds = 0
+        for s in sessions:
+            if s.get("logout_time"):
+                # Session ended, use stored value or calculate from login to logout
+                logout_time = s.get("logout_time")
+                login_time = s.get("login_time")
+                if logout_time and login_time:
+                    # Ensure timezone awareness
+                    if login_time.tzinfo is None:
+                        login_time = login_time.replace(tzinfo=timezone.utc)
+                    if logout_time.tzinfo is None:
+                        logout_time = logout_time.replace(tzinfo=timezone.utc)
+                    user_login_seconds += (logout_time - login_time).total_seconds()
+                else:
+                    user_login_seconds += s.get("total_login_seconds", 0)
+            else:
+                # Session still active, calculate from login_time to now
+                login_time = s.get("login_time")
+                if login_time:
+                    if login_time.tzinfo is None:
+                        login_time = login_time.replace(tzinfo=timezone.utc)
+                    user_login_seconds += (now - login_time).total_seconds()
+        
+        # For talk time, use call_logs for the filtered period (more reliable)
         user_call_seconds = user_call_seconds_from_logs
         
         # Calculate idle time = Login Time - Talk Time - Break Time
