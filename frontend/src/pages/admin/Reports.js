@@ -1065,7 +1065,7 @@ const AdminReports = () => {
                   {expandedCards[tc.user_id] && (
                     <div className="px-4 pb-4 pt-0">
                       {/* Main Performance Stats - Matching Overall Stats Layout */}
-                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-3 mb-4 p-3 bg-white rounded-lg">
+                      <div className="grid grid-cols-3 sm:grid-cols-9 gap-3 mb-4 p-3 bg-white rounded-lg">
                         <div className="text-center">
                           <p className="text-lg font-bold text-green-600">{tc.total_calls}</p>
                           <p className="text-xs text-gray-500">Calls</p>
