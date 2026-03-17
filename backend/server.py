@@ -1312,6 +1312,8 @@ async def get_detailed_call_report(
             "call_outcome": log.get("outcome", ""),
             "call_duration_seconds": log.get("duration", 0) or 0,
             "call_duration_formatted": format_duration(log.get("duration", 0) or 0),
+            "form_filling_seconds": log.get("form_filling_seconds", 0) or 0,
+            "form_filling_formatted": format_duration(log.get("form_filling_seconds", 0) or 0),
             "notes": log.get("notes", ""),
         })
     
