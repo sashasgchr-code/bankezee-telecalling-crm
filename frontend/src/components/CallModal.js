@@ -57,12 +57,16 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
 
     setIsSubmitting(true);
     try {
-      // End call session with duration (talk time includes dialing time)
+      // Calculate form filling time (time between call end and form submit)
+      const formFillingSeconds = formOpenTime ? Math.round((Date.now() - formOpenTime) / 1000) : 0;
+      
+      // End call session with duration and form filling time
       await api.post('/call-sessions/end', {
         session_id: activeCall.id,
         outcome: outcome,
         notes: notes,
-        duration: callDuration // Include full duration from dial to end
+        duration: callDuration, // Talk time (dialing to call end)
+        form_filling_seconds: formFillingSeconds // Time spent filling the form
       });
 
       // Update lead status based on call outcome
