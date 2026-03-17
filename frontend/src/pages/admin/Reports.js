@@ -380,7 +380,7 @@ const AdminReports = () => {
         { label: 'Talk Time', value: formatTime(reports.overall?.total_call_seconds), color: colors.purple },
         { label: 'Avg Call', value: formatTime(reports.overall?.avg_call_time_seconds), color: colors.cyan },
         { label: 'Idle Time', value: formatTime(reports.overall?.total_idle_seconds), color: colors.red },
-        { label: 'Avg Form', value: formatTime(reports.overall?.avg_form_filling_seconds), color: colors.pink },
+        { label: 'Form Filling', value: formatTime(reports.overall?.avg_form_filling_seconds), color: colors.pink },
         { label: 'File Ratio', value: `${(reports.overall?.calls_to_file_ratio || 0).toFixed(1)}%`, color: colors.teal },
       ];
 
@@ -424,7 +424,7 @@ const AdminReports = () => {
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Avg', 'Idle', 'Form', 'File %']],
+        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Avg', 'Idle', 'Form Fill', 'File %']],
         body: tableData,
         theme: 'grid',
         headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6 },
@@ -1017,7 +1017,7 @@ const AdminReports = () => {
                     <p className="text-xl font-bold text-pink-600">
                       {formatTime(reports.overall.avg_form_filling_seconds)}
                     </p>
-                    <p className="text-xs text-gray-500">Avg Form</p>
+                    <p className="text-xs text-gray-500">Form Filling</p>
                   </div>
                   <div className="text-center">
                     <p className="text-xl font-bold text-teal-600">
@@ -1105,7 +1105,7 @@ const AdminReports = () => {
                         </div>
                         <div className="text-center">
                           <p className="text-lg font-bold text-pink-600">{formatTime(tc.avg_form_filling_seconds)}</p>
-                          <p className="text-xs text-gray-500">Avg Form</p>
+                          <p className="text-xs text-gray-500">Form Filling</p>
                         </div>
                         <div className="text-center">
                           <p className="text-lg font-bold text-teal-600">{(tc.calls_to_file_ratio || 0).toFixed(1)}%</p>
