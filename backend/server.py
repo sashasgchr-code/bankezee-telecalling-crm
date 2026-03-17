@@ -699,6 +699,7 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
         start_time = start_time.replace(tzinfo=timezone.utc)
     
     duration = int((now - start_time).total_seconds())
+    form_filling_seconds = data.form_filling_seconds or 0
     
     await db.call_sessions.update_one(
         {"_id": ObjectId(data.session_id)},
@@ -707,17 +708,19 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
                 "end_time": now,
                 "duration_seconds": duration,
                 "outcome": data.outcome,
-                "notes": data.notes
+                "notes": data.notes,
+                "form_filling_seconds": form_filling_seconds
             }
         }
     )
     
-    # Update or create daily session with call stats
+    # Update or create daily session with call stats (including form filling time)
     await db.daily_sessions.update_one(
         {"user_id": current_user["id"], "date": today},
         {
             "$inc": {
                 "total_call_seconds": duration,
+                "total_form_filling_seconds": form_filling_seconds,
                 "calls_made": 1
             },
             "$setOnInsert": {
@@ -739,6 +742,7 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
         "user_id": current_user["id"],
         "user_name": current_user["name"],
         "duration": duration,
+        "form_filling_seconds": form_filling_seconds,
         "outcome": data.outcome,
         "notes": data.notes,
         "created_at": now,
