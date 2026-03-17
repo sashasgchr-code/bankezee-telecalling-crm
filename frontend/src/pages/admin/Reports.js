@@ -263,6 +263,65 @@ const AdminReports = () => {
     URL.revokeObjectURL(url);
   };
 
+  const downloadCallsCSV = () => {
+    if (!detailedCalls?.calls?.length) return;
+
+    // Create CSV content
+    const headers = [
+      'Date',
+      'Time',
+      'Caller Name',
+      'Customer Name',
+      'Mobile',
+      'Email',
+      'City',
+      'Source',
+      'Call Outcome',
+      'Duration (seconds)',
+      'Duration',
+      'Lead Status',
+      'Notes'
+    ];
+    
+    const rows = detailedCalls.calls.map(call => [
+      call.call_date || '',
+      call.call_time || '',
+      call.caller_name || '',
+      call.customer_name || '',
+      call.customer_phone || '',
+      call.customer_email || '',
+      call.customer_city || '',
+      call.customer_source || '',
+      call.call_outcome?.replace('_', ' ') || '',
+      call.call_duration_seconds || 0,
+      call.call_duration_formatted || '0s',
+      call.lead_status?.replace('_', ' ') || '',
+      (call.notes || '').replace(/"/g, "'").replace(/\n/g, ' ')
+    ]);
+
+    // Build CSV string
+    let csvContent = `Detailed Call Report\n`;
+    csvContent += `Period: ${callsFromDate} to ${callsToDate}\n`;
+    csvContent += `Telecaller: ${selectedTelecaller === 'all' ? 'All' : telecallers.find(t => t.id === selectedTelecaller)?.name || selectedTelecaller}\n`;
+    csvContent += `Total Calls: ${detailedCalls.total_count}\n\n`;
+    csvContent += headers.join(',') + '\n';
+    rows.forEach(row => {
+      csvContent += row.map(cell => `"${cell}"`).join(',') + '\n';
+    });
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const filename = `call_report_${callsFromDate}_to_${callsToDate}.csv`;
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const downloadPDF = async () => {
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
