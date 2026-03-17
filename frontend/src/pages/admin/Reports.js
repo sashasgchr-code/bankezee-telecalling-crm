@@ -305,27 +305,29 @@ const AdminReports = () => {
         tc.file || 0,
         tc.presentations || 0,
         formatTime(tc.total_call_seconds),
+        formatTime(tc.avg_call_time_seconds),
         formatTime(tc.total_idle_seconds),
         `${(tc.calls_to_file_ratio || 0).toFixed(1)}%`
       ]);
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Idle', 'File %']],
+        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Avg', 'Idle', 'File %']],
         body: tableData,
         theme: 'grid',
         headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7 },
         bodyStyles: { fontSize: 7 },
         columnStyles: {
-          0: { cellWidth: 32 },
-          1: { cellWidth: 14 },
-          2: { cellWidth: 12, halign: 'center' },
-          3: { cellWidth: 12, halign: 'center' },
-          4: { cellWidth: 12, halign: 'center' },
-          5: { cellWidth: 12, halign: 'center' },
-          6: { cellWidth: 18, halign: 'center' },
-          7: { cellWidth: 18, halign: 'center' },
+          0: { cellWidth: 30 },
+          1: { cellWidth: 13 },
+          2: { cellWidth: 11, halign: 'center' },
+          3: { cellWidth: 11, halign: 'center' },
+          4: { cellWidth: 11, halign: 'center' },
+          5: { cellWidth: 11, halign: 'center' },
+          6: { cellWidth: 16, halign: 'center' },
+          7: { cellWidth: 14, halign: 'center' },
           8: { cellWidth: 16, halign: 'center' },
+          9: { cellWidth: 14, halign: 'center' },
         },
         didParseCell: function(data) {
           if (data.section === 'body') {
@@ -338,8 +340,9 @@ const AdminReports = () => {
             if (data.column.index === 4) data.cell.styles.textColor = colors.orange;
             if (data.column.index === 5) data.cell.styles.textColor = colors.indigo;
             if (data.column.index === 6) data.cell.styles.textColor = colors.purple;
-            if (data.column.index === 7) data.cell.styles.textColor = colors.red;
-            if (data.column.index === 8) data.cell.styles.textColor = colors.teal;
+            if (data.column.index === 7) data.cell.styles.textColor = colors.cyan;
+            if (data.column.index === 8) data.cell.styles.textColor = colors.red;
+            if (data.column.index === 9) data.cell.styles.textColor = colors.teal;
           }
         }
       });
