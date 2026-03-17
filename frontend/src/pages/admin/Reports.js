@@ -788,6 +788,11 @@ const AdminReports = () => {
         columnStyles: columnStyles,
         margin: { left: landMargin, right: landMargin },
         didParseCell: function(data) {
+          const logoutColIndex = 2 + maxBreaks * 2;
+          const callTimeColIndex = logoutColIndex + 1;
+          const breakTimeColIndex = logoutColIndex + 2;
+          const formFillColIndex = logoutColIndex + 3;
+          
           if (data.section === 'body') {
             // Telecaller name column
             if (data.column.index === 0) {
@@ -800,13 +805,28 @@ const AdminReports = () => {
               data.cell.styles.fontStyle = 'bold';
             }
             // Break columns - orange text like UI (indices 2 to 2 + maxBreaks*2 - 1)
-            if (data.column.index >= 2 && data.column.index < 2 + maxBreaks * 2 && data.cell.raw !== '-') {
+            if (data.column.index >= 2 && data.column.index < logoutColIndex && data.cell.raw !== '-') {
               data.cell.styles.textColor = colors.orange;
               data.cell.styles.fontStyle = 'bold';
             }
-            // Logout column - red text like UI (last column)
-            if (data.column.index === 2 + maxBreaks * 2 && data.cell.raw !== '-') {
+            // Logout column - red text
+            if (data.column.index === logoutColIndex && data.cell.raw !== '-') {
               data.cell.styles.textColor = colors.red;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Call Time column - purple
+            if (data.column.index === callTimeColIndex) {
+              data.cell.styles.textColor = colors.purple;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Break Time column - orange
+            if (data.column.index === breakTimeColIndex) {
+              data.cell.styles.textColor = colors.orange;
+              data.cell.styles.fontStyle = 'bold';
+            }
+            // Form Fill column - pink
+            if (data.column.index === formFillColIndex) {
+              data.cell.styles.textColor = colors.pink;
               data.cell.styles.fontStyle = 'bold';
             }
             // Alternating row colors
@@ -817,8 +837,11 @@ const AdminReports = () => {
           // Style header columns with matching colors
           if (data.section === 'head') {
             if (data.column.index === 1) data.cell.styles.textColor = colors.primary;
-            if (data.column.index >= 2 && data.column.index < 2 + maxBreaks * 2) data.cell.styles.textColor = colors.orange;
-            if (data.column.index === 2 + maxBreaks * 2) data.cell.styles.textColor = colors.red;
+            if (data.column.index >= 2 && data.column.index < logoutColIndex) data.cell.styles.textColor = colors.orange;
+            if (data.column.index === logoutColIndex) data.cell.styles.textColor = colors.red;
+            if (data.column.index === callTimeColIndex) data.cell.styles.textColor = colors.purple;
+            if (data.column.index === breakTimeColIndex) data.cell.styles.textColor = colors.orange;
+            if (data.column.index === formFillColIndex) data.cell.styles.textColor = colors.pink;
           }
         }
       });
