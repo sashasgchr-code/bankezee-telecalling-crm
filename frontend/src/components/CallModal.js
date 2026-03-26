@@ -11,6 +11,8 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
   const [followUpDate, setFollowUpDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formOpenTime, setFormOpenTime] = useState(null); // Track when form opened (call ended)
+  const [customerAnsweredTime, setCustomerAnsweredTime] = useState(null); // Track when customer answered
+  const [hasCustomerAnswered, setHasCustomerAnswered] = useState(false); // Whether customer picked up
 
   // Update Status options - only shown when call is connected
   const updateStatuses = ['not_interested', 'follow_up', 'presentation', 'leads', 'file'];
