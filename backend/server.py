@@ -2427,7 +2427,7 @@ async def get_verified_call_stats(
     date: str = None,
     current_user: dict = Depends(require_admin)
 ):
-    """Get aggregated verified call stats for admin reports"""
+    """Get aggregated verified call stats for admin reports with verification score"""
     now = datetime.now(timezone.utc)
     
     if date:
@@ -2445,13 +2445,19 @@ async def get_verified_call_stats(
     for tc in telecallers:
         tc_id = str(tc["_id"])
         
-        # Get verified call logs for this telecaller
+        # Get verified call logs for this telecaller (from mobile app)
         verified_logs = await db.verified_call_logs.find({
             "user_id": tc_id,
             "synced_at": {"$gte": start_of_day, "$lt": end_of_day}
         }).to_list(500)
         
-        # Calculate stats
+        # Get manual call logs for this telecaller (from web app)
+        manual_logs = await db.call_logs.find({
+            "user_id": tc_id,
+            "created_at": {"$gte": start_of_day, "$lt": end_of_day}
+        }).to_list(500)
+        
+        # Calculate verified stats
         total_outgoing = [l for l in verified_logs if l.get("call_type") == "outgoing"]
         total_incoming = [l for l in verified_logs if l.get("call_type") == "incoming"]
         connected_outgoing = [l for l in total_outgoing if l.get("duration_seconds", 0) > 0]
@@ -2459,6 +2465,34 @@ async def get_verified_call_stats(
         
         outgoing_talk_time = sum(l.get("duration_seconds", 0) for l in connected_outgoing)
         incoming_talk_time = sum(l.get("duration_seconds", 0) for l in connected_incoming)
+        
+        # Calculate verification score
+        total_verified_calls = len(verified_logs)
+        total_manual_calls = len(manual_logs)
+        total_all_calls = max(total_verified_calls, total_manual_calls)
+        
+        # Verification score = (verified calls / total calls) * 100
+        # If no calls at all, score is 0 (not using app)
+        # If verified >= manual, score is 100 (using app properly)
+        if total_all_calls == 0:
+            verification_score = 0
+            sync_status = "no_calls"
+        elif total_verified_calls >= total_manual_calls and total_verified_calls > 0:
+            verification_score = 100
+            sync_status = "synced"
+        elif total_verified_calls > 0:
+            verification_score = round((total_verified_calls / total_all_calls) * 100)
+            sync_status = "partial"
+        else:
+            verification_score = 0
+            sync_status = "not_synced"
+        
+        # Get last sync time
+        daily_session = await db.daily_sessions.find_one({
+            "user_id": tc_id,
+            "date": start_of_day
+        })
+        last_sync = daily_session.get("last_call_sync") if daily_session else None
         
         stats.append({
             "user_id": tc_id,
@@ -2470,7 +2504,11 @@ async def get_verified_call_stats(
             "connected_incoming_calls": len(connected_incoming),
             "incoming_talk_time_seconds": incoming_talk_time,
             "total_verified_talk_time_seconds": outgoing_talk_time + incoming_talk_time,
-            "missed_calls": len([l for l in verified_logs if l.get("call_type") == "missed"])
+            "missed_calls": len([l for l in verified_logs if l.get("call_type") == "missed"]),
+            "manual_calls_logged": total_manual_calls,
+            "verification_score": verification_score,
+            "sync_status": sync_status,
+            "last_sync": last_sync.isoformat() if last_sync else None
         })
     
     return stats

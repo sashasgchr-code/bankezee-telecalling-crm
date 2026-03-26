@@ -45,7 +45,7 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 - Hourly reports with Calls/Connected/Presentations/Leads/File columns
 - Activity logs grouped by telecaller
 - **NEW:** Verified call log sync API (`/api/call-logs/sync`)
-- **NEW:** Verified call stats reporting (`/api/reports/verified-call-stats`)
+- **NEW:** Verified call stats reporting (`/api/reports/verified-call-stats`) with verification score
 
 ### Frontend (React + Tailwind CSS)
 - **Auth Pages**: Login, Register with role selection
