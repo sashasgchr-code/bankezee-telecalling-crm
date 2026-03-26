@@ -2201,6 +2201,280 @@ async def migrate_form_filling_time(current_user: dict = Depends(require_admin))
         "daily_sessions_updated": sessions_updated
     }
 
+# ===================== MOBILE APP CALL LOG SYNC =====================
+
+class DeviceCallLog(BaseModel):
+    phone_number: str
+    type: str  # incoming, outgoing, missed, rejected
+    duration_seconds: int
+    timestamp: str  # ISO format timestamp
+    name: Optional[str] = None
+    raw_type: Optional[str] = None
+
+class CallLogSyncRequest(BaseModel):
+    call_logs: List[DeviceCallLog]
+
+def normalize_phone(phone: str) -> str:
+    """Normalize phone number for comparison"""
+    if not phone:
+        return ""
+    # Remove all non-digit characters
+    normalized = ''.join(c for c in phone if c.isdigit())
+    # Remove leading country code (91 for India)
+    if len(normalized) > 10 and normalized.startswith('91'):
+        normalized = normalized[2:]
+    # Take last 10 digits
+    if len(normalized) > 10:
+        normalized = normalized[-10:]
+    return normalized
+
+@router.post("/call-logs/sync")
+async def sync_device_call_logs(
+    data: CallLogSyncRequest, 
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Sync call logs from mobile device to backend.
+    Matches calls with assigned leads and creates verified call records.
+    """
+    if not data.call_logs:
+        return {"synced": 0, "matched": 0, "verified_calls": []}
+    
+    # Get all leads assigned to this user
+    user_leads = await db.leads.find({
+        "assigned_to": current_user["id"]
+    }).to_list(1000)
+    
+    # Create a map of normalized phone numbers to leads
+    lead_phone_map = {}
+    for lead in user_leads:
+        if lead.get("phone"):
+            normalized = normalize_phone(lead["phone"])
+            if normalized:
+                lead_phone_map[normalized] = lead
+    
+    matched_count = 0
+    synced_count = 0
+    verified_calls = []
+    
+    for device_log in data.call_logs:
+        normalized_phone = normalize_phone(device_log.phone_number)
+        
+        if not normalized_phone:
+            continue
+        
+        synced_count += 1
+        
+        # Check if this phone matches any assigned lead
+        matched_lead = lead_phone_map.get(normalized_phone)
+        
+        if matched_lead:
+            matched_count += 1
+            
+            # Parse timestamp
+            try:
+                call_timestamp = datetime.fromisoformat(device_log.timestamp.replace('Z', '+00:00'))
+                if call_timestamp.tzinfo is None:
+                    call_timestamp = call_timestamp.replace(tzinfo=timezone.utc)
+            except:
+                call_timestamp = datetime.now(timezone.utc)
+            
+            # Check if we already have this verified call log
+            existing = await db.verified_call_logs.find_one({
+                "user_id": current_user["id"],
+                "phone_number": normalized_phone,
+                "device_timestamp": call_timestamp.isoformat()
+            })
+            
+            if not existing:
+                # Create verified call log
+                verified_log = {
+                    "user_id": current_user["id"],
+                    "user_name": current_user.get("name", ""),
+                    "lead_id": str(matched_lead["_id"]),
+                    "lead_name": matched_lead.get("name", "Unknown"),
+                    "phone_number": normalized_phone,
+                    "original_phone": device_log.phone_number,
+                    "call_type": device_log.type,  # incoming, outgoing, missed, rejected
+                    "duration_seconds": device_log.duration_seconds,
+                    "device_timestamp": call_timestamp.isoformat(),
+                    "synced_at": datetime.now(timezone.utc),
+                    "source": "device_sync",
+                    "is_verified": True
+                }
+                
+                await db.verified_call_logs.insert_one(verified_log)
+                
+                # Calculate actual talk time (only for connected calls)
+                actual_talk_time = device_log.duration_seconds if device_log.type in ['incoming', 'outgoing'] and device_log.duration_seconds > 0 else 0
+                
+                # Track incoming calls from assigned leads
+                is_incoming_from_lead = device_log.type == 'incoming' and device_log.duration_seconds > 0
+                
+                # Update lead with last call info
+                await db.leads.update_one(
+                    {"_id": matched_lead["_id"]},
+                    {"$set": {
+                        "last_verified_call_at": call_timestamp,
+                        "last_verified_call_duration": device_log.duration_seconds,
+                        "last_verified_call_type": device_log.type
+                    }}
+                )
+                
+                verified_calls.append({
+                    "lead_name": matched_lead.get("name", "Unknown"),
+                    "phone": device_log.phone_number,
+                    "type": device_log.type,
+                    "duration_seconds": device_log.duration_seconds,
+                    "actual_talk_time": actual_talk_time,
+                    "is_incoming": is_incoming_from_lead
+                })
+    
+    # Update daily session with verified call stats
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Calculate today's verified stats from verified_call_logs
+    today_verified_logs = await db.verified_call_logs.find({
+        "user_id": current_user["id"],
+        "synced_at": {"$gte": today}
+    }).to_list(1000)
+    
+    total_verified_talk_time = sum(
+        log.get("duration_seconds", 0) 
+        for log in today_verified_logs 
+        if log.get("call_type") in ['incoming', 'outgoing'] and log.get("duration_seconds", 0) > 0
+    )
+    
+    total_incoming_calls = sum(
+        1 for log in today_verified_logs 
+        if log.get("call_type") == 'incoming' and log.get("duration_seconds", 0) > 0
+    )
+    
+    total_incoming_time = sum(
+        log.get("duration_seconds", 0)
+        for log in today_verified_logs 
+        if log.get("call_type") == 'incoming' and log.get("duration_seconds", 0) > 0
+    )
+    
+    # Update daily session with verified metrics
+    await db.daily_sessions.update_one(
+        {"user_id": current_user["id"], "date": today},
+        {
+            "$set": {
+                "verified_talk_time_seconds": total_verified_talk_time,
+                "verified_incoming_calls": total_incoming_calls,
+                "verified_incoming_time_seconds": total_incoming_time,
+                "last_call_sync": now
+            }
+        },
+        upsert=True
+    )
+    
+    return {
+        "synced": synced_count,
+        "matched": matched_count,
+        "verified_calls": verified_calls
+    }
+
+@router.get("/call-logs/last-sync")
+async def get_last_sync_timestamp(current_user: dict = Depends(get_current_user)):
+    """Get the timestamp of last call log sync for this user"""
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    session = await db.daily_sessions.find_one({
+        "user_id": current_user["id"],
+        "date": today
+    })
+    
+    if session and session.get("last_call_sync"):
+        return {"last_sync": session["last_call_sync"].isoformat()}
+    
+    return {"last_sync": None}
+
+@router.get("/call-logs/verified")
+async def get_verified_call_logs(
+    date: str = None,
+    user_id: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get verified call logs from device sync"""
+    now = datetime.now(timezone.utc)
+    
+    if date:
+        target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    else:
+        target_date = now
+    
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    query = {"synced_at": {"$gte": start_of_day, "$lt": end_of_day}}
+    
+    # Only admins can see other users' logs
+    if current_user["role"] == "admin" and user_id:
+        query["user_id"] = user_id
+    elif current_user["role"] != "admin":
+        query["user_id"] = current_user["id"]
+    
+    logs = await db.verified_call_logs.find(query).sort("device_timestamp", -1).to_list(500)
+    
+    return [serialize_doc(log) for log in logs]
+
+@router.get("/reports/verified-call-stats")
+async def get_verified_call_stats(
+    date: str = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get aggregated verified call stats for admin reports"""
+    now = datetime.now(timezone.utc)
+    
+    if date:
+        target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    else:
+        target_date = now
+    
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    # Get all telecallers
+    telecallers = await db.users.find({"role": "telecaller", "is_active": True}).to_list(100)
+    
+    stats = []
+    for tc in telecallers:
+        tc_id = str(tc["_id"])
+        
+        # Get verified call logs for this telecaller
+        verified_logs = await db.verified_call_logs.find({
+            "user_id": tc_id,
+            "synced_at": {"$gte": start_of_day, "$lt": end_of_day}
+        }).to_list(500)
+        
+        # Calculate stats
+        total_outgoing = [l for l in verified_logs if l.get("call_type") == "outgoing"]
+        total_incoming = [l for l in verified_logs if l.get("call_type") == "incoming"]
+        connected_outgoing = [l for l in total_outgoing if l.get("duration_seconds", 0) > 0]
+        connected_incoming = [l for l in total_incoming if l.get("duration_seconds", 0) > 0]
+        
+        outgoing_talk_time = sum(l.get("duration_seconds", 0) for l in connected_outgoing)
+        incoming_talk_time = sum(l.get("duration_seconds", 0) for l in connected_incoming)
+        
+        stats.append({
+            "user_id": tc_id,
+            "user_name": tc.get("name", "Unknown"),
+            "total_outgoing_calls": len(total_outgoing),
+            "connected_outgoing_calls": len(connected_outgoing),
+            "outgoing_talk_time_seconds": outgoing_talk_time,
+            "total_incoming_calls": len(total_incoming),
+            "connected_incoming_calls": len(connected_incoming),
+            "incoming_talk_time_seconds": incoming_talk_time,
+            "total_verified_talk_time_seconds": outgoing_talk_time + incoming_talk_time,
+            "missed_calls": len([l for l in verified_logs if l.get("call_type") == "missed"])
+        })
+    
+    return stats
+
 app.include_router(router)
 
 # Predefined admin accounts

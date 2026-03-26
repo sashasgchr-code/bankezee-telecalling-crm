@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Database, Phone, TrendingUp, Users, Loader2, RefreshCw, Calendar } from 'lucide-react';
 import api from '../../services/api';
 import { StatusColors, StatusLabels } from '../../constants/colors';
+import VerifiedCallStats from '../../components/VerifiedCallStats';
 
 const AdminDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -259,6 +260,11 @@ const AdminDashboard = () => {
               </div>
             </div>
           )}
+
+          {/* Verified Call Stats Section */}
+          <div className="mt-6">
+            <VerifiedCallStats />
+          </div>
         </>
       )}
     </div>

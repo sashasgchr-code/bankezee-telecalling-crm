@@ -6,9 +6,9 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 ## Project Overview
 - **Application**: BANKEZEE Connect CRM (Web Version)
 - **Date Started**: Feb 11, 2026
-- **Last Updated**: Mar 11, 2026
-- **Status**: MVP Complete with Enhanced Reporting
-- **Tech Stack**: React.js (Frontend), FastAPI (Backend), MongoDB (Database)
+- **Last Updated**: Mar 26, 2026
+- **Status**: MVP Complete with Enhanced Reporting + Mobile App for Call Verification
+- **Tech Stack**: React.js (Frontend), FastAPI (Backend), MongoDB (Database), React Native (Mobile App)
 
 ## User Personas
 1. **Admin** - Manages data, users, views reports, assigns data to telecallers
@@ -25,6 +25,11 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 - ✅ Reports and analytics with hourly and activity tracking
 - ✅ Status updates for data items
 - ✅ Mobile-first responsive design
+- ✅ Detailed call log report with CSV export
+- ✅ Form filling time tracking
+- ✅ Average call time metric
+- ✅ PDF export in landscape mode
+- ✅ **NEW:** Android mobile app for verified call log sync
 
 ## What's Been Implemented
 
@@ -37,8 +42,10 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 - Follow-up management
 - Dashboard stats and reports with date range filters
 - Telecaller performance reports
-- **NEW:** Hourly reports with Calls/Connected/Presentations/Leads/File columns
-- **NEW:** Activity logs grouped by telecaller
+- Hourly reports with Calls/Connected/Presentations/Leads/File columns
+- Activity logs grouped by telecaller
+- **NEW:** Verified call log sync API (`/api/call-logs/sync`)
+- **NEW:** Verified call stats reporting (`/api/reports/verified-call-stats`)
 
 ### Frontend (React + Tailwind CSS)
 - **Auth Pages**: Login, Register with role selection
@@ -50,36 +57,60 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
   - Browser visibility detection for call return
   - Post-call modal for logging call outcomes
   - Active call banner with timer
+- **Reports**: Summary, Hourly, Activity, Call Log tabs
+- **NEW:** Verified Call Stats component on Admin Dashboard
 
-### Recent Updates (Mar 11, 2026)
+### Mobile App (React Native Android) - NEW
+Location: `/app/mobile-app/`
 
-#### Reporting Enhancements - COMPLETED ✅
-1. **"File" Status Replaces "Interested"**
-   - Updated `/api/statuses` endpoint
-   - Updated Admin and Telecaller dashboards
-   - Updated all status dropdowns (LeadDetail.js, Admin Leads.js, Telecaller Leads.js)
-   - Updated constants/colors.js StatusColors and StatusLabels
+**Purpose**: Automatically read and sync device call logs to verify actual call durations and track incoming calls from assigned leads.
 
-2. **Hourly Report Columns Updated**
-   - Now shows: Hour, Calls, Connected, Presentations, Leads, File
-   - Both overall summary and per-telecaller breakdown have table format
-   - Backend aggregates data by hour with new status fields
+**Features**:
+- Login with telecaller credentials
+- View assigned leads
+- Click-to-call functionality
+- **Automatic call log sync** from device to backend
+- Matches synced calls with assigned leads
+- Tracks incoming calls from leads
+- Background sync capability
 
-3. **Telecaller Card Layout Restructured**
-   - Expanded telecaller cards in Summary tab now match Overall Performance layout
-   - Shows 6 columns: Calls, Leads, File, Presentations, Talk Time, Conversion
+**Key Files**:
+- `App.js` - Main entry point
+- `src/screens/LoginScreen.js` - Telecaller login
+- `src/screens/HomeScreen.js` - Lead list and stats
+- `src/services/api.js` - API communication
+- `src/services/callLogService.js` - Call log reading and sync
+- `android/` - Android build configuration
+- `BUILD_GUIDE.md` - Complete build and distribution guide
 
-4. **Activity Logs Grouped by Telecaller**
-   - Activity tab now groups activities by user
-   - Each telecaller has a card with their name and activity count
-   - Activities shown chronologically within each group
+**Permissions Required**:
+- READ_CALL_LOG - Read phone call history
+- CALL_PHONE - Make phone calls
+- READ_PHONE_STATE - Detect incoming calls
+- INTERNET - Sync data with backend
 
-#### Previous Updates
-- Date range filters (from_date, to_date) on all dashboards and reports
-- "Unused Data" metric (data in 'new' status created before today)
-- "Active Telecallers" shows telecallers with calls in selected period
-- Telecaller break/login/logout tracking
-- Terminology changed from "Leads" to "Data"
+## Recent Updates (Mar 26, 2026)
+
+### Mobile App for Call Verification - COMPLETED ✅
+1. **Android Mobile App Created**
+   - React Native app for telecallers
+   - Reads actual call logs from device
+   - Syncs with backend for verification
+
+2. **Backend APIs Added**
+   - `POST /api/call-logs/sync` - Receive and process device call logs
+   - `GET /api/call-logs/last-sync` - Get last sync timestamp
+   - `GET /api/call-logs/verified` - Get verified call logs
+   - `GET /api/reports/verified-call-stats` - Aggregated verified stats
+
+3. **Admin Dashboard Updated**
+   - New "Verified Call Stats" section
+   - Shows outgoing/incoming calls from mobile app sync
+   - Displays verified talk time vs reported talk time
+   - Shows missed calls and incoming call time
+
+4. **New Database Collection**
+   - `verified_call_logs` - Stores synced call data from devices
 
 ## Status Options
 - new, contacted, file, not_interested, follow_up, leads, not_answering, wrong_number, presentation
@@ -89,82 +120,57 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 ### P0 (Critical) - Completed ✅
 - All core features implemented and tested
 - Reporting enhancements completed
+- Mobile app for call verification created
 
-### P1 (High Priority) - Future
-- Call recordings integration (if needed)
-- SMS notifications for follow-ups
-- Export reports to PDF/Excel
-- Multi-language support
+### P1 (High Priority) - Pending
+- **Refactor `server.py`** (>2500 lines) into modular routers
+- **Refactor `Reports.js`** (>1700 lines) into sub-components
+- Build and distribute APK to telecallers
+- Test call log sync end-to-end with real devices
 
 ### P2 (Medium Priority) - Future
 - Dark mode toggle
-- Custom fields for data
-- Data scoring/qualification
-- Email templates
-- Refactor `backend/server.py` (1970+ lines) into modular structure using FastAPI's `APIRouter`
-- Refactor `frontend/src/pages/admin/Reports.js` (700+ lines) into sub-components
+- WhatsApp integration
+- SMS notifications for follow-ups
+- Cloud telephony integration (Exotel/Twilio) for automatic tracking
 
 ### P3 (Low Priority) - Future
-- WhatsApp integration
-- Calendar sync
-- Advanced analytics dashboard
-- Bulk SMS campaigns
+- Call recordings integration
+- Multi-language support
+- Bulk status update
+- Advanced analytics
 
-## API Endpoints Reference
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login and get JWT token
-- `POST /api/auth/logout` - Record logout time
-- `GET /api/auth/me` - Get current user
-- `POST /api/activity/break` - Start/end break
-- `GET /api/activity/logs` - Get activity logs (grouped by telecaller)
-- `GET /api/leads` - List data (with filters)
-- `POST /api/leads` - Create data
-- `POST /api/leads/import` - Import data from file
-- `POST /api/leads/assign` - Assign data to telecaller
-- `POST /api/call-sessions/start` - Start call session
-- `POST /api/call-sessions/end` - End call session
-- `GET /api/dashboard/stats` - Get dashboard statistics (with date range)
-- `GET /api/reports/telecallers` - Get telecaller reports (with date range)
-- `GET /api/reports/hourly` - Get hourly breakdown report
-- `GET /api/statuses` - Get available status options
+## Key Database Collections
+- `users` - User accounts (admin, telecaller)
+- `leads` - Lead/data records
+- `call_logs` - Call session records (from web app)
+- `verified_call_logs` - **NEW** Synced call data from mobile devices
+- `daily_sessions` - Daily login/activity stats
+- `activity_logs` - Login/logout/break events
+- `follow_ups` - Scheduled follow-ups
 
-## Testing Results (Mar 11, 2026)
-- Backend: 100% pass rate
-- Frontend: 100% pass rate
-- All 4 reporting enhancements verified
+## Critical Info
+- **Production Domain**: connect.bankezee.com
+- **Preview Domain**: responsive-crm-app-1.preview.emergentagent.com
+- **Timezone**: All times in IST (UTC+5:30)
+- **Mobile App**: Requires Android device with call log permission
 
-## Latest Updates (Mar 14, 2026)
+## Admin Credentials
+- admin@bankezee.com / ConnectSasha12!!
+- teja@bankezee.com / tejasme12
 
-### New Feature: Call Outcome Display on Lead Cards - COMPLETED ✅
-1. **Lead Status Updates on Call Outcome**
-   - When a call is logged with outcome (No Answer, Busy, etc.), the lead's `last_call_outcome` is saved
-   - If the lead was "new" and call was NOT connected, status changes to "contacted"
-   - For connected calls, the manually selected status is applied as before
+## Telecaller Credentials
+- agent@test.com / agent123
 
-2. **Lead Card Enhancement**
-   - Lead cards now display BOTH the status badge AND the last call outcome
-   - Last call outcome shown as a small badge with phone icon below the status
-   - Color-coded based on outcome type (red for No Answer, orange for Busy, etc.)
+## Files of Reference
+1. `/app/backend/server.py` - All backend APIs
+2. `/app/frontend/src/pages/admin/Dashboard.js` - Admin dashboard
+3. `/app/frontend/src/pages/admin/Reports.js` - Reports with 4 tabs
+4. `/app/frontend/src/components/VerifiedCallStats.js` - Verified call stats component
+5. `/app/frontend/src/components/CallModal.js` - Call outcome modal
+6. `/app/mobile-app/` - Complete React Native mobile app
 
-3. **Lead Detail Page Enhancement**
-   - Lead detail page now shows last call outcome badge next to status
-   - Both badges displayed in a flex container for better layout
-
-### Bug Fixes (Mar 13, 2026)
-
-1. **Break Time Capture Issue (P0) - VERIFIED WORKING**
-   - Backend `/api/activity/break` endpoint functioning correctly
-   - Break times properly saved and displayed in Activity Log
-
-2. **Activity Log Multiple Breaks - COMPLETED**
-   - Activity Log now shows separate columns for each break: Break 1 From/To, Break 2 From/To, etc.
-   - Dynamic columns based on maximum breaks taken by any telecaller that day
-   - Both UI and PDF export updated to use this format
-
-3. **Removed "Break Reason" Column from PDF Export (P1) - COMPLETED**
-   - Activity Log PDF matches UI format
-
-### Previous Updates (Mar 11, 2026)
-- Added PDF export functionality with color-coded reports
-- PDF includes Summary, Hourly, and Activity reports with professional formatting
-- Both CSV and PDF export buttons available on Reports page
+## Next Steps for New Agent
+1. Help user build and distribute the Android APK
+2. Test call log sync with actual devices
+3. Consider refactoring large files (server.py, Reports.js)
