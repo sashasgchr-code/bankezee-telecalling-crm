@@ -2646,8 +2646,8 @@ async def get_daily_tracking_sheet(
             # Get call stats
             day_calls = calls_by_date.get(date_str, [])
             calls_count = len(day_calls)
-            connected_count = len([c for c in day_calls if c.get("outcome") == "connected" or c.get("duration_seconds", 0) > 0])
-            talk_time_seconds = sum(c.get("duration_seconds", 0) for c in day_calls)
+            connected_count = len([c for c in day_calls if c.get("outcome") == "connected" or c.get("duration", 0) > 0])
+            talk_time_seconds = sum(c.get("duration", 0) or 0 for c in day_calls)
             
             # Get lead/file stats
             day_lead_stats = leads_by_date.get(date_str, {"leads": 0, "files": 0})
