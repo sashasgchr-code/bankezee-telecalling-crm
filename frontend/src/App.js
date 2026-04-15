@@ -8,6 +8,7 @@ import AdminLeads from "./pages/admin/Leads";
 import AdminUsers from "./pages/admin/Users";
 import AdminReports from "./pages/admin/Reports";
 import AdminSettings from "./pages/admin/Settings";
+import DailyTrackingSheet from "./pages/admin/DailyTrackingSheet";
 import TelecallerDashboard from "./pages/telecaller/Dashboard";
 import TelecallerLeads from "./pages/telecaller/Leads";
 import TelecallerFollowUps from "./pages/telecaller/FollowUps";
@@ -77,6 +78,7 @@ function App() {
           <Route path="leads/:id" element={<LeadDetail />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="reports" element={<AdminReports />} />
+          <Route path="tracking" element={<DailyTrackingSheet />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
 

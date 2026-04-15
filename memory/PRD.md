@@ -49,7 +49,7 @@ Convert existing Expo React Native mobile CRM app (tele-connect-13) into a fully
 
 ### Frontend (React + Tailwind CSS)
 - **Auth Pages**: Login, Register with role selection
-- **Admin Pages**: Dashboard, Data (with import/assign), Users, Reports, Settings
+- **Admin Pages**: Dashboard, Data (with import/assign), Users, Reports, Settings, **Daily Tracking Sheet**
 - **Telecaller Pages**: Data, Dashboard, Follow-ups, Profile
 - **Shared**: Data Detail with edit/call/follow-up
 - **Call System**: 

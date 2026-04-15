@@ -2513,6 +2513,202 @@ async def get_verified_call_stats(
     
     return stats
 
+@router.get("/reports/daily-tracking-sheet")
+async def get_daily_tracking_sheet(
+    user_id: str = None,
+    month: int = None,
+    year: int = None,
+    start_date: str = None,
+    end_date: str = None,
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Get daily tracking sheet data for a telecaller.
+    Shows: Date, Day, Start Time, End Time, Calls, Connected, Leads, Files, Talk Time
+    """
+    now = datetime.now(timezone.utc)
+    
+    # Default to current month
+    if not year:
+        year = now.year
+    if not month:
+        month = now.month
+    
+    # Calculate date range
+    if start_date and end_date:
+        range_start = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+        range_end = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc) + timedelta(days=1)
+    else:
+        # Default to selected month
+        range_start = datetime(year, month, 1, tzinfo=timezone.utc)
+        if month == 12:
+            range_end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        else:
+            range_end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    
+    # Build query for user
+    query = {"role": "telecaller", "is_active": True}
+    if user_id:
+        query["_id"] = ObjectId(user_id)
+    
+    telecallers = await db.users.find(query).to_list(100)
+    
+    results = []
+    
+    for tc in telecallers:
+        tc_id = str(tc["_id"])
+        tc_name = tc.get("name", "Unknown")
+        
+        # Get activity logs for login/logout times
+        activity_logs = await db.activity_logs.find({
+            "user_id": tc_id,
+            "timestamp": {"$gte": range_start, "$lt": range_end}
+        }).sort("timestamp", 1).to_list(5000)
+        
+        # Get call logs
+        call_logs = await db.call_logs.find({
+            "user_id": tc_id,
+            "created_at": {"$gte": range_start, "$lt": range_end}
+        }).to_list(5000)
+        
+        # Get daily sessions
+        daily_sessions = await db.daily_sessions.find({
+            "user_id": tc_id,
+            "date": {"$gte": range_start, "$lt": range_end}
+        }).to_list(100)
+        
+        # Create a map of daily sessions by date
+        session_map = {}
+        for session in daily_sessions:
+            date_key = session["date"].strftime("%Y-%m-%d")
+            session_map[date_key] = session
+        
+        # Group activities by date
+        activities_by_date = {}
+        for log in activity_logs:
+            date_key = log["timestamp"].strftime("%Y-%m-%d")
+            if date_key not in activities_by_date:
+                activities_by_date[date_key] = []
+            activities_by_date[date_key].append(log)
+        
+        # Group calls by date
+        calls_by_date = {}
+        for call in call_logs:
+            date_key = call["created_at"].strftime("%Y-%m-%d")
+            if date_key not in calls_by_date:
+                calls_by_date[date_key] = []
+            calls_by_date[date_key].append(call)
+        
+        # Get leads created/converted in this period
+        leads_by_date = {}
+        leads = await db.leads.find({
+            "assigned_to": tc_id,
+            "updated_at": {"$gte": range_start, "$lt": range_end}
+        }).to_list(5000)
+        
+        for lead in leads:
+            date_key = lead["updated_at"].strftime("%Y-%m-%d")
+            if date_key not in leads_by_date:
+                leads_by_date[date_key] = {"leads": 0, "files": 0}
+            if lead.get("status") == "leads":
+                leads_by_date[date_key]["leads"] += 1
+            if lead.get("status") == "file":
+                leads_by_date[date_key]["files"] += 1
+        
+        # Calculate file goal (could be set per user or global)
+        file_goal = tc.get("file_goal", 5)  # Default goal
+        
+        # Build daily tracking data
+        daily_data = []
+        total_leads = 0
+        total_files = 0
+        total_calls = 0
+        total_connected = 0
+        total_talk_time = 0
+        
+        # Iterate through each day in the range
+        current_date = range_start
+        while current_date < range_end:
+            date_str = current_date.strftime("%Y-%m-%d")
+            day_name = current_date.strftime("%A")[:3]  # Mon, Tue, etc.
+            
+            # Get login/logout times
+            day_activities = activities_by_date.get(date_str, [])
+            start_time = None
+            end_time = None
+            
+            for activity in day_activities:
+                if activity.get("action") == "login" and not start_time:
+                    start_time = activity["timestamp"].strftime("%H:%M")
+                elif activity.get("action") == "logout":
+                    end_time = activity["timestamp"].strftime("%H:%M")
+            
+            # Get call stats
+            day_calls = calls_by_date.get(date_str, [])
+            calls_count = len(day_calls)
+            connected_count = len([c for c in day_calls if c.get("outcome") == "connected" or c.get("duration_seconds", 0) > 0])
+            talk_time_seconds = sum(c.get("duration_seconds", 0) for c in day_calls)
+            
+            # Get lead/file stats
+            day_lead_stats = leads_by_date.get(date_str, {"leads": 0, "files": 0})
+            
+            # Only add days with activity
+            if start_time or calls_count > 0 or day_lead_stats["leads"] > 0 or day_lead_stats["files"] > 0:
+                daily_data.append({
+                    "date": date_str,
+                    "day": day_name,
+                    "start_time": start_time or "-",
+                    "end_time": end_time or "-",
+                    "calls": calls_count,
+                    "connected": connected_count,
+                    "leads": day_lead_stats["leads"],
+                    "files": day_lead_stats["files"],
+                    "talk_time_seconds": talk_time_seconds,
+                    "talk_time_formatted": f"{talk_time_seconds // 60}m {talk_time_seconds % 60}s" if talk_time_seconds else "0m"
+                })
+                
+                total_calls += calls_count
+                total_connected += connected_count
+                total_leads += day_lead_stats["leads"]
+                total_files += day_lead_stats["files"]
+                total_talk_time += talk_time_seconds
+            
+            current_date += timedelta(days=1)
+        
+        results.append({
+            "user_id": tc_id,
+            "user_name": tc_name,
+            "month": range_start.strftime("%B %Y"),
+            "file_goal": file_goal,
+            "achieved_files": total_files,
+            "daily_data": daily_data,
+            "totals": {
+                "calls": total_calls,
+                "connected": total_connected,
+                "leads": total_leads,
+                "files": total_files,
+                "talk_time_seconds": total_talk_time,
+                "talk_time_formatted": f"{total_talk_time // 3600}h {(total_talk_time % 3600) // 60}m" if total_talk_time else "0m"
+            }
+        })
+    
+    return results
+
+@router.put("/users/{user_id}/file-goal")
+async def set_user_file_goal(
+    user_id: str,
+    file_goal: int,
+    current_user: dict = Depends(require_admin)
+):
+    """Set file goal for a telecaller"""
+    result = await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"file_goal": file_goal}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    return {"message": "File goal updated", "file_goal": file_goal}
+
 app.include_router(router)
 
 # Predefined admin accounts
