@@ -150,7 +150,8 @@ const DailyTrackingSheet = () => {
     const csvContent = [
       `MIT: ${userData.user_name}`,
       `Month: ${userData.month}`,
-      `Files Achieved: ${userData.achieved_files}`,
+      `File Goal: ___________`,
+      `Achieved: ${userData.achieved_files}`,
       '',
       headers.join(','),
       ...rows.map(row => row.join(','))
@@ -177,7 +178,7 @@ const DailyTrackingSheet = () => {
       csvContent += `\n${'='.repeat(80)}\n`;
       csvContent += `MIT: ${userData.user_name}\n`;
       csvContent += `Month: ${userData.month}\n`;
-      csvContent += `Files Achieved: ${userData.achieved_files}\n\n`;
+      csvContent += `File Goal: ___________  |  Achieved: ${userData.achieved_files}\n\n`;
 
       const headers = ['Date', 'Day', 'Start', 'End', 'Calls', 'Connected', 'Leads', 'Files', 'Talk Time'];
       csvContent += headers.join(',') + '\n';
@@ -256,8 +257,9 @@ const DailyTrackingSheet = () => {
     
     const headerY = 25;
     doc.text(`MIT: ${userData.user_name}`, 14, headerY);
-    doc.text(`MONTH: ${userData.month}`, 140, headerY);
-    doc.text(`FILES ACHIEVED: ${userData.achieved_files}`, 14, headerY + 7);
+    doc.text(`MONTH: ${userData.month}`, 100, headerY);
+    doc.text(`FILE GOAL: __________`, 14, headerY + 7);
+    doc.text(`ACHIEVED: ${userData.achieved_files}`, 100, headerY + 7);
 
     // Table
     const tableData = userData.daily_data.map(d => [
@@ -350,8 +352,9 @@ const DailyTrackingSheet = () => {
       
       const headerY = 23;
       doc.text(`MIT: ${userData.user_name}`, 14, headerY);
-      doc.text(`MONTH: ${userData.month}`, 140, headerY);
-      doc.text(`FILES ACHIEVED: ${userData.achieved_files}`, 14, headerY + 6);
+      doc.text(`MONTH: ${userData.month}`, 100, headerY);
+      doc.text(`FILE GOAL: __________`, 14, headerY + 6);
+      doc.text(`ACHIEVED: ${userData.achieved_files}`, 100, headerY + 6);
 
       // Table
       const tableData = userData.daily_data.map(d => [
@@ -596,7 +599,7 @@ const DailyTrackingSheet = () => {
               MIT DAILY TRACKING SHEET
             </h2>
             
-            <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-white rounded-lg p-3 shadow-sm">
                 <div className="text-xs text-gray-500 font-medium">MIT:</div>
                 <div className="text-lg font-bold text-gray-800">{currentUserData.user_name}</div>
@@ -606,7 +609,11 @@ const DailyTrackingSheet = () => {
                 <div className="text-lg font-bold text-gray-800">{currentUserData.month}</div>
               </div>
               <div className="bg-white rounded-lg p-3 shadow-sm">
-                <div className="text-xs text-gray-500 font-medium">FILES ACHIEVED:</div>
+                <div className="text-xs text-gray-500 font-medium">FILE GOAL:</div>
+                <div className="text-lg font-bold text-gray-400 border-b-2 border-dashed border-gray-300 min-w-[60px]">&nbsp;</div>
+              </div>
+              <div className="bg-white rounded-lg p-3 shadow-sm">
+                <div className="text-xs text-gray-500 font-medium">ACHIEVED:</div>
                 <div className="flex items-center gap-2">
                   <Award size={18} className="text-green-500" />
                   <span className="text-lg font-bold text-green-600">{currentUserData.achieved_files}</span>
