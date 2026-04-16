@@ -79,9 +79,11 @@ const DailyTrackingSheet = () => {
         url += `?month=${selectedMonth}&year=${selectedYear}`;
       }
       const response = await api.get(url);
+      console.log('All agents data:', response.data);
       return response.data;
     } catch (error) {
       console.error('Error fetching all agents data:', error);
+      alert('Failed to fetch all agents data. Please try again.');
       return [];
     } finally {
       setIsDownloadingAll(false);
@@ -134,7 +136,7 @@ const DailyTrackingSheet = () => {
 
     const dailyData = currentUserData.daily_data;
 
-    // Group by day of week
+    // Group by day of week for charts
     const byDayOfWeek = DAY_ORDER.map(day => {
       const dayData = dailyData.filter(d => d.day === day);
       const totalCalls = dayData.reduce((sum, d) => sum + d.calls, 0);
@@ -159,10 +161,10 @@ const DailyTrackingSheet = () => {
       };
     }).filter(d => d.daysWorked > 0);
 
-    // Find highest/lowest
-    const sortedByCalls = [...byDayOfWeek].sort((a, b) => b.calls - a.calls);
-    const sortedByConnected = [...byDayOfWeek].sort((a, b) => b.connected - a.connected);
-    const sortedByTalkTime = [...byDayOfWeek].sort((a, b) => b.talkTime - a.talkTime);
+    // Find highest/lowest by actual date (not just day of week)
+    const sortedByCallsDate = [...dailyData].sort((a, b) => b.calls - a.calls);
+    const sortedByConnectedDate = [...dailyData].sort((a, b) => b.connected - a.connected);
+    const sortedByTalkTimeDate = [...dailyData].sort((a, b) => b.talk_time_seconds - a.talk_time_seconds);
 
     // Overall stats
     const totalCalls = dailyData.reduce((sum, d) => sum + d.calls, 0);
@@ -198,17 +200,27 @@ const DailyTrackingSheet = () => {
       files: d.files
     }));
 
+    // Helper to format date display
+    const formatDateDisplay = (item) => {
+      if (!item) return { day: '-', date: '-', value: 0 };
+      return {
+        day: item.day,
+        date: item.date,
+        displayDate: `${item.day} (${item.date})`
+      };
+    };
+
     return {
       byDayOfWeek,
       highest: {
-        calls: sortedByCalls[0],
-        connected: sortedByConnected[0],
-        talkTime: sortedByTalkTime[0]
+        calls: sortedByCallsDate[0] ? { ...formatDateDisplay(sortedByCallsDate[0]), value: sortedByCallsDate[0].calls } : null,
+        connected: sortedByConnectedDate[0] ? { ...formatDateDisplay(sortedByConnectedDate[0]), value: sortedByConnectedDate[0].connected } : null,
+        talkTime: sortedByTalkTimeDate[0] ? { ...formatDateDisplay(sortedByTalkTimeDate[0]), value: sortedByTalkTimeDate[0].talk_time_seconds, formatted: formatTime(sortedByTalkTimeDate[0].talk_time_seconds) } : null
       },
       lowest: {
-        calls: sortedByCalls[sortedByCalls.length - 1],
-        connected: sortedByConnected[sortedByConnected.length - 1],
-        talkTime: sortedByTalkTime[sortedByTalkTime.length - 1]
+        calls: sortedByCallsDate[sortedByCallsDate.length - 1] ? { ...formatDateDisplay(sortedByCallsDate[sortedByCallsDate.length - 1]), value: sortedByCallsDate[sortedByCallsDate.length - 1].calls } : null,
+        connected: sortedByConnectedDate[sortedByConnectedDate.length - 1] ? { ...formatDateDisplay(sortedByConnectedDate[sortedByConnectedDate.length - 1]), value: sortedByConnectedDate[sortedByConnectedDate.length - 1].connected } : null,
+        talkTime: sortedByTalkTimeDate[sortedByTalkTimeDate.length - 1] ? { ...formatDateDisplay(sortedByTalkTimeDate[sortedByTalkTimeDate.length - 1]), value: sortedByTalkTimeDate[sortedByTalkTimeDate.length - 1].talk_time_seconds, formatted: formatTime(sortedByTalkTimeDate[sortedByTalkTimeDate.length - 1].talk_time_seconds) } : null
       },
       averages: {
         callsPerDay: avgCallsPerDay,
@@ -338,77 +350,86 @@ const DailyTrackingSheet = () => {
   };
 
   const downloadAllAgentsPDF = async () => {
-    const allData = await fetchAllAgentsData();
-    if (!allData || allData.length === 0) return;
+    try {
+      const allData = await fetchAllAgentsData();
+      if (!allData || allData.length === 0) {
+        alert('No data available for the selected period');
+        return;
+      }
 
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const monthName = getMonthName(selectedMonth, selectedYear);
-    let isFirstPage = true;
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const monthName = getMonthName(selectedMonth, selectedYear);
+      let isFirstPage = true;
 
-    for (const userData of allData) {
-      if (!isFirstPage) doc.addPage();
-      isFirstPage = false;
-      doc.setFontSize(16);
+      for (const userData of allData) {
+        if (!isFirstPage) doc.addPage();
+        isFirstPage = false;
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('MIT DAILY TRACKING SHEET', doc.internal.pageSize.width / 2, 15, { align: 'center' });
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`MIT: ${userData.user_name}`, 14, 23);
+        doc.text(`MONTH: ${userData.month}`, 100, 23);
+        doc.text(`FILE GOAL: __________`, 14, 29);
+        doc.text(`ACHIEVED: ${userData.achieved_files}`, 100, 29);
+
+        const tableData = userData.daily_data.map(d => [d.date, d.day, d.start_time, d.end_time, d.calls.toString(), d.connected.toString(), d.leads.toString(), d.files.toString(), d.talk_time_formatted]);
+        tableData.push(['TOTAL', '', '', '', userData.totals.calls.toString(), userData.totals.connected.toString(), userData.totals.leads.toString(), userData.totals.files.toString(), userData.totals.talk_time_formatted]);
+
+        doc.autoTable({
+          head: [['DATE', 'DAY', 'START', 'END', 'CALLS', 'CONN.', 'LEADS', 'FILES', 'TALK TIME']],
+          body: tableData,
+          startY: 35,
+          theme: 'grid',
+          styles: { fontSize: 8, cellPadding: 2, halign: 'center' },
+          headStyles: { fillColor: [200, 220, 255], textColor: [0, 0, 0], fontStyle: 'bold' },
+          didParseCell: (data) => {
+            if (data.row.index === tableData.length - 1) {
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [240, 240, 240];
+            }
+          }
+        });
+      }
+
+      // Summary page
+      doc.addPage();
+      doc.setFontSize(18);
       doc.setFont('helvetica', 'bold');
-      doc.text('MIT DAILY TRACKING SHEET', doc.internal.pageSize.width / 2, 15, { align: 'center' });
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.text(`MIT: ${userData.user_name}`, 14, 23);
-      doc.text(`MONTH: ${userData.month}`, 100, 23);
-      doc.text(`FILE GOAL: __________`, 14, 29);
-      doc.text(`ACHIEVED: ${userData.achieved_files}`, 100, 29);
+      doc.text(`ALL AGENTS SUMMARY - ${monthName}`, doc.internal.pageSize.width / 2, 20, { align: 'center' });
 
-      const tableData = userData.daily_data.map(d => [d.date, d.day, d.start_time, d.end_time, d.calls.toString(), d.connected.toString(), d.leads.toString(), d.files.toString(), d.talk_time_formatted]);
-      tableData.push(['TOTAL', '', '', '', userData.totals.calls.toString(), userData.totals.connected.toString(), userData.totals.leads.toString(), userData.totals.files.toString(), userData.totals.talk_time_formatted]);
+      const summaryData = allData.map(u => [u.user_name, u.totals.calls.toString(), u.totals.connected.toString(), u.totals.leads.toString(), u.totals.files.toString(), u.totals.talk_time_formatted]);
+      const grandTotals = allData.reduce((acc, u) => ({
+        calls: acc.calls + u.totals.calls,
+        connected: acc.connected + u.totals.connected,
+        leads: acc.leads + u.totals.leads,
+        files: acc.files + u.totals.files,
+        talk_time: acc.talk_time + (u.totals.talk_time_seconds || 0)
+      }), { calls: 0, connected: 0, leads: 0, files: 0, talk_time: 0 });
+      summaryData.push(['GRAND TOTAL', grandTotals.calls.toString(), grandTotals.connected.toString(), grandTotals.leads.toString(), grandTotals.files.toString(), formatTime(grandTotals.talk_time)]);
 
       doc.autoTable({
-        head: [['DATE', 'DAY', 'START', 'END', 'CALLS', 'CONN.', 'LEADS', 'FILES', 'TALK TIME']],
-        body: tableData,
-        startY: 35,
+        head: [['AGENT', 'CALLS', 'CONNECTED', 'LEADS', 'FILES', 'TALK TIME']],
+        body: summaryData,
+        startY: 30,
         theme: 'grid',
-        styles: { fontSize: 8, cellPadding: 2, halign: 'center' },
-        headStyles: { fillColor: [200, 220, 255], textColor: [0, 0, 0], fontStyle: 'bold' },
+        styles: { fontSize: 10, cellPadding: 4, halign: 'center' },
+        headStyles: { fillColor: [100, 150, 200], textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: { 0: { halign: 'left', cellWidth: 50 } },
         didParseCell: (data) => {
-          if (data.row.index === tableData.length - 1) {
+          if (data.row.index === summaryData.length - 1) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [240, 240, 240];
+            data.cell.styles.fillColor = [220, 220, 220];
           }
         }
       });
+
+      doc.save(`all_agents_tracking_${monthName.replace(' ', '_')}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF. Please try again.');
     }
-
-    doc.addPage();
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    doc.text(`ALL AGENTS SUMMARY - ${monthName}`, doc.internal.pageSize.width / 2, 20, { align: 'center' });
-
-    const summaryData = allData.map(u => [u.user_name, u.totals.calls.toString(), u.totals.connected.toString(), u.totals.leads.toString(), u.totals.files.toString(), u.totals.talk_time_formatted]);
-    const grandTotals = allData.reduce((acc, u) => ({
-      calls: acc.calls + u.totals.calls,
-      connected: acc.connected + u.totals.connected,
-      leads: acc.leads + u.totals.leads,
-      files: acc.files + u.totals.files,
-      talk_time: acc.talk_time + (u.totals.talk_time_seconds || 0)
-    }), { calls: 0, connected: 0, leads: 0, files: 0, talk_time: 0 });
-    summaryData.push(['GRAND TOTAL', grandTotals.calls.toString(), grandTotals.connected.toString(), grandTotals.leads.toString(), grandTotals.files.toString(), formatTime(grandTotals.talk_time)]);
-
-    doc.autoTable({
-      head: [['AGENT', 'CALLS', 'CONNECTED', 'LEADS', 'FILES', 'TALK TIME']],
-      body: summaryData,
-      startY: 30,
-      theme: 'grid',
-      styles: { fontSize: 10, cellPadding: 4, halign: 'center' },
-      headStyles: { fillColor: [100, 150, 200], textColor: [255, 255, 255], fontStyle: 'bold' },
-      columnStyles: { 0: { halign: 'left', cellWidth: 50 } },
-      didParseCell: (data) => {
-        if (data.row.index === summaryData.length - 1) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [220, 220, 220];
-        }
-      }
-    });
-
-    doc.save(`all_agents_tracking_${monthName.replace(' ', '_')}.pdf`);
   };
 
   return (
@@ -630,15 +651,15 @@ const DailyTrackingSheet = () => {
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Highest Calls:</span>
-                          <span className="font-bold text-green-600">{analytics.highest.calls?.day} ({analytics.highest.calls?.calls})</span>
+                          <span className="font-bold text-green-600">{analytics.highest.calls?.displayDate} ({analytics.highest.calls?.value})</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Highest Connected:</span>
-                          <span className="font-bold text-green-600">{analytics.highest.connected?.day} ({analytics.highest.connected?.connected})</span>
+                          <span className="font-bold text-green-600">{analytics.highest.connected?.displayDate} ({analytics.highest.connected?.value})</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Highest Talk Time:</span>
-                          <span className="font-bold text-green-600">{analytics.highest.talkTime?.day} ({analytics.highest.talkTime?.talkTimeFormatted})</span>
+                          <span className="font-bold text-green-600">{analytics.highest.talkTime?.displayDate} ({analytics.highest.talkTime?.formatted})</span>
                         </div>
                       </div>
                     </div>
@@ -652,15 +673,15 @@ const DailyTrackingSheet = () => {
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">Lowest Calls:</span>
-                          <span className="font-bold text-red-500">{analytics.lowest.calls?.day} ({analytics.lowest.calls?.calls})</span>
+                          <span className="font-bold text-red-500">{analytics.lowest.calls?.displayDate} ({analytics.lowest.calls?.value})</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Lowest Connected:</span>
-                          <span className="font-bold text-red-500">{analytics.lowest.connected?.day} ({analytics.lowest.connected?.connected})</span>
+                          <span className="font-bold text-red-500">{analytics.lowest.connected?.displayDate} ({analytics.lowest.connected?.value})</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Lowest Talk Time:</span>
-                          <span className="font-bold text-red-500">{analytics.lowest.talkTime?.day} ({analytics.lowest.talkTime?.talkTimeFormatted})</span>
+                          <span className="font-bold text-red-500">{analytics.lowest.talkTime?.displayDate} ({analytics.lowest.talkTime?.formatted})</span>
                         </div>
                       </div>
                     </div>
