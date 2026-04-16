@@ -2679,7 +2679,6 @@ async def get_daily_tracking_sheet(
             "user_id": tc_id,
             "user_name": tc_name,
             "month": range_start.strftime("%B %Y"),
-            "file_goal": file_goal,
             "achieved_files": total_files,
             "daily_data": daily_data,
             "totals": {
