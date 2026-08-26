@@ -1,30 +1,138 @@
 import React, { useState, useEffect } from 'react';
-import { StatusBar, View, ActivityIndicator, StyleSheet } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator } from '@react-navigation/stack';
+import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import LoginScreen from './src/screens/LoginScreen';
-import HomeScreen from './src/screens/HomeScreen';
-import { getCurrentUser } from './src/services/api';
 
+// Screens
+import LoginScreen from './src/screens/LoginScreen';
+import DashboardScreen from './src/screens/DashboardScreen';
+import DataScreen from './src/screens/DataScreen';
+import LeadDetailScreen from './src/screens/LeadDetailScreen';
+import FollowUpsScreen from './src/screens/FollowUpsScreen';
+import TeamScreen from './src/screens/TeamScreen';
+import ReportsScreen from './src/screens/ReportsScreen';
+import TrackingScreen from './src/screens/TrackingScreen';
+
+const Tab = createBottomTabNavigator();
+const Stack = createStackNavigator();
+
+// Tab Icon Component
+const TabIcon = ({ name, focused, color }) => {
+  const icons = {
+    Dashboard: '📊',
+    Data: '📋',
+    'Follow-ups': '📅',
+    Team: '👥',
+    Reports: '📈',
+    Tracking: '📆',
+  };
+  return (
+    <View style={styles.tabIcon}>
+      <Text style={{ fontSize: focused ? 24 : 20 }}>{icons[name] || '📱'}</Text>
+    </View>
+  );
+};
+
+// Telecaller Tabs
+const TelecallerTabs = ({ user, onLogout }) => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color }) => (
+          <TabIcon name={route.name} focused={focused} color={color} />
+        ),
+        tabBarActiveTintColor: '#16a34a',
+        tabBarInactiveTintColor: 'gray',
+        tabBarStyle: styles.tabBar,
+        tabBarLabelStyle: styles.tabBarLabel,
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Dashboard">
+        {props => <DashboardScreen {...props} user={user} onLogout={onLogout} />}
+      </Tab.Screen>
+      <Tab.Screen name="Data">
+        {props => <DataScreen {...props} user={user} />}
+      </Tab.Screen>
+      <Tab.Screen name="Follow-ups">
+        {props => <FollowUpsScreen {...props} user={user} />}
+      </Tab.Screen>
+    </Tab.Navigator>
+  );
+};
+
+// Admin Tabs
+const AdminTabs = ({ user, onLogout }) => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color }) => (
+          <TabIcon name={route.name} focused={focused} color={color} />
+        ),
+        tabBarActiveTintColor: '#16a34a',
+        tabBarInactiveTintColor: 'gray',
+        tabBarStyle: styles.tabBar,
+        tabBarLabelStyle: styles.tabBarLabel,
+        headerShown: false,
+      })}
+    >
+      <Tab.Screen name="Dashboard">
+        {props => <DashboardScreen {...props} user={user} onLogout={onLogout} />}
+      </Tab.Screen>
+      <Tab.Screen name="Data">
+        {props => <DataScreen {...props} user={user} />}
+      </Tab.Screen>
+      <Tab.Screen name="Team">
+        {props => <TeamScreen {...props} user={user} />}
+      </Tab.Screen>
+      <Tab.Screen name="Reports">
+        {props => <ReportsScreen {...props} user={user} />}
+      </Tab.Screen>
+      <Tab.Screen name="Tracking">
+        {props => <TrackingScreen {...props} user={user} />}
+      </Tab.Screen>
+    </Tab.Navigator>
+  );
+};
+
+// Main App Navigator
+const AppNavigator = ({ user, onLogout }) => {
+  const isAdmin = user?.role === 'admin';
+  
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="Main">
+        {props => isAdmin ? 
+          <AdminTabs {...props} user={user} onLogout={onLogout} /> : 
+          <TelecallerTabs {...props} user={user} onLogout={onLogout} />
+        }
+      </Stack.Screen>
+      <Stack.Screen 
+        name="LeadDetail" 
+        component={LeadDetailScreen}
+        options={{ headerShown: true, title: 'Lead Details' }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+// Main App
 const App = () => {
-  const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    checkAuthStatus();
+    checkAuth();
   }, []);
 
-  const checkAuthStatus = async () => {
+  const checkAuth = async () => {
     try {
+      const userData = await AsyncStorage.getItem('user_data');
       const token = await AsyncStorage.getItem('auth_token');
-      if (token) {
-        const userData = await getCurrentUser();
-        if (userData && userData.role === 'telecaller') {
-          setUser(userData);
-        } else {
-          // Clear invalid session
-          await AsyncStorage.removeItem('auth_token');
-          await AsyncStorage.removeItem('user_data');
-        }
+      if (userData && token) {
+        setUser(JSON.parse(userData));
       }
     } catch (error) {
       console.error('Auth check error:', error);
@@ -33,35 +141,35 @@ const App = () => {
     }
   };
 
-  const handleLoginSuccess = (userData) => {
+  const handleLogin = async (userData, token) => {
+    await AsyncStorage.setItem('user_data', JSON.stringify(userData));
+    await AsyncStorage.setItem('auth_token', token);
     setUser(userData);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await AsyncStorage.removeItem('user_data');
+    await AsyncStorage.removeItem('auth_token');
     setUser(null);
   };
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <StatusBar barStyle="dark-content" backgroundColor="#f5f5f5" />
-        <ActivityIndicator size="large" color="#10B981" />
+        <ActivityIndicator size="large" color="#16a34a" />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     );
   }
 
   return (
-    <>
-      <StatusBar 
-        barStyle={user ? "light-content" : "dark-content"} 
-        backgroundColor={user ? "#10B981" : "#f5f5f5"} 
-      />
+    <NavigationContainer>
       {user ? (
-        <HomeScreen user={user} onLogout={handleLogout} />
+        <AppNavigator user={user} onLogout={handleLogout} />
       ) : (
-        <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        <LoginScreen onLogin={handleLogin} />
       )}
-    </>
+    </NavigationContainer>
   );
 };
 
@@ -71,6 +179,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#666',
+  },
+  tabBar: {
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    paddingTop: 5,
+    paddingBottom: 5,
+    height: 60,
+  },
+  tabBarLabel: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  tabIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

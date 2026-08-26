@@ -66,8 +66,8 @@ export const isAuthenticated = async () => {
 };
 
 // Leads functions
-export const getLeads = async () => {
-  const response = await api.get('/leads');
+export const getLeads = async (params = {}) => {
+  const response = await api.get('/leads', { params });
   return response.data;
 };
 
@@ -155,17 +155,81 @@ export const recordBreak = async (action, reason = null) => {
 };
 
 // Follow-up functions
-export const getFollowUps = async () => {
-  const response = await api.get('/follow-ups');
+export const getFollowUps = async (params = {}) => {
+  const response = await api.get('/follow-ups', { params });
   return response.data;
 };
 
-export const createFollowUp = async (leadId, scheduledAt, notes) => {
-  const response = await api.post('/follow-ups', {
-    lead_id: leadId,
-    scheduled_at: scheduledAt,
-    notes,
-  });
+export const createFollowUp = async (data) => {
+  const response = await api.post('/follow-ups', data);
+  return response.data;
+};
+
+export const updateFollowUp = async (followUpId, data) => {
+  const response = await api.put(`/follow-ups/${followUpId}`, data);
+  return response.data;
+};
+
+export const deleteFollowUp = async (followUpId) => {
+  const response = await api.delete(`/follow-ups/${followUpId}`);
+  return response.data;
+};
+
+// User management functions (Admin)
+export const getUsers = async () => {
+  const response = await api.get('/users');
+  return response.data;
+};
+
+export const getTelecallers = async () => {
+  const response = await api.get('/users');
+  // Filter to only telecallers
+  return response.data.filter(u => u.role === 'telecaller');
+};
+
+export const createUser = async (userData) => {
+  const response = await api.post('/auth/register', userData);
+  return response.data;
+};
+
+export const updateUser = async (userId, data) => {
+  const response = await api.put(`/users/${userId}`, data);
+  return response.data;
+};
+
+export const deleteUsers = async (userIds) => {
+  const response = await api.delete('/users', { data: { user_ids: userIds } });
+  return response.data;
+};
+
+// Reports functions
+export const getDashboardStats = async (period = 'today') => {
+  const response = await api.get('/dashboard/stats', { params: { period } });
+  return response.data;
+};
+
+export const getTelecallerReports = async (period = 'today') => {
+  const response = await api.get('/reports/telecaller-summary', { params: { period } });
+  return response.data;
+};
+
+export const getRecordingsStats = async () => {
+  const response = await api.get('/recordings/stats');
+  return response.data;
+};
+
+export const getDailyTrackingSheet = async (userId, month, year) => {
+  const params = { month, year };
+  if (userId) {
+    params.user_id = userId;
+  }
+  const response = await api.get('/reports/daily-tracking-sheet', { params });
+  return response.data;
+};
+
+// Lead call logs
+export const getLeadCallLogs = async (leadId) => {
+  const response = await api.get(`/leads/${leadId}/call-logs`);
   return response.data;
 };
 
