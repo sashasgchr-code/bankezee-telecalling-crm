@@ -5,6 +5,8 @@ This guide uses **EAS Build** (Expo's cloud service) to build your APK. No local
 
 **Time Required:** ~15-20 minutes (mostly waiting for cloud build)
 
+**Important:** This project is already linked to EAS Project ID `8f937251-101a-4ee2-9b24-c54e7181a31e`. Do NOT create a new project - this would break signing credentials.
+
 ---
 
 ## Step 1: Create Free Expo Account (2 minutes)
@@ -43,35 +45,29 @@ Enter your Expo username and password when prompted.
 npm install
 ```
 
+4. Fix any Expo SDK compatibility issues:
+
+```bash
+npx expo install --fix
+```
+
 ---
 
 ## Step 4: Configure Your API URL (1 minute)
 
-Edit `src/config.js` and set your production API URL:
+Edit `src/config.js` and verify the API URL:
 
 ```javascript
-export const API_BASE_URL = 'https://YOUR-APP-NAME.emergentagent.com/api';
-```
+// For production:
+export const API_BASE_URL = 'https://connect.bankezee.com/api';
 
-Replace `YOUR-APP-NAME` with your actual Emergent app URL.
+// For testing with preview:
+// export const API_BASE_URL = 'https://responsive-crm-app-1.preview.emergentagent.com/api';
+```
 
 ---
 
-## Step 5: Initialize EAS Project (2 minutes)
-
-Run this command in the mobile-app folder:
-
-```bash
-eas build:configure
-```
-
-When asked:
-- Select **Android** only (press space to select, enter to confirm)
-- It will create/update the `eas.json` file
-
----
-
-## Step 6: Build APK (10-15 minutes)
+## Step 5: Build APK (10-15 minutes)
 
 Run the build command:
 
@@ -85,6 +81,8 @@ eas build --platform android --profile preview
 3. You get a download link when complete
 
 **First time only:** You'll be asked to generate a new Android keystore. Select **Yes**.
+
+**Important:** The keystore is stored in your Expo account. Future builds will use the same signing credentials automatically.
 
 ---
 
