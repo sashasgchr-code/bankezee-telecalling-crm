@@ -2,7 +2,7 @@
   "expo": {
     "name": "BANKEZEE Connect",
     "slug": "bankezee-connect",
-    "version": "1.1.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -24,11 +24,12 @@
         "backgroundColor": "#16a34a"
       },
       "package": "com.bankezee.connect",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "android.permission.READ_CALL_LOG",
         "android.permission.READ_CONTACTS",
         "android.permission.CALL_PHONE",
+        "android.permission.READ_PHONE_STATE",
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
@@ -49,11 +50,6 @@
           }
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "your-project-id-here"
-      }
-    }
+    ]
   }
 }
