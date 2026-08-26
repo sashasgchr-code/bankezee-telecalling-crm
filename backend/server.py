@@ -17,6 +17,7 @@ from routes.calls import router as calls_router
 from routes.activities import router as activities_router
 from routes.follow_ups import router as follow_ups_router
 from routes.reports import router as reports_router
+from routes.recordings import router as recordings_router
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -37,6 +38,7 @@ app.include_router(calls_router)
 app.include_router(activities_router)
 app.include_router(follow_ups_router)
 app.include_router(reports_router)
+app.include_router(recordings_router)
 
 # Predefined admin accounts
 ADMIN_ACCOUNTS = [
@@ -75,6 +77,11 @@ async def setup_admin_accounts():
         
         # Verified call logs indexes
         await db.verified_call_logs.create_index([("user_id", 1), ("synced_at", -1)])
+        
+        # Call recordings indexes
+        await db.call_recordings.create_index([("user_id", 1), ("recorded_at", -1)])
+        await db.call_recordings.create_index([("lead_id", 1)])
+        await db.call_recordings.create_index("recorded_at")
         
         print("✅ Database indexes created/verified")
     except Exception as e:

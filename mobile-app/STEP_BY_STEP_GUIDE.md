@@ -1,5 +1,12 @@
 # BANKEZEE Connect Mobile App - Step-by-Step Build & Distribution Guide
 
+## Overview
+
+This mobile app provides:
+1. **Automatic Call Log Sync** - Syncs all outgoing/incoming calls to matched leads
+2. **Call Recording** - Records calls using speakerphone for quality assurance
+3. **Background Sync** - Periodically syncs data even when app is closed
+
 ## Prerequisites (Install Once)
 
 ### Step 1: Install Node.js
@@ -223,6 +230,34 @@ When you release a new version:
 | 9 | Build release APK | ⬜ |
 | 10 | Distribute to telecallers | ⬜ |
 | 11 | Verify call logs syncing | ⬜ |
+| 12 | Enable call recording | ⬜ |
+
+---
+
+## Using the App - For Telecallers
+
+### Enabling Call Recording
+1. Open the BANKEZEE Connect app
+2. Find the **"🎙️ Call Recording"** toggle at the top
+3. Turn it ON
+4. Grant microphone permission when prompted
+5. **Important:** For best audio quality, use **SPEAKERPHONE** during calls
+
+### How Call Recording Works
+- When you tap "Call" on a lead, the app will:
+  1. Start recording from the microphone
+  2. Open the phone dialer
+  3. After the call ends and you return to the app:
+     - Recording is saved locally
+     - Recording is automatically uploaded to the server
+- Recordings appear in **Admin Reports → Recordings** tab
+- Admins can play back and review all recordings
+
+### Tips for Best Recording Quality
+- Always use speakerphone mode during calls
+- Stay in a quiet environment
+- Hold phone at a comfortable distance
+- Recording stops automatically when you return to the app
 
 ---
 

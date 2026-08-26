@@ -114,6 +114,25 @@ export const getLastSyncTimestamp = async () => {
   return response.data;
 };
 
+// Recording upload function
+export const uploadRecording = async (recordingData) => {
+  const response = await api.post('/recordings/upload', recordingData, {
+    timeout: 120000, // 2 minute timeout for large files
+  });
+  return response.data;
+};
+
+// Get pending recordings count
+export const getPendingRecordingsCount = async () => {
+  try {
+    const pendingUploads = await AsyncStorage.getItem('pending_recording_uploads');
+    const queue = pendingUploads ? JSON.parse(pendingUploads) : [];
+    return queue.length;
+  } catch (error) {
+    return 0;
+  }
+};
+
 // Activity functions
 export const pingActivity = async () => {
   const response = await api.post('/activity/ping');

@@ -9,6 +9,7 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { getLeads, getMyStats, logout, pingActivity } from '../services/api';
 import { 
@@ -17,6 +18,16 @@ import {
   hasCallLogPermission,
   getCallLogForNumber 
 } from '../services/callLogService';
+import {
+  requestRecordingPermissions,
+  hasAudioPermission,
+  getRecordingEnabled,
+  setRecordingEnabled,
+  startCallRecording,
+  stopCallRecording,
+  isCurrentlyRecording,
+  processPendingUploads,
+} from '../services/recordingService';
 
 const HomeScreen = ({ user, onLogout }) => {
   const [leads, setLeads] = useState([]);
@@ -26,6 +37,9 @@ const HomeScreen = ({ user, onLogout }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState(null);
+  const [recordingEnabled, setRecordingEnabledState] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [currentCallLead, setCurrentCallLead] = useState(null);
 
   // Status colors
   const statusColors = {
@@ -69,6 +83,7 @@ const HomeScreen = ({ user, onLogout }) => {
 
   useEffect(() => {
     loadData();
+    loadRecordingSettings();
     
     // Activity ping every 30 seconds
     const pingInterval = setInterval(() => {
@@ -80,11 +95,47 @@ const HomeScreen = ({ user, onLogout }) => {
       handleSyncCallLogs();
     }, 5 * 60 * 1000);
 
+    // Process pending recording uploads every 2 minutes
+    const uploadInterval = setInterval(() => {
+      processPendingUploads();
+    }, 2 * 60 * 1000);
+
     return () => {
       clearInterval(pingInterval);
       clearInterval(syncInterval);
+      clearInterval(uploadInterval);
     };
   }, [loadData]);
+
+  const loadRecordingSettings = async () => {
+    const enabled = await getRecordingEnabled();
+    setRecordingEnabledState(enabled);
+  };
+
+  const handleToggleRecording = async (value) => {
+    if (value) {
+      // Request permissions when enabling
+      const permissions = await requestRecordingPermissions();
+      if (!permissions.audio) {
+        Alert.alert(
+          'Permission Required',
+          'Microphone permission is required to record calls. Please enable it in app settings.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+    }
+    
+    await setRecordingEnabled(value);
+    setRecordingEnabledState(value);
+    
+    Alert.alert(
+      value ? 'Recording Enabled' : 'Recording Disabled',
+      value 
+        ? 'Calls will be recorded automatically. Use speakerphone for best audio quality.'
+        : 'Call recording has been turned off.'
+    );
+  };
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -117,17 +168,46 @@ const HomeScreen = ({ user, onLogout }) => {
     
     Alert.alert(
       'Call ' + lead.name,
-      `Phone: ${lead.phone}`,
+      `Phone: ${lead.phone}${recordingEnabled ? '\n\n🎙️ Recording enabled - Use speakerphone for best quality' : ''}`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Call',
+          text: recordingEnabled ? '📞 Call & Record' : 'Call',
           onPress: async () => {
+            // Start recording if enabled
+            if (recordingEnabled) {
+              const recordingStarted = await startCallRecording({
+                id: lead.id,
+                name: lead.name,
+                phone: lead.phone,
+              });
+              
+              if (recordingStarted) {
+                setIsRecording(true);
+                setCurrentCallLead(lead);
+              }
+            }
+
             const success = await makePhoneCall(lead.phone);
             if (success) {
               // Wait a bit and then check for call completion
               // This runs when user returns to app
               setTimeout(async () => {
+                // Stop recording if active
+                if (isCurrentlyRecording()) {
+                  const recordingInfo = await stopCallRecording(true);
+                  setIsRecording(false);
+                  setCurrentCallLead(null);
+                  
+                  if (recordingInfo) {
+                    Alert.alert(
+                      'Call Recorded',
+                      `Recording saved (${formatDuration(Math.round(recordingInfo.duration / 1000))})`,
+                      [{ text: 'OK' }]
+                    );
+                  }
+                }
+
                 const callLog = await getCallLogForNumber(lead.phone, callStartTime);
                 if (callLog) {
                   Alert.alert(
@@ -148,6 +228,23 @@ const HomeScreen = ({ user, onLogout }) => {
         },
       ]
     );
+  };
+
+  // Handle stopping recording manually (if user returns to app during call)
+  const handleStopRecording = async () => {
+    if (isCurrentlyRecording()) {
+      const recordingInfo = await stopCallRecording(true);
+      setIsRecording(false);
+      setCurrentCallLead(null);
+      
+      if (recordingInfo) {
+        Alert.alert(
+          'Recording Saved',
+          `Duration: ${formatDuration(Math.round(recordingInfo.duration / 1000))}`,
+          [{ text: 'OK' }]
+        );
+      }
+    }
   };
 
   const handleLogout = () => {
@@ -268,6 +365,27 @@ const HomeScreen = ({ user, onLogout }) => {
           </View>
         </View>
       )}
+
+      {/* Recording Toggle & Status */}
+      <View style={styles.recordingSection}>
+        <View style={styles.recordingToggle}>
+          <Text style={styles.recordingLabel}>🎙️ Call Recording</Text>
+          <Switch
+            value={recordingEnabled}
+            onValueChange={handleToggleRecording}
+            trackColor={{ false: '#d1d5db', true: '#86efac' }}
+            thumbColor={recordingEnabled ? '#22c55e' : '#9ca3af'}
+          />
+        </View>
+        {isRecording && currentCallLead && (
+          <TouchableOpacity style={styles.recordingIndicator} onPress={handleStopRecording}>
+            <Text style={styles.recordingIndicatorText}>
+              🔴 Recording: {currentCallLead.name}
+            </Text>
+            <Text style={styles.stopRecordingText}>Tap to stop</Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
       {/* Sync Status */}
       <TouchableOpacity 
@@ -409,6 +527,44 @@ const styles = StyleSheet.create({
   syncText: {
     color: '#065f46',
     fontSize: 14,
+  },
+  recordingSection: {
+    marginHorizontal: 16,
+    marginTop: 12,
+  },
+  recordingToggle: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  recordingLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  recordingIndicator: {
+    backgroundColor: '#fef2f2',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    alignItems: 'center',
+  },
+  recordingIndicatorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  stopRecordingText: {
+    color: '#991b1b',
+    fontSize: 12,
+    marginTop: 4,
   },
   searchContainer: {
     padding: 16,

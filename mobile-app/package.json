@@ -1,6 +1,6 @@
 {
   "name": "bankezee-connect-mobile",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "index.js",
   "scripts": {
     "android": "react-native run-android",
@@ -15,7 +15,9 @@
     "react-native-call-log": "^3.0.1",
     "react-native-background-fetch": "^4.2.1",
     "@react-native-community/netinfo": "^11.3.1",
-    "axios": "^1.6.7"
+    "axios": "^1.6.7",
+    "react-native-audio-recorder-player": "^3.6.6",
+    "react-native-fs": "^2.20.0"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",

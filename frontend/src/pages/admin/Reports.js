@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3, Activity, LogIn, LogOut, Coffee, FileText, PhoneCall, User } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3, Activity, LogIn, LogOut, Coffee, FileText, PhoneCall, User, Mic, Play, Pause, Trash2 } from 'lucide-react';
 import api from '../../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -18,12 +18,21 @@ const AdminReports = () => {
   const [showDateRange, setShowDateRange] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'hourly', 'activity', or 'calls'
+  const [activeTab, setActiveTab] = useState('summary'); // 'summary', 'hourly', 'activity', 'calls', or 'recordings'
   const [hourlyDate, setHourlyDate] = useState(new Date().toISOString().split('T')[0]);
   const [activityDate, setActivityDate] = useState(new Date().toISOString().split('T')[0]);
   const [callsFromDate, setCallsFromDate] = useState(new Date().toISOString().split('T')[0]);
   const [callsToDate, setCallsToDate] = useState(new Date().toISOString().split('T')[0]);
   const [expandedHourlyCards, setExpandedHourlyCards] = useState({});
+  
+  // Recordings state
+  const [recordings, setRecordings] = useState([]);
+  const [recordingsStats, setRecordingsStats] = useState(null);
+  const [recordingsFromDate, setRecordingsFromDate] = useState(new Date().toISOString().split('T')[0]);
+  const [recordingsToDate, setRecordingsToDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedRecordingTelecaller, setSelectedRecordingTelecaller] = useState('all');
+  const [playingRecordingId, setPlayingRecordingId] = useState(null);
+  const audioRef = useRef(null);
 
   const fetchReports = useCallback(async (showRefresh = false) => {
     try {
@@ -107,6 +116,34 @@ const AdminReports = () => {
     }
   }, [callsFromDate, callsToDate, selectedTelecaller]);
 
+  const fetchRecordings = useCallback(async (showRefresh = false) => {
+    try {
+      if (showRefresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      
+      let url = `/recordings?start_date=${recordingsFromDate}&end_date=${recordingsToDate}`;
+      if (selectedRecordingTelecaller && selectedRecordingTelecaller !== 'all') {
+        url += `&user_id=${selectedRecordingTelecaller}`;
+      }
+      
+      const [recordingsRes, statsRes] = await Promise.all([
+        api.get(url),
+        api.get(`/recordings/stats?start_date=${recordingsFromDate}&end_date=${recordingsToDate}`)
+      ]);
+      
+      setRecordings(recordingsRes.data);
+      setRecordingsStats(statsRes.data);
+    } catch (error) {
+      console.error('Error fetching recordings:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [recordingsFromDate, recordingsToDate, selectedRecordingTelecaller]);
+
   const fetchTelecallers = useCallback(async () => {
     try {
       const response = await api.get('/users?role=telecaller');
@@ -129,8 +166,10 @@ const AdminReports = () => {
       fetchActivityLogs();
     } else if (activeTab === 'calls') {
       fetchDetailedCalls();
+    } else if (activeTab === 'recordings') {
+      fetchRecordings();
     }
-  }, [activeTab, fetchReports, fetchHourlyReports, fetchActivityLogs, fetchDetailedCalls]);
+  }, [activeTab, fetchReports, fetchHourlyReports, fetchActivityLogs, fetchDetailedCalls, fetchRecordings]);
 
   const handleRefresh = () => {
     if (activeTab === 'summary') {
@@ -141,6 +180,8 @@ const AdminReports = () => {
       fetchActivityLogs(true);
     } else if (activeTab === 'calls') {
       fetchDetailedCalls(true);
+    } else if (activeTab === 'recordings') {
+      fetchRecordings(true);
     }
   };
 
@@ -953,6 +994,18 @@ const AdminReports = () => {
           <PhoneCall size={16} />
           Call Log
         </button>
+        <button
+          onClick={() => setActiveTab('recordings')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${
+            activeTab === 'recordings'
+              ? 'bg-green-600 text-white'
+              : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+          }`}
+          data-testid="recordings-tab"
+        >
+          <Mic size={16} />
+          Recordings
+        </button>
       </div>
 
       {/* Summary Tab Content */}
@@ -1726,6 +1779,210 @@ const AdminReports = () => {
                 </div>
               )}
             </div>
+          )}
+        </>
+      )}
+
+      {/* Recordings Tab Content */}
+      {activeTab === 'recordings' && (
+        <>
+          {/* Date Filter and Telecaller Filter */}
+          <div className="flex flex-wrap gap-4 mb-4 items-end">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">From Date</label>
+              <input
+                type="date"
+                value={recordingsFromDate}
+                onChange={(e) => setRecordingsFromDate(e.target.value)}
+                className="input-field text-sm py-1.5"
+                data-testid="recordings-from-date"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">To Date</label>
+              <input
+                type="date"
+                value={recordingsToDate}
+                onChange={(e) => setRecordingsToDate(e.target.value)}
+                className="input-field text-sm py-1.5"
+                data-testid="recordings-to-date"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Telecaller</label>
+              <select
+                value={selectedRecordingTelecaller}
+                onChange={(e) => setSelectedRecordingTelecaller(e.target.value)}
+                className="input-field text-sm py-1.5"
+                data-testid="recordings-telecaller-filter"
+              >
+                <option value="all">All Telecallers</option>
+                {telecallers.map((tc) => (
+                  <option key={tc.id} value={tc.id}>{tc.name}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={() => fetchRecordings(true)}
+              className="btn-primary text-sm py-1.5 px-4"
+            >
+              Apply Filter
+            </button>
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+            </div>
+          ) : (
+            <>
+              {/* Recording Stats */}
+              {recordingsStats && (
+                <div className="card p-4 mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Recording Statistics</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    <div className="text-center p-3 bg-purple-50 rounded-lg">
+                      <p className="text-2xl font-bold text-purple-600">{recordingsStats.overall?.total_recordings || 0}</p>
+                      <p className="text-xs text-gray-500">Total Recordings</p>
+                    </div>
+                    <div className="text-center p-3 bg-blue-50 rounded-lg">
+                      <p className="text-2xl font-bold text-blue-600">{recordingsStats.overall?.total_duration_formatted || '0m'}</p>
+                      <p className="text-xs text-gray-500">Total Duration</p>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 rounded-lg">
+                      <p className="text-2xl font-bold text-green-600">{recordingsStats.overall?.total_size_mb || 0} MB</p>
+                      <p className="text-xs text-gray-500">Storage Used</p>
+                    </div>
+                    <div className="text-center p-3 bg-orange-50 rounded-lg">
+                      <p className="text-2xl font-bold text-orange-600">{recordingsStats.by_user?.length || 0}</p>
+                      <p className="text-xs text-gray-500">Active Recorders</p>
+                    </div>
+                  </div>
+
+                  {/* Per User Stats */}
+                  {recordingsStats.by_user && recordingsStats.by_user.length > 0 && (
+                    <div className="mt-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">By Telecaller</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {recordingsStats.by_user.map((user) => (
+                          <div key={user.user_id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">{user.user_name}</p>
+                              <p className="text-xs text-gray-500">{user.total_recordings} recordings</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-purple-600">{user.total_duration_formatted}</p>
+                              <p className="text-xs text-gray-400">{user.total_size_mb} MB</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Recordings List */}
+              {recordings && recordings.length > 0 ? (
+                <div className="card overflow-hidden">
+                  <div className="p-3 border-b border-gray-200">
+                    <h3 className="font-semibold text-gray-800">Call Recordings ({recordings.length})</h3>
+                  </div>
+                  <div className="divide-y divide-gray-200">
+                    {recordings.map((recording) => (
+                      <div key={recording.id} className="p-4 hover:bg-gray-50">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{recording.lead_name}</span>
+                              <span className="text-sm text-gray-500">({recording.lead_phone})</span>
+                            </div>
+                            <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+                              <span className="flex items-center gap-1">
+                                <User size={12} />
+                                {recording.user_name}
+                              </span>
+                              <span className="flex items-center gap-1">
+                                <Clock size={12} />
+                                {formatTime(recording.duration_seconds)}
+                              </span>
+                              <span>
+                                {new Date(recording.recorded_at).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={async () => {
+                                if (playingRecordingId === recording.id) {
+                                  // Stop playing
+                                  if (audioRef.current) {
+                                    audioRef.current.pause();
+                                    audioRef.current = null;
+                                  }
+                                  setPlayingRecordingId(null);
+                                } else {
+                                  // Fetch and play audio
+                                  try {
+                                    const audioRes = await api.get(`/recordings/${recording.id}/audio`);
+                                    const audioData = audioRes.data.audio_base64;
+                                    const audio = new Audio(`data:audio/mp3;base64,${audioData}`);
+                                    audio.onended = () => setPlayingRecordingId(null);
+                                    audioRef.current = audio;
+                                    audio.play();
+                                    setPlayingRecordingId(recording.id);
+                                  } catch (err) {
+                                    console.error('Error playing recording:', err);
+                                    alert('Error playing recording');
+                                  }
+                                }
+                              }}
+                              className={`p-2 rounded-full ${
+                                playingRecordingId === recording.id
+                                  ? 'bg-red-100 text-red-600'
+                                  : 'bg-green-100 text-green-600'
+                              } hover:opacity-80`}
+                              data-testid={`play-recording-${recording.id}`}
+                            >
+                              {playingRecordingId === recording.id ? <Pause size={18} /> : <Play size={18} />}
+                            </button>
+                            <button
+                              onClick={async () => {
+                                if (window.confirm('Are you sure you want to delete this recording?')) {
+                                  try {
+                                    await api.delete(`/recordings/${recording.id}`);
+                                    fetchRecordings(true);
+                                  } catch (err) {
+                                    console.error('Error deleting recording:', err);
+                                    alert('Error deleting recording');
+                                  }
+                                }
+                              }}
+                              className="p-2 rounded-full bg-gray-100 text-gray-600 hover:bg-red-100 hover:text-red-600"
+                              data-testid={`delete-recording-${recording.id}`}
+                            >
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="card p-8 text-center">
+                  <Mic size={32} className="mx-auto text-gray-300 mb-2" />
+                  <p className="text-gray-500">No recordings for the selected period</p>
+                  <p className="text-sm text-gray-400 mt-1">Recordings will appear here once telecallers use the mobile app with recording enabled</p>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

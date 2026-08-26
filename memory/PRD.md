@@ -91,6 +91,28 @@ Location: `/app/mobile-app/`
 
 ## Recent Updates (Aug 26, 2026)
 
+### Call Recording Feature - COMPLETED ✅
+**Mobile App:**
+- Added `recordingService.js` with audio recording capabilities
+- Recording toggle switch in HomeScreen with permissions handling
+- Automatic recording upload after call ends
+- Pending upload queue for failed uploads (retries automatically)
+- New dependencies: `react-native-audio-recorder-player`, `react-native-fs`
+
+**Backend:**
+- New `/api/recordings` routes: upload, list, stats, get audio, delete
+- Recordings stored as base64 in MongoDB `call_recordings` collection
+- Added database indexes for performance
+
+**Frontend:**
+- New "Recordings" tab in Admin Reports page
+- Recording statistics dashboard (total count, duration, storage)
+- Per-user recording breakdown
+- Audio playback with play/pause controls
+- Delete functionality with confirmation
+
+**Note:** Requires rebuilding the APK with the new recording dependencies.
+
 ### Reports Performance Optimization - COMPLETED ✅
 - Fixed slow loading reports (Summary, Hourly, Activity, Call Log)
 - Rewrote all report endpoints using MongoDB aggregation pipelines
