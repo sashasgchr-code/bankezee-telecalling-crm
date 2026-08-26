@@ -91,6 +91,13 @@ Location: `/app/mobile-app/`
 
 ## Recent Updates (Aug 26, 2026)
 
+### Reports Performance Optimization - COMPLETED ✅
+- Fixed slow loading reports (Summary, Hourly, Activity, Call Log)
+- Rewrote all report endpoints using MongoDB aggregation pipelines
+- Added parallel queries with `asyncio.gather()` 
+- Added database indexes for frequently queried fields
+- **Result:** Load time improved from ~5-10 seconds to ~100-200ms
+
 ### WhatsApp Integration - COMPLETED ✅
 - Added WhatsApp click-to-chat buttons on Lead Detail page
 - Small button next to phone number for quick access

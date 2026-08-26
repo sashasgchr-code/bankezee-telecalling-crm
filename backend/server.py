@@ -49,7 +49,38 @@ ADMIN_ACCOUNTS = [
 
 @app.on_event("startup")
 async def setup_admin_accounts():
-    """Create or update predefined admin accounts on startup"""
+    """Create or update predefined admin accounts and database indexes on startup"""
+    # Create indexes for better query performance
+    try:
+        # Call logs indexes
+        await db.call_logs.create_index([("user_id", 1), ("created_at", -1)])
+        await db.call_logs.create_index([("created_at", -1)])
+        await db.call_logs.create_index("lead_id")
+        
+        # Leads indexes
+        await db.leads.create_index([("assigned_to", 1), ("updated_at", -1)])
+        await db.leads.create_index([("assigned_to", 1), ("created_at", -1)])
+        await db.leads.create_index([("assigned_to", 1), ("status", 1)])
+        await db.leads.create_index("status")
+        
+        # Activity logs indexes
+        await db.activity_logs.create_index([("user_id", 1), ("timestamp", -1)])
+        await db.activity_logs.create_index("timestamp")
+        
+        # Daily sessions indexes
+        await db.daily_sessions.create_index([("user_id", 1), ("date", -1)])
+        
+        # Follow-ups indexes
+        await db.follow_ups.create_index([("user_id", 1), ("is_completed", 1)])
+        
+        # Verified call logs indexes
+        await db.verified_call_logs.create_index([("user_id", 1), ("synced_at", -1)])
+        
+        print("✅ Database indexes created/verified")
+    except Exception as e:
+        print(f"⚠️ Index creation warning: {e}")
+    
+    # Setup admin accounts
     for admin in ADMIN_ACCOUNTS:
         existing = await db.users.find_one({"email": admin["email"]})
         hashed_password = pwd_context.hash(admin["password"])
