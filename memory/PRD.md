@@ -89,7 +89,12 @@ Location: `/app/mobile-app/`
 - READ_PHONE_STATE - Detect incoming calls
 - INTERNET - Sync data with backend
 
-## Recent Updates (Mar 26, 2026)
+## Recent Updates (Aug 26, 2026)
+
+### Bug Fix: Connected Calls Logic - COMPLETED ✅
+- Fixed Daily Tracking Sheet endpoint `/api/reports/daily-tracking-sheet`
+- Changed `connected` count logic from `duration > 0` to `outcome == "connected"`
+- This prevents unanswered/ringing calls from being counted as connected
 
 ### Mobile App for Call Verification - COMPLETED ✅
 1. **Android Mobile App Created**
