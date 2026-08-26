@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff, MessageCircle } from 'lucide-react';
 import api from '../services/api';
 import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
 import { format, parseISO } from 'date-fns';
@@ -26,6 +26,45 @@ const LeadDetail = () => {
   const [followUpNotes, setFollowUpNotes] = useState('');
 
   const statuses = ['new', 'not_interested', 'follow_up', 'presentation', 'leads', 'file'];
+
+  // WhatsApp message template
+  const getWhatsAppLink = (phone, customerName) => {
+    const agentName = user?.name || 'Team';
+    const message = `Hi ${customerName || 'there'},
+
+This is ${agentName} from BankEzee.
+
+I'm calling about merging your multiple loans/credit card payments into one single EMI.
+
+We'd like to understand your current EMIs and check whether we can help you reduce your monthly EMI burden and simplify your repayments.
+
+I tried reaching you but couldn't connect. Please call me back or simply reply "CALL ME" here and I'll get in touch with you.
+
+Regards,
+${agentName}
+BankEzee – Loan Consolidation Platform
+www.BankEzee.com`;
+
+    // Normalize phone number for WhatsApp
+    let cleanPhone = phone.replace(/[^0-9+]/g, '');
+    if (!cleanPhone.startsWith('+')) {
+      // Assume India country code if not present
+      if (!cleanPhone.startsWith('91')) {
+        cleanPhone = '91' + cleanPhone;
+      }
+    } else {
+      cleanPhone = cleanPhone.substring(1); // Remove + for wa.me
+    }
+    
+    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+  };
+
+  const handleWhatsApp = () => {
+    if (lead?.phone) {
+      const whatsappLink = getWhatsAppLink(lead.phone, lead.name);
+      window.open(whatsappLink, '_blank');
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -250,7 +289,17 @@ const LeadDetail = () => {
                   className="input-field flex-1"
                 />
               ) : (
-                <span className="text-gray-700">{lead.phone}</span>
+                <>
+                  <span className="text-gray-700 flex-1">{lead.phone}</span>
+                  <button
+                    onClick={handleWhatsApp}
+                    className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                    title="Message on WhatsApp"
+                    data-testid="whatsapp-btn"
+                  >
+                    <MessageCircle size={18} />
+                  </button>
+                </>
               )}
             </div>
 
@@ -384,6 +433,14 @@ const LeadDetail = () => {
             >
               <Phone size={20} />
               Call Now
+            </button>
+            <button
+              onClick={handleWhatsApp}
+              className="flex-1 py-3 flex items-center justify-center gap-2 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
+              data-testid="whatsapp-lead-btn"
+            >
+              <MessageCircle size={20} />
+              WhatsApp
             </button>
             <button
               onClick={() => {

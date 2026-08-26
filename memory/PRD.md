@@ -91,6 +91,16 @@ Location: `/app/mobile-app/`
 
 ## Recent Updates (Aug 26, 2026)
 
+### WhatsApp Integration - COMPLETED ✅
+- Added WhatsApp click-to-chat buttons on Lead Detail page
+- Small button next to phone number for quick access
+- Large "WhatsApp" action button alongside Call Now and Follow-up
+- Pre-filled message template with customer name and agent name:
+  - Introduces agent from BankEzee
+  - Explains loan consolidation service
+  - Requests callback with "CALL ME" reply option
+  - Includes BankEzee branding and website
+
 ### Bug Fix: Connected Calls Logic - COMPLETED ✅
 - Fixed Daily Tracking Sheet endpoint `/api/reports/daily-tracking-sheet`
 - Changed `connected` count logic from `duration > 0` to `outcome == "connected"`
