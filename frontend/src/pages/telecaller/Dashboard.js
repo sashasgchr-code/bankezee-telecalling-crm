@@ -197,29 +197,27 @@ const TelecallerDashboard = () => {
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Today's Activity</h3>
               <div className="grid grid-cols-4 gap-3">
                 <div className="text-center">
-                  <div className="flex items-center justify-center gap-2 text-green-600 mb-1">
+                  <div className="flex items-center justify-center gap-2 text-blue-600 mb-1">
                     <Phone size={18} />
                     <span className="text-xl font-bold">{activityStats.calls_made}</span>
                   </div>
-                  <p className="text-xs text-gray-500">Calls Made</p>
+                  <p className="text-xs text-gray-500">Outgoing</p>
                 </div>
                 <div className="text-center">
-                  <div className="flex items-center justify-center gap-2 text-blue-600 mb-1">
-                    <Clock size={18} />
-                    <span className="text-xl font-bold">{formatTime(activityStats.total_call_seconds)}</span>
+                  <div className="flex items-center justify-center gap-2 text-green-600 mb-1">
+                    <Phone size={18} />
+                    <span className="text-xl font-bold">{stats?.incoming_calls?.count || 0}</span>
                   </div>
-                  <p className="text-xs text-gray-500">Talk Time</p>
+                  <p className="text-xs text-gray-500">Incoming</p>
                 </div>
                 <div className="text-center">
-                  <div className="flex items-center justify-center gap-2 text-cyan-600 mb-1">
+                  <div className="flex items-center justify-center gap-2 text-purple-600 mb-1">
                     <Clock size={18} />
                     <span className="text-xl font-bold">
-                      {activityStats.calls_made > 0 
-                        ? formatTime(Math.round(activityStats.total_call_seconds / activityStats.calls_made))
-                        : '0m'}
+                      {formatTime(activityStats.total_call_seconds + (stats?.incoming_calls?.total_time_seconds || 0))}
                     </span>
                   </div>
-                  <p className="text-xs text-gray-500">Avg Call</p>
+                  <p className="text-xs text-gray-500">Total Talk</p>
                 </div>
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-2 text-orange-600 mb-1">

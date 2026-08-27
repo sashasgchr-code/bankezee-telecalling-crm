@@ -181,6 +181,11 @@ async def get_dashboard_stats(
         
         call_outcomes = call_stats[0] if call_stats else {"total": 0, "connected": 0, "not_connecting": 0, "no_answer": 0, "wrong_number": 0, "busy": 0, "voicemail": 0}
         
+        # Get verified incoming call stats from daily session
+        verified_incoming_calls = session.get("verified_incoming_calls", 0) if session else 0
+        verified_incoming_time = session.get("verified_incoming_time_seconds", 0) if session else 0
+        verified_talk_time = session.get("verified_talk_time_seconds", 0) if session else 0
+        
         return {
             "my_data": my_data,
             "my_unused_data": my_unused_data,
@@ -196,6 +201,11 @@ async def get_dashboard_stats(
                 "busy": call_outcomes.get("busy", 0),
                 "voicemail": call_outcomes.get("voicemail", 0)
             },
+            "incoming_calls": {
+                "count": verified_incoming_calls,
+                "total_time_seconds": verified_incoming_time
+            },
+            "verified_talk_time_seconds": verified_talk_time,
             "daily_session": serialize_doc(session) if session else None,
             "period": period
         }

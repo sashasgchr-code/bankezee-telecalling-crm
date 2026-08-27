@@ -268,23 +268,25 @@ const DashboardScreen = ({ user, onLogout }) => {
           <View style={styles.activityItem}>
             <Text style={styles.activityIcon}>📞</Text>
             <Text style={[styles.activityValue, { color: '#2196F3' }]}>
-              {stats?.call_outcomes?.connected + stats?.call_outcomes?.not_connecting + 
-               stats?.call_outcomes?.no_answer + stats?.call_outcomes?.busy + 
-               stats?.call_outcomes?.wrong_number + stats?.call_outcomes?.voicemail || 0}
+              {(stats?.call_outcomes?.connected || 0) + (stats?.call_outcomes?.not_connecting || 0) + 
+               (stats?.call_outcomes?.no_answer || 0) + (stats?.call_outcomes?.busy || 0) + 
+               (stats?.call_outcomes?.wrong_number || 0) + (stats?.call_outcomes?.voicemail || 0)}
             </Text>
-            <Text style={styles.activityLabel}>Calls Made</Text>
+            <Text style={styles.activityLabel}>Outgoing</Text>
+          </View>
+          <View style={styles.activityItem}>
+            <Text style={styles.activityIcon}>📲</Text>
+            <Text style={[styles.activityValue, { color: '#4CAF50' }]}>
+              {stats?.incoming_calls?.count || 0}
+            </Text>
+            <Text style={styles.activityLabel}>Incoming</Text>
           </View>
           <View style={styles.activityItem}>
             <Text style={styles.activityIcon}>⏱️</Text>
-            <Text style={[styles.activityValue, { color: '#4CAF50' }]}>
-              {formatTime(stats?.daily_session?.total_call_seconds || 0)}
+            <Text style={[styles.activityValue, { color: '#9C27B0' }]}>
+              {formatTime((stats?.daily_session?.total_call_seconds || 0) + (stats?.incoming_calls?.total_time_seconds || 0))}
             </Text>
-            <Text style={styles.activityLabel}>Talk Time</Text>
-          </View>
-          <View style={styles.activityItem}>
-            <Text style={styles.activityIcon}>⏳</Text>
-            <Text style={styles.activityValue}>0m</Text>
-            <Text style={styles.activityLabel}>Avg Call</Text>
+            <Text style={styles.activityLabel}>Total Talk</Text>
           </View>
           <View style={styles.activityItem}>
             <Text style={styles.activityIcon}>💤</Text>

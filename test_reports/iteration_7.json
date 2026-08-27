@@ -1,0 +1,23 @@
+{
+  "summary": "Verified incoming-call tracking end-to-end. Backend: /api/dashboard/stats returns incoming_calls:{count,total_time_seconds} + verified_talk_time_seconds; /api/call-logs/sync creates verified_call_logs with call_type='incoming', updates daily_sessions.verified_incoming_calls / verified_incoming_time_seconds / verified_talk_time_seconds, and reflects in dashboard. Frontend: Telecaller Dashboard 'Today's Activity' section shows Outgoing, Incoming, Total Talk (outgoing + incoming), Idle Time — all values render correctly from backend.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_incoming_calls.py",
+    "/app/test_reports/pytest/incoming_calls.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "calls.py sync endpoint recomputes verified_talk_time by re-fetching ALL today's verified logs on every sync (O(N) each call). For heavy sync loads consider an incremental $inc, or an aggregation $group instead of Python sum.",
+    "Business rule assumed: incoming calls with duration_seconds<=0 are not counted (verified). This is only implemented in the sync route; the /reports/verified-call-stats route uses duration_seconds>0 for connected_count but count includes all - subtle inconsistency between 'incoming count' definitions across endpoints (dashboard: connected only; verified-call-stats: total including missed-like 0-duration).",
+    "Dashboard.js 'Total Talk' sums activityStats.total_call_seconds + stats.incoming_calls.total_time_seconds. activityStats.total_call_seconds represents call-session time (manual outgoing) not verified outgoing sync time; if outgoing calls come only from device sync (mobile), Total Talk may under-report outgoing. Consider using stats.verified_talk_time_seconds which already includes both."
+  ],
+  "updated_files": ["/app/backend/tests/test_incoming_calls.py"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (UI labels + values render correctly)"},
+  "test_credentials": "agent@test.com / agent123",
+  "seed_data_creation": "Created a few verified_call_logs (incoming) via /api/call-logs/sync for lead 'Test Customer' (+919876543210). Total ~200s incoming for today. TEST_INCOMING marker used in one payload. Note: these persist in DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoints exercised: POST /api/auth/login, GET /api/auth/me, GET /api/leads, POST /api/call-logs/sync (type=incoming), GET /api/dashboard/stats?period=today, GET /api/call-logs/verified. Frontend flow: login → Dashboard tab (bottom nav) → Today's Activity card. Dashboard telecaller view returns incoming_calls:{count,total_time_seconds} and verified_talk_time_seconds sourced from daily_sessions (updated by sync endpoint).",
+  "rca of the issue": "N/A — feature verified working."
+}
