@@ -83,8 +83,14 @@ const LeadDetailScreen = ({ route, navigation }) => {
   const handleWhatsApp = () => {
     const message = `Hi ${lead.name},\n\nThis is ${user?.name || 'Team'} from BankEzee.\n\nI'm calling about merging your multiple loans/credit card payments into one single EMI.\n\nWe'd like to understand your current EMIs and check whether we can help you reduce your monthly EMI burden and simplify your repayments.\n\nI tried reaching you but couldn't connect. Please call me back or simply reply "CALL ME" here and I'll get in touch with you.\n\nRegards,\n${user?.name || 'Team'}\nBankEzee – Loan Consolidation Platform\nwww.BankEzee.com`;
     
-    let phone = lead.phone.replace(/[^0-9]/g, '');
-    if (!phone.startsWith('91') && phone.length === 10) {
+    // Clean phone: handle floats like "9705296810.0", remove non-digits
+    let phone = String(lead.phone).split('.')[0].replace(/[^0-9]/g, '');
+    // Remove leading zeros
+    phone = phone.replace(/^0+/, '');
+    // Add 91 country code if it's a 10-digit number
+    if (phone.length === 10) {
+      phone = '91' + phone;
+    } else if (!phone.startsWith('91') && phone.length > 10) {
       phone = '91' + phone;
     }
     

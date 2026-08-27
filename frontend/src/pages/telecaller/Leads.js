@@ -12,6 +12,7 @@ const TelecallerLeads = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -19,11 +20,23 @@ const TelecallerLeads = () => {
   // Flow: Connected → not_interested, follow_up, leads, file
   const statuses = ['not_interested', 'follow_up', 'leads', 'file'];
 
+  // Call outcome filters
+  const callOutcomes = [
+    { id: 'connected', label: 'Connected', color: '#4CAF50' },
+    { id: 'no_answer', label: 'No Answer', color: '#F44336' },
+    { id: 'switched_off', label: 'Switched Off', color: '#9E9E9E' },
+    { id: 'not_connecting', label: 'Not Connecting', color: '#9E9E9E' },
+    { id: 'busy', label: 'Busy', color: '#FF9800' },
+    { id: 'wrong_number', label: 'Wrong Number', color: '#E91E63' },
+    { id: 'voicemail', label: 'Voicemail', color: '#9C27B0' },
+  ];
+
   const fetchLeads = async () => {
     try {
       const params = {};
       if (searchQuery) params.search = searchQuery;
       if (statusFilter) params.status = statusFilter;
+      if (outcomeFilter) params.last_call_outcome = outcomeFilter;
       
       const response = await api.get('/leads', { params });
       setLeads(response.data);
@@ -37,7 +50,7 @@ const TelecallerLeads = () => {
 
   useEffect(() => {
     fetchLeads();
-  }, [searchQuery, statusFilter]);
+  }, [searchQuery, statusFilter, outcomeFilter]);
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -89,34 +102,71 @@ const TelecallerLeads = () => {
 
         {/* Filters */}
         {showFilters && (
-          <div className="mt-3 pt-3 border-t border-gray-100">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setStatusFilter('')}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  !statusFilter
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                }`}
-              >
-                All
-              </button>
-              {statuses.map((status) => (
+          <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+            {/* Status Filter */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">Status</p>
+              <div className="flex flex-wrap gap-2">
                 <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize transition-colors ${
-                    statusFilter === status
-                      ? 'text-white'
+                  onClick={() => setStatusFilter('')}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    !statusFilter
+                      ? 'bg-green-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
-                  style={{
-                    backgroundColor: statusFilter === status ? StatusColors[status] : undefined
-                  }}
                 >
-                  {StatusLabels[status] || status.replace('_', ' ')}
+                  All
                 </button>
-              ))}
+                {statuses.map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize transition-colors ${
+                      statusFilter === status
+                        ? 'text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                    style={{
+                      backgroundColor: statusFilter === status ? StatusColors[status] : undefined
+                    }}
+                  >
+                    {StatusLabels[status] || status.replace('_', ' ')}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Call Outcome Filter */}
+            <div>
+              <p className="text-xs font-medium text-gray-500 mb-2">Call Outcome</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setOutcomeFilter('')}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                    !outcomeFilter
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  All
+                </button>
+                {callOutcomes.map((outcome) => (
+                  <button
+                    key={outcome.id}
+                    onClick={() => setOutcomeFilter(outcome.id)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                      outcomeFilter === outcome.id
+                        ? 'text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                    style={{
+                      backgroundColor: outcomeFilter === outcome.id ? outcome.color : undefined
+                    }}
+                  >
+                    {outcome.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}

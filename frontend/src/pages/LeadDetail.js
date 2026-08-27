@@ -48,15 +48,16 @@ ${agentName}
 BankEzee – Loan Consolidation Platform
 www.BankEzee.com`;
 
-    // Normalize phone number for WhatsApp
-    let cleanPhone = phone.replace(/[^0-9+]/g, '');
-    if (!cleanPhone.startsWith('+')) {
-      // Assume India country code if not present
-      if (!cleanPhone.startsWith('91')) {
-        cleanPhone = '91' + cleanPhone;
-      }
-    } else {
-      cleanPhone = cleanPhone.substring(1); // Remove + for wa.me
+    // Clean and normalize phone number for WhatsApp
+    // Handle float numbers like "9705296810.0" by converting to string and removing decimal
+    let cleanPhone = String(phone).split('.')[0].replace(/[^0-9]/g, '');
+    // Remove leading zeros
+    cleanPhone = cleanPhone.replace(/^0+/, '');
+    // Add 91 country code if it's a 10-digit number
+    if (cleanPhone.length === 10) {
+      cleanPhone = '91' + cleanPhone;
+    } else if (!cleanPhone.startsWith('91') && cleanPhone.length > 10) {
+      cleanPhone = '91' + cleanPhone;
     }
     
     return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;

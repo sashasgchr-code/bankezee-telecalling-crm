@@ -20,6 +20,7 @@ async def list_leads(
     status: Optional[str] = None,
     assigned_to: Optional[str] = None,
     search: Optional[str] = None,
+    last_call_outcome: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     query = {}
@@ -34,6 +35,9 @@ async def list_leads(
     
     if status:
         query["status"] = status
+    
+    if last_call_outcome:
+        query["last_call_outcome"] = last_call_outcome
     
     if search:
         query["$or"] = [

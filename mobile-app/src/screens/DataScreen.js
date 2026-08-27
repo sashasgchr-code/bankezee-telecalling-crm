@@ -9,6 +9,7 @@ import {
   TextInput,
   Alert,
   Linking,
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { getLeads, getTelecallers } from '../services/api';
@@ -22,18 +23,31 @@ const DataScreen = ({ user }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [outcomeFilter, setOutcomeFilter] = useState('all');
   const [telecallers, setTelecallers] = useState([]);
   const [selectedTelecaller, setSelectedTelecaller] = useState('all');
 
   const isAdmin = user?.role === 'admin';
 
-  // Status filter options (without 'new' and 'presentation')
+  // Status filter options (lead status)
   const statuses = [
-    { id: 'all', name: 'All', color: '#6b7280' },
+    { id: 'all', name: 'All Status', color: '#6b7280' },
     { id: 'follow_up', name: 'Follow Up', color: '#8b5cf6' },
     { id: 'not_interested', name: 'Not Interested', color: '#6b7280' },
     { id: 'leads', name: 'Lead', color: '#22c55e' },
     { id: 'file', name: 'File', color: '#ef4444' },
+  ];
+
+  // Call outcome filters (last call outcome)
+  const callOutcomes = [
+    { id: 'all', name: 'All Outcomes', color: '#6b7280' },
+    { id: 'connected', name: 'Connected', color: '#4CAF50' },
+    { id: 'no_answer', name: 'No Answer', color: '#F44336' },
+    { id: 'switched_off', name: 'Switched Off', color: '#9E9E9E' },
+    { id: 'not_connecting', name: 'Not Connecting', color: '#9E9E9E' },
+    { id: 'busy', name: 'Busy', color: '#FF9800' },
+    { id: 'wrong_number', name: 'Wrong Number', color: '#E91E63' },
+    { id: 'voicemail', name: 'Voicemail', color: '#9C27B0' },
   ];
 
   const loadLeads = useCallback(async () => {
@@ -41,6 +55,9 @@ const DataScreen = ({ user }) => {
       let params = {};
       if (statusFilter !== 'all') {
         params.status = statusFilter;
+      }
+      if (outcomeFilter !== 'all') {
+        params.last_call_outcome = outcomeFilter;
       }
       if (isAdmin && selectedTelecaller !== 'all') {
         params.assigned_to = selectedTelecaller;
@@ -54,7 +71,7 @@ const DataScreen = ({ user }) => {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, selectedTelecaller, isAdmin, searchQuery]);
+  }, [statusFilter, outcomeFilter, selectedTelecaller, isAdmin, searchQuery]);
 
   const loadTelecallers = async () => {
     if (isAdmin) {
@@ -78,11 +95,14 @@ const DataScreen = ({ user }) => {
       return;
     }
     const lowerQuery = query.toLowerCase();
+    // Search by name, phone, email, city
     const filtered = leadsData.filter(
       lead =>
         lead.name?.toLowerCase().includes(lowerQuery) ||
         lead.phone?.includes(query) ||
-        lead.email?.toLowerCase().includes(lowerQuery)
+        lead.phone?.replace(/[^0-9]/g, '').includes(query.replace(/[^0-9]/g, '')) ||
+        lead.email?.toLowerCase().includes(lowerQuery) ||
+        lead.city?.toLowerCase().includes(lowerQuery)
     );
     setFilteredLeads(filtered);
   };
@@ -110,8 +130,14 @@ const DataScreen = ({ user }) => {
   const handleWhatsApp = (lead) => {
     const message = `Hi ${lead.name},\n\nThis is ${user?.name || 'Team'} from BankEzee.\n\nI'm calling about merging your multiple loans/credit card payments into one single EMI.\n\nWe'd like to understand your current EMIs and check whether we can help you reduce your monthly EMI burden and simplify your repayments.\n\nI tried reaching you but couldn't connect. Please call me back or simply reply "CALL ME" here and I'll get in touch with you.\n\nRegards,\n${user?.name || 'Team'}\nBankEzee – Loan Consolidation Platform\nwww.BankEzee.com`;
     
-    let phone = lead.phone.replace(/[^0-9]/g, '');
-    if (!phone.startsWith('91') && phone.length === 10) {
+    // Clean phone and add 91 prefix for India
+    let phone = lead.phone?.toString().replace(/[^0-9]/g, '');
+    // Remove leading zeros
+    phone = phone.replace(/^0+/, '');
+    // Add 91 if it's a 10-digit number without country code
+    if (phone.length === 10) {
+      phone = '91' + phone;
+    } else if (!phone.startsWith('91') && phone.length > 10) {
       phone = '91' + phone;
     }
     
@@ -122,6 +148,11 @@ const DataScreen = ({ user }) => {
   const getStatusColor = (status) => {
     const statusObj = statuses.find(s => s.id === status);
     return statusObj?.color || '#6b7280';
+  };
+
+  const getOutcomeColor = (outcome) => {
+    const outcomeObj = callOutcomes.find(o => o.id === outcome);
+    return outcomeObj?.color || '#6b7280';
   };
 
   const renderLead = ({ item }) => (
@@ -135,10 +166,19 @@ const DataScreen = ({ user }) => {
           <Text style={styles.leadPhone}>{item.phone}</Text>
           {item.city && <Text style={styles.leadCity}>📍 {item.city}</Text>}
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
-          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-            {item.status?.replace('_', ' ')}
-          </Text>
+        <View style={styles.badgeContainer}>
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
+            <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+              {item.status?.replace('_', ' ')}
+            </Text>
+          </View>
+          {item.last_call_outcome && (
+            <View style={[styles.outcomeBadge, { backgroundColor: getOutcomeColor(item.last_call_outcome) + '20' }]}>
+              <Text style={[styles.outcomeText, { color: getOutcomeColor(item.last_call_outcome) }]}>
+                {item.last_call_outcome?.replace('_', ' ')}
+              </Text>
+            </View>
+          )}
         </View>
       </View>
       
@@ -178,13 +218,11 @@ const DataScreen = ({ user }) => {
 
       {/* Status Filter */}
       <View style={styles.filterContainer}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={statuses}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
+        <Text style={styles.filterLabel}>Status:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {statuses.map((item) => (
             <TouchableOpacity
+              key={item.id}
               style={[
                 styles.filterChip,
                 statusFilter === item.id && { backgroundColor: item.color },
@@ -200,20 +238,43 @@ const DataScreen = ({ user }) => {
                 {item.name}
               </Text>
             </TouchableOpacity>
-          )}
-        />
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Call Outcome Filter */}
+      <View style={styles.filterContainer}>
+        <Text style={styles.filterLabel}>Call Outcome:</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {callOutcomes.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[
+                styles.filterChip,
+                outcomeFilter === item.id && { backgroundColor: item.color },
+              ]}
+              onPress={() => setOutcomeFilter(item.id)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  outcomeFilter === item.id && { color: '#fff' },
+                ]}
+              >
+                {item.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
       {/* Admin: Telecaller Filter */}
       {isAdmin && telecallers.length > 0 && (
         <View style={styles.telecallerFilter}>
-          <FlatList
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            data={[{ id: 'all', name: 'All Agents' }, ...telecallers]}
-            keyExtractor={item => item.id}
-            renderItem={({ item }) => (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {[{ id: 'all', name: 'All Agents' }, ...telecallers].map((item) => (
               <TouchableOpacity
+                key={item.id}
                 style={[
                   styles.telecallerChip,
                   selectedTelecaller === item.id && styles.telecallerChipActive,
@@ -229,8 +290,8 @@ const DataScreen = ({ user }) => {
                   {item.name}
                 </Text>
               </TouchableOpacity>
-            )}
-          />
+            ))}
+          </ScrollView>
         </View>
       )}
 
@@ -292,20 +353,27 @@ const styles = StyleSheet.create({
   },
   filterContainer: {
     backgroundColor: '#fff',
-    paddingVertical: 12,
+    paddingVertical: 8,
     paddingHorizontal: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
+  filterLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 6,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
   filterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginHorizontal: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginHorizontal: 3,
     backgroundColor: '#f3f4f6',
   },
   filterChipText: {
-    fontSize: 13,
+    fontSize: 12,
     color: '#374151',
     fontWeight: '500',
   },
@@ -374,14 +442,28 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginTop: 4,
   },
+  badgeContainer: {
+    alignItems: 'flex-end',
+  },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
+    marginBottom: 4,
   },
   statusText: {
     fontSize: 11,
     fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  outcomeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  outcomeText: {
+    fontSize: 10,
+    fontWeight: '500',
     textTransform: 'capitalize',
   },
   telecallerInfo: {
