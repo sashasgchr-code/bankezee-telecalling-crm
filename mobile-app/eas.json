@@ -9,12 +9,14 @@
     },
     "preview": {
       "distribution": "internal",
+      "developmentClient": true,
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"
       }
     },
     "production": {
+      "developmentClient": true,
       "android": {
         "buildType": "apk",
         "gradleCommand": ":app:assembleRelease"

@@ -121,8 +121,15 @@ export const getCallLogs = async (daysBack = 7) => {
   }
 
   try {
-    // Dynamic import to avoid issues on iOS
-    const CallLogs = require('react-native-call-log').default;
+    // Dynamic import to avoid issues on iOS or if module not available
+    let CallLogs;
+    try {
+      CallLogs = require('react-native-call-log').default;
+    } catch (moduleError) {
+      console.warn('react-native-call-log module not available:', moduleError.message);
+      console.warn('Call log sync requires a development build with native modules');
+      return [];
+    }
     
     const minTimestamp = Date.now() - (daysBack * 24 * 60 * 60 * 1000);
     

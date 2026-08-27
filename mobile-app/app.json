@@ -24,7 +24,7 @@
         "backgroundColor": "#16a34a"
       },
       "package": "com.bankezee.connect",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.READ_CALL_LOG",
         "android.permission.READ_CONTACTS",
@@ -35,7 +35,8 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.INTERNET",
-        "android.permission.ACCESS_NETWORK_STATE"
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.FOREGROUND_SERVICE"
       ]
     },
     "plugins": [
@@ -46,9 +47,13 @@
             "minSdkVersion": 24,
             "compileSdkVersion": 34,
             "targetSdkVersion": 34,
-            "buildToolsVersion": "34.0.0"
+            "buildToolsVersion": "34.0.0",
+            "enableProguardInReleaseBuilds": false
           }
         }
+      ],
+      [
+        "expo-dev-client"
       ]
     ],
     "extra": {

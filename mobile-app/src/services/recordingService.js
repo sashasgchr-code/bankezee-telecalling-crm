@@ -138,7 +138,15 @@ export const startCallRecording = async (leadInfo) => {
 
   try {
     // Dynamic import to avoid issues if the library isn't installed
-    const AudioRecorderPlayer = require('react-native-audio-recorder-player').default;
+    let AudioRecorderPlayer;
+    try {
+      AudioRecorderPlayer = require('react-native-audio-recorder-player').default;
+    } catch (moduleError) {
+      console.warn('react-native-audio-recorder-player module not available:', moduleError.message);
+      console.warn('Call recording requires a development build with native modules');
+      return false;
+    }
+    
     const audioRecorderPlayer = new AudioRecorderPlayer();
     
     // Generate unique filename
@@ -218,8 +226,15 @@ export const stopCallRecording = async (shouldUpload = true) => {
 // Upload recording to server
 export const uploadRecordingToServer = async (recordingInfo, leadInfo) => {
   try {
-    // Read the file and convert to base64
-    const RNFS = require('react-native-fs');
+    // Dynamic import RNFS
+    let RNFS;
+    try {
+      RNFS = require('react-native-fs');
+    } catch (moduleError) {
+      console.warn('react-native-fs module not available:', moduleError.message);
+      return null;
+    }
+    
     const fileExists = await RNFS.exists(recordingInfo.path);
     
     if (!fileExists) {
