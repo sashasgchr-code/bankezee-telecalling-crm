@@ -154,6 +154,13 @@ export const recordBreak = async (action, reason = null) => {
   return response.data;
 };
 
+// Call logging functions
+export const logCallOutcome = async (data) => {
+  // Log a manual call outcome
+  const response = await api.post('/call-logs', data);
+  return response.data;
+};
+
 // Follow-up functions
 export const getFollowUps = async (params = {}) => {
   const response = await api.get('/follow-ups', { params });
