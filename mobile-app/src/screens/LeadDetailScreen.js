@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   AppState,
 } from 'react-native';
 import { getLead, updateLead, getLeadCallLogs, createFollowUp, logCallOutcome } from '../services/api';
-import { makePhoneCall } from '../services/callLogService';
+import { makePhoneCall, getRecentCallForNumber, normalizePhoneNumber } from '../services/callLogService';
 
 const LeadDetailScreen = ({ route, navigation }) => {
   const { lead: initialLead, user } = route.params;
@@ -30,9 +30,14 @@ const LeadDetailScreen = ({ route, navigation }) => {
   const [selectedOutcome, setSelectedOutcome] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [callNotes, setCallNotes] = useState('');
+  const [detectedCallDuration, setDetectedCallDuration] = useState(null);
+  const [lookingUpCall, setLookingUpCall] = useState(false);
   
   // Quick status modal
   const [showStatusModal, setShowStatusModal] = useState(false);
+  
+  // Track if we're waiting for a call to end
+  const pendingCallPhone = useRef(null);
 
   // Status options
   const statuses = [
@@ -64,14 +69,50 @@ const LeadDetailScreen = ({ route, navigation }) => {
     return () => subscription?.remove();
   }, [callStartTime]);
 
-  const handleAppStateChange = useCallback((nextAppState) => {
+  const handleAppStateChange = useCallback(async (nextAppState) => {
     // When app comes back to foreground after a call
-    if (nextAppState === 'active' && callStartTime) {
-      const callDuration = Math.round((Date.now() - callStartTime) / 1000);
-      if (callDuration > 3) { // Only show if call was more than 3 seconds
+    if (nextAppState === 'active' && callStartTime && pendingCallPhone.current) {
+      const timeSinceCallStart = Math.round((Date.now() - callStartTime) / 1000);
+      
+      // Only process if call was more than 3 seconds (user actually went to phone app)
+      if (timeSinceCallStart > 3) {
+        setLookingUpCall(true);
+        
+        // Wait a moment then query Android call log for actual duration
+        console.log('Looking up call in Android call log...');
+        
+        const callResult = await getRecentCallForNumber(
+          pendingCallPhone.current, 
+          callStartTime,
+          8000 // Wait up to 8 seconds for call log to update
+        );
+        
+        setLookingUpCall(false);
+        
+        if (callResult.success && callResult.call) {
+          const actualDuration = callResult.call.duration_seconds;
+          console.log(`Found call in log: ${actualDuration} seconds, type: ${callResult.call.type}`);
+          
+          setDetectedCallDuration(actualDuration);
+          
+          // Pre-select outcome based on duration
+          if (actualDuration === 0) {
+            setSelectedOutcome('no_answer');
+          } else if (actualDuration > 0) {
+            setSelectedOutcome('connected');
+          }
+        } else {
+          console.log('Could not find call in Android call log');
+          setDetectedCallDuration(null);
+        }
+        
+        // Show the call outcome modal
         setShowCallModal(true);
       }
+      
+      // Reset tracking state
       setCallStartTime(null);
+      pendingCallPhone.current = null;
     }
   }, [callStartTime]);
 
@@ -118,13 +159,23 @@ const LeadDetailScreen = ({ route, navigation }) => {
   };
 
   const handleCall = () => {
-    Alert.alert('Call ' + lead.name, `Phone: ${String(lead.phone).split('.')[0]}`, [
+    const cleanPhone = String(lead.phone).split('.')[0];
+    Alert.alert('Call ' + lead.name, `Phone: ${cleanPhone}`, [
       { text: 'Cancel', style: 'cancel' },
       { 
         text: 'Call', 
-        onPress: () => {
-          setCallStartTime(Date.now());
-          makePhoneCall(lead.phone);
+        onPress: async () => {
+          // Track call start time and phone number
+          const now = Date.now();
+          setCallStartTime(now);
+          pendingCallPhone.current = lead.phone;
+          setDetectedCallDuration(null);
+          setSelectedOutcome(null);
+          setSelectedStatus(null);
+          setCallNotes('');
+          
+          // Make the call
+          await makePhoneCall(lead.phone);
         }
       },
     ]);
@@ -152,11 +203,13 @@ const LeadDetailScreen = ({ route, navigation }) => {
     }
 
     try {
-      // Log the call outcome
+      // Log the call outcome with detected duration
       await logCallOutcome({
         lead_id: lead.id,
         outcome: selectedOutcome,
         notes: callNotes,
+        duration_seconds: detectedCallDuration || 0,
+        call_type: 'outgoing',
       });
 
       // Update status if changed
@@ -170,6 +223,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
       setSelectedOutcome(null);
       setSelectedStatus(null);
       setCallNotes('');
+      setDetectedCallDuration(null);
       
       // Reload lead details
       loadLeadDetails();
@@ -286,7 +340,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
               <Text style={styles.label}>Phone</Text>
               <TextInput
                 style={styles.input}
-                value={editData.phone}
+                value={String(editData.phone)}
                 onChangeText={v => setEditData({ ...editData, phone: v })}
                 keyboardType="phone-pad"
               />
@@ -386,7 +440,13 @@ const LeadDetailScreen = ({ route, navigation }) => {
         {/* Log Call Button (manual trigger) */}
         <TouchableOpacity 
           style={styles.logCallBtn}
-          onPress={() => setShowCallModal(true)}
+          onPress={() => {
+            setDetectedCallDuration(null);
+            setSelectedOutcome(null);
+            setSelectedStatus(null);
+            setCallNotes('');
+            setShowCallModal(true);
+          }}
         >
           <Text style={styles.logCallBtnText}>📋 Log Call Outcome</Text>
         </TouchableOpacity>
@@ -422,94 +482,120 @@ const LeadDetailScreen = ({ route, navigation }) => {
         visible={showCallModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowCallModal(false)}
+        onRequestClose={() => {
+          if (!lookingUpCall) {
+            setShowCallModal(false);
+          }
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Log Call Outcome</Text>
-            <Text style={styles.modalSubtitle}>How did the call go with {lead.name}?</Text>
+            {lookingUpCall ? (
+              <View style={styles.lookingUpContainer}>
+                <ActivityIndicator size="large" color="#16a34a" />
+                <Text style={styles.lookingUpText}>Looking up call in phone history...</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.modalTitle}>Log Call Outcome</Text>
+                <Text style={styles.modalSubtitle}>How did the call go with {lead.name}?</Text>
 
-            {/* Call Outcome Selection */}
-            <Text style={styles.sectionLabel}>Call Outcome *</Text>
-            <View style={styles.outcomeGrid}>
-              {callOutcomes.map((outcome) => (
-                <TouchableOpacity
-                  key={outcome.id}
-                  style={[
-                    styles.outcomeChip,
-                    selectedOutcome === outcome.id && { backgroundColor: outcome.color },
-                  ]}
-                  onPress={() => setSelectedOutcome(outcome.id)}
-                >
-                  <Text
-                    style={[
-                      styles.outcomeChipText,
-                      selectedOutcome === outcome.id && { color: '#fff' },
-                    ]}
+                {/* Detected Duration Badge */}
+                {detectedCallDuration !== null && (
+                  <View style={styles.detectedDurationBadge}>
+                    <Text style={styles.detectedDurationText}>
+                      📞 Call Duration: {formatDuration(detectedCallDuration)}
+                    </Text>
+                    <Text style={styles.detectedDurationNote}>
+                      (from Android call log)
+                    </Text>
+                  </View>
+                )}
+
+                {/* Call Outcome Selection */}
+                <Text style={styles.sectionLabel}>Call Outcome *</Text>
+                <View style={styles.outcomeGrid}>
+                  {callOutcomes.map((outcome) => (
+                    <TouchableOpacity
+                      key={outcome.id}
+                      style={[
+                        styles.outcomeChip,
+                        selectedOutcome === outcome.id && { backgroundColor: outcome.color },
+                      ]}
+                      onPress={() => setSelectedOutcome(outcome.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.outcomeChipText,
+                          selectedOutcome === outcome.id && { color: '#fff' },
+                        ]}
+                      >
+                        {outcome.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Status Update (optional) */}
+                <Text style={styles.sectionLabel}>Update Status (Optional)</Text>
+                <View style={styles.statusGrid}>
+                  {statuses.map((status) => (
+                    <TouchableOpacity
+                      key={status.id}
+                      style={[
+                        styles.statusChip,
+                        selectedStatus === status.id && { backgroundColor: status.color },
+                        lead.status === status.id && !selectedStatus && styles.currentStatus,
+                      ]}
+                      onPress={() => setSelectedStatus(status.id)}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          selectedStatus === status.id && { color: '#fff' },
+                        ]}
+                      >
+                        {status.label}
+                        {lead.status === status.id && ' ✓'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {/* Notes */}
+                <Text style={styles.sectionLabel}>Notes (Optional)</Text>
+                <TextInput
+                  style={styles.notesInput}
+                  placeholder="Add call notes..."
+                  value={callNotes}
+                  onChangeText={setCallNotes}
+                  multiline
+                  numberOfLines={2}
+                />
+
+                {/* Modal Actions */}
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.cancelModalBtn}
+                    onPress={() => {
+                      setShowCallModal(false);
+                      setSelectedOutcome(null);
+                      setSelectedStatus(null);
+                      setCallNotes('');
+                      setDetectedCallDuration(null);
+                    }}
                   >
-                    {outcome.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Status Update (optional) */}
-            <Text style={styles.sectionLabel}>Update Status (Optional)</Text>
-            <View style={styles.statusGrid}>
-              {statuses.map((status) => (
-                <TouchableOpacity
-                  key={status.id}
-                  style={[
-                    styles.statusChip,
-                    selectedStatus === status.id && { backgroundColor: status.color },
-                    lead.status === status.id && !selectedStatus && styles.currentStatus,
-                  ]}
-                  onPress={() => setSelectedStatus(status.id)}
-                >
-                  <Text
-                    style={[
-                      styles.statusChipText,
-                      selectedStatus === status.id && { color: '#fff' },
-                    ]}
+                    <Text style={styles.cancelModalBtnText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.submitModalBtn}
+                    onPress={handleSubmitCallOutcome}
                   >
-                    {status.label}
-                    {lead.status === status.id && ' ✓'}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Notes */}
-            <Text style={styles.sectionLabel}>Notes (Optional)</Text>
-            <TextInput
-              style={styles.notesInput}
-              placeholder="Add call notes..."
-              value={callNotes}
-              onChangeText={setCallNotes}
-              multiline
-              numberOfLines={2}
-            />
-
-            {/* Modal Actions */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelModalBtn}
-                onPress={() => {
-                  setShowCallModal(false);
-                  setSelectedOutcome(null);
-                  setSelectedStatus(null);
-                  setCallNotes('');
-                }}
-              >
-                <Text style={styles.cancelModalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.submitModalBtn}
-                onPress={handleSubmitCallOutcome}
-              >
-                <Text style={styles.submitModalBtnText}>Save</Text>
-              </TouchableOpacity>
-            </View>
+                    <Text style={styles.submitModalBtnText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -784,7 +870,16 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    maxHeight: '80%',
+    maxHeight: '85%',
+  },
+  lookingUpContainer: {
+    alignItems: 'center',
+    padding: 40,
+  },
+  lookingUpText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6b7280',
   },
   modalTitle: {
     fontSize: 20,
@@ -798,6 +893,23 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 4,
     marginBottom: 16,
+  },
+  detectedDurationBadge: {
+    backgroundColor: '#dcfce7',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  detectedDurationText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#16a34a',
+  },
+  detectedDurationNote: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
   },
   sectionLabel: {
     fontSize: 14,

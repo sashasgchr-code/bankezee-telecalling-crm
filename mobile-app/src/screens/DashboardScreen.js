@@ -11,7 +11,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { getDashboardStats, pingActivity, logout as apiLogout } from '../services/api';
-import { syncCallLogsWithBackend, requestCallLogPermission } from '../services/callLogService';
+import { 
+  syncCallLogsWithBackend, 
+  requestAllPermissions,
+  getDiagnostics,
+  runDiagnostics,
+} from '../services/callLogService';
 import {
   requestRecordingPermissions,
   getRecordingEnabled,
@@ -28,6 +33,8 @@ const DashboardScreen = ({ user, onLogout }) => {
   const [syncing, setSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState(null);
   const [period, setPeriod] = useState('today');
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(null);
 
   const isAdmin = user?.role === 'admin';
 
@@ -76,17 +83,31 @@ const DashboardScreen = ({ user, onLogout }) => {
     }
   }, [period]);
 
-  // Load recording settings
-  const loadRecordingSettings = async () => {
+  // Load recording settings and run initial diagnostics
+  const loadSettings = async () => {
     const enabled = await getRecordingEnabled();
     setRecordingEnabledState(enabled);
+    
+    // Run diagnostics in background
+    const diag = await runDiagnostics();
+    setDiagnostics(diag);
+  };
+
+  // Request all permissions on first load
+  const initializePermissions = async () => {
+    const permissions = await requestAllPermissions();
+    console.log('Permissions status:', permissions);
+    
+    // Update diagnostics after permission request
+    const diag = await runDiagnostics();
+    setDiagnostics(diag);
   };
 
   // Initial load
   useEffect(() => {
     loadStats();
-    loadRecordingSettings();
-    requestCallLogPermission();
+    loadSettings();
+    initializePermissions();
 
     // Ping activity every 30 seconds
     const pingInterval = setInterval(() => {
@@ -123,16 +144,25 @@ const DashboardScreen = ({ user, onLogout }) => {
   const onRefresh = async () => {
     setRefreshing(true);
     await loadStats();
+    const diag = await runDiagnostics();
+    setDiagnostics(diag);
     setRefreshing(false);
   };
 
-  // Handle sync
+  // Handle sync with visible feedback
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const result = await syncCallLogsWithBackend();
+      const result = await syncCallLogsWithBackend([], true); // showErrors = true
       setLastSyncResult(result);
-      if (result.synced > 0) {
+      
+      // Update diagnostics
+      const diag = getDiagnostics();
+      setDiagnostics(diag);
+      
+      if (result.error) {
+        // Error already shown by syncCallLogsWithBackend
+      } else if (result.synced > 0) {
         Alert.alert('Sync Complete', `Synced ${result.synced} calls, ${result.matched} matched to leads`);
       } else {
         Alert.alert('Sync Complete', 'No new calls to sync');
@@ -187,6 +217,20 @@ const DashboardScreen = ({ user, onLogout }) => {
   // Get files count (activity-based)
   const getFilesCount = () => {
     return stats?.my_file || stats?.total_file || 0;
+  };
+
+  // Diagnostics status indicator
+  const getStatusIndicator = (status) => {
+    switch (status) {
+      case 'granted':
+      case true:
+        return { icon: '✅', color: '#4CAF50' };
+      case 'denied':
+      case false:
+        return { icon: '❌', color: '#F44336' };
+      default:
+        return { icon: '❓', color: '#FF9800' };
+    }
   };
 
   return (
@@ -298,7 +342,7 @@ const DashboardScreen = ({ user, onLogout }) => {
         </View>
       </View>
 
-      {/* Status Breakdown (without New and Presentation) */}
+      {/* Status Breakdown */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Status Breakdown</Text>
         <View style={styles.statusGrid}>
@@ -369,11 +413,105 @@ const DashboardScreen = ({ user, onLogout }) => {
           </Text>
         </TouchableOpacity>
         {lastSyncResult && (
-          <Text style={styles.syncResult}>
-            Last sync: {lastSyncResult.synced} calls, {lastSyncResult.matched} matched
+          <Text style={[styles.syncResult, lastSyncResult.error && styles.syncResultError]}>
+            {lastSyncResult.error 
+              ? `Error: ${lastSyncResult.error}` 
+              : `Last sync: ${lastSyncResult.synced} calls, ${lastSyncResult.matched} matched`}
           </Text>
         )}
       </View>
+
+      {/* Diagnostics Toggle */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.diagnosticsToggle}
+          onPress={() => setShowDiagnostics(!showDiagnostics)}
+        >
+          <Text style={styles.diagnosticsToggleText}>
+            {showDiagnostics ? '🔧 Hide Diagnostics' : '🔧 Show Diagnostics'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Diagnostics Section */}
+      {showDiagnostics && diagnostics && (
+        <View style={styles.diagnosticsSection}>
+          <Text style={styles.diagnosticsTitle}>📊 Call Log Diagnostics</Text>
+          
+          <View style={styles.diagnosticsRow}>
+            <Text style={styles.diagnosticsLabel}>CallLog Module:</Text>
+            <Text style={[styles.diagnosticsValue, { color: getStatusIndicator(diagnostics.moduleLoaded).color }]}>
+              {getStatusIndicator(diagnostics.moduleLoaded).icon} {diagnostics.moduleLoaded ? 'LOADED' : 'NOT LOADED'}
+            </Text>
+          </View>
+          
+          {diagnostics.moduleLoadError && (
+            <View style={styles.diagnosticsRow}>
+              <Text style={styles.diagnosticsLabel}>Module Error:</Text>
+              <Text style={[styles.diagnosticsValue, styles.diagnosticsError]}>
+                {diagnostics.moduleLoadError}
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.diagnosticsRow}>
+            <Text style={styles.diagnosticsLabel}>READ_CALL_LOG:</Text>
+            <Text style={[styles.diagnosticsValue, { color: getStatusIndicator(diagnostics.readCallLogPermission).color }]}>
+              {getStatusIndicator(diagnostics.readCallLogPermission).icon} {String(diagnostics.readCallLogPermission).toUpperCase()}
+            </Text>
+          </View>
+          
+          <View style={styles.diagnosticsRow}>
+            <Text style={styles.diagnosticsLabel}>READ_PHONE_STATE:</Text>
+            <Text style={[styles.diagnosticsValue, { color: getStatusIndicator(diagnostics.readPhoneStatePermission).color }]}>
+              {getStatusIndicator(diagnostics.readPhoneStatePermission).icon} {String(diagnostics.readPhoneStatePermission).toUpperCase()}
+            </Text>
+          </View>
+          
+          <View style={styles.diagnosticsRow}>
+            <Text style={styles.diagnosticsLabel}>Call Log Entries:</Text>
+            <Text style={styles.diagnosticsValue}>{diagnostics.callLogEntriesCount}</Text>
+          </View>
+          
+          {diagnostics.lastSyncTime && (
+            <View style={styles.diagnosticsRow}>
+              <Text style={styles.diagnosticsLabel}>Last Sync:</Text>
+              <Text style={styles.diagnosticsValue}>
+                {new Date(diagnostics.lastSyncTime).toLocaleTimeString()}
+              </Text>
+            </View>
+          )}
+          
+          {diagnostics.lastSyncResult && (
+            <View style={styles.diagnosticsRow}>
+              <Text style={styles.diagnosticsLabel}>Sync Result:</Text>
+              <Text style={styles.diagnosticsValue}>
+                {diagnostics.lastSyncResult.synced} synced, {diagnostics.lastSyncResult.matched} matched
+              </Text>
+            </View>
+          )}
+          
+          {diagnostics.lastSyncError && (
+            <View style={styles.diagnosticsRow}>
+              <Text style={styles.diagnosticsLabel}>Last Error:</Text>
+              <Text style={[styles.diagnosticsValue, styles.diagnosticsError]}>
+                {diagnostics.lastSyncError}
+              </Text>
+            </View>
+          )}
+          
+          <TouchableOpacity
+            style={styles.refreshDiagnosticsBtn}
+            onPress={async () => {
+              const diag = await runDiagnostics();
+              setDiagnostics(diag);
+              Alert.alert('Diagnostics Refreshed', 'Check the values above');
+            }}
+          >
+            <Text style={styles.refreshDiagnosticsBtnText}>🔄 Refresh Diagnostics</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -657,6 +795,70 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 8,
     fontSize: 12,
+  },
+  syncResultError: {
+    color: '#ef4444',
+  },
+  diagnosticsToggle: {
+    backgroundColor: '#f3f4f6',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  diagnosticsToggleText: {
+    color: '#6b7280',
+    fontSize: 14,
+  },
+  diagnosticsSection: {
+    backgroundColor: '#fff',
+    marginHorizontal: 16,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+  },
+  diagnosticsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  diagnosticsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  diagnosticsLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    flex: 1,
+  },
+  diagnosticsValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+    flex: 1,
+    textAlign: 'right',
+  },
+  diagnosticsError: {
+    color: '#ef4444',
+    fontSize: 11,
+  },
+  refreshDiagnosticsBtn: {
+    backgroundColor: '#f3f4f6',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  refreshDiagnosticsBtnText: {
+    color: '#374151',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
 

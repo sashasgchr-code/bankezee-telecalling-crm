@@ -8,7 +8,8 @@
     "test": "jest",
     "lint": "eslint .",
     "eas-build": "eas build --platform android --profile preview",
-    "eas-build-prod": "eas build --platform android --profile production"
+    "eas-build-prod": "eas build --platform android --profile production",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "react": "18.2.0",
