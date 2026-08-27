@@ -1,0 +1,26 @@
+{
+  "summary": "Frontend-only testing of Telecaller Data page filter persistence + New filter + counts. All 7 requested behaviors verified end-to-end on preview URL. Seed data was modified via API to set one lead status='new' (restored to follow_up post-test).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Leads.js correctly uses useSearchParams so filters live in URL and persist across lead-detail navigation via `navigate('/agent/leads/<id>?' + searchParams.toString())` and go-back. Verified: URL after detail = /agent/leads/<id>?status=new; after back = /agent/leads?status=new.",
+    "Status counts computed client-side from an unfiltered /leads fetch, then a second /leads fetch applies params — two network calls per filter change. For larger datasets this is wasteful; consider a dedicated /api/leads/counts endpoint or computing counts on the filtered set via a groupBy.",
+    "Status filter option 'leads' (plural) is inconsistent with backend/status enum naming — verify StatusLabels['leads'] = 'Lead' maps to the correct backend value; currently backend filter with status=leads works only because backend stores exactly 'leads'.",
+    "Search input updates URL on every keystroke (updateFilters called in onChange) which triggers an API call per character — should be debounced (e.g. 300ms) to reduce load and avoid backend regex spam.",
+    "New Data banner uses onClick on a <div> without keyboard/role='button' — a11y improvement: make it a real button for keyboard navigation."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (frontend-only)", "frontend": "100% (7/7 scenarios)"},
+  "test_credentials": "agent@test.com / agent123",
+  "seed_data_creation": "Temporarily set lead 6a8e98b345f946c3fd02baf0 (Test Customer) status=new to validate the 'New' filter/banner; restored to follow_up after testing.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Verified scenarios: (1) Status filter chips show counts — All, New (1), Not Interested (0), Follow Up (1), Lead (0), File (0). (2) Clicking 'New (1)' sets URL to ?status=new and filters to only Test Customer. (3) Banner '🆕 1 new data available' shows when new leads exist and status filter is NOT 'new'; hides when status=new selected. (4) Clicking a lead card navigates to /agent/leads/<id>?status=new; browser back returns to /agent/leads?status=new with filter still active and correct rows shown. (5) Combining status=new + outcome=connected yields 0 rows and shows 'No data found' + 'Clear all filters' link which clears the URL to /agent/leads. (6) Search by name ('Test Lead') and by phone ('9876543210') filters results and syncs into URL as ?search=. (7) Call outcome chips (Connected, No Answer, Switched Off, Not Connecting, Busy, Wrong Number, Voicemail) render and apply outcome=<id> to URL.",
+  "rca of the issue": "N/A — feature verified working. Prior iteration_5 report validated the underlying /api/leads?status/last_call_outcome/search backend filters; this iteration validates the new URL-param-driven filter persistence UI layer."
+}

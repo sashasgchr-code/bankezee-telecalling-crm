@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,17 @@ import {
   Linking,
   ScrollView,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getLeads, getTelecallers } from '../services/api';
 import { makePhoneCall } from '../services/callLogService';
+
+const FILTER_STORAGE_KEY = '@data_screen_filters';
 
 const DataScreen = ({ user }) => {
   const navigation = useNavigation();
   const [leads, setLeads] = useState([]);
+  const [allLeads, setAllLeads] = useState([]); // Store all leads for counting
   const [filteredLeads, setFilteredLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -26,12 +30,15 @@ const DataScreen = ({ user }) => {
   const [outcomeFilter, setOutcomeFilter] = useState('all');
   const [telecallers, setTelecallers] = useState([]);
   const [selectedTelecaller, setSelectedTelecaller] = useState('all');
+  const [statusCounts, setStatusCounts] = useState({});
+  const filtersLoaded = useRef(false);
 
   const isAdmin = user?.role === 'admin';
 
-  // Status filter options (lead status)
+  // Status filter options (including 'new' for fresh data)
   const statuses = [
-    { id: 'all', name: 'All Status', color: '#6b7280' },
+    { id: 'all', name: 'All', color: '#6b7280' },
+    { id: 'new', name: 'New', color: '#3b82f6' },
     { id: 'follow_up', name: 'Follow Up', color: '#8b5cf6' },
     { id: 'not_interested', name: 'Not Interested', color: '#6b7280' },
     { id: 'leads', name: 'Lead', color: '#22c55e' },
@@ -40,7 +47,7 @@ const DataScreen = ({ user }) => {
 
   // Call outcome filters (last call outcome)
   const callOutcomes = [
-    { id: 'all', name: 'All Outcomes', color: '#6b7280' },
+    { id: 'all', name: 'All', color: '#6b7280' },
     { id: 'connected', name: 'Connected', color: '#4CAF50' },
     { id: 'no_answer', name: 'No Answer', color: '#F44336' },
     { id: 'switched_off', name: 'Switched Off', color: '#9E9E9E' },
@@ -50,17 +57,75 @@ const DataScreen = ({ user }) => {
     { id: 'voicemail', name: 'Voicemail', color: '#9C27B0' },
   ];
 
-  const loadLeads = useCallback(async () => {
+  // Load saved filters on mount
+  useEffect(() => {
+    loadSavedFilters();
+  }, []);
+
+  // Save filters when they change
+  useEffect(() => {
+    if (filtersLoaded.current) {
+      saveFilters();
+    }
+  }, [statusFilter, outcomeFilter, selectedTelecaller]);
+
+  const loadSavedFilters = async () => {
     try {
+      const saved = await AsyncStorage.getItem(FILTER_STORAGE_KEY);
+      if (saved) {
+        const filters = JSON.parse(saved);
+        setStatusFilter(filters.statusFilter || 'all');
+        setOutcomeFilter(filters.outcomeFilter || 'all');
+        setSelectedTelecaller(filters.selectedTelecaller || 'all');
+      }
+    } catch (error) {
+      console.error('Error loading filters:', error);
+    } finally {
+      filtersLoaded.current = true;
+    }
+  };
+
+  const saveFilters = async () => {
+    try {
+      await AsyncStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify({
+        statusFilter,
+        outcomeFilter,
+        selectedTelecaller,
+      }));
+    } catch (error) {
+      console.error('Error saving filters:', error);
+    }
+  };
+
+  // Calculate status counts from all leads
+  const calculateStatusCounts = (leadsData) => {
+    const counts = {};
+    leadsData.forEach(lead => {
+      const status = lead.status || 'new';
+      counts[status] = (counts[status] || 0) + 1;
+    });
+    setStatusCounts(counts);
+  };
+
+  const loadLeads = useCallback(async (applyFilters = true) => {
+    try {
+      // First load ALL leads to get counts
+      const allResponse = await getLeads({});
+      setAllLeads(allResponse);
+      calculateStatusCounts(allResponse);
+
+      // Then load filtered leads
       let params = {};
-      if (statusFilter !== 'all') {
-        params.status = statusFilter;
-      }
-      if (outcomeFilter !== 'all') {
-        params.last_call_outcome = outcomeFilter;
-      }
-      if (isAdmin && selectedTelecaller !== 'all') {
-        params.assigned_to = selectedTelecaller;
+      if (applyFilters) {
+        if (statusFilter !== 'all') {
+          params.status = statusFilter;
+        }
+        if (outcomeFilter !== 'all') {
+          params.last_call_outcome = outcomeFilter;
+        }
+        if (isAdmin && selectedTelecaller !== 'all') {
+          params.assigned_to = selectedTelecaller;
+        }
       }
       
       const response = await getLeads(params);
@@ -84,10 +149,24 @@ const DataScreen = ({ user }) => {
     }
   };
 
+  // Load data when screen comes into focus (retains filters)
+  useFocusEffect(
+    useCallback(() => {
+      if (filtersLoaded.current) {
+        loadLeads();
+      }
+    }, [loadLeads])
+  );
+
   useEffect(() => {
-    loadLeads();
     loadTelecallers();
-  }, [loadLeads]);
+  }, []);
+
+  useEffect(() => {
+    if (filtersLoaded.current) {
+      loadLeads();
+    }
+  }, [statusFilter, outcomeFilter, selectedTelecaller]);
 
   const filterLeads = (leadsData, query) => {
     if (!query) {
@@ -100,7 +179,7 @@ const DataScreen = ({ user }) => {
       lead =>
         lead.name?.toLowerCase().includes(lowerQuery) ||
         lead.phone?.includes(query) ||
-        lead.phone?.replace(/[^0-9]/g, '').includes(query.replace(/[^0-9]/g, '')) ||
+        String(lead.phone).replace(/[^0-9]/g, '').includes(query.replace(/[^0-9]/g, '')) ||
         lead.email?.toLowerCase().includes(lowerQuery) ||
         lead.city?.toLowerCase().includes(lowerQuery)
     );
@@ -131,10 +210,8 @@ const DataScreen = ({ user }) => {
     const message = `Hi ${lead.name},\n\nThis is ${user?.name || 'Team'} from BankEzee.\n\nI'm calling about merging your multiple loans/credit card payments into one single EMI.\n\nWe'd like to understand your current EMIs and check whether we can help you reduce your monthly EMI burden and simplify your repayments.\n\nI tried reaching you but couldn't connect. Please call me back or simply reply "CALL ME" here and I'll get in touch with you.\n\nRegards,\n${user?.name || 'Team'}\nBankEzee – Loan Consolidation Platform\nwww.BankEzee.com`;
     
     // Clean phone and add 91 prefix for India
-    let phone = lead.phone?.toString().replace(/[^0-9]/g, '');
-    // Remove leading zeros
+    let phone = String(lead.phone).split('.')[0].replace(/[^0-9]/g, '');
     phone = phone.replace(/^0+/, '');
-    // Add 91 if it's a 10-digit number without country code
     if (phone.length === 10) {
       phone = '91' + phone;
     } else if (!phone.startsWith('91') && phone.length > 10) {
@@ -155,6 +232,12 @@ const DataScreen = ({ user }) => {
     return outcomeObj?.color || '#6b7280';
   };
 
+  // Get count for a status
+  const getStatusCount = (statusId) => {
+    if (statusId === 'all') return allLeads.length;
+    return statusCounts[statusId] || 0;
+  };
+
   const renderLead = ({ item }) => (
     <TouchableOpacity
       style={styles.leadCard}
@@ -163,13 +246,13 @@ const DataScreen = ({ user }) => {
       <View style={styles.leadHeader}>
         <View style={styles.leadInfo}>
           <Text style={styles.leadName}>{item.name}</Text>
-          <Text style={styles.leadPhone}>{item.phone}</Text>
+          <Text style={styles.leadPhone}>{String(item.phone).split('.')[0]}</Text>
           {item.city && <Text style={styles.leadCity}>📍 {item.city}</Text>}
         </View>
         <View style={styles.badgeContainer}>
           <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
             <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
-              {item.status?.replace('_', ' ')}
+              {item.status?.replace('_', ' ') || 'new'}
             </Text>
           </View>
           {item.last_call_outcome && (
@@ -205,6 +288,19 @@ const DataScreen = ({ user }) => {
         <Text style={styles.headerCount}>{filteredLeads.length} leads</Text>
       </View>
 
+      {/* New Data Banner */}
+      {statusCounts['new'] > 0 && statusFilter !== 'new' && (
+        <TouchableOpacity 
+          style={styles.newDataBanner}
+          onPress={() => setStatusFilter('new')}
+        >
+          <Text style={styles.newDataText}>
+            🆕 {statusCounts['new']} new data available
+          </Text>
+          <Text style={styles.tapToView}>Tap to view</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Search */}
       <View style={styles.searchContainer}>
         <TextInput
@@ -216,7 +312,7 @@ const DataScreen = ({ user }) => {
         />
       </View>
 
-      {/* Status Filter */}
+      {/* Status Filter with Counts */}
       <View style={styles.filterContainer}>
         <Text style={styles.filterLabel}>Status:</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -236,6 +332,9 @@ const DataScreen = ({ user }) => {
                 ]}
               >
                 {item.name}
+                {item.id !== 'all' && (
+                  <Text style={styles.countText}> ({getStatusCount(item.id)})</Text>
+                )}
               </Text>
             </TouchableOpacity>
           ))}
@@ -338,6 +437,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6b7280',
   },
+  newDataBanner: {
+    backgroundColor: '#EFF6FF',
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#BFDBFE',
+  },
+  newDataText: {
+    color: '#1D4ED8',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  tapToView: {
+    color: '#3B82F6',
+    fontSize: 12,
+  },
   searchContainer: {
     padding: 12,
     backgroundColor: '#fff',
@@ -376,6 +493,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#374151',
     fontWeight: '500',
+  },
+  countText: {
+    fontSize: 11,
+    fontWeight: '400',
   },
   telecallerFilter: {
     backgroundColor: '#fff',
