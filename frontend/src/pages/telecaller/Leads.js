@@ -15,7 +15,9 @@ const TelecallerLeads = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
 
-  const statuses = ['new', 'not_interested', 'follow_up', 'presentation', 'leads', 'file'];
+  // Status options (without 'new' and 'presentation')
+  // Flow: Connected → not_interested, follow_up, leads, file
+  const statuses = ['not_interested', 'follow_up', 'leads', 'file'];
 
   const fetchLeads = async () => {
     try {

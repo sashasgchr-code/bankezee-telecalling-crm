@@ -27,12 +27,11 @@ const DataScreen = ({ user }) => {
 
   const isAdmin = user?.role === 'admin';
 
+  // Status filter options (without 'new' and 'presentation')
   const statuses = [
     { id: 'all', name: 'All', color: '#6b7280' },
-    { id: 'new', name: 'New', color: '#3b82f6' },
     { id: 'follow_up', name: 'Follow Up', color: '#8b5cf6' },
     { id: 'not_interested', name: 'Not Interested', color: '#6b7280' },
-    { id: 'presentation', name: 'Presentation', color: '#f59e0b' },
     { id: 'leads', name: 'Lead', color: '#22c55e' },
     { id: 'file', name: 'File', color: '#ef4444' },
   ];

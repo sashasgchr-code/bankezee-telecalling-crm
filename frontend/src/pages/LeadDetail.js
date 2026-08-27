@@ -25,7 +25,10 @@ const LeadDetail = () => {
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpNotes, setFollowUpNotes] = useState('');
 
-  const statuses = ['new', 'not_interested', 'follow_up', 'presentation', 'leads', 'file'];
+  // Status options (without 'new' and 'presentation')
+  // Flow: Connected → not_interested, follow_up, leads, file
+  // Agent can later update status to leads or file
+  const statuses = ['not_interested', 'follow_up', 'leads', 'file'];
 
   // WhatsApp message template
   const getWhatsAppLink = (phone, customerName) => {

@@ -80,12 +80,11 @@ const TelecallerDashboard = () => {
     { id: 'all_time', label: 'All Time' },
   ];
 
-  // All statuses to display (Update statuses shown when connected)
+  // All statuses to display (without 'new' and 'presentation')
+  // Flow: Connected → not_interested, follow_up, leads, file
   const allStatuses = [
-    { key: 'new', label: 'New', color: '#4CAF50' },
     { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
     { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
-    { key: 'presentation', label: 'Presentation', color: '#673AB7' },
     { key: 'leads', label: 'Lead', color: '#00C853' },
     { key: 'file', label: 'File', color: '#FF9800' },
   ];

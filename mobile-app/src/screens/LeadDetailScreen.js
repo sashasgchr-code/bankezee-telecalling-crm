@@ -22,7 +22,10 @@ const LeadDetailScreen = ({ route, navigation }) => {
   const [editData, setEditData] = useState({});
   const [saving, setSaving] = useState(false);
 
-  const statuses = ['new', 'follow_up', 'not_interested', 'presentation', 'leads', 'file'];
+  // Status options (without 'new' and 'presentation')
+  // Flow: Connected → not_interested, follow_up, leads, file
+  // Agent can later update to leads or file
+  const statuses = ['follow_up', 'not_interested', 'leads', 'file'];
 
   useEffect(() => {
     loadLeadDetails();

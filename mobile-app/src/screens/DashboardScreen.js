@@ -8,8 +8,9 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  Dimensions,
 } from 'react-native';
-import { getMyStats, getDashboardStats, pingActivity, logout as apiLogout } from '../services/api';
+import { getDashboardStats, pingActivity, logout as apiLogout } from '../services/api';
 import { syncCallLogsWithBackend, requestCallLogPermission } from '../services/callLogService';
 import {
   requestRecordingPermissions,
@@ -17,47 +18,63 @@ import {
   setRecordingEnabled,
 } from '../services/recordingService';
 
+const { width } = Dimensions.get('window');
+
 const DashboardScreen = ({ user, onLogout }) => {
   const [stats, setStats] = useState(null);
-  const [adminStats, setAdminStats] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loginDuration, setLoginDuration] = useState(0);
   const [recordingEnabled, setRecordingEnabledState] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState(null);
+  const [period, setPeriod] = useState('today');
 
   const isAdmin = user?.role === 'admin';
 
+  // Period filters
+  const periods = [
+    { id: 'today', label: 'Today' },
+    { id: 'this_week', label: 'This Week' },
+    { id: 'this_month', label: 'This Month' },
+    { id: 'all_time', label: 'All Time' },
+  ];
+
+  // Status breakdown items (without 'new' and 'presentation')
+  const statusItems = [
+    { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E', bgColor: '#F5F5F5' },
+    { key: 'follow_up', label: 'Follow Up', color: '#9C27B0', bgColor: '#F3E5F5' },
+    { key: 'leads', label: 'Lead', color: '#4CAF50', bgColor: '#E8F5E9' },
+    { key: 'file', label: 'File', color: '#FF9800', bgColor: '#FFF3E0' },
+  ];
+
+  // Call outcomes
+  const callOutcomes = [
+    { key: 'connected', label: 'Connected', color: '#4CAF50', bgColor: '#E8F5E9' },
+    { key: 'not_connecting', label: 'Not Connecting', color: '#9E9E9E', bgColor: '#F5F5F5' },
+    { key: 'no_answer', label: 'No Answer', color: '#F44336', bgColor: '#FFEBEE' },
+    { key: 'busy', label: 'Busy', color: '#FF9800', bgColor: '#FFF3E0' },
+    { key: 'wrong_number', label: 'Wrong Number', color: '#E91E63', bgColor: '#FCE4EC' },
+    { key: 'voicemail', label: 'Voicemail', color: '#9C27B0', bgColor: '#F3E5F5' },
+  ];
+
   // Format seconds to readable time
   const formatTime = (seconds) => {
-    if (!seconds || seconds < 0) return '0m 0s';
+    if (!seconds || seconds < 0) return '0m';
     const hours = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    if (hours > 0) {
-      return `${hours}h ${mins}m`;
-    }
-    return `${mins}m ${secs}s`;
+    if (hours > 0) return `${hours}h ${mins}m`;
+    return `${mins}m`;
   };
 
   // Load stats
   const loadStats = useCallback(async () => {
     try {
-      if (isAdmin) {
-        const [myStatsRes, dashStatsRes] = await Promise.all([
-          getMyStats(),
-          getDashboardStats('today'),
-        ]);
-        setStats(myStatsRes);
-        setAdminStats(dashStatsRes);
-      } else {
-        const myStatsRes = await getMyStats();
-        setStats(myStatsRes);
-      }
+      const response = await getDashboardStats(period);
+      setStats(response);
     } catch (error) {
       console.error('Error loading stats:', error);
     }
-  }, [isAdmin]);
+  }, [period]);
 
   // Load recording settings
   const loadRecordingSettings = async () => {
@@ -87,8 +104,8 @@ const DashboardScreen = ({ user, onLogout }) => {
 
   // Real-time login duration timer
   useEffect(() => {
-    if (stats?.login_time) {
-      const loginTime = new Date(stats.login_time).getTime();
+    if (stats?.daily_session?.login_time) {
+      const loginTime = new Date(stats.daily_session.login_time).getTime();
       
       const updateDuration = () => {
         const now = Date.now();
@@ -100,7 +117,7 @@ const DashboardScreen = ({ user, onLogout }) => {
       const interval = setInterval(updateDuration, 1000);
       return () => clearInterval(interval);
     }
-  }, [stats?.login_time]);
+  }, [stats?.daily_session?.login_time]);
 
   // Handle refresh
   const onRefresh = async () => {
@@ -157,6 +174,21 @@ const DashboardScreen = ({ user, onLogout }) => {
     ]);
   };
 
+  // Get status count from leads_by_status
+  const getStatusCount = (key) => {
+    return stats?.leads_by_status?.[key] || 0;
+  };
+
+  // Get call outcome count
+  const getOutcomeCount = (key) => {
+    return stats?.call_outcomes?.[key] || 0;
+  };
+
+  // Get files count (activity-based)
+  const getFilesCount = () => {
+    return stats?.my_file || stats?.total_file || 0;
+  };
+
   return (
     <ScrollView
       style={styles.container}
@@ -174,54 +206,138 @@ const DashboardScreen = ({ user, onLogout }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Real-time Stats Cards */}
-      <View style={styles.statsGrid}>
-        <View style={[styles.statCard, styles.primaryCard]}>
-          <Text style={styles.statLabel}>Login Time</Text>
-          <Text style={styles.statValueLarge}>{formatTime(loginDuration)}</Text>
-          <Text style={styles.statSubtext}>Real-time ⏱️</Text>
+      {/* Files Trophy Card */}
+      <View style={styles.trophyCard}>
+        <View style={styles.trophyIconContainer}>
+          <Text style={styles.trophyIcon}>🏆</Text>
         </View>
-        
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Talk Time</Text>
-          <Text style={styles.statValue}>{formatTime(stats?.total_call_seconds || 0)}</Text>
-        </View>
-        
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Calls Made</Text>
-          <Text style={styles.statValue}>{stats?.calls_made || 0}</Text>
-        </View>
-        
-        <View style={styles.statCard}>
-          <Text style={styles.statLabel}>Leads Updated</Text>
-          <Text style={styles.statValue}>{stats?.leads_updated || 0}</Text>
+        <View style={styles.trophyContent}>
+          <Text style={styles.trophyValue}>{getFilesCount()}</Text>
+          <Text style={styles.trophyLabel}>Files ({period.replace('_', ' ')})</Text>
         </View>
       </View>
 
-      {/* Admin Stats */}
-      {isAdmin && adminStats && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Team Overview (Today)</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Total Data</Text>
-              <Text style={styles.statValue}>{adminStats.total_data || 0}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Connected</Text>
-              <Text style={styles.statValue}>{adminStats.connected || 0}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Leads</Text>
-              <Text style={styles.statValue}>{adminStats.total_leads_generated || 0}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>Files</Text>
-              <Text style={styles.statValue}>{adminStats.total_file || 0}</Text>
-            </View>
+      {/* Period Filter */}
+      <View style={styles.periodFilter}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {periods.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              style={[
+                styles.periodButton,
+                period === p.id && styles.periodButtonActive,
+              ]}
+              onPress={() => setPeriod(p.id)}
+            >
+              <Text
+                style={[
+                  styles.periodButtonText,
+                  period === p.id && styles.periodButtonTextActive,
+                ]}
+              >
+                {p.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Quick Stats Row */}
+      <View style={styles.quickStatsRow}>
+        <View style={styles.quickStatCard}>
+          <Text style={styles.quickStatIcon}>📊</Text>
+          <Text style={styles.quickStatValue}>{stats?.my_data || 0}</Text>
+          <Text style={styles.quickStatLabel}>My Data</Text>
+        </View>
+        <View style={styles.quickStatCard}>
+          <Text style={styles.quickStatIcon}>⏸️</Text>
+          <Text style={[styles.quickStatValue, { color: '#FF9800' }]}>{stats?.my_unused_data || 0}</Text>
+          <Text style={styles.quickStatLabel}>Unused</Text>
+        </View>
+        <View style={styles.quickStatCard}>
+          <Text style={styles.quickStatIcon}>📞</Text>
+          <Text style={[styles.quickStatValue, { color: '#2196F3' }]}>{stats?.my_connected || 0}</Text>
+          <Text style={styles.quickStatLabel}>Calls</Text>
+        </View>
+      </View>
+
+      {/* Today's Activity */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Today's Activity</Text>
+        <View style={styles.activityGrid}>
+          <View style={styles.activityItem}>
+            <Text style={styles.activityIcon}>📞</Text>
+            <Text style={[styles.activityValue, { color: '#2196F3' }]}>
+              {stats?.call_outcomes?.connected + stats?.call_outcomes?.not_connecting + 
+               stats?.call_outcomes?.no_answer + stats?.call_outcomes?.busy + 
+               stats?.call_outcomes?.wrong_number + stats?.call_outcomes?.voicemail || 0}
+            </Text>
+            <Text style={styles.activityLabel}>Calls Made</Text>
+          </View>
+          <View style={styles.activityItem}>
+            <Text style={styles.activityIcon}>⏱️</Text>
+            <Text style={[styles.activityValue, { color: '#4CAF50' }]}>
+              {formatTime(stats?.daily_session?.total_call_seconds || 0)}
+            </Text>
+            <Text style={styles.activityLabel}>Talk Time</Text>
+          </View>
+          <View style={styles.activityItem}>
+            <Text style={styles.activityIcon}>⏳</Text>
+            <Text style={styles.activityValue}>0m</Text>
+            <Text style={styles.activityLabel}>Avg Call</Text>
+          </View>
+          <View style={styles.activityItem}>
+            <Text style={styles.activityIcon}>💤</Text>
+            <Text style={[styles.activityValue, { color: '#F44336' }]}>
+              {formatTime(stats?.daily_session?.total_idle_seconds || 0)}
+            </Text>
+            <Text style={styles.activityLabel}>Idle Time</Text>
           </View>
         </View>
-      )}
+      </View>
+
+      {/* Status Breakdown (without New and Presentation) */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Status Breakdown</Text>
+        <View style={styles.statusGrid}>
+          {statusItems.map((item) => (
+            <View key={item.key} style={[styles.statusCard, { backgroundColor: item.bgColor }]}>
+              <View style={[styles.statusDot, { backgroundColor: item.color }]} />
+              <Text style={styles.statusLabel}>{item.label}</Text>
+              <Text style={[styles.statusValue, { color: item.color }]}>
+                {getStatusCount(item.key)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Call Outcomes */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Call Outcomes</Text>
+        <View style={styles.outcomesGrid}>
+          {callOutcomes.map((item) => (
+            <View key={item.key} style={[styles.outcomeCard, { backgroundColor: item.bgColor }]}>
+              <View style={[styles.outcomeDot, { backgroundColor: item.color }]} />
+              <Text style={styles.outcomeLabel}>{item.label}</Text>
+              <Text style={[styles.outcomeValue, { color: item.color }]}>
+                {getOutcomeCount(item.key)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Login Timer */}
+      <View style={styles.section}>
+        <View style={styles.loginTimerCard}>
+          <View>
+            <Text style={styles.loginTimerLabel}>Login Time</Text>
+            <Text style={styles.loginTimerValue}>{formatTime(loginDuration)}</Text>
+            <Text style={styles.loginTimerSubtext}>Real-time ⏱️</Text>
+          </View>
+        </View>
+      </View>
 
       {/* Call Recording Toggle */}
       <View style={styles.section}>
@@ -256,36 +372,6 @@ const DashboardScreen = ({ user, onLogout }) => {
           </Text>
         )}
       </View>
-
-      {/* Call Outcomes (Telecaller) */}
-      {!isAdmin && stats?.call_outcomes && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Call Outcomes (Today)</Text>
-          <View style={styles.outcomesGrid}>
-            {Object.entries(stats.call_outcomes).map(([key, value]) => (
-              <View key={key} style={styles.outcomeItem}>
-                <Text style={styles.outcomeValue}>{value}</Text>
-                <Text style={styles.outcomeLabel}>{key.replace('_', ' ')}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* Status Breakdown */}
-      {stats?.leads_by_status && Object.keys(stats.leads_by_status).length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Leads by Status</Text>
-          <View style={styles.statusGrid}>
-            {Object.entries(stats.leads_by_status).map(([status, count]) => (
-              <View key={status} style={[styles.statusItem, styles[`status_${status}`]]}>
-                <Text style={styles.statusCount}>{count}</Text>
-                <Text style={styles.statusLabel}>{status}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
 
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -329,57 +415,208 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  statsGrid: {
+  trophyCard: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 10,
-    marginTop: -20,
+    backgroundColor: '#FFF8E1',
+    marginHorizontal: 16,
+    marginTop: -10,
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  statCard: {
+  trophyIconContainer: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FFD54F',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  trophyIcon: {
+    fontSize: 32,
+  },
+  trophyContent: {
+    marginLeft: 16,
+  },
+  trophyValue: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#F57C00',
+  },
+  trophyLabel: {
+    fontSize: 14,
+    color: '#795548',
+    textTransform: 'capitalize',
+  },
+  periodFilter: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  periodButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    marginHorizontal: 4,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  periodButtonActive: {
+    backgroundColor: '#16a34a',
+    borderColor: '#16a34a',
+  },
+  periodButtonText: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  periodButtonTextActive: {
+    color: '#fff',
+  },
+  quickStatsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  quickStatCard: {
+    flex: 1,
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    margin: 6,
-    flex: 1,
-    minWidth: '45%',
+    marginHorizontal: 4,
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  primaryCard: {
-    backgroundColor: '#16a34a',
-    minWidth: '95%',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6b7280',
+  quickStatIcon: {
+    fontSize: 20,
     marginBottom: 4,
   },
-  statValue: {
+  quickStatValue: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#111827',
+    color: '#16a34a',
   },
-  statValueLarge: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
-  statSubtext: {
-    fontSize: 12,
-    color: '#dcfce7',
-    marginTop: 4,
+  quickStatLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
   },
   section: {
     padding: 16,
+    paddingTop: 8,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#374151',
     marginBottom: 12,
+  },
+  activityGrid: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+  },
+  activityItem: {
+    flex: 1,
+    alignItems: 'center',
+    padding: 8,
+  },
+  activityIcon: {
+    fontSize: 18,
+    marginBottom: 4,
+  },
+  activityValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#111827',
+  },
+  activityLabel: {
+    fontSize: 10,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  statusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  statusCard: {
+    width: (width - 48) / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 14,
+    margin: 4,
+  },
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  statusLabel: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+  },
+  statusValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  outcomesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  outcomeCard: {
+    width: (width - 48) / 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 12,
+    padding: 14,
+    margin: 4,
+  },
+  outcomeDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 10,
+  },
+  outcomeLabel: {
+    flex: 1,
+    fontSize: 12,
+    color: '#374151',
+  },
+  outcomeValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  loginTimerCard: {
+    backgroundColor: '#16a34a',
+    borderRadius: 12,
+    padding: 20,
+  },
+  loginTimerLabel: {
+    fontSize: 12,
+    color: '#dcfce7',
+  },
+  loginTimerValue: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginVertical: 4,
+  },
+  loginTimerSubtext: {
+    fontSize: 12,
+    color: '#bbf7d0',
   },
   recordingToggle: {
     flexDirection: 'row',
@@ -419,57 +656,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
   },
-  outcomesGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-  },
-  outcomeItem: {
-    width: '33%',
-    alignItems: 'center',
-    padding: 8,
-  },
-  outcomeValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  outcomeLabel: {
-    fontSize: 10,
-    color: '#6b7280',
-    textTransform: 'capitalize',
-  },
-  statusGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  statusItem: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 12,
-    margin: 4,
-    minWidth: '30%',
-    alignItems: 'center',
-  },
-  statusCount: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#111827',
-  },
-  statusLabel: {
-    fontSize: 10,
-    color: '#6b7280',
-    textTransform: 'capitalize',
-    marginTop: 2,
-  },
-  status_new: { borderLeftWidth: 3, borderLeftColor: '#3b82f6' },
-  status_follow_up: { borderLeftWidth: 3, borderLeftColor: '#8b5cf6' },
-  status_not_interested: { borderLeftWidth: 3, borderLeftColor: '#6b7280' },
-  status_presentation: { borderLeftWidth: 3, borderLeftColor: '#f59e0b' },
-  status_leads: { borderLeftWidth: 3, borderLeftColor: '#22c55e' },
-  status_file: { borderLeftWidth: 3, borderLeftColor: '#ef4444' },
 });
 
 export default DashboardScreen;

@@ -253,7 +253,14 @@ Benefits:
 5. `/app/frontend/src/components/CallModal.js` - Call outcome modal
 6. `/app/mobile-app/` - Complete React Native mobile app
 
+## Recent Changes (Aug 27, 2026)
+- **Mobile Dashboard Enhanced**: Added date filters, trophy icon with Files count, Status Breakdown, Call Outcomes
+- **Status Options Simplified**: Removed 'New' and 'Presentation' from status breakdown and edit options
+- **Status Flow**: Connected → Not Interested, Follow Up, Lead, File (agent can later change to Lead/File)
+- **Stats Activity-Based**: Counts based on activity date, not data creation date
+
 ## Next Steps for New Agent
 1. Help user build and distribute the Android APK
 2. Test call log sync with actual devices
 3. Consider refactoring large files (server.py, Reports.js)
+
