@@ -24,7 +24,7 @@
         "backgroundColor": "#16a34a"
       },
       "package": "com.bankezee.connect",
-      "versionCode": 4,
+      "versionCode": 5,
       "permissions": [
         "android.permission.READ_CALL_LOG",
         "android.permission.READ_CONTACTS",
@@ -36,7 +36,9 @@
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.INTERNET",
         "android.permission.ACCESS_NETWORK_STATE",
-        "android.permission.FOREGROUND_SERVICE"
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ]
     },
     "plugins": [
@@ -54,6 +56,12 @@
       ],
       [
         "expo-dev-client"
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "BANKEZEE Connect uses your location when you mark attendance to verify your work location. Your location is not continuously tracked."
+        }
       ]
     ],
     "extra": {

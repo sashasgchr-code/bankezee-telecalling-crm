@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2, PhoneOff } from 'lucide-react';
+import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2, PhoneOff, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import api from '../services/api';
 import { StatusColors, StatusLabels, OutcomeColors } from '../constants/colors';
 import { queueCallLog, isOnline } from '../services/offlineQueue';
 
 /**
  * PostCallModal - Triggered after a call from LeadDetail page
- * Similar to mobile app's post-call modal for feature parity
+ * Supports both outgoing and incoming calls for feature parity with mobile
  */
-const PostCallModal = ({ isOpen, onClose, lead, onCallLogged }) => {
+const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoing' }) => {
   const [outcome, setOutcome] = useState(null);
   const [notes, setNotes] = useState('');
   const [newStatus, setNewStatus] = useState(null);
@@ -17,6 +17,8 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [isOffline, setIsOffline] = useState(!isOnline());
+
+  const isIncoming = callType === 'incoming';
 
   // Status options
   const statuses = [
@@ -27,8 +29,8 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged }) => {
     { id: 'file', label: 'File', color: '#ef4444' },
   ];
 
-  // Call outcomes
-  const callOutcomes = [
+  // Call outcomes - different for incoming vs outgoing
+  const outgoingOutcomes = [
     { id: 'connected', label: 'Connected', icon: CheckCircle, color: '#4CAF50' },
     { id: 'no_answer', label: 'No Answer', icon: XCircle, color: '#F44336' },
     { id: 'not_connecting', label: 'Not Connecting', icon: PhoneOff, color: '#9E9E9E' },
@@ -36,6 +38,14 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged }) => {
     { id: 'wrong_number', label: 'Wrong Number', icon: AlertCircle, color: '#E91E63' },
     { id: 'voicemail', label: 'Voicemail', icon: Mic, color: '#9C27B0' },
   ];
+
+  const incomingOutcomes = [
+    { id: 'connected', label: 'Answered', icon: CheckCircle, color: '#4CAF50' },
+    { id: 'missed', label: 'Missed', icon: XCircle, color: '#F44336' },
+    { id: 'callback_request', label: 'Callback Request', icon: Phone, color: '#2196F3' },
+  ];
+
+  const callOutcomes = isIncoming ? incomingOutcomes : outgoingOutcomes;
 
   // Monitor online status
   useEffect(() => {
@@ -86,8 +96,8 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged }) => {
       lead_id: lead.id,
       outcome: outcome,
       notes: notes,
-      duration: callDuration, // Backend expects 'duration' not 'duration_seconds'
-      call_type: 'outgoing',
+      duration: callDuration,
+      call_type: callType, // 'outgoing' or 'incoming'
     };
     
     const statusUpdateData = newStatus && newStatus !== lead.status 
@@ -146,7 +156,16 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged }) => {
       <div className="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="p-4 border-b border-gray-200 flex items-center justify-between sticky top-0 bg-white z-10">
-          <h2 className="text-xl font-semibold text-gray-900">Log Call Outcome</h2>
+          <div className="flex items-center gap-2">
+            {isIncoming ? (
+              <PhoneIncoming size={20} className="text-blue-600" />
+            ) : (
+              <PhoneOutgoing size={20} className="text-green-600" />
+            )}
+            <h2 className="text-xl font-semibold text-gray-900">
+              Log {isIncoming ? 'Incoming' : 'Outgoing'} Call
+            </h2>
+          </div>
           <button
             onClick={handleSkip}
             className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
@@ -168,11 +187,20 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged }) => {
 
           {/* Lead Info */}
           <div className="text-center pb-4 border-b border-gray-100">
-            <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-2">
-              <Phone size={24} className="text-green-600" />
+            <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto mb-2 ${
+              isIncoming ? 'bg-blue-100' : 'bg-green-100'
+            }`}>
+              {isIncoming ? (
+                <PhoneIncoming size={24} className="text-blue-600" />
+              ) : (
+                <PhoneOutgoing size={24} className="text-green-600" />
+              )}
             </div>
             <p className="text-lg font-semibold text-gray-900">{lead.name}</p>
             <p className="text-gray-500">{lead.phone}</p>
+            <p className={`text-xs mt-1 font-medium ${isIncoming ? 'text-blue-600' : 'text-green-600'}`}>
+              {isIncoming ? 'Incoming Call' : 'Outgoing Call'}
+            </p>
           </div>
 
           {/* Call Duration Input (manual entry for web) */}

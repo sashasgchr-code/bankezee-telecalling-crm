@@ -1,0 +1,25 @@
+{
+  "summary": "Verified incoming/outgoing call tracking end-to-end. Backend: 4 new tests in test_call_logs_call_type.py + 7 existing incoming tests all pass (11/11). POST /api/call-logs correctly accepts call_type, defaults to 'outgoing', persists and returns call_type in list/detail. daily_sessions.verified_incoming_calls & verified_incoming_time_seconds increment for call_type='incoming' (visible via /dashboard/stats incoming_calls.count/total_time_seconds), and outgoing does NOT touch the incoming counter. Frontend (mobile viewport 390x844, agent@test.com): Log Incoming (blue) + Log Outgoing (green) buttons visible on LeadDetail; PostCallModal opens with correct header 'Log Incoming Call' + PhoneIncoming blue icon + blue 'Incoming Call' subtitle; outcomes correctly restricted to Answered/Missed/Callback Request for incoming and Connected/No Answer/Not Connecting/Busy/Wrong Number/Voicemail for outgoing; Call History renders blue 'In' badge for incoming logs and green 'Out' badge for outgoing logs; save flow works and record appears in Call History with correct badge.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_call_logs_call_type.py",
+    "/app/backend/tests/test_incoming_calls.py",
+    "/app/test_reports/pytest/call_type_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/calls.py create_call_log: incoming branch uses $inc on total_call_seconds but the outgoing branch also does, while call-sessions/end also increments total_call_seconds. Manual log after a session-based call could double-count minutes; consider whether manual /call-logs should touch total_call_seconds at all.",
+    "routes/calls.py create_call_log: for admin/manager roles no daily_session is updated (only telecaller). Confirm this is intentional.",
+    "PostCallModal.js: If backend save succeeds but PUT /leads fails, the call-log is already persisted and only the status update fails, but the user sees a generic alert and no partial-success handling. Consider wrapping in try/catch per-request.",
+    "LeadDetail.js: handleCall auto-opens PostCallModal with 'outgoing' after 1s tel: link -- on desktop where tel: is a no-op, the modal still opens which duplicates the explicit 'Log Outgoing' button (mildly confusing UX)."
+  ],
+  "updated_files": ["/app/backend/tests/test_call_logs_call_type.py"],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (9/9 requirements verified)"},
+  "test_credentials": "agent@test.com / agent123",
+  "seed_data_creation": "Created several TEST_ prefixed call logs on the first lead assigned to agent@test.com (incoming + outgoing) via both backend tests and UI Playwright run. Safe to delete via /api/call-logs entries whose notes start with 'TEST_'.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Incoming call logging (web parity with mobile) is functionally complete. call_type field is optional on POST /api/call-logs and defaults to 'outgoing'. Older call_logs docs in DB (pre-feature) lack call_type; UI treats them as outgoing which is correct. If cleanup is needed, remove call_logs with notes starting 'TEST_'.",
+  "rca of the issue": "N/A - no bugs found."
+}

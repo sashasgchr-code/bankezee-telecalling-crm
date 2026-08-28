@@ -68,6 +68,7 @@ class CallLogCreate(BaseModel):
     duration: Optional[int] = None
     outcome: str
     notes: Optional[str] = None
+    call_type: Optional[str] = "outgoing"  # outgoing, incoming
 
 class CallSessionStart(BaseModel):
     lead_id: str

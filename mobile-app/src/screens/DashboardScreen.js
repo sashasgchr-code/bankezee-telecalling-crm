@@ -22,6 +22,7 @@ import {
   getRecordingEnabled,
   setRecordingEnabled,
 } from '../services/recordingService';
+import AttendanceCard from '../components/AttendanceCard';
 
 const { width } = Dimensions.get('window');
 
@@ -260,6 +261,9 @@ const DashboardScreen = ({ user, onLogout }) => {
           <Text style={styles.trophyLabel}>Files ({period.replace('_', ' ')})</Text>
         </View>
       </View>
+
+      {/* Attendance Card - Near the top */}
+      <AttendanceCard />
 
       {/* Period Filter */}
       <View style={styles.periodFilter}>

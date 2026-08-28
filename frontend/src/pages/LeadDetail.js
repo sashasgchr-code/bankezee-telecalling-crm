@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff, MessageCircle, Wifi, WifiOff } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff, MessageCircle, Wifi, WifiOff, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import api from '../services/api';
 import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
 import { format, parseISO } from 'date-fns';
@@ -29,6 +29,7 @@ const LeadDetail = () => {
   
   // Post-call modal
   const [showPostCallModal, setShowPostCallModal] = useState(false);
+  const [postCallType, setPostCallType] = useState('outgoing'); // 'outgoing' or 'incoming'
   
   // Offline queue state
   const [pendingQueueCount, setPendingQueueCount] = useState(getPendingCount());
@@ -174,9 +175,20 @@ www.BankEzee.com`;
       
       // Show post-call modal after a short delay (gives time for phone app to open)
       setTimeout(() => {
+        setPostCallType('outgoing');
         setShowPostCallModal(true);
       }, 1000);
     }
+  };
+  
+  const handleLogIncomingCall = () => {
+    setPostCallType('incoming');
+    setShowPostCallModal(true);
+  };
+  
+  const handleLogOutgoingCall = () => {
+    setPostCallType('outgoing');
+    setShowPostCallModal(true);
   };
   
   const handlePostCallLogged = () => {
@@ -482,29 +494,45 @@ www.BankEzee.com`;
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Call History</h3>
           {callLogs.length > 0 ? (
             <div className="space-y-3">
-              {callLogs.map((log) => (
-                <div key={log.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
-                  <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                    <Phone size={16} className="text-green-600" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-gray-900 capitalize">
-                        {log.outcome?.replace('_', ' ')}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        {log.duration ? `${Math.floor(log.duration / 60)}m ${log.duration % 60}s` : '-'}
-                      </span>
+              {callLogs.map((log) => {
+                const isIncoming = log.call_type === 'incoming';
+                return (
+                  <div key={log.id} className="flex items-start gap-3 pb-3 border-b border-gray-100 last:border-0">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isIncoming ? 'bg-blue-100' : 'bg-green-100'
+                    }`}>
+                      {isIncoming ? (
+                        <PhoneIncoming size={16} className="text-blue-600" />
+                      ) : (
+                        <PhoneOutgoing size={16} className="text-green-600" />
+                      )}
                     </div>
-                    {log.notes && (
-                      <p className="text-sm text-gray-600 mt-1">{log.notes}</p>
-                    )}
-                    <p className="text-xs text-gray-400 mt-1">
-                      {format(parseISO(log.created_at), 'MMM d, yyyy h:mm a')}
-                    </p>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-900 capitalize">
+                            {log.outcome?.replace('_', ' ')}
+                          </span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${
+                            isIncoming ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'
+                          }`}>
+                            {isIncoming ? 'In' : 'Out'}
+                          </span>
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {log.duration ? `${Math.floor(log.duration / 60)}m ${log.duration % 60}s` : '-'}
+                        </span>
+                      </div>
+                      {log.notes && (
+                        <p className="text-sm text-gray-600 mt-1">{log.notes}</p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1">
+                        {format(parseISO(log.created_at), 'MMM d, yyyy h:mm a')}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-gray-500 text-center py-4">No call history</p>
@@ -534,28 +562,36 @@ www.BankEzee.com`;
             </div>
             <div className="flex gap-3">
               <button
-                onClick={() => setShowPostCallModal(true)}
-                className="flex-1 py-3 flex items-center justify-center gap-2 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition-colors"
-                data-testid="log-call-btn"
+                onClick={handleLogOutgoingCall}
+                className="flex-1 py-3 flex items-center justify-center gap-2 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors"
+                data-testid="log-outgoing-btn"
               >
-                <Clock size={20} />
-                Log Call
+                <PhoneOutgoing size={20} />
+                Log Outgoing
               </button>
               <button
-                onClick={() => {
-                  const tomorrow = new Date();
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  tomorrow.setHours(10, 0, 0, 0);
-                  setFollowUpDate(tomorrow.toISOString().slice(0, 16));
-                  setShowFollowUp(true);
-                }}
-                className="flex-1 btn-secondary py-3 flex items-center justify-center gap-2"
-                data-testid="schedule-followup-btn"
+                onClick={handleLogIncomingCall}
+                className="flex-1 py-3 flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+                data-testid="log-incoming-btn"
               >
-                <Calendar size={20} />
-                Follow-up
+                <PhoneIncoming size={20} />
+                Log Incoming
               </button>
             </div>
+            <button
+              onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                tomorrow.setHours(10, 0, 0, 0);
+                setFollowUpDate(tomorrow.toISOString().slice(0, 16));
+                setShowFollowUp(true);
+              }}
+              className="w-full btn-secondary py-3 flex items-center justify-center gap-2"
+              data-testid="schedule-followup-btn"
+            >
+              <Calendar size={20} />
+              Schedule Follow-up
+            </button>
           </div>
         )}
       </div>
@@ -601,6 +637,7 @@ www.BankEzee.com`;
         onClose={() => setShowPostCallModal(false)}
         lead={lead}
         onCallLogged={handlePostCallLogged}
+        callType={postCallType}
       />
     </div>
   );

@@ -258,7 +258,63 @@ Benefits:
 10. `/app/mobile-app/src/services/callLogService.js` - Native call log handling with diagnostics
 
 ## Recent Changes (Aug 28, 2026)
-- **Android Call-Log Reliability Fixes**: Implemented Expo Prebuild for native module support
+
+### Attendance Management System (NEW MODULE)
+A complete attendance management system integrated into BANKEZEE Connect for both web and mobile apps.
+
+**Backend APIs** (`/app/backend/routes/attendance.py`):
+- `GET /api/attendance/today` - Get today's attendance status
+- `POST /api/attendance/check-in` - Check in with location data
+- `POST /api/attendance/check-out` - Check out with working time calculation
+- `GET /api/attendance/history` - Get attendance history
+- `POST /api/attendance/wfh-request` - Submit WFH request
+- `GET /api/attendance/admin/today` - Admin: Get all today's attendance
+- `GET /api/attendance/admin/summary` - Admin: Get summary stats
+- `GET /api/attendance/admin/monthly` - Admin: Get monthly report
+- `PATCH /api/attendance/admin/record/{id}` - Admin: Manual correction
+- `GET /api/attendance/admin/offices` - Admin: Get office locations
+- `POST /api/attendance/admin/offices` - Admin: Create office
+- `POST /api/attendance/admin/wfh-assign` - Admin: Assign WFH
+- `POST /api/attendance/admin/leave-assign` - Admin: Assign leave
+- `GET/PATCH /api/attendance/admin/settings` - Admin: Attendance settings
+
+**Database Collections**:
+- `attendance` - Daily attendance records (unique per user/date)
+- `offices` - Office locations with geofence radius
+- `wfh_approvals` - Approved WFH records
+- `wfh_requests` - WFH requests with status
+- `leave_approvals` - Leave records
+- `attendance_audit` - Audit log for corrections
+- `attendance_settings` - Global attendance settings
+
+**Work Modes**: OFFICE, WORK_FROM_HOME, LEAVE
+**Attendance Statuses**: PRESENT, LATE, ABSENT, HALF_DAY, ON_LEAVE, MANUALLY_ADJUSTED
+
+**Features**:
+- Office geofence validation using Haversine distance formula
+- Server-side timestamps only (client time not trusted)
+- Location accuracy validation (default 150m threshold)
+- Configurable office radius (default 150m)
+- Late detection based on configurable time
+- WFH approval workflow
+- Leave management
+- Admin corrections with audit log
+- Cross-platform sync (same record for web and mobile)
+
+**Web Frontend**:
+- `AttendanceCard.js` - Agent attendance card with check-in/out
+- `AttendanceHistory.js` - Agent attendance history view
+- `AdminAttendanceDashboard.js` - Full admin attendance management
+- Integrated into TelecallerDashboard and AdminLayout
+
+**Mobile App**:
+- `AttendanceCard.js` component for DashboardScreen
+- expo-location for GPS access
+- Location permissions added to app.json
+
+---
+
+### Android Call-Log Reliability Fixes (Verified)
   - Generated `android/` folder via `npx expo prebuild`
   - `react-native-call-log` v3.0.0 properly linked
   - Runtime permission prompts with visible error handling

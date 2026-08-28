@@ -191,6 +191,8 @@ async def create_call_log(log: CallLogCreate, current_user: dict = Depends(get_c
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
+    call_type = log.call_type or "outgoing"
+    
     log_doc = {
         "lead_id": log.lead_id,
         "user_id": current_user["id"],
@@ -198,6 +200,7 @@ async def create_call_log(log: CallLogCreate, current_user: dict = Depends(get_c
         "duration": log.duration,
         "outcome": log.outcome,
         "notes": log.notes,
+        "call_type": call_type,
         "created_at": now
     }
     
@@ -205,15 +208,39 @@ async def create_call_log(log: CallLogCreate, current_user: dict = Depends(get_c
     log_doc["_id"] = result.inserted_id
     
     if current_user["role"] == "telecaller":
-        await db.daily_sessions.update_one(
-            {"user_id": current_user["id"], "date": today},
-            {
-                "$inc": {
-                    "calls_made": 1,
-                    "total_call_seconds": log.duration or 0
+        # Update daily session based on call type
+        if call_type == "incoming":
+            # Track incoming calls separately
+            await db.daily_sessions.update_one(
+                {"user_id": current_user["id"], "date": today},
+                {
+                    "$inc": {
+                        "verified_incoming_calls": 1,
+                        "verified_incoming_time_seconds": log.duration or 0,
+                        "total_call_seconds": log.duration or 0
+                    },
+                    "$setOnInsert": {
+                        "user_name": current_user["name"],
+                        "login_time": now,
+                        "calls_made": 0,
+                        "total_form_filling_seconds": 0,
+                        "total_idle_seconds": 0,
+                        "leads_updated": 0
+                    }
+                },
+                upsert=True
+            )
+        else:
+            # Track outgoing calls
+            await db.daily_sessions.update_one(
+                {"user_id": current_user["id"], "date": today},
+                {
+                    "$inc": {
+                        "calls_made": 1,
+                        "total_call_seconds": log.duration or 0
+                    }
                 }
-            }
-        )
+            )
     
     return serialize_doc(log_doc)
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { Phone, Clock, TrendingUp, Target, Loader2, RefreshCw, PhoneOff, PhoneMissed, Calendar } from 'lucide-react';
 import api from '../../services/api';
+import AttendanceCard from '../../components/attendance/AttendanceCard';
 
 const TelecallerDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -111,6 +112,11 @@ const TelecallerDashboard = () => {
         >
           <RefreshCw size={20} className={isRefreshing ? 'animate-spin' : ''} />
         </button>
+      </div>
+
+      {/* Attendance Card - At the top */}
+      <div className="mb-4">
+        <AttendanceCard />
       </div>
 
       {/* Period Filter */}

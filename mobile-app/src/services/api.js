@@ -240,4 +240,35 @@ export const getLeadCallLogs = async (leadId) => {
   return response.data;
 };
 
+// Attendance functions
+export const getTodayAttendance = async () => {
+  const response = await api.get('/attendance/today');
+  return response.data;
+};
+
+export const checkIn = async (locationData) => {
+  const response = await api.post('/attendance/check-in', locationData);
+  return response.data;
+};
+
+export const checkOut = async (locationData) => {
+  const response = await api.post('/attendance/check-out', locationData);
+  return response.data;
+};
+
+export const getAttendanceHistory = async (params = {}) => {
+  const response = await api.get('/attendance/history', { params });
+  return response.data;
+};
+
+export const submitWFHRequest = async (data) => {
+  const response = await api.post('/attendance/wfh-request', data);
+  return response.data;
+};
+
+export const getMyWFHRequests = async () => {
+  const response = await api.get('/attendance/wfh-requests');
+  return response.data;
+};
+
 export default api;
