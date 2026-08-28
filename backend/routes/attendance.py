@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta, date
 from bson import ObjectId
 from typing import Optional, List
 import math
+from zoneinfo import ZoneInfo
 
 from utils.database import db
 from utils.auth import get_current_user, require_admin
@@ -24,6 +25,9 @@ router = APIRouter(prefix="/api/attendance", tags=["Attendance"])
 WORK_MODES = ["OFFICE", "WORK_FROM_HOME", "LEAVE"]
 ATTENDANCE_STATUSES = ["PRESENT", "LATE", "ABSENT", "HALF_DAY", "ON_LEAVE", "MANUALLY_ADJUSTED"]
 
+# IST Timezone
+IST = ZoneInfo("Asia/Kolkata")
+
 # Default attendance settings
 DEFAULT_SETTINGS = {
     "office_start_time": "09:30",
@@ -35,6 +39,26 @@ DEFAULT_SETTINGS = {
     "require_registered_device": False,
     "timezone": "Asia/Kolkata"
 }
+
+def get_ist_now():
+    """Get current time in IST"""
+    return datetime.now(IST)
+
+def utc_to_ist(utc_time):
+    """Convert UTC time to IST"""
+    if utc_time is None:
+        return None
+    if utc_time.tzinfo is None:
+        utc_time = utc_time.replace(tzinfo=timezone.utc)
+    return utc_time.astimezone(IST)
+
+def get_ist_today_range():
+    """Get today's date range in IST (returns UTC datetimes for DB queries)"""
+    ist_now = get_ist_now()
+    ist_today_start = ist_now.replace(hour=0, minute=0, second=0, microsecond=0)
+    ist_today_end = ist_today_start + timedelta(days=1)
+    # Convert back to UTC for database queries
+    return ist_today_start.astimezone(timezone.utc), ist_today_end.astimezone(timezone.utc)
 
 # ===================== HELPER FUNCTIONS =====================
 
@@ -68,10 +92,8 @@ async def get_active_office():
     return await db.offices.find_one({"is_active": True})
 
 async def get_today_attendance(user_id: str):
-    """Get today's attendance record for a user"""
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start + timedelta(days=1)
+    """Get today's attendance record for a user (using IST date boundaries)"""
+    today_start, today_end = get_ist_today_range()
     
     return await db.attendance.find_one({
         "user_id": user_id,
@@ -80,20 +102,26 @@ async def get_today_attendance(user_id: str):
 
 async def get_user_work_mode(user_id: str, target_date: datetime = None):
     """
-    Determine user's work mode for a given date.
+    Determine user's work mode for a given date (uses IST).
     Priority: LEAVE > WFH approval > OFFICE (default)
     """
     if target_date is None:
-        target_date = datetime.now(timezone.utc)
+        target_date = get_ist_now()
     
-    date_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Use IST date boundaries
+    ist_date = utc_to_ist(target_date) if target_date.tzinfo == timezone.utc else target_date
+    date_start = ist_date.replace(hour=0, minute=0, second=0, microsecond=0)
     date_end = date_start + timedelta(days=1)
+    
+    # Convert to UTC for DB queries
+    date_start_utc = date_start.astimezone(timezone.utc)
+    date_end_utc = date_end.astimezone(timezone.utc)
     
     # Check for approved leave
     leave = await db.leave_approvals.find_one({
         "user_id": user_id,
-        "start_date": {"$lte": date_end},
-        "end_date": {"$gte": date_start},
+        "start_date": {"$lte": date_end_utc},
+        "end_date": {"$gte": date_start_utc},
         "status": "APPROVED"
     })
     if leave:
@@ -102,7 +130,7 @@ async def get_user_work_mode(user_id: str, target_date: datetime = None):
     # Check for approved WFH
     wfh = await db.wfh_approvals.find_one({
         "user_id": user_id,
-        "date": {"$gte": date_start, "$lt": date_end},
+        "date": {"$gte": date_start_utc, "$lt": date_end_utc},
         "status": "APPROVED"
     })
     if wfh:
@@ -111,13 +139,14 @@ async def get_user_work_mode(user_id: str, target_date: datetime = None):
     return "OFFICE"
 
 def calculate_attendance_status(check_in_time: datetime, working_minutes: int, settings: dict):
-    """Calculate attendance status based on check-in time and working hours"""
+    """Calculate attendance status based on check-in time (in IST) and working hours"""
     # Parse late_after_time
     late_hour, late_minute = map(int, settings.get("late_after_time", "09:45").split(":"))
     
-    # Get check-in time in local context (simplified - actual implementation should use timezone)
-    check_in_hour = check_in_time.hour
-    check_in_minute = check_in_time.minute
+    # Convert check-in time to IST for accurate late detection
+    check_in_ist = utc_to_ist(check_in_time)
+    check_in_hour = check_in_ist.hour
+    check_in_minute = check_in_ist.minute
     
     is_late = (check_in_hour > late_hour) or (check_in_hour == late_hour and check_in_minute > late_minute)
     
@@ -165,14 +194,17 @@ async def get_today_attendance_status(current_user: dict = Depends(get_current_u
         office = await get_active_office()
     
     now = datetime.now(timezone.utc)
+    ist_now = get_ist_now()
     
     response = {
-        "attendance_date": now.strftime("%Y-%m-%d"),
+        "attendance_date": ist_now.strftime("%Y-%m-%d"),  # IST date
         "work_mode": work_mode,
         "checked_in": False,
         "checked_out": False,
         "check_in_time": None,
         "check_out_time": None,
+        "check_in_time_ist": None,
+        "check_out_time_ist": None,
         "working_minutes": 0,
         "attendance_status": None,
         "office": serialize_doc(office) if office else None,
@@ -181,20 +213,28 @@ async def get_today_attendance_status(current_user: dict = Depends(get_current_u
             "late_after_time": settings.get("late_after_time"),
             "allowed_radius_meters": settings.get("allowed_office_radius_meters"),
         },
-        "server_time": now.isoformat()
+        "server_time": now.isoformat(),
+        "server_time_ist": ist_now.isoformat(),
+        "timezone": "Asia/Kolkata"
     }
     
     if attendance:
+        check_in_ist = utc_to_ist(attendance.get("check_in_time")) if attendance.get("check_in_time") else None
+        check_out_ist = utc_to_ist(attendance.get("check_out_time")) if attendance.get("check_out_time") else None
+        
         response.update({
             "id": str(attendance["_id"]),
             "checked_in": attendance.get("check_in_time") is not None,
             "checked_out": attendance.get("check_out_time") is not None,
             "check_in_time": attendance.get("check_in_time").isoformat() if attendance.get("check_in_time") else None,
             "check_out_time": attendance.get("check_out_time").isoformat() if attendance.get("check_out_time") else None,
+            "check_in_time_ist": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
+            "check_out_time_ist": check_out_ist.strftime("%I:%M %p") if check_out_ist else None,
             "working_minutes": attendance.get("working_minutes", 0),
             "attendance_status": attendance.get("attendance_status"),
             "check_in_distance": attendance.get("check_in_distance_from_office"),
             "work_mode": attendance.get("work_mode", work_mode),
+            "late_minutes": attendance.get("late_minutes", 0),
         })
     
     return response
@@ -251,19 +291,24 @@ async def check_in(data: AttendanceCheckIn, current_user: dict = Depends(get_cur
         
         office_id = str(office["_id"])
     
-    # Calculate late minutes
+    # Calculate late minutes using IST
+    ist_now = get_ist_now()
     late_hour, late_minute = map(int, settings.get("late_after_time", "09:45").split(":"))
-    late_time = now.replace(hour=late_hour, minute=late_minute, second=0, microsecond=0)
-    late_minutes = max(0, int((now - late_time).total_seconds() / 60)) if now > late_time else 0
+    late_time = ist_now.replace(hour=late_hour, minute=late_minute, second=0, microsecond=0)
+    late_minutes = max(0, int((ist_now - late_time).total_seconds() / 60)) if ist_now > late_time else 0
+    
+    # Use IST date for attendance_date (store as start of day in UTC)
+    today_start, _ = get_ist_today_range()
     
     # Create attendance record
     attendance_doc = {
         "user_id": user_id,
         "user_name": current_user["name"],
-        "attendance_date": now.replace(hour=0, minute=0, second=0, microsecond=0),
+        "attendance_date": today_start,
         "work_mode": work_mode,
         "office_id": office_id,
         "check_in_time": now,
+        "check_in_time_ist": ist_now.isoformat(),  # Store IST for display
         "check_in_latitude": data.latitude,
         "check_in_longitude": data.longitude,
         "check_in_accuracy": data.accuracy,
@@ -299,11 +344,13 @@ async def check_in(data: AttendanceCheckIn, current_user: dict = Depends(get_cur
         "success": True,
         "message": "Checked in successfully",
         "check_in_time": now.isoformat(),
+        "check_in_time_ist": ist_now.strftime("%I:%M %p"),  # Formatted IST time
         "work_mode": work_mode,
         "distance_from_office": int(distance_from_office) if distance_from_office else None,
         "attendance_status": attendance_doc["attendance_status"],
         "late_minutes": late_minutes,
-        "server_time": now.isoformat()
+        "server_time": now.isoformat(),
+        "server_time_ist": ist_now.isoformat()
     }
 
 @router.post("/check-out")

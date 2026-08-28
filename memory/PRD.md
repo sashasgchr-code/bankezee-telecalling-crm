@@ -293,13 +293,17 @@ A complete attendance management system integrated into BANKEZEE Connect for bot
 **Features**:
 - Office geofence validation using Haversine distance formula
 - Server-side timestamps only (client time not trusted)
+- **IST Timezone Support** - All late detection and time display uses Asia/Kolkata
 - Location accuracy validation (default 150m threshold)
 - Configurable office radius (default 150m)
-- Late detection based on configurable time
+- Late detection based on configurable time (default 09:45 IST)
 - WFH approval workflow
 - Leave management
 - Admin corrections with audit log
 - Cross-platform sync (same record for web and mobile)
+
+**Office Configured**:
+- BankEzee Hyderabad Office: 17.4381, 78.3996 (150m radius) - ACTIVE
 
 **Web Frontend**:
 - `AttendanceCard.js` - Agent attendance card with check-in/out

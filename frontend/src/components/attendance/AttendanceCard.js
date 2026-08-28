@@ -147,10 +147,12 @@ const AttendanceCard = ({ compact = false }) => {
     }
   };
 
-  const formatTime = (isoString) => {
+  const formatTime = (isoString, istTime = null) => {
+    // Prefer IST time from backend if available
+    if (istTime) return istTime;
     if (!isoString) return '--:--';
     const date = new Date(isoString);
-    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
   };
 
   const formatDuration = (minutes) => {
@@ -225,11 +227,11 @@ const AttendanceCard = ({ compact = false }) => {
               <div className="flex justify-center gap-6 mt-3 text-sm">
                 <div>
                   <p className="text-gray-500">Check In</p>
-                  <p className="font-semibold text-gray-800">{formatTime(attendance.check_in_time)}</p>
+                  <p className="font-semibold text-gray-800">{formatTime(attendance.check_in_time, attendance.check_in_time_ist)}</p>
                 </div>
                 <div>
                   <p className="text-gray-500">Check Out</p>
-                  <p className="font-semibold text-gray-800">{formatTime(attendance.check_out_time)}</p>
+                  <p className="font-semibold text-gray-800">{formatTime(attendance.check_out_time, attendance.check_out_time_ist)}</p>
                 </div>
               </div>
               <div className="mt-3 pt-3 border-t border-gray-200">
@@ -244,7 +246,7 @@ const AttendanceCard = ({ compact = false }) => {
                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
               </div>
               <p className="text-lg font-semibold text-green-700">Working</p>
-              <p className="text-sm text-gray-500">Checked in at {formatTime(attendance.check_in_time)}</p>
+              <p className="text-sm text-gray-500">Checked in at {formatTime(attendance.check_in_time, attendance.check_in_time_ist)}</p>
               {attendance.check_in_distance !== null && (
                 <p className="text-xs text-gray-400 mt-1">
                   <MapPin size={12} className="inline mr-1" />
