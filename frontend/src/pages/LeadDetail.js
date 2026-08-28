@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff, MessageCircle } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff, MessageCircle, Wifi, WifiOff } from 'lucide-react';
 import api from '../services/api';
 import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
 import { format, parseISO } from 'date-fns';
 import useAuthStore from '../store/authStore';
+import PostCallModal from '../components/PostCallModal';
+import { getPendingCount, isOnline, addSyncListener, syncQueue } from '../services/offlineQueue';
 
 const LeadDetail = () => {
   const { id } = useParams();
@@ -24,6 +26,13 @@ const LeadDetail = () => {
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpNotes, setFollowUpNotes] = useState('');
+  
+  // Post-call modal
+  const [showPostCallModal, setShowPostCallModal] = useState(false);
+  
+  // Offline queue state
+  const [pendingQueueCount, setPendingQueueCount] = useState(getPendingCount());
+  const [networkOnline, setNetworkOnline] = useState(isOnline());
 
   // Status options (without 'new' and 'presentation')
   // Flow: Connected → not_interested, follow_up, leads, file
@@ -81,8 +90,17 @@ www.BankEzee.com`;
       setEditData(leadRes.data);
     } catch (error) {
       console.error('Error fetching lead:', error);
-      alert('Lead not found');
-      navigate(-1);
+      // Only navigate away for actual 404 errors, not network errors
+      if (error.response?.status === 404) {
+        alert('Lead not found');
+        navigate(-1);
+      } else if (!error.response) {
+        // Network error (offline) - keep existing data, don't navigate away
+        console.log('Network error while fetching lead - keeping cached data');
+      } else {
+        // Other server errors
+        console.error('Server error:', error.response?.status);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -90,6 +108,23 @@ www.BankEzee.com`;
 
   useEffect(() => {
     fetchData();
+    
+    // Listen for offline queue changes
+    const unsubscribe = addSyncListener((count) => {
+      setPendingQueueCount(count);
+    });
+    
+    // Listen for network status
+    const handleOnline = () => setNetworkOnline(true);
+    const handleOffline = () => setNetworkOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      unsubscribe();
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, [id]);
 
   const handleSave = async () => {
@@ -128,11 +163,32 @@ www.BankEzee.com`;
     if (startCall) {
       startCall(lead);
     } else {
-      let phone = lead.phone.replace(/[^0-9+]/g, '');
+      // Clean phone number
+      let phone = String(lead.phone).split('.')[0].replace(/[^0-9+]/g, '');
       if (!phone.startsWith('+')) {
         phone = '+91' + phone;
       }
+      
+      // Initiate call
       window.location.href = `tel:${phone}`;
+      
+      // Show post-call modal after a short delay (gives time for phone app to open)
+      setTimeout(() => {
+        setShowPostCallModal(true);
+      }, 1000);
+    }
+  };
+  
+  const handlePostCallLogged = () => {
+    fetchData(); // Refresh lead data
+  };
+  
+  const handleManualSync = async () => {
+    if (pendingQueueCount > 0 && networkOnline) {
+      const result = await syncQueue();
+      if (result.synced > 0) {
+        fetchData(); // Refresh data after sync
+      }
     }
   };
 
@@ -176,6 +232,34 @@ www.BankEzee.com`;
 
   return (
     <div className="min-h-screen bg-gray-50" data-testid="lead-detail">
+      {/* Offline/Pending Sync Banner */}
+      {(!networkOnline || pendingQueueCount > 0) && (
+        <div className={`px-4 py-2 flex items-center justify-between ${
+          networkOnline ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'
+        }`}>
+          <div className="flex items-center gap-2">
+            {networkOnline ? (
+              <Wifi size={16} />
+            ) : (
+              <WifiOff size={16} />
+            )}
+            <span className="text-sm font-medium">
+              {!networkOnline 
+                ? 'You are offline' 
+                : `${pendingQueueCount} call${pendingQueueCount !== 1 ? 's' : ''} pending sync`}
+            </span>
+          </div>
+          {networkOnline && pendingQueueCount > 0 && (
+            <button
+              onClick={handleManualSync}
+              className="text-sm font-semibold underline hover:no-underline"
+            >
+              Sync Now
+            </button>
+          )}
+        </div>
+      )}
+      
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="flex items-center justify-between p-4">
@@ -429,37 +513,49 @@ www.BankEzee.com`;
 
         {/* Action Buttons */}
         {!isEditing && (
-          <div className="flex gap-3">
-            <button
-              onClick={handleCall}
-              className="flex-1 btn-primary py-3 flex items-center justify-center gap-2"
-              data-testid="call-lead-btn"
-            >
-              <Phone size={20} />
-              Call Now
-            </button>
-            <button
-              onClick={handleWhatsApp}
-              className="flex-1 py-3 flex items-center justify-center gap-2 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
-              data-testid="whatsapp-lead-btn"
-            >
-              <MessageCircle size={20} />
-              WhatsApp
-            </button>
-            <button
-              onClick={() => {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                tomorrow.setHours(10, 0, 0, 0);
-                setFollowUpDate(tomorrow.toISOString().slice(0, 16));
-                setShowFollowUp(true);
-              }}
-              className="flex-1 btn-secondary py-3 flex items-center justify-center gap-2"
-              data-testid="schedule-followup-btn"
-            >
-              <Calendar size={20} />
-              Follow-up
-            </button>
+          <div className="space-y-3">
+            <div className="flex gap-3">
+              <button
+                onClick={handleCall}
+                className="flex-1 btn-primary py-3 flex items-center justify-center gap-2"
+                data-testid="call-lead-btn"
+              >
+                <Phone size={20} />
+                Call Now
+              </button>
+              <button
+                onClick={handleWhatsApp}
+                className="flex-1 py-3 flex items-center justify-center gap-2 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
+                data-testid="whatsapp-lead-btn"
+              >
+                <MessageCircle size={20} />
+                WhatsApp
+              </button>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPostCallModal(true)}
+                className="flex-1 py-3 flex items-center justify-center gap-2 bg-blue-500 text-white font-semibold rounded-xl hover:bg-blue-600 transition-colors"
+                data-testid="log-call-btn"
+              >
+                <Clock size={20} />
+                Log Call
+              </button>
+              <button
+                onClick={() => {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  tomorrow.setHours(10, 0, 0, 0);
+                  setFollowUpDate(tomorrow.toISOString().slice(0, 16));
+                  setShowFollowUp(true);
+                }}
+                className="flex-1 btn-secondary py-3 flex items-center justify-center gap-2"
+                data-testid="schedule-followup-btn"
+              >
+                <Calendar size={20} />
+                Follow-up
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -498,6 +594,14 @@ www.BankEzee.com`;
           </div>
         </div>
       )}
+      
+      {/* Post-Call Modal */}
+      <PostCallModal
+        isOpen={showPostCallModal}
+        onClose={() => setShowPostCallModal(false)}
+        lead={lead}
+        onCallLogged={handlePostCallLogged}
+      />
     </div>
   );
 };

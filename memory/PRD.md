@@ -250,17 +250,41 @@ Benefits:
 2. `/app/frontend/src/pages/admin/Dashboard.js` - Admin dashboard
 3. `/app/frontend/src/pages/admin/Reports.js` - Reports with 4 tabs
 4. `/app/frontend/src/components/VerifiedCallStats.js` - Verified call stats component
-5. `/app/frontend/src/components/CallModal.js` - Call outcome modal
-6. `/app/mobile-app/` - Complete React Native mobile app
+5. `/app/frontend/src/components/CallModal.js` - Call outcome modal (for active call flow)
+6. `/app/frontend/src/components/PostCallModal.js` - **NEW** Post-call logging modal for LeadDetail
+7. `/app/frontend/src/services/offlineQueue.js` - **NEW** Offline queue service for call logs
+8. `/app/frontend/src/pages/LeadDetail.js` - Lead detail page with post-call and offline support
+9. `/app/mobile-app/` - Complete React Native mobile app
+10. `/app/mobile-app/src/services/callLogService.js` - Native call log handling with diagnostics
 
-## Recent Changes (Aug 27, 2026)
+## Recent Changes (Aug 28, 2026)
+- **Android Call-Log Reliability Fixes**: Implemented Expo Prebuild for native module support
+  - Generated `android/` folder via `npx expo prebuild`
+  - `react-native-call-log` v3.0.0 properly linked
+  - Runtime permission prompts with visible error handling
+  - Diagnostics UI on Dashboard for troubleshooting
+  - Post-call modal fetches actual duration from Android OS call log
+- **Post-Call Modal on Web**: Added `PostCallModal.js` component to LeadDetail page
+  - Duration input (manual entry for web)
+  - Call outcome selection (Connected, No Answer, Not Connecting, Busy, Wrong Number, Voicemail)
+  - Optional status update
+  - Schedule follow-up option for connected calls
+  - Triggered automatically after clicking "Call Now" or manually via "Log Call" button
+- **Offline Queue Service**: Added `offlineQueue.js` for offline call logging
+  - Queues call logs to localStorage when offline
+  - Auto-syncs when connection is restored
+  - Visual offline banner on LeadDetail page
+  - Manual "Sync Now" button when items are pending
+- **Status Flow**: Connected → Not Interested, Follow Up, Lead, File (agent can later change to Lead/File)
+
+## Previous Changes (Aug 27, 2026)
 - **Mobile Dashboard Enhanced**: Added date filters, trophy icon with Files count, Status Breakdown, Call Outcomes
 - **Status Options Simplified**: Removed 'New' and 'Presentation' from status breakdown and edit options
-- **Status Flow**: Connected → Not Interested, Follow Up, Lead, File (agent can later change to Lead/File)
 - **Stats Activity-Based**: Counts based on activity date, not data creation date
 
 ## Next Steps for New Agent
-1. Help user build and distribute the Android APK
+1. Help user build and distribute the Android APK (EAS Build)
 2. Test call log sync with actual devices
-3. Consider refactoring large files (server.py, Reports.js)
+3. Consider refactoring large files (Reports.js > 1700 lines, DailyTrackingSheet.js > 800 lines)
+4. Web/Mobile feature parity: Add incoming call tracking to web app
 

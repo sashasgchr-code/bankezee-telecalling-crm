@@ -309,7 +309,7 @@ async def sync_device_call_logs(
                 call_timestamp = datetime.fromisoformat(device_log.timestamp.replace('Z', '+00:00'))
                 if call_timestamp.tzinfo is None:
                     call_timestamp = call_timestamp.replace(tzinfo=timezone.utc)
-            except:
+            except (ValueError, AttributeError):
                 call_timestamp = datetime.now(timezone.utc)
             
             # Check if we already have this verified call log

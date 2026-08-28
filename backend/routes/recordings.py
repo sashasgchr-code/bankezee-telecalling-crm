@@ -42,7 +42,7 @@ async def upload_recording(data: RecordingUpload, current_user: dict = Depends(g
         # Parse recorded_at timestamp
         try:
             recorded_at = datetime.fromisoformat(data.recorded_at.replace('Z', '+00:00'))
-        except:
+        except (ValueError, AttributeError):
             recorded_at = datetime.now(timezone.utc)
         
         # Create recording document
@@ -71,7 +71,7 @@ async def upload_recording(data: RecordingUpload, current_user: dict = Depends(g
                     "last_recording_id": str(result.inserted_id)
                 }}
             )
-        except:
+        except Exception:
             pass  # Lead might not exist anymore
         
         return {
@@ -111,13 +111,13 @@ async def list_recordings(
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             end = datetime.fromisoformat(end_date.replace('Z', '+00:00')) + timedelta(days=1)
             query["recorded_at"] = {"$gte": start, "$lt": end}
-        except:
+        except (ValueError, AttributeError):
             pass
     elif start_date:
         try:
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             query["recorded_at"] = {"$gte": start}
-        except:
+        except (ValueError, AttributeError):
             pass
     
     # Fetch recordings without the actual audio data
@@ -141,7 +141,7 @@ async def get_recording_stats(
         try:
             start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
             end = datetime.fromisoformat(end_date.replace('Z', '+00:00')) + timedelta(days=1)
-        except:
+        except (ValueError, AttributeError):
             start = now.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start + timedelta(days=1)
     else:

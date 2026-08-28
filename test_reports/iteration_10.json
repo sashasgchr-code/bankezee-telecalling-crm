@@ -1,0 +1,42 @@
+{
+  "summary": "Frontend E2E testing of PostCallModal + offlineQueue on LeadDetail page. Logged in as agent@test.com, opened a lead, verified Log Call button opens PostCallModal, filled duration/outcome (Connected)/notes, saved, and confirmed entry appears in Call History with correct duration (2m 15s) and Connected badge on the lead. Then simulated offline via Playwright context.set_offline(True): offline banner rendered in both LeadDetail page and modal, saving a call log persisted item in localStorage (offline_call_queue key). Restored online and confirmed auto-sync fired ('Back online, syncing queue' -> 'Synced' -> queue length = 0). All requested features are working.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "LeadDetail refetch after offline call log", "issue": "When onCallLogged fires while offline, LeadDetail.fetchData hits Network Error and shows alert('Lead not found') then navigates back (line 93-95 of LeadDetail.js). The lead does exist; failure is only due to being offline. UX should skip refetch when !networkOnline or handle network error gracefully instead of navigating away.", "affected_selectors": ["[data-testid=\"lead-detail\"]"]}
+    ],
+    "design_issues": []
+  },
+  "verification_performed": [
+    "Login as agent@test.com/agent123 -> /agent",
+    "Opened lead card -> /agent/leads/{id}",
+    "Clicked [data-testid=log-call-btn] -> PostCallModal opened",
+    "Selected outcome-connected, filled duration 2m15s, notes 'TEST_ automated call log note', clicked save-call-log-btn",
+    "Verified new Call History row 'Connected' with '2m 15s' and note text",
+    "Verified 'Connected' badge shown on lead header",
+    "context.set_offline(True) + dispatched 'offline' event -> navigator.onLine=false, offline banner visible on both LeadDetail and PostCallModal",
+    "Saved another call log while offline -> localStorage.offline_call_queue contains 1 item with correct callLogData/statusUpdateData/leadId/retryCount:0",
+    "context.set_offline(False) + dispatched 'online' event -> auto-sync ran, console: 'Back online, syncing queue', 'Synced: call_...', queue length=0",
+    "Console logs confirm queueCallLog, syncQueue, processQueueItem all worked as expected"
+  ],
+  "test_report_links": [],
+  "action_items": [
+    "Handle offline network errors in LeadDetail.fetchData: do not alert 'Lead not found' and navigate(-1) when navigator.onLine=false or when error has no response (network error). Instead, keep existing lead state and log/toast the sync status."
+  ],
+  "critical_code_review_comments": [
+    "LeadDetail.js fetchData treats every fetch failure as 'Lead not found' -> forced back-navigation. Distinguish 404 from network errors (error.response?.status === 404).",
+    "offlineQueue.js starts auto-sync at module import (side effect on `if (typeof window !== 'undefined')`). This runs even on the login screen for unauthenticated users; consider starting it in an app-level provider after auth is established to avoid spurious 401s on the queue endpoints.",
+    "PostCallModal.js: `parseInt(e.target.value || 0)` should pass a radix and guard NaN (e.g., `parseInt(v, 10) || 0`) to avoid NaN duration when field is cleared.",
+    "PostCallModal.js: uses native `alert()` for offline confirmation and errors -- inconsistent with the rest of the app that uses toasts; consider swapping to the existing toast system.",
+    "offlineQueue.js: `substr` is deprecated; use `slice` or `crypto.randomUUID()` for queue item IDs."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% (all 8 feature requirements verified end-to-end)"},
+  "test_credentials": "agent@test.com / agent123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None (used existing 'Test Customer' lead). Test call log 'TEST_ automated call log note' was saved to backend and 'TEST_ offline queued call' was queued offline then synced.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "PostCallModal & offlineQueue are functionally complete and verified via Playwright with real backend. The only issue found is a UX bug where LeadDetail refetch after an offline log-call causes navigate(-1) due to Network Error being mis-treated as 404. Two TEST_ prefixed call logs were created against lead 6a8e98b345f946c3fd02baf0 (Test Customer) - clean up if needed via /api/call-logs.",
+  "rca of the issue": "LeadDetail.js lines 82-98: `fetchData` catches ANY axios error and unconditionally alerts 'Lead not found' + navigates back. When user saves a call log while offline, PostCallModal calls onCallLogged -> fetchData -> axios throws Network Error (no response) -> caught -> user is bounced off the LeadDetail page. Fix: `if (error.response?.status === 404) { alert('Lead not found'); navigate(-1); } else { console.error(error); }`."
+}
