@@ -256,7 +256,7 @@ async def get_detailed_call_report(
     limit: int = 500,
     current_user: dict = Depends(require_admin)
 ):
-    """Get detailed call report - optimized with aggregation and pagination"""
+    """Get detailed call report - includes both manual call logs and verified mobile call logs"""
     start_date, end_date, _ = get_date_range("today", from_date, to_date)
     
     match_stage = {}
@@ -287,8 +287,11 @@ async def get_detailed_call_report(
             "user_id": 1,
             "outcome": 1,
             "duration": 1,
+            "duration_seconds": 1,
             "form_filling_seconds": 1,
             "notes": 1,
+            "source": 1,
+            "is_verified": 1,
             "lead_name": {"$ifNull": ["$lead.name", "Unknown"]},
             "lead_phone": {"$ifNull": ["$lead.phone", ""]},
             "lead_email": {"$ifNull": ["$lead.email", ""]},
@@ -298,12 +301,57 @@ async def get_detailed_call_report(
         }}
     ]
     
+    # Get calls from main call_logs collection
     call_logs = await db.call_logs.aggregate(pipeline).to_list(limit)
     
+    # Also get verified mobile call logs
+    verified_match = {}
+    if start_date and end_date:
+        verified_match["call_timestamp"] = {"$gte": start_date, "$lt": end_date}
+    elif start_date:
+        verified_match["call_timestamp"] = {"$gte": start_date}
+    
+    if telecaller_id and telecaller_id != "all":
+        verified_match["user_id"] = telecaller_id
+    
+    verified_pipeline = [
+        {"$match": verified_match},
+        {"$sort": {"call_timestamp": -1}},
+        {"$limit": limit},
+        {"$addFields": {"lead_oid": {"$toObjectId": "$lead_id"}}},
+        {"$lookup": {
+            "from": "leads",
+            "localField": "lead_oid",
+            "foreignField": "_id",
+            "as": "lead"
+        }},
+        {"$unwind": {"path": "$lead", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "id": {"$toString": "$_id"},
+            "call_timestamp": 1,
+            "user_name": 1,
+            "user_id": 1,
+            "call_type": 1,
+            "duration_seconds": 1,
+            "phone_number": 1,
+            "lead_name": {"$ifNull": ["$lead.name", "Unknown"]},
+            "lead_phone": {"$ifNull": ["$lead.phone", ""]},
+            "lead_email": {"$ifNull": ["$lead.email", ""]},
+            "lead_city": {"$ifNull": ["$lead.city", ""]},
+            "lead_source": {"$ifNull": ["$lead.source", ""]},
+            "lead_status": {"$ifNull": ["$lead.status", ""]}
+        }}
+    ]
+    
+    verified_logs = await db.verified_call_logs.aggregate(verified_pipeline).to_list(limit)
+    
     detailed_calls = []
+    
+    # Process main call logs
     for log in call_logs:
         call_time = log.get("created_at")
         call_time_ist = convert_to_ist(call_time) if call_time else None
+        duration = log.get("duration") or log.get("duration_seconds") or 0
         
         detailed_calls.append({
             "id": log.get("id", ""),
@@ -318,12 +366,58 @@ async def get_detailed_call_report(
             "customer_source": log.get("lead_source", ""),
             "lead_status": log.get("lead_status", ""),
             "call_outcome": log.get("outcome", ""),
-            "call_duration_seconds": log.get("duration", 0) or 0,
-            "call_duration_formatted": format_duration(log.get("duration", 0) or 0),
+            "call_duration_seconds": duration,
+            "call_duration_formatted": format_duration(duration),
             "form_filling_seconds": log.get("form_filling_seconds", 0) or 0,
             "form_filling_formatted": format_duration(log.get("form_filling_seconds", 0) or 0),
             "notes": log.get("notes", ""),
+            "source": log.get("source", "web"),
+            "is_verified": log.get("is_verified", False),
         })
+    
+    # Process verified call logs (from mobile sync)
+    for log in verified_logs:
+        call_time = log.get("call_timestamp")
+        call_time_ist = convert_to_ist(call_time) if call_time else None
+        duration = log.get("duration_seconds") or 0
+        
+        # Map call_type to outcome
+        call_type = log.get("call_type", "")
+        outcome_map = {
+            "outgoing": "connected" if duration > 0 else "no_answer",
+            "incoming": "connected" if duration > 0 else "missed",
+            "missed": "no_answer",
+            "rejected": "not_connecting"
+        }
+        outcome = outcome_map.get(call_type, "unknown")
+        
+        detailed_calls.append({
+            "id": log.get("id", ""),
+            "call_date": call_time_ist.strftime("%Y-%m-%d") if call_time_ist else "",
+            "call_time": call_time_ist.strftime("%I:%M %p") if call_time_ist else "",
+            "caller_name": log.get("user_name", "Unknown"),
+            "caller_id": log.get("user_id", ""),
+            "customer_name": log.get("lead_name", "Unknown"),
+            "customer_phone": log.get("lead_phone") or log.get("phone_number", ""),
+            "customer_email": log.get("lead_email", ""),
+            "customer_city": log.get("lead_city", ""),
+            "customer_source": log.get("lead_source", ""),
+            "lead_status": log.get("lead_status", ""),
+            "call_outcome": outcome,
+            "call_duration_seconds": duration,
+            "call_duration_formatted": format_duration(duration),
+            "form_filling_seconds": 0,
+            "form_filling_formatted": "0:00",
+            "notes": "",
+            "source": "mobile",
+            "is_verified": True,
+        })
+    
+    # Sort all calls by date/time descending
+    detailed_calls.sort(key=lambda x: (x["call_date"], x["call_time"]), reverse=True)
+    
+    # Limit total results
+    detailed_calls = detailed_calls[:limit]
     
     return {
         "calls": detailed_calls,

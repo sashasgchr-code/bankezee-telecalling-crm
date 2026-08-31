@@ -114,9 +114,15 @@ const DataScreen = ({ user }) => {
       setAllLeads(allResponse);
       calculateStatusCounts(allResponse);
 
-      // Then load filtered leads
+      // Build params for filtered/searched leads
       let params = {};
-      if (applyFilters) {
+      
+      // If searching, pass search to backend for server-side search
+      if (searchQuery && searchQuery.trim().length >= 2) {
+        params.search = searchQuery.trim();
+        // When searching, ignore other filters to search across all data
+      } else if (applyFilters) {
+        // Apply filters only when not searching
         if (statusFilter !== 'all') {
           params.status = statusFilter;
         }
@@ -130,7 +136,14 @@ const DataScreen = ({ user }) => {
       
       const response = await getLeads(params);
       setLeads(response);
-      filterLeads(response, searchQuery);
+      
+      // If server-side search was used, use results directly
+      // Otherwise apply client-side filtering for immediate feedback
+      if (searchQuery && searchQuery.trim().length >= 2) {
+        setFilteredLeads(response);
+      } else {
+        filterLeads(response, searchQuery);
+      }
     } catch (error) {
       console.error('Error loading leads:', error);
     } finally {
@@ -162,12 +175,6 @@ const DataScreen = ({ user }) => {
     loadTelecallers();
   }, []);
 
-  useEffect(() => {
-    if (filtersLoaded.current) {
-      loadLeads();
-    }
-  }, [statusFilter, outcomeFilter, selectedTelecaller]);
-
   const filterLeads = (leadsData, query) => {
     if (!query) {
       setFilteredLeads(leadsData);
@@ -187,8 +194,25 @@ const DataScreen = ({ user }) => {
   };
 
   useEffect(() => {
-    filterLeads(leads, searchQuery);
-  }, [searchQuery, leads]);
+    // For short queries, do client-side filtering for quick feedback
+    if (!searchQuery || searchQuery.trim().length < 2) {
+      filterLeads(leads, searchQuery);
+    }
+    // For longer queries, debounce and trigger server-side search
+    else {
+      const debounceTimer = setTimeout(() => {
+        loadLeads();
+      }, 500); // Wait 500ms after user stops typing
+      return () => clearTimeout(debounceTimer);
+    }
+  }, [searchQuery]);
+
+  // Reload when filters change (but not search - that's handled above)
+  useEffect(() => {
+    if (filtersLoaded.current && (!searchQuery || searchQuery.trim().length < 2)) {
+      loadLeads();
+    }
+  }, [statusFilter, outcomeFilter, selectedTelecaller]);
 
   const onRefresh = async () => {
     setRefreshing(true);

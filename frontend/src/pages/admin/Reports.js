@@ -1720,7 +1720,7 @@ const AdminReports = () => {
                           <th className="text-left py-3 px-3 font-bold text-gray-800 border-b-2 border-gray-300 min-w-[100px]">City</th>
                           <th className="text-center py-3 px-3 font-bold text-orange-600 border-b-2 border-gray-300 min-w-[110px]">Call Outcome</th>
                           <th className="text-center py-3 px-3 font-bold text-purple-600 border-b-2 border-gray-300 min-w-[80px]">Duration</th>
-                          <th className="text-center py-3 px-3 font-bold text-pink-600 border-b-2 border-gray-300 min-w-[80px]">Form Time</th>
+                          <th className="text-center py-3 px-3 font-bold text-indigo-600 border-b-2 border-gray-300 min-w-[70px]">Source</th>
                           <th className="text-center py-3 px-3 font-bold text-teal-600 border-b-2 border-gray-300 min-w-[100px]">Lead Status</th>
                         </tr>
                       </thead>
@@ -1749,8 +1749,12 @@ const AdminReports = () => {
                             <td className="py-2 px-3 border-b border-gray-200 text-center font-medium text-purple-700">
                               {call.call_duration_formatted || '0s'}
                             </td>
-                            <td className="py-2 px-3 border-b border-gray-200 text-center font-medium text-pink-600">
-                              {call.form_filling_formatted || '0s'}
+                            <td className="py-2 px-3 border-b border-gray-200 text-center">
+                              <span className={`inline-block px-2 py-1 rounded-full text-xs font-semibold ${
+                                call.source === 'mobile' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                {call.source === 'mobile' ? '📱 Mobile' : '💻 Web'}
+                              </span>
                             </td>
                             <td className="py-2 px-3 border-b border-gray-200 text-center">
                               <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
