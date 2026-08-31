@@ -166,8 +166,36 @@ const AttendanceCard = () => {
 
   const formatTime = (isoString) => {
     if (!isoString) return '--:--';
-    const date = new Date(isoString);
-    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    try {
+      const date = new Date(isoString);
+      // Use Intl.DateTimeFormat with Asia/Kolkata timezone for consistent IST display
+      return new Intl.DateTimeFormat('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      }).format(date);
+    } catch (e) {
+      // Fallback to toLocaleTimeString
+      const date = new Date(isoString);
+      return date.toLocaleTimeString('en-IN', { 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      });
+    }
+  };
+
+  // Get display time - prefer pre-formatted IST time from API
+  const getDisplayTime = (field) => {
+    // Check for pre-formatted IST time from API (e.g., check_in_time_ist)
+    const istField = `${field}_ist`;
+    if (attendance && attendance[istField]) {
+      return attendance[istField];
+    }
+    // Fallback to formatting UTC time with IST timezone
+    return attendance ? formatTime(attendance[field]) : '--:--';
   };
 
   const formatDuration = (minutes) => {
@@ -234,11 +262,11 @@ const AttendanceCard = () => {
               <View style={styles.timeRow}>
                 <View style={styles.timeItem}>
                   <Text style={styles.timeLabel}>Check In</Text>
-                  <Text style={styles.timeValue}>{formatTime(attendance.check_in_time)}</Text>
+                  <Text style={styles.timeValue}>{getDisplayTime('check_in_time')}</Text>
                 </View>
                 <View style={styles.timeItem}>
                   <Text style={styles.timeLabel}>Check Out</Text>
-                  <Text style={styles.timeValue}>{formatTime(attendance.check_out_time)}</Text>
+                  <Text style={styles.timeValue}>{getDisplayTime('check_out_time')}</Text>
                 </View>
               </View>
               <View style={styles.durationContainer}>
@@ -253,7 +281,7 @@ const AttendanceCard = () => {
                 <View style={styles.pulsingDot} />
               </View>
               <Text style={styles.workingText}>🟢 CHECKED IN</Text>
-              <Text style={styles.checkInTime}>{formatTime(attendance.check_in_time)}</Text>
+              <Text style={styles.checkInTime}>{getDisplayTime('check_in_time')}</Text>
               {attendance.check_in_distance !== null && (
                 <Text style={styles.distanceText}>📍 {attendance.check_in_distance}m from office</Text>
               )}

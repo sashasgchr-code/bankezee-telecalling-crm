@@ -388,6 +388,9 @@ async def check_out(data: AttendanceCheckOut, current_user: dict = Depends(get_c
     
     # Calculate working minutes
     check_in_time = attendance["check_in_time"]
+    # Ensure check_in_time is timezone-aware
+    if check_in_time.tzinfo is None:
+        check_in_time = check_in_time.replace(tzinfo=timezone.utc)
     working_seconds = (now - check_in_time).total_seconds()
     working_minutes = int(working_seconds / 60)
     
@@ -418,16 +421,23 @@ async def check_out(data: AttendanceCheckOut, current_user: dict = Depends(get_c
         {"$set": update_data}
     )
     
+    # Convert times to IST for display
+    ist_now = get_ist_now()
+    check_in_ist = utc_to_ist(check_in_time)
+    
     return {
         "success": True,
         "message": "Checked out successfully",
         "check_in_time": check_in_time.isoformat(),
+        "check_in_time_ist": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
         "check_out_time": now.isoformat(),
+        "check_out_time_ist": ist_now.strftime("%I:%M %p"),  # Formatted IST time
         "working_minutes": working_minutes,
         "working_hours": f"{working_minutes // 60}h {working_minutes % 60}m",
         "attendance_status": attendance_status,
         "distance_from_office": int(distance_from_office) if distance_from_office else None,
-        "server_time": now.isoformat()
+        "server_time": now.isoformat(),
+        "server_time_ist": ist_now.isoformat()
     }
 
 @router.get("/history")
@@ -453,7 +463,20 @@ async def get_attendance_history(
     cursor = db.attendance.find(query).sort("attendance_date", -1).limit(limit)
     records = await cursor.to_list(length=limit)
     
-    return [serialize_doc(r) for r in records]
+    # Add IST formatted times to each record
+    result = []
+    for r in records:
+        doc = serialize_doc(r)
+        # Add IST formatted times
+        if r.get("check_in_time"):
+            check_in_ist = utc_to_ist(r["check_in_time"])
+            doc["check_in_time_ist"] = check_in_ist.strftime("%I:%M %p") if check_in_ist else None
+        if r.get("check_out_time"):
+            check_out_ist = utc_to_ist(r["check_out_time"])
+            doc["check_out_time_ist"] = check_out_ist.strftime("%I:%M %p") if check_out_ist else None
+        result.append(doc)
+    
+    return result
 
 @router.post("/wfh-request")
 async def submit_wfh_request(data: WFHRequest, current_user: dict = Depends(get_current_user)):
@@ -528,7 +551,20 @@ async def admin_get_today_attendance(
     cursor = db.attendance.find(query).sort("check_in_time", -1)
     records = await cursor.to_list(length=500)
     
-    return [serialize_doc(r) for r in records]
+    # Add IST formatted times to each record for admin display
+    result = []
+    for r in records:
+        doc = serialize_doc(r)
+        # Add IST formatted times
+        if r.get("check_in_time"):
+            check_in_ist = utc_to_ist(r["check_in_time"])
+            doc["check_in_time_ist"] = check_in_ist.strftime("%I:%M %p") if check_in_ist else None
+        if r.get("check_out_time"):
+            check_out_ist = utc_to_ist(r["check_out_time"])
+            doc["check_out_time_ist"] = check_out_ist.strftime("%I:%M %p") if check_out_ist else None
+        result.append(doc)
+    
+    return result
 
 @router.get("/admin/summary")
 async def admin_get_attendance_summary(
@@ -681,7 +717,15 @@ async def admin_get_monthly_attendance(
         elif work_mode == "WORK_FROM_HOME":
             stats["wfh_days"] += 1
         
-        stats["records"].append(serialize_doc(record))
+        # Add IST formatted times to record
+        rec_doc = serialize_doc(record)
+        if record.get("check_in_time"):
+            check_in_ist = utc_to_ist(record["check_in_time"])
+            rec_doc["check_in_time_ist"] = check_in_ist.strftime("%I:%M %p") if check_in_ist else None
+        if record.get("check_out_time"):
+            check_out_ist = utc_to_ist(record["check_out_time"])
+            rec_doc["check_out_time_ist"] = check_out_ist.strftime("%I:%M %p") if check_out_ist else None
+        stats["records"].append(rec_doc)
     
     # Calculate averages
     for uid, stats in user_stats.items():
@@ -1063,15 +1107,20 @@ async def admin_export_attendance(
     cursor = db.attendance.find(query).sort([("user_name", 1), ("attendance_date", 1)])
     records = await cursor.to_list(length=5000)
     
-    # Format for export
+    # Format for export with IST times
     export_data = []
     for r in records:
+        # Convert times to IST for display
+        check_in_ist = utc_to_ist(r.get("check_in_time")) if r.get("check_in_time") else None
+        check_out_ist = utc_to_ist(r.get("check_out_time")) if r.get("check_out_time") else None
+        attendance_date_ist = utc_to_ist(r.get("attendance_date")) if r.get("attendance_date") else None
+        
         export_data.append({
             "Employee": r.get("user_name", "Unknown"),
-            "Date": r.get("attendance_date").strftime("%Y-%m-%d") if r.get("attendance_date") else "",
+            "Date": attendance_date_ist.strftime("%Y-%m-%d") if attendance_date_ist else "",
             "Work Mode": r.get("work_mode", ""),
-            "Check In": r.get("check_in_time").strftime("%H:%M:%S") if r.get("check_in_time") else "",
-            "Check Out": r.get("check_out_time").strftime("%H:%M:%S") if r.get("check_out_time") else "",
+            "Check In (IST)": check_in_ist.strftime("%I:%M %p") if check_in_ist else "",
+            "Check Out (IST)": check_out_ist.strftime("%I:%M %p") if check_out_ist else "",
             "Working Hours": f"{r.get('working_minutes', 0) // 60}h {r.get('working_minutes', 0) % 60}m",
             "Status": r.get("attendance_status", ""),
             "Late Minutes": r.get("late_minutes", 0),

@@ -46,10 +46,23 @@ const AttendanceHistory = () => {
     fetchHistory();
   }, [month, year]);
 
-  const formatTime = (isoString) => {
+  const formatTime = (isoString, istTimeFormatted = null) => {
+    // Prefer pre-formatted IST time from API if available
+    if (istTimeFormatted) return istTimeFormatted;
     if (!isoString) return '--:--';
-    const date = new Date(isoString);
-    return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    try {
+      const date = new Date(isoString);
+      // Use Intl.DateTimeFormat with Asia/Kolkata timezone for consistent IST display
+      return new Intl.DateTimeFormat('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      }).format(date);
+    } catch (e) {
+      const date = new Date(isoString);
+      return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
   };
 
   const formatDate = (isoString) => {
@@ -196,13 +209,13 @@ const AttendanceHistory = () => {
                     <div className="mt-3 flex items-center gap-4 text-sm text-gray-600 pl-13">
                       <div className="flex items-center gap-1">
                         <Clock size={14} className="text-green-500" />
-                        <span>In: {formatTime(record.check_in_time)}</span>
+                        <span>In: {formatTime(record.check_in_time, record.check_in_time_ist)}</span>
                       </div>
                       {record.check_out_time && (
                         <>
                           <div className="flex items-center gap-1">
                             <Clock size={14} className="text-red-500" />
-                            <span>Out: {formatTime(record.check_out_time)}</span>
+                            <span>Out: {formatTime(record.check_out_time, record.check_out_time_ist)}</span>
                           </div>
                           <div className="flex items-center gap-1 font-medium text-gray-900">
                             <span>{formatDuration(record.working_minutes)}</span>

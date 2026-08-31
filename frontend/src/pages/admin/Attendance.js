@@ -215,7 +215,29 @@ const AdminAttendanceDashboard = () => {
 
   const formatTime = (isoString) => {
     if (!isoString) return '--:--';
-    return format(parseISO(isoString), 'hh:mm a');
+    // Use Intl.DateTimeFormat with Asia/Kolkata timezone for consistent IST display
+    try {
+      const date = parseISO(isoString);
+      return new Intl.DateTimeFormat('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      }).format(date);
+    } catch (e) {
+      return format(parseISO(isoString), 'hh:mm a');
+    }
+  };
+
+  // Format time using pre-formatted IST string from API (preferred)
+  const getDisplayTime = (record, field) => {
+    // Prefer the pre-formatted IST time from API
+    const istField = `${field}_ist`;
+    if (record[istField]) {
+      return record[istField];
+    }
+    // Fallback to formatting UTC time with IST timezone
+    return formatTime(record[field]);
   };
 
   const filteredRecords = records.filter(record => {
@@ -461,8 +483,8 @@ const AdminAttendanceDashboard = () => {
                           <span className="text-sm">{modeConfig.label}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm">{formatTime(record.check_in_time)}</td>
-                      <td className="px-4 py-3 text-sm">{formatTime(record.check_out_time)}</td>
+                      <td className="px-4 py-3 text-sm">{getDisplayTime(record, 'check_in_time')}</td>
+                      <td className="px-4 py-3 text-sm">{getDisplayTime(record, 'check_out_time')}</td>
                       <td className="px-4 py-3 text-sm font-medium">
                         {record.working_minutes ? `${Math.floor(record.working_minutes / 60)}h ${record.working_minutes % 60}m` : '-'}
                       </td>

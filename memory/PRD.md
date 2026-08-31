@@ -344,6 +344,57 @@ A complete attendance management system integrated into BANKEZEE Connect for bot
 
 ## Recent Changes (Aug 31, 2026)
 
+### Attendance TIME Timezone Bug Fix - COMPLETED ✅
+
+**Root Cause Analysis:**
+The attendance times were displaying in UTC instead of IST because:
+1. Backend stored timestamps in UTC (correct behavior)
+2. Backend returned raw UTC ISO strings without IST formatted versions
+3. Frontend used `date-fns format()` or `toLocaleTimeString()` without specifying `timeZone: 'Asia/Kolkata'`
+
+**Solution Implemented:**
+1. **Backend** now returns pre-formatted IST times in API responses:
+   - `check_in_time_ist`: "03:17 PM" (formatted IST string)
+   - `check_out_time_ist`: "06:15 PM" (formatted IST string)
+   - Uses `utc_to_ist()` helper function with `zoneinfo("Asia/Kolkata")`
+
+2. **Frontend** (Web + Mobile) uses IST times for display:
+   - Prefers `check_in_time_ist` / `check_out_time_ist` from API
+   - Falls back to `Intl.DateTimeFormat` with `timeZone: 'Asia/Kolkata'`
+
+**Database Storage:** (UNCHANGED)
+- Timestamps stored in UTC (e.g., `2026-08-31T09:47:03.726000+00:00`)
+- Server timestamp is authoritative (not device clock)
+
+**API Response Format:**
+```json
+{
+  "check_in_time": "2026-08-31T09:47:03.726000+00:00",  // UTC with timezone
+  "check_in_time_ist": "03:17 PM",                      // Formatted IST
+  "check_out_time": "2026-08-31T15:45:00.000000+00:00", // UTC with timezone  
+  "check_out_time_ist": "09:15 PM",                     // Formatted IST
+  "server_time_ist": "2026-08-31T15:17:03.727478+05:30" // ISO with +05:30
+}
+```
+
+**Files Changed:**
+- Backend:
+  - `/app/backend/routes/attendance.py` - Added IST formatting to all responses
+- Frontend (Web):
+  - `/app/frontend/src/pages/admin/Attendance.js` - Uses `getDisplayTime()` with IST
+  - `/app/frontend/src/components/attendance/AttendanceHistory.js` - Uses IST times
+  - `/app/frontend/src/components/attendance/AttendanceCard.js` - Already had IST support
+- Frontend (Mobile):
+  - `/app/mobile-app/src/components/AttendanceCard.js` - Uses IST times with `getDisplayTime()`
+
+**Test Results:**
+| Scenario | Input (Real Time) | Database (UTC) | API Response | Display |
+|----------|-------------------|----------------|--------------|---------|
+| Check-In | 03:17 PM IST | 09:47:03 UTC | check_in_time_ist: "03:17 PM" | 03:17 PM ✅ |
+| Check-Out | 03:17 PM IST | 09:47:44 UTC | check_out_time_ist: "03:17 PM" | 03:17 PM ✅ |
+
+**New APK Build Required:** YES - Mobile AttendanceCard.js was updated to use IST times
+
 ### 4 Critical Bug Fixes - COMPLETED ✅
 
 **1. Attendance Date Shift Fix (IST Timezone)**
