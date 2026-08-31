@@ -1,0 +1,44 @@
+{
+  "summary": "Backend-only regression on the 4 critical fixes (BankEzee CRM). Ran 16 pytest tests (all passing). Verified: (1) /attendance/admin/summary + /admin/today return IST-based date/boundaries (server_time_ist present, date param respected). (2) /api/leads?search= supports case-insensitive partial match on name, email, phone; normalized phone lookup with +91 country-code prefix works. (3) New /api/call-logs/mobile creates unified call_logs doc with source='mobile', is_verified=true, updates lead.last_call_* and last_verified_call_* fields, increments daily_session stats (calls_made, total_call_seconds). (4) New /api/call-logs/unified returns combined web+mobile logs with source and is_verified fields; source filter works. Access control (403 for lead not assigned to agent) enforced.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/call-logs/unified",
+        "issue": "Legacy call_logs without an is_verified field are inferred as verified only when source=='mobile'. This is fine going forward, but historical web logs will all show is_verified=false even if they were verified via a device-sync match. Consider joining with verified_call_logs collection when computing is_verified."
+      },
+      {
+        "endpoint": "POST /api/call-logs/mobile",
+        "issue": "verified_talk_time_seconds is incremented via $inc for every mobile call, but the /call-logs/sync endpoint recomputes and $set the same field from verified_call_logs. If a mobile call is later also detected in device sync, verified_talk_time_seconds may drift (double-count then be overwritten). Consider consolidating the source of truth."
+      },
+      {
+        "endpoint": "GET /api/leads (search)",
+        "issue": "Normalized phone regex uses substring match, so searching '9876' will also match a phone '19876543' (unlikely for Indian 10-digit numbers, but not strictly last-10-digits). Consider anchoring or matching phone.endsWith(normalized_search)."
+      }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_critical_fixes_v13.py",
+    "/app/test_reports/pytest/critical_fixes_v13.xml"
+  ],
+  "action_items": [
+    "(Optional) Improve is_verified logic for legacy web call logs in /call-logs/unified by cross-referencing verified_call_logs.",
+    "(Optional) Anchor normalized phone regex to end-of-string to avoid false positive matches.",
+    "React Native Mobile Post-Call Modal auto-trigger was NOT tested (frontend RN code, out of scope for API tests) - main agent should manually verify on-device."
+  ],
+  "critical_code_review_comments": [
+    "calls.py is ~645 lines and grows with new unified endpoints; consider splitting into call_sessions.py, call_logs.py, mobile_calls.py.",
+    "attendance.py get_user_work_mode still checks wfh_approvals with status='APPROVED' - the previously reported bug (iteration_12) about admin_assign_wfh not setting status='APPROVED' is not part of the current fix scope but remains open; re-verify after fix.",
+    "In /call-logs/mobile, device_timestamp is not validated for future dates; a malicious client could report calls in the future.",
+    "In leads search, phone normalization strips '+' and country codes but keeps substring match - could unintentionally match unrelated numbers if they share the trailing digits substring.",
+    "MobileCallLogCreate has no validation on duration_seconds (accepts negative)."
+  ],
+  "updated_files": ["/app/backend/tests/test_critical_fixes_v13.py"],
+  "success_rate": {"backend": "100% (16/16 passed)", "frontend": "N/A (backend-only request)"},
+  "test_credentials": "Used /app/memory/test_credentials.md - admin@bankezee.com / ConnectSasha12!! and agent@test.com / agent123.",
+  "seed_data_creation": "Test creates and deletes TEST_-prefixed leads within the tests using fixtures. Cleanup runs on teardown; no residual data on success.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file: /app/backend/tests/test_critical_fixes_v13.py covers IST attendance, lead search (name/email/phone/normalized), mobile call-log creation, unified call-log listing, and 403 access control. The React Native Mobile Post-Call Modal auto-trigger fix is not covered here (client-side only). Attendance WFH-status bug from iteration_12 was NOT retested in this iteration - still needs verification if main agent fixed it."
+}

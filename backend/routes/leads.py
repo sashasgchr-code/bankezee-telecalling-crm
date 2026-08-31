@@ -40,11 +40,28 @@ async def list_leads(
         query["last_call_outcome"] = last_call_outcome
     
     if search:
-        query["$or"] = [
+        # Normalize search term for phone numbers (remove non-digits for phone search)
+        normalized_search = ''.join(filter(str.isdigit, search))
+        # Take last 10 digits for phone matching
+        if len(normalized_search) > 10:
+            normalized_search = normalized_search[-10:]
+        
+        # Build search conditions - case insensitive partial match on name/email
+        # For phone, also try normalized version
+        search_conditions = [
             {"name": {"$regex": search, "$options": "i"}},
-            {"phone": {"$regex": search, "$options": "i"}},
             {"email": {"$regex": search, "$options": "i"}}
         ]
+        
+        # Add phone search with original search term
+        search_conditions.append({"phone": {"$regex": search, "$options": "i"}})
+        
+        # If normalized search has digits, also search by phone ending with those digits
+        # Use end-anchor ($) to avoid false positives with phones that contain the digits elsewhere
+        if normalized_search and len(normalized_search) >= 3:
+            search_conditions.append({"phone": {"$regex": normalized_search + "$", "$options": "i"}})
+        
+        query["$or"] = search_conditions
     
     leads = await db.leads.find(query).sort("created_at", -1).to_list(1000)
     

@@ -156,8 +156,32 @@ export const recordBreak = async (action, reason = null) => {
 
 // Call logging functions
 export const logCallOutcome = async (data) => {
-  // Log a manual call outcome
-  const response = await api.post('/call-logs', data);
+  // For mobile app, use the dedicated mobile endpoint which handles verified calls
+  // and integrates with the unified call_logs collection
+  if (data.duration_seconds !== undefined) {
+    // Mobile call with native duration - use mobile endpoint
+    const response = await api.post('/call-logs/mobile', {
+      lead_id: data.lead_id,
+      duration_seconds: data.duration_seconds,
+      outcome: data.outcome,
+      notes: data.notes,
+      call_type: data.call_type || 'outgoing',
+      device_timestamp: data.device_timestamp || new Date().toISOString(),
+    });
+    return response.data;
+  } else {
+    // Legacy fallback - use standard call-logs endpoint
+    const response = await api.post('/call-logs', {
+      ...data,
+      source: 'mobile',
+    });
+    return response.data;
+  }
+};
+
+// Get unified call logs (web + mobile combined)
+export const getUnifiedCallLogs = async (params = {}) => {
+  const response = await api.get('/call-logs/unified', { params });
   return response.data;
 };
 

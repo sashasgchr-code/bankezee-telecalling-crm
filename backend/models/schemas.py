@@ -69,9 +69,12 @@ class CallLogCreate(BaseModel):
     outcome: str
     notes: Optional[str] = None
     call_type: Optional[str] = "outgoing"  # outgoing, incoming
+    source: Optional[str] = "web"  # web, mobile
+    direction: Optional[str] = "outgoing"  # outgoing, incoming
 
 class CallSessionStart(BaseModel):
     lead_id: str
+    source: Optional[str] = "web"  # web, mobile
 
 class CallSessionEnd(BaseModel):
     session_id: str
@@ -79,6 +82,7 @@ class CallSessionEnd(BaseModel):
     notes: Optional[str] = None
     duration: Optional[int] = None
     form_filling_seconds: Optional[int] = None
+    source: Optional[str] = "web"  # web, mobile
 
 class DeviceCallLog(BaseModel):
     phone_number: str
@@ -90,6 +94,15 @@ class DeviceCallLog(BaseModel):
 
 class CallLogSyncRequest(BaseModel):
     call_logs: List[DeviceCallLog]
+
+class MobileCallLogCreate(BaseModel):
+    """Model for creating call logs from mobile app with native call data"""
+    lead_id: str
+    duration_seconds: int = Field(ge=0, description="Call duration in seconds (must be non-negative)")
+    outcome: str
+    notes: Optional[str] = None
+    call_type: str = "outgoing"  # outgoing, incoming
+    device_timestamp: Optional[str] = None  # When the call happened on device
 
 # ===================== ACTIVITY MODELS =====================
 

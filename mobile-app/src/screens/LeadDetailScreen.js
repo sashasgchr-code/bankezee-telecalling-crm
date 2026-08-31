@@ -203,13 +203,14 @@ const LeadDetailScreen = ({ route, navigation }) => {
     }
 
     try {
-      // Log the call outcome with detected duration
+      // Log the call outcome with detected duration to the unified call_logs collection
       await logCallOutcome({
         lead_id: lead.id,
         outcome: selectedOutcome,
         notes: callNotes,
         duration_seconds: detectedCallDuration || 0,
         call_type: 'outgoing',
+        device_timestamp: callStartTime ? new Date(callStartTime).toISOString() : new Date().toISOString(),
       });
 
       // Update status if changed

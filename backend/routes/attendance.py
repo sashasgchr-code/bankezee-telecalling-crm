@@ -515,9 +515,8 @@ async def admin_get_today_attendance(
     current_user: dict = Depends(require_admin)
 ):
     """Get today's attendance for all users (Admin only)"""
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start + timedelta(days=1)
+    # Use IST date boundaries to ensure correct date at midnight
+    today_start, today_end = get_ist_today_range()
     
     query = {"attendance_date": {"$gte": today_start, "$lt": today_end}}
     
@@ -537,18 +536,28 @@ async def admin_get_attendance_summary(
     current_user: dict = Depends(require_admin)
 ):
     """Get attendance summary for a date (Admin only)"""
-    now = datetime.now(timezone.utc)
+    ist_now = get_ist_now()
     
     if target_date_str:
         try:
+            # Parse the date string and treat it as IST date
             target_date = datetime.fromisoformat(target_date_str.replace('Z', '+00:00'))
+            # Convert to IST if it has UTC timezone
+            if target_date.tzinfo == timezone.utc:
+                target_date = target_date.astimezone(IST)
+            elif target_date.tzinfo is None:
+                target_date = target_date.replace(tzinfo=IST)
         except ValueError:
-            target_date = now
+            target_date = ist_now
     else:
-        target_date = now
+        target_date = ist_now
     
+    # Use IST date boundaries for consistent reporting
     day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
     day_end = day_start + timedelta(days=1)
+    # Convert to UTC for database queries
+    day_start = day_start.astimezone(timezone.utc)
+    day_end = day_end.astimezone(timezone.utc)
     
     # Get all active users
     active_users = await db.users.count_documents({"is_active": True, "role": {"$ne": "admin"}})
@@ -582,8 +591,11 @@ async def admin_get_attendance_summary(
     marked = summary.get("total", 0)
     absent = max(0, active_users - marked)
     
+    # Convert day_start back to IST for display
+    display_date = day_start.astimezone(IST)
+    
     return {
-        "date": day_start.strftime("%Y-%m-%d"),
+        "date": display_date.strftime("%Y-%m-%d"),
         "total_employees": active_users,
         "present": summary.get("present", 0) + summary.get("late", 0),
         "late": summary.get("late", 0),
@@ -594,7 +606,8 @@ async def admin_get_attendance_summary(
         "wfh": summary.get("wfh", 0),
         "currently_working": summary.get("checked_in", 0) - summary.get("checked_out", 0),
         "checked_out": summary.get("checked_out", 0),
-        "server_time": now.isoformat()
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "server_time_ist": ist_now.isoformat()
     }
 
 @router.get("/admin/monthly")
@@ -605,18 +618,22 @@ async def admin_get_monthly_attendance(
     current_user: dict = Depends(require_admin)
 ):
     """Get monthly attendance report (Admin only)"""
-    now = datetime.now(timezone.utc)
-    target_month = month or now.month
-    target_year = year or now.year
+    ist_now = get_ist_now()
+    target_month = month or ist_now.month
+    target_year = year or ist_now.year
     
-    # Calculate date range for the month
-    month_start = datetime(target_year, target_month, 1, tzinfo=timezone.utc)
+    # Calculate date range for the month in IST
+    month_start = datetime(target_year, target_month, 1, tzinfo=IST)
     if target_month == 12:
-        month_end = datetime(target_year + 1, 1, 1, tzinfo=timezone.utc)
+        month_end = datetime(target_year + 1, 1, 1, tzinfo=IST)
     else:
-        month_end = datetime(target_year, target_month + 1, 1, tzinfo=timezone.utc)
+        month_end = datetime(target_year, target_month + 1, 1, tzinfo=IST)
     
-    query = {"attendance_date": {"$gte": month_start, "$lt": month_end}}
+    # Convert to UTC for database queries
+    month_start_utc = month_start.astimezone(timezone.utc)
+    month_end_utc = month_end.astimezone(timezone.utc)
+    
+    query = {"attendance_date": {"$gte": month_start_utc, "$lt": month_end_utc}}
     if user_id:
         query["user_id"] = user_id
     

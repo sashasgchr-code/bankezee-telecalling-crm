@@ -342,6 +342,51 @@ A complete attendance management system integrated into BANKEZEE Connect for bot
 - **Status Options Simplified**: Removed 'New' and 'Presentation' from status breakdown and edit options
 - **Stats Activity-Based**: Counts based on activity date, not data creation date
 
+## Recent Changes (Aug 31, 2026)
+
+### 4 Critical Bug Fixes - COMPLETED ✅
+
+**1. Attendance Date Shift Fix (IST Timezone)**
+- Fixed `/api/attendance/admin/today` to use IST date boundaries instead of UTC
+- Fixed `/api/attendance/admin/summary` to use IST for date parsing and display
+- Fixed `/api/attendance/admin/monthly` to use IST for month boundaries
+- Now correctly handles midnight IST times (e.g., 12:30 AM IST on Aug 31 stays as Aug 31)
+- Added `server_time_ist` to responses for transparency
+
+**2. Customer Search Enhancement**
+- Search now supports Name, Email, AND Phone number with case-insensitive partial matching
+- Added phone number normalization (strips country code, uses last 10 digits)
+- End-anchored regex for normalized phone search to avoid false positives
+- Example: Searching "9876" finds leads with phone "9876543210" or "+919876543210"
+
+**3. Unified Web + Mobile Call Logging**
+- New `/api/call-logs/mobile` endpoint for mobile app to log verified calls
+- Added `source` field to call_logs (WEB/MOBILE)
+- Added `direction` field (outgoing/incoming)
+- Added `is_verified` flag for calls verified via native call log
+- New `/api/call-logs/unified` endpoint returns combined web+mobile logs
+- Mobile calls now update both `call_logs` collection AND `daily_sessions` stats
+- Leads are updated with `last_verified_call_*` fields from mobile
+
+**4. Mobile Post-Call Modal**
+- Mobile app's `LeadDetailScreen.js` already has AppState listener
+- Tracks `callStartTime` and `pendingCallPhone` before call
+- On foreground return, queries Android call log via `getRecentCallForNumber()`
+- Auto-triggers outcome modal with detected duration
+- Uses new `/api/call-logs/mobile` endpoint for unified logging
+
+**New Schemas Added**:
+- `MobileCallLogCreate`: Validates lead_id, duration_seconds (≥0), outcome, call_type, device_timestamp
+- Device timestamps validated to reject future dates (5 min tolerance)
+
+**Files Changed**:
+- `/app/backend/routes/attendance.py` - IST timezone fixes
+- `/app/backend/routes/leads.py` - Enhanced search with phone normalization
+- `/app/backend/routes/calls.py` - Unified call logging endpoints
+- `/app/backend/models/schemas.py` - MobileCallLogCreate schema
+- `/app/mobile-app/src/services/api.js` - logCallOutcome uses mobile endpoint
+- `/app/mobile-app/src/screens/LeadDetailScreen.js` - Passes device_timestamp
+
 ## Next Steps for New Agent
 1. Help user build and distribute the Android APK (EAS Build)
 2. Test call log sync with actual devices

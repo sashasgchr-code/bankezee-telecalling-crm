@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from bson import ObjectId
 
-from models.schemas import CallLogCreate, CallSessionStart, CallSessionEnd, CallLogSyncRequest
+from models.schemas import CallLogCreate, CallSessionStart, CallSessionEnd, CallLogSyncRequest, MobileCallLogCreate
 from utils.database import db
 from utils.auth import get_current_user, require_admin
 from utils.helpers import serialize_doc, serialize_docs, format_duration, convert_to_ist, normalize_phone
@@ -58,7 +58,8 @@ async def start_call_session(data: CallSessionStart, current_user: dict = Depend
         "end_time": None,
         "duration_seconds": None,
         "outcome": None,
-        "notes": None
+        "notes": None,
+        "source": data.source or "web"  # Track source (web/mobile)
     }
     
     result = await db.call_sessions.insert_one(session_doc)
@@ -159,7 +160,10 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
         "outcome": data.outcome,
         "notes": data.notes,
         "created_at": now,
-        "session_id": data.session_id
+        "session_id": data.session_id,
+        "source": session.get("source", "web"),  # Track source from session
+        "call_type": "outgoing",  # Default to outgoing for sessions
+        "direction": "outgoing"
     }
     await db.call_logs.insert_one(call_log)
     
@@ -192,6 +196,8 @@ async def create_call_log(log: CallLogCreate, current_user: dict = Depends(get_c
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
     call_type = log.call_type or "outgoing"
+    source = log.source or "web"
+    direction = log.direction or call_type  # Use direction if provided, else fallback to call_type
     
     log_doc = {
         "lead_id": log.lead_id,
@@ -201,11 +207,24 @@ async def create_call_log(log: CallLogCreate, current_user: dict = Depends(get_c
         "outcome": log.outcome,
         "notes": log.notes,
         "call_type": call_type,
+        "source": source,  # Track source (web/mobile)
+        "direction": direction,  # Track direction (outgoing/incoming)
         "created_at": now
     }
     
     result = await db.call_logs.insert_one(log_doc)
     log_doc["_id"] = result.inserted_id
+    
+    # Update lead with last call info
+    await db.leads.update_one(
+        {"_id": ObjectId(log.lead_id)},
+        {"$set": {
+            "last_call_at": now,
+            "last_call_outcome": log.outcome,
+            "last_call_duration": log.duration or 0,
+            "updated_at": now
+        }}
+    )
     
     if current_user["role"] == "telecaller":
         # Update daily session based on call type
@@ -476,3 +495,154 @@ async def get_verified_call_logs(
     logs = await db.verified_call_logs.find(query).sort("device_timestamp", -1).to_list(500)
     
     return [serialize_doc(log) for log in logs]
+
+
+
+@router.post("/call-logs/mobile")
+async def create_mobile_call_log(log: MobileCallLogCreate, current_user: dict = Depends(get_current_user)):
+    """
+    Create a call log from mobile app with native call duration.
+    This endpoint is called after the post-call modal is submitted in the mobile app.
+    It creates a unified call log in the main call_logs collection.
+    """
+    lead = await db.leads.find_one({"_id": ObjectId(log.lead_id)})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    now = datetime.now(timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    call_type = log.call_type or "outgoing"
+    direction = "incoming" if call_type == "incoming" else "outgoing"
+    
+    # Parse device timestamp if provided
+    device_timestamp = None
+    if log.device_timestamp:
+        try:
+            device_timestamp = datetime.fromisoformat(log.device_timestamp.replace('Z', '+00:00'))
+            if device_timestamp.tzinfo is None:
+                device_timestamp = device_timestamp.replace(tzinfo=timezone.utc)
+            # Validate device_timestamp is not in the future (allow 5 min tolerance for clock skew)
+            max_allowed = now + timedelta(minutes=5)
+            if device_timestamp > max_allowed:
+                device_timestamp = now  # Reset to server time if future date
+        except (ValueError, AttributeError):
+            device_timestamp = now
+    
+    # Create unified call log in main collection
+    log_doc = {
+        "lead_id": log.lead_id,
+        "user_id": current_user["id"],
+        "user_name": current_user["name"],
+        "duration": log.duration_seconds,  # Use native duration
+        "duration_seconds": log.duration_seconds,  # Also store as duration_seconds for compatibility
+        "outcome": log.outcome,
+        "notes": log.notes,
+        "call_type": call_type,
+        "direction": direction,
+        "source": "mobile",  # Mark as mobile source
+        "device_timestamp": device_timestamp.isoformat() if device_timestamp else None,
+        "is_verified": True,  # Mobile calls are verified via native call log
+        "created_at": now
+    }
+    
+    result = await db.call_logs.insert_one(log_doc)
+    log_doc["_id"] = result.inserted_id
+    
+    # Update lead with last call info
+    await db.leads.update_one(
+        {"_id": ObjectId(log.lead_id)},
+        {"$set": {
+            "last_call_at": now,
+            "last_call_outcome": log.outcome,
+            "last_call_duration": log.duration_seconds,
+            "last_verified_call_at": device_timestamp or now,
+            "last_verified_call_duration": log.duration_seconds,
+            "last_verified_call_type": call_type,
+            "updated_at": now
+        }}
+    )
+    
+    # Update daily session stats for mobile calls
+    if current_user["role"] == "telecaller":
+        inc_data = {
+            "total_call_seconds": log.duration_seconds,
+            "verified_talk_time_seconds": log.duration_seconds if log.duration_seconds > 0 else 0
+        }
+        
+        if call_type == "incoming":
+            inc_data["verified_incoming_calls"] = 1
+            inc_data["verified_incoming_time_seconds"] = log.duration_seconds
+        else:
+            inc_data["calls_made"] = 1
+        
+        await db.daily_sessions.update_one(
+            {"user_id": current_user["id"], "date": today},
+            {
+                "$inc": inc_data,
+                "$setOnInsert": {
+                    "user_name": current_user["name"],
+                    "login_time": now,
+                    "total_form_filling_seconds": 0,
+                    "total_idle_seconds": 0,
+                    "leads_updated": 0
+                }
+            },
+            upsert=True
+        )
+    
+    return {
+        "success": True,
+        "message": "Call logged successfully",
+        "call_log": serialize_doc(log_doc)
+    }
+
+@router.get("/call-logs/unified")
+async def get_unified_call_logs(
+    lead_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    date: Optional[str] = None,
+    source: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get unified call logs from both web and mobile sources.
+    This provides a single view of all calls regardless of platform.
+    """
+    query = {}
+    
+    # Access control
+    if current_user["role"] == "telecaller":
+        query["user_id"] = current_user["id"]
+    elif user_id:
+        query["user_id"] = user_id
+    
+    if lead_id:
+        query["lead_id"] = lead_id
+    
+    if source:
+        query["source"] = source
+    
+    if date:
+        try:
+            target_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
+            start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_day = start_of_day + timedelta(days=1)
+            query["created_at"] = {"$gte": start_of_day, "$lt": end_of_day}
+        except ValueError:
+            pass
+    
+    logs = await db.call_logs.find(query).sort("created_at", -1).to_list(500)
+    
+    # Enrich with source info
+    enriched_logs = []
+    for log in logs:
+        log_data = serialize_doc(log)
+        log_data["source"] = log.get("source", "web")  # Default to web for legacy logs
+        log_data["is_verified"] = log.get("is_verified", log.get("source") == "mobile")
+        enriched_logs.append(log_data)
+    
+    return enriched_logs
