@@ -201,7 +201,15 @@ const DataScreen = ({ user }) => {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Call',
-        onPress: () => makePhoneCall(lead.phone),
+        onPress: () => {
+          // Navigate to LeadDetail screen with autoCall flag
+          // This ensures the post-call modal appears after the call ends
+          navigation.navigate('LeadDetail', { 
+            lead: lead, 
+            user,
+            autoCall: true  // Signal to auto-initiate call
+          });
+        },
       },
     ]);
   };

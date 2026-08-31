@@ -16,7 +16,7 @@ import { getLead, updateLead, getLeadCallLogs, createFollowUp, logCallOutcome } 
 import { makePhoneCall, getRecentCallForNumber, normalizePhoneNumber } from '../services/callLogService';
 
 const LeadDetailScreen = ({ route, navigation }) => {
-  const { lead: initialLead, user } = route.params;
+  const { lead: initialLead, user, autoCall } = route.params;
   const [lead, setLead] = useState(initialLead);
   const [callLogs, setCallLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -38,6 +38,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
   
   // Track if we're waiting for a call to end
   const pendingCallPhone = useRef(null);
+  const autoCallTriggered = useRef(false);
 
   // Status options
   const statuses = [
@@ -62,6 +63,32 @@ const LeadDetailScreen = ({ route, navigation }) => {
   useEffect(() => {
     loadLeadDetails();
   }, []);
+
+  // Handle autoCall - automatically initiate call when navigated from DataScreen
+  useEffect(() => {
+    if (autoCall && !autoCallTriggered.current) {
+      autoCallTriggered.current = true;
+      // Small delay to ensure screen is loaded
+      const timer = setTimeout(() => {
+        initiateCall();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoCall]);
+
+  // Function to initiate call (used by both manual press and autoCall)
+  const initiateCall = async () => {
+    const now = Date.now();
+    setCallStartTime(now);
+    pendingCallPhone.current = lead.phone;
+    setDetectedCallDuration(null);
+    setSelectedOutcome(null);
+    setSelectedStatus(null);
+    setCallNotes('');
+    
+    // Make the call
+    await makePhoneCall(lead.phone);
+  };
 
   // Monitor app state for post-call detection
   useEffect(() => {
@@ -169,19 +196,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
       { text: 'Cancel', style: 'cancel' },
       { 
         text: 'Call', 
-        onPress: async () => {
-          // Track call start time and phone number
-          const now = Date.now();
-          setCallStartTime(now);
-          pendingCallPhone.current = lead.phone;
-          setDetectedCallDuration(null);
-          setSelectedOutcome(null);
-          setSelectedStatus(null);
-          setCallNotes('');
-          
-          // Make the call
-          await makePhoneCall(lead.phone);
-        }
+        onPress: initiateCall
       },
     ]);
   };

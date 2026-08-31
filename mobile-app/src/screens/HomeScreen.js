@@ -28,8 +28,10 @@ import {
   isCurrentlyRecording,
   processPendingUploads,
 } from '../services/recordingService';
+import { useNavigation } from '@react-navigation/native';
 
 const HomeScreen = ({ user, onLogout }) => {
+  const navigation = useNavigation();
   const [leads, setLeads] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -164,8 +166,6 @@ const HomeScreen = ({ user, onLogout }) => {
   };
 
   const handleCallLead = async (lead) => {
-    const callStartTime = Date.now();
-    
     Alert.alert(
       'Call ' + lead.name,
       `Phone: ${lead.phone}${recordingEnabled ? '\n\n🎙️ Recording enabled - Use speakerphone for best quality' : ''}`,
@@ -174,56 +174,14 @@ const HomeScreen = ({ user, onLogout }) => {
         {
           text: recordingEnabled ? '📞 Call & Record' : 'Call',
           onPress: async () => {
-            // Start recording if enabled
-            if (recordingEnabled) {
-              const recordingStarted = await startCallRecording({
-                id: lead.id,
-                name: lead.name,
-                phone: lead.phone,
-              });
-              
-              if (recordingStarted) {
-                setIsRecording(true);
-                setCurrentCallLead(lead);
-              }
-            }
-
-            const success = await makePhoneCall(lead.phone);
-            if (success) {
-              // Wait a bit and then check for call completion
-              // This runs when user returns to app
-              setTimeout(async () => {
-                // Stop recording if active
-                if (isCurrentlyRecording()) {
-                  const recordingInfo = await stopCallRecording(true);
-                  setIsRecording(false);
-                  setCurrentCallLead(null);
-                  
-                  if (recordingInfo) {
-                    Alert.alert(
-                      'Call Recorded',
-                      `Recording saved (${formatDuration(Math.round(recordingInfo.duration / 1000))})`,
-                      [{ text: 'OK' }]
-                    );
-                  }
-                }
-
-                const callLog = await getCallLogForNumber(lead.phone, callStartTime);
-                if (callLog) {
-                  Alert.alert(
-                    'Call Logged',
-                    `Duration: ${formatDuration(callLog.duration_seconds)}\nType: ${callLog.type}`,
-                    [
-                      { 
-                        text: 'Sync Now',
-                        onPress: handleSyncCallLogs
-                      },
-                      { text: 'OK' }
-                    ]
-                  );
-                }
-              }, 2000);
-            }
+            // Navigate to LeadDetail with autoCall flag
+            // This ensures proper post-call modal with AppState detection
+            navigation.navigate('LeadDetail', {
+              lead: lead,
+              user,
+              autoCall: true,
+              recordingEnabled: recordingEnabled  // Pass recording preference
+            });
           },
         },
       ]
