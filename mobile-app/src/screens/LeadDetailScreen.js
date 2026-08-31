@@ -81,32 +81,37 @@ const LeadDetailScreen = ({ route, navigation }) => {
         // Wait a moment then query Android call log for actual duration
         console.log('Looking up call in Android call log...');
         
-        const callResult = await getRecentCallForNumber(
-          pendingCallPhone.current, 
-          callStartTime,
-          8000 // Wait up to 8 seconds for call log to update
-        );
-        
-        setLookingUpCall(false);
-        
-        if (callResult.success && callResult.call) {
-          const actualDuration = callResult.call.duration_seconds;
-          console.log(`Found call in log: ${actualDuration} seconds, type: ${callResult.call.type}`);
+        try {
+          const callResult = await getRecentCallForNumber(
+            pendingCallPhone.current, 
+            callStartTime,
+            8000 // Wait up to 8 seconds for call log to update
+          );
           
-          setDetectedCallDuration(actualDuration);
-          
-          // Pre-select outcome based on duration
-          if (actualDuration === 0) {
-            setSelectedOutcome('no_answer');
-          } else if (actualDuration > 0) {
-            setSelectedOutcome('connected');
+          if (callResult.success && callResult.call) {
+            const actualDuration = callResult.call.duration_seconds;
+            console.log(`Found call in log: ${actualDuration} seconds, type: ${callResult.call.type}`);
+            
+            setDetectedCallDuration(actualDuration);
+            
+            // Pre-select outcome based on duration
+            if (actualDuration === 0) {
+              setSelectedOutcome('no_answer');
+            } else if (actualDuration > 0) {
+              setSelectedOutcome('connected');
+            }
+          } else {
+            console.log('Could not find call in Android call log');
+            setDetectedCallDuration(null);
           }
-        } else {
-          console.log('Could not find call in Android call log');
+        } catch (error) {
+          console.log('Error looking up call log:', error);
           setDetectedCallDuration(null);
         }
         
-        // Show the call outcome modal
+        setLookingUpCall(false);
+        
+        // ALWAYS show the call outcome modal after returning from a call
         setShowCallModal(true);
       }
       

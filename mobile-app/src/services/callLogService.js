@@ -36,6 +36,18 @@ const loadCallLogModule = () => {
   moduleLoadAttempted = true;
   
   try {
+    // First check if NativeModules has the CallLogs module
+    const { NativeModules } = require('react-native');
+    if (NativeModules.CallLogs) {
+      console.log('✅ NativeModules.CallLogs found');
+    } else {
+      console.log('❌ NativeModules.CallLogs not found - native module not linked');
+      console.log('Available NativeModules:', Object.keys(NativeModules || {}).join(', '));
+      diagnosticsState.moduleLoaded = false;
+      diagnosticsState.moduleLoadError = 'NativeModules.CallLogs not found - app needs rebuild';
+      return null;
+    }
+    
     CallLogsModule = require('react-native-call-log').default;
     diagnosticsState.moduleLoaded = true;
     diagnosticsState.moduleLoadError = null;
@@ -407,6 +419,18 @@ export const makePhoneCall = async (phoneNumber) => {
 // Get the most recent call for a specific number after a specific time
 // This is used for post-call duration lookup
 export const getRecentCallForNumber = async (phoneNumber, afterTimestamp, maxWaitMs = 5000) => {
+  // Quick check if module is available
+  const CallLogs = loadCallLogModule();
+  if (!CallLogs) {
+    console.log('Call log module not available - cannot lookup call');
+    return {
+      success: false,
+      call: null,
+      attempts: 0,
+      message: 'Call log module not available',
+    };
+  }
+
   const normalizedTarget = normalizePhoneNumber(phoneNumber);
   
   // Wait a moment for the call log to be updated by Android
