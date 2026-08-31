@@ -1,6 +1,6 @@
 {
   "name": "bankezee-connect-mobile",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "main": "index.js",
   "scripts": {
     "android": "react-native run-android",
