@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, Phone, TrendingUp, Users, Loader2, RefreshCw, Calendar } from 'lucide-react';
+import { Database, Phone, TrendingUp, Users, Loader2, RefreshCw, Calendar, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
 import api from '../../services/api';
 import { StatusColors, StatusLabels } from '../../constants/colors';
 import VerifiedCallStats from '../../components/VerifiedCallStats';
@@ -66,6 +66,14 @@ const AdminDashboard = () => {
       setFromDate(weekAgo);
       setToDate(today);
     }
+  };
+
+  const formatTime = (seconds) => {
+    if (!seconds) return '0m';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    if (hrs > 0) return `${hrs}h ${mins}m`;
+    return `${mins}m`;
   };
 
   const periods = [
@@ -235,6 +243,45 @@ const AdminDashboard = () => {
               <span className="text-2xl font-bold text-purple-600">
                 {stats?.active_telecallers || 0}
               </span>
+            </div>
+          </div>
+
+          {/* Incoming Call Stats */}
+          <div className="card p-4 mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Today's Call Activity</h3>
+            <div className="grid grid-cols-4 gap-3">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="flex items-center justify-center gap-2 text-blue-600 mb-1">
+                  <PhoneOutgoing size={18} />
+                  <span className="text-xl font-bold">{stats?.outgoing_calls?.count || 0}</span>
+                </div>
+                <p className="text-xs text-gray-500">Outgoing</p>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="flex items-center justify-center gap-2 text-green-600 mb-1">
+                  <PhoneIncoming size={18} />
+                  <span className="text-xl font-bold">{stats?.incoming_calls?.count || 0}</span>
+                </div>
+                <p className="text-xs text-gray-500">Incoming</p>
+              </div>
+              <div className="text-center p-3 bg-purple-50 rounded-lg">
+                <div className="flex items-center justify-center gap-2 text-purple-600 mb-1">
+                  <Clock size={18} />
+                  <span className="text-xl font-bold">
+                    {formatTime((stats?.outgoing_calls?.total_time_seconds || 0) + (stats?.incoming_calls?.total_time_seconds || 0))}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">Total Talk</p>
+              </div>
+              <div className="text-center p-3 bg-orange-50 rounded-lg">
+                <div className="flex items-center justify-center gap-2 text-orange-600 mb-1">
+                  <Clock size={18} />
+                  <span className="text-xl font-bold">
+                    {formatTime(stats?.incoming_calls?.total_time_seconds || 0)}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">Incoming Time</p>
+              </div>
             </div>
           </div>
 

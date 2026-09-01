@@ -89,8 +89,10 @@ const FilesDashboard = () => {
   const [activityDateFilter, setActivityDateFilter] = useState('all');
   
   const [opsTeam, setOpsTeam] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [approvalFiles, setApprovalFiles] = useState([]);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
@@ -147,7 +149,9 @@ const FilesDashboard = () => {
         fetchOpsTeam(),
         fetchBankPerformance(),
         fetchTatMetrics(),
-        fetchGrowthPartner()
+        fetchGrowthPartner(),
+        fetchAllUsers(),
+        fetchApprovalFiles()
       ]);
     } finally {
       setLoading(false);
@@ -161,6 +165,11 @@ const FilesDashboard = () => {
       params.append('limit', 50);
       if (statusFilter) params.append('file_status', statusFilter);
       if (managerFilter) params.append('assigned_to', managerFilter);
+      
+      // Telecaller sees only their assigned files
+      if (!isAdmin && user?.id) {
+        params.append('assigned_to', user.id);
+      }
 
       const response = await api.get(`/files?${params.toString()}`);
       setFiles(response.data.files || []);
@@ -177,6 +186,12 @@ const FilesDashboard = () => {
       const params = new URLSearchParams();
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
+      
+      // Telecaller sees stats for their files only
+      if (!isAdmin && user?.id) {
+        params.append('assigned_to', user.id);
+      }
+      
       const response = await api.get(`/files/dashboard/stats?${params.toString()}`);
       setStats(response.data);
     } catch (error) {
@@ -229,6 +244,24 @@ const FilesDashboard = () => {
       setGrowthPartner(response.data);
     } catch (error) {
       console.error('Failed to fetch growth partner:', error);
+    }
+  };
+  
+  const fetchAllUsers = async () => {
+    try {
+      const response = await api.get('/users');
+      setAllUsers(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+    }
+  };
+  
+  const fetchApprovalFiles = async () => {
+    try {
+      const response = await api.get('/files?file_status=approved&limit=100');
+      setApprovalFiles(response.data.files || []);
+    } catch (error) {
+      console.error('Failed to fetch approval files:', error);
     }
   };
 
@@ -353,66 +386,75 @@ const FilesDashboard = () => {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-xl font-bold text-gray-900">Admin</h1>
+              <h1 className="text-xl font-bold text-gray-900">{isAdmin ? 'Admin' : 'Files'}</h1>
               <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
             </div>
-            <span className="text-sm text-gray-500 hidden md:inline">Welcome, Admin User</span>
+            <span className="text-sm text-gray-500 hidden md:inline">Welcome, {user.full_name || user.name || 'User'}</span>
           </div>
           
           {/* Report Buttons - Responsive wrap */}
           <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-2 lg:pb-0">
-            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
-              <FileText size={14} />
-              <span className="hidden sm:inline">Daily Report</span>
-              <span className="sm:hidden">Daily</span>
-            </button>
-            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 whitespace-nowrap">
-              <XCircle size={14} />
-              <span className="hidden sm:inline">Rejected</span>
-            </button>
+            {isAdmin && (
+              <>
+                <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
+                  <FileText size={14} />
+                  <span className="hidden sm:inline">Daily Report</span>
+                  <span className="sm:hidden">Daily</span>
+                </button>
+                <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 whitespace-nowrap">
+                  <XCircle size={14} />
+                  <span className="hidden sm:inline">Rejected</span>
+                </button>
+                <button 
+                  onClick={() => setShowGrowthPartner(!showGrowthPartner)}
+                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showGrowthPartner ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
+                >
+                  <Users size={14} />
+                  <span className="hidden sm:inline">Growth Partner</span>
+                  <span className="sm:hidden">Partners</span>
+                </button>
+                <button 
+                  onClick={() => setShowBankTable(!showBankTable)}
+                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showBankTable ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}
+                >
+                  <Building2 size={14} />
+                  <span className="hidden sm:inline">Bank Perf.</span>
+                  <span className="sm:hidden">Banks</span>
+                </button>
+                <button 
+                  onClick={() => setShowTatMetrics(!showTatMetrics)}
+                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showTatMetrics ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'}`}
+                >
+                  <Timer size={14} />
+                  <span className="hidden sm:inline">TAT</span>
+                </button>
+                <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1 whitespace-nowrap">
+                  <Star size={14} />
+                  <span className="hidden sm:inline">Quality</span>
+                </button>
+              </>
+            )}
             <button 
-              onClick={() => setShowGrowthPartner(!showGrowthPartner)}
-              className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showGrowthPartner ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
+              onClick={() => navigate(isAdmin ? '/admin/files/policies' : '/agent/files/policies')}
+              className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-purple-50 text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-100 flex items-center gap-1 whitespace-nowrap"
             >
-              <Users size={14} />
-              <span className="hidden sm:inline">Growth Partner</span>
-              <span className="sm:hidden">Partners</span>
-            </button>
-            <button 
-              onClick={() => setShowBankTable(!showBankTable)}
-              className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showBankTable ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}
-            >
-              <Building2 size={14} />
-              <span className="hidden sm:inline">Bank Perf.</span>
-              <span className="sm:hidden">Banks</span>
-            </button>
-            <button 
-              onClick={() => setShowTatMetrics(!showTatMetrics)}
-              className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showTatMetrics ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'}`}
-            >
-              <Timer size={14} />
-              <span className="hidden sm:inline">TAT</span>
-            </button>
-            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1 whitespace-nowrap">
-              <Star size={14} />
-              <span className="hidden sm:inline">Quality</span>
-            </button>
-            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-purple-50 text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-100 flex items-center gap-1 whitespace-nowrap">
               <FileText size={14} />
               <span className="hidden sm:inline">Policy</span>
             </button>
-            <button onClick={handleExportCSV} className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
-              <Download size={14} />
-              <span className="hidden sm:inline">Export</span>
-            </button>
             {isAdmin && (
-              <button 
-                onClick={() => navigate('/admin/files/migrate')}
-                className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1 whitespace-nowrap"
-              >
-                <Database size={14} />
-                <span className="hidden sm:inline">Import</span>
-              </button>
+              <>
+                <button onClick={handleExportCSV} className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
+                  <Download size={14} />
+                  <span className="hidden sm:inline">Export</span>
+                </button>
+                <button 
+                  onClick={() => navigate('/admin/files/migrate')}
+                  className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1 whitespace-nowrap"
+                >
+                  <Database size={14} />
+                  <span className="hidden sm:inline">Import</span>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -421,7 +463,7 @@ const FilesDashboard = () => {
       {/* Tabs */}
       <div className="bg-white border-b border-gray-200 px-4">
         <div className="flex gap-1">
-          {['Dashboard', 'Approvals', 'Users'].map(tab => (
+          {['Dashboard', 'Approvals', ...(isAdmin ? ['Users'] : [])].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab.toLowerCase())}
@@ -441,31 +483,34 @@ const FilesDashboard = () => {
       </div>
 
       <div className="p-4 space-y-4">
-        {/* Filters Row */}
-        <div className="bg-white rounded-lg border border-gray-200 p-4">
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Search */}
-            <div className="relative flex-1 min-w-[200px] max-w-md">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by name or mobile..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full h-10 pl-9 pr-4 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                data-testid="search-input"
-              />
-            </div>
-            
-            {/* Date Filters */}
-            <div className="flex items-center gap-2">
-              <Calendar size={16} className="text-gray-400" />
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white font-medium"
-                data-testid="date-filter"
-              >
+        {/* Dashboard Tab Content */}
+        {activeTab === 'dashboard' && (
+          <>
+            {/* Filters Row */}
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Search */}
+                <div className="relative flex-1 min-w-[200px] max-w-md">
+                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or mobile..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full h-10 pl-9 pr-4 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                    data-testid="search-input"
+                  />
+                </div>
+                
+                {/* Date Filters */}
+                <div className="flex items-center gap-2">
+                  <Calendar size={16} className="text-gray-400" />
+                  <select
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white font-medium"
+                    data-testid="date-filter"
+                  >
                 <option value="all">All Time</option>
                 <option value="today">Today</option>
                 <option value="week">This Week</option>
@@ -984,8 +1029,9 @@ const FilesDashboard = () => {
                 return (
                   <div
                     key={file.id}
-                    className="px-4 py-3 hover:bg-gray-50 transition-colors"
+                    className="px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
                     data-testid={`file-row-${file.id}`}
+                    onClick={() => navigate(`/admin/files/${file.id}`)}
                   >
                     <div className="flex items-center gap-4">
                       {/* Checkbox */}
@@ -1086,6 +1132,118 @@ const FilesDashboard = () => {
             </div>
           )}
         </div>
+        </>
+        )}
+        
+        {/* Approvals Tab Content */}
+        {activeTab === 'approvals' && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 bg-green-50">
+              <h3 className="font-semibold text-gray-900">Files Pending Approval</h3>
+              <p className="text-sm text-gray-500">Files with approved status awaiting disbursal</p>
+            </div>
+            {approvalFiles.length === 0 ? (
+              <div className="text-center py-16 text-gray-500">
+                <CheckCircle size={48} className="mx-auto mb-4 text-gray-300" />
+                <p>No files pending approval</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {approvalFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
+                    onClick={() => navigate(`/admin/files/${file.id}`)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-gray-900">{file.name || 'Unnamed'}</h4>
+                        <p className="text-sm text-gray-500">{file.phone}</p>
+                        <p className="text-xs text-gray-400">{file.requirement || '-'}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="px-3 py-1 rounded bg-green-50 text-green-700 text-sm font-medium">
+                          Approved
+                        </span>
+                        <p className="text-sm text-green-600 mt-1">
+                          {file.eligibilities?.find(e => e.approval_status === 'approved')?.approved_amount 
+                            ? formatCurrency(file.eligibilities.find(e => e.approval_status === 'approved').approved_amount, true)
+                            : '-'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Users Tab Content */}
+        {activeTab === 'users' && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-200 bg-blue-50 flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-900">All Users ({allUsers.length})</h3>
+                <p className="text-sm text-gray-500">CRM users including mapped and unmapped users</p>
+              </div>
+              <button 
+                onClick={() => navigate('/admin/users/new')}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+              >
+                + Add User
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Name</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Email</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Phone</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-700">Status</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {allUsers.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{user.full_name || user.name || '-'}</td>
+                      <td className="px-4 py-3 text-gray-600">{user.email || '-'}</td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                          user.role === 'caller' || user.role === 'telecaller' ? 'bg-blue-100 text-blue-700' :
+                          user.role === 'agent' ? 'bg-green-100 text-green-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {user.role || 'user'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600">{user.phone || '-'}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${
+                          user.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {user.status || 'active'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button 
+                          onClick={() => navigate(`/admin/users/${user.id}`)}
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

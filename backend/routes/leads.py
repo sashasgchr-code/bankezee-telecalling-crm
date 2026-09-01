@@ -64,9 +64,34 @@ def build_leads_query(
     if statuses:
         status_list = [s.strip() for s in statuses.split(",") if s.strip()]
         if status_list:
-            query["status"] = {"$in": status_list}
+            # Handle special filter for leads without status
+            if "unset" in status_list or "none" in status_list:
+                # Include leads with null/empty status
+                status_list = [s for s in status_list if s not in ("unset", "none")]
+                if status_list:
+                    query["$or"] = [
+                        {"status": {"$in": status_list}},
+                        {"status": {"$exists": False}},
+                        {"status": None},
+                        {"status": ""}
+                    ]
+                else:
+                    query["$or"] = [
+                        {"status": {"$exists": False}},
+                        {"status": None},
+                        {"status": ""}
+                    ]
+            else:
+                query["status"] = {"$in": status_list}
     elif status:
-        query["status"] = status
+        if status in ("unset", "none"):
+            query["$or"] = [
+                {"status": {"$exists": False}},
+                {"status": None},
+                {"status": ""}
+            ]
+        else:
+            query["status"] = status
     
     # Outcome filter (single or multi-select)
     if outcomes:

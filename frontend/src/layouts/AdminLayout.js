@@ -18,7 +18,7 @@ const AdminLayout = () => {
     { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
     { path: '/admin/leads', icon: FileText, label: 'Data' },
     { path: '/admin/files', icon: FolderOpen, label: 'Files' },
-    { path: '/admin/users', icon: Users, label: 'Users' },
+    { path: '/admin/tracking', icon: ClipboardList, label: 'Tracking' },
     { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
   ];
 

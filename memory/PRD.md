@@ -916,6 +916,12 @@ Files are stored in the `leads` collection with `status = "file"`:
 3. Stats calculation rules - Completely rewrote to follow BankEzee CRM rules (created_at vs activity timestamp)
 4. Named Partners in Growth Report - Added connect_id mapping for user names
 5. Responsive buttons - Fixed report buttons extending off-screen on mobile
+6. **Files Dashboard Role-Based Views**: Admin sees all report buttons; Telecallers see only Policy button
+7. **Removed Manual Call Log Buttons**: "Log Outgoing" and "Log Incoming" buttons removed from LeadDetail.js - PostCallModal opens automatically after calls
+8. **Historical Lead Stats Preservation**: Reports now include leads that were reassigned, preserving the original user's status counts
+9. **"No Status" Filter**: Added ability to filter leads without a status (`status=unset`)
+10. **Dynamic User Name in Dashboard**: FilesDashboard now shows actual user name instead of hardcoded "Admin User"
+11. **Users Tab Hidden for Telecallers**: Telecallers no longer see the "Users" tab in Files Dashboard
 
 ### Deployment Ready (September 1, 2026)
 - ✅ Web frontend: All environment variables configured

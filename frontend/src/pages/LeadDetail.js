@@ -587,24 +587,6 @@ www.BankEzee.com`;
                 WhatsApp
               </button>
             </div>
-            <div className="flex gap-3">
-              <button
-                onClick={handleLogOutgoingCall}
-                className="flex-1 py-3 flex items-center justify-center gap-2 bg-green-600 text-white font-semibold rounded-xl hover:bg-green-700 transition-colors"
-                data-testid="log-outgoing-btn"
-              >
-                <PhoneOutgoing size={20} />
-                Log Outgoing
-              </button>
-              <button
-                onClick={handleLogIncomingCall}
-                className="flex-1 py-3 flex items-center justify-center gap-2 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
-                data-testid="log-incoming-btn"
-              >
-                <PhoneIncoming size={20} />
-                Log Incoming
-              </button>
-            </div>
             <button
               onClick={() => {
                 const tomorrow = new Date();

@@ -558,8 +558,149 @@ async def export_files_data(file_status: Optional[str] = None):
     }
 
 
+# ============ BANK POLICIES API ============
+# Must be before /{file_id} routes
+
+@router.get("/policies")
+async def get_bank_policies(
+    loan_type: Optional[str] = None,
+    bank_name: Optional[str] = None,
+    is_active: Optional[bool] = True
+):
+    """Get all bank policies with optional filtering"""
+    query = {}
+    if loan_type:
+        query["loan_types"] = loan_type
+    if bank_name:
+        query["bank_name"] = {"$regex": bank_name, "$options": "i"}
+    if is_active is not None:
+        query["is_active"] = is_active
+    
+    policies = await db.bank_policies.find(query, {"_id": 0}).sort("bank_name", 1).to_list(100)
+    return {"policies": policies, "total": len(policies)}
+
+
+@router.get("/policies/{policy_id}")
+async def get_policy_by_id(policy_id: str):
+    """Get a single policy by ID"""
+    policy = await db.bank_policies.find_one({"id": policy_id}, {"_id": 0})
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return policy
+
+
+@router.post("/policies")
+async def create_policy(policy_data: dict):
+    """Create a new bank policy"""
+    import uuid
+    
+    policy_data["id"] = str(uuid.uuid4())
+    policy_data["created_at"] = datetime.now(timezone.utc).isoformat()
+    policy_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    policy_data["is_active"] = policy_data.get("is_active", True)
+    
+    await db.bank_policies.insert_one(policy_data)
+    policy_data.pop("_id", None)
+    return policy_data
+
+
+@router.put("/policies/{policy_id}")
+async def update_policy(policy_id: str, policy_data: dict):
+    """Update an existing bank policy"""
+    existing = await db.bank_policies.find_one({"id": policy_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    
+    policy_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    policy_data.pop("id", None)
+    policy_data.pop("_id", None)
+    
+    await db.bank_policies.update_one({"id": policy_id}, {"$set": policy_data})
+    
+    updated = await db.bank_policies.find_one({"id": policy_id}, {"_id": 0})
+    return updated
+
+
+@router.delete("/policies/{policy_id}")
+async def delete_policy(policy_id: str):
+    """Delete a bank policy"""
+    result = await db.bank_policies.delete_one({"id": policy_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return {"message": "Policy deleted successfully"}
+
+
+@router.post("/check-eligibility")
+async def check_eligibility(lead_data: dict):
+    """
+    Check eligibility against all active bank policies.
+    Returns matching banks with eligibility details.
+    """
+    salary = float(lead_data.get("net_salary") or lead_data.get("additional_data", {}).get("net_salary") or 0)
+    cibil = int(lead_data.get("cibil_score") or lead_data.get("additional_data", {}).get("cibil_score") or 0)
+    company_type = lead_data.get("company_type") or lead_data.get("additional_data", {}).get("company_type") or ""
+    loan_type = lead_data.get("requirement") or lead_data.get("loan_type") or "personal_loan"
+    loan_amount = float(lead_data.get("loan_amount_required") or lead_data.get("additional_data", {}).get("loan_amount_required") or 0)
+    
+    policies = await db.bank_policies.find({"is_active": True}, {"_id": 0}).to_list(100)
+    
+    results = []
+    for policy in policies:
+        is_eligible = True
+        reasons = []
+        
+        if policy.get("loan_types") and loan_type not in policy.get("loan_types", []):
+            is_eligible = False
+            reasons.append(f"Loan type {loan_type} not supported")
+        
+        if policy.get("min_salary") and salary < policy["min_salary"]:
+            is_eligible = False
+            reasons.append(f"Salary ₹{salary:,.0f} below minimum ₹{policy['min_salary']:,.0f}")
+        
+        if policy.get("min_cibil") and cibil > 0 and cibil < policy["min_cibil"]:
+            is_eligible = False
+            reasons.append(f"CIBIL {cibil} below minimum {policy['min_cibil']}")
+        
+        if policy.get("company_categories") and company_type:
+            company_type_lower = company_type.lower()
+            categories_lower = [c.lower() for c in policy.get("company_categories", [])]
+            if company_type_lower not in categories_lower and "all" not in categories_lower:
+                is_eligible = False
+                reasons.append(f"Company type '{company_type}' not in allowed categories")
+        
+        if policy.get("max_loan_amount") and loan_amount > policy["max_loan_amount"]:
+            is_eligible = False
+            reasons.append(f"Loan amount ₹{loan_amount:,.0f} exceeds maximum ₹{policy['max_loan_amount']:,.0f}")
+        
+        eligible_amount = 0
+        if is_eligible and salary > 0:
+            max_foir = policy.get("max_foir", 50) / 100
+            max_tenure = policy.get("max_tenure", 60)
+            eligible_amount = min(salary * max_foir * max_tenure, policy.get("max_loan_amount", 10000000))
+        
+        results.append({
+            "bank_name": policy.get("bank_name"),
+            "is_eligible": is_eligible,
+            "reasons": reasons if not is_eligible else [],
+            "eligible_amount": eligible_amount if is_eligible else 0,
+            "max_tenure": policy.get("max_tenure"),
+            "roi_text": policy.get("roi_text"),
+            "special_notes": policy.get("special_notes"),
+            "required_documents": policy.get("required_documents", [])
+        })
+    
+    results.sort(key=lambda x: (-int(x["is_eligible"]), -x["eligible_amount"]))
+    
+    return {
+        "lead_summary": {"salary": salary, "cibil": cibil, "company_type": company_type, "loan_type": loan_type, "loan_amount": loan_amount},
+        "eligible_banks": [r for r in results if r["is_eligible"]],
+        "ineligible_banks": [r for r in results if not r["is_eligible"]],
+        "total_eligible": len([r for r in results if r["is_eligible"]])
+    }
+
+
 # ============ FILE BY ID ROUTES ============
-# These must be after literal routes like /reports, /import, /export
+# These must be after literal routes like /reports, /import, /export, /policies
 
 @router.get("/{file_id}")
 async def get_file_details(file_id: str):
@@ -954,7 +1095,8 @@ async def delete_document(file_id: str, doc_id: str):
 @router.get("/dashboard/stats")
 async def get_files_dashboard_stats(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    assigned_to: Optional[str] = None
 ):
     """
     Get dashboard statistics for files following the BankEzee CRM rules:
@@ -969,6 +1111,8 @@ async def get_files_dashboard_stats(
     
     C = Current (created in range), S = Spillover (created before, activity in range)
     All Time = No date filter, no C/S split
+    
+    If assigned_to is provided, filter stats for that user only (telecaller view)
     """
     from datetime import datetime, timezone
     
@@ -1089,8 +1233,14 @@ async def get_files_dashboard_stats(
         disbursed = elig.get('disbursed')
         return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
     
-    # Get all files
-    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    # Get all files (filter by assigned_to if provided for telecaller view)
+    query = {"status": "file"}
+    if assigned_to:
+        query["$or"] = [
+            {"assigned_to": assigned_to},
+            {"file_assigned_to": assigned_to}
+        ]
+    all_files = await db.leads.find(query).to_list(10000)
     
     # Initialize counters
     total_files_current = 0
@@ -1719,6 +1869,4 @@ async def get_growth_partner_report(
             "is_all_time": is_all_time
         }
     }
-
-
 

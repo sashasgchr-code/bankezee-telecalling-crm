@@ -114,14 +114,34 @@ async def get_dashboard_stats(
         # Active telecallers
         active_pipeline = [{"$match": calls_match}, {"$group": {"_id": "$user_id"}}, {"$count": "count"}] if calls_match else [{"$group": {"_id": "$user_id"}}, {"$count": "count"}]
         
+        # Incoming calls aggregation from daily_sessions
+        incoming_session_filter = {"date": today}
+        if telecaller_id and telecaller_id != "all":
+            incoming_session_filter["user_id"] = telecaller_id
+        
+        incoming_pipeline = [
+            {"$match": incoming_session_filter},
+            {"$group": {
+                "_id": None,
+                "total_incoming_calls": {"$sum": {"$ifNull": ["$verified_incoming_calls", 0]}},
+                "total_incoming_time_seconds": {"$sum": {"$ifNull": ["$verified_incoming_time_seconds", 0]}},
+                "total_outgoing_calls": {"$sum": {"$ifNull": ["$calls_made", 0]}},
+                "total_talk_time_seconds": {"$sum": {"$ifNull": ["$total_call_seconds", 0]}}
+            }}
+        ]
+        
         agg_results = await asyncio.gather(
             db.leads.aggregate(status_pipeline).to_list(20),
             db.call_logs.aggregate(user_pipeline).to_list(100),
-            db.call_logs.aggregate(active_pipeline).to_list(1)
+            db.call_logs.aggregate(active_pipeline).to_list(1),
+            db.daily_sessions.aggregate(incoming_pipeline).to_list(1)
         )
         
-        status_counts, calls_per_user, active_result = agg_results
+        status_counts, calls_per_user, active_result, incoming_stats = agg_results
         active_telecallers = active_result[0]["count"] if active_result else 0
+        
+        # Extract incoming call stats
+        incoming_data = incoming_stats[0] if incoming_stats else {}
         
         return {
             "total_data": total_data,
@@ -132,6 +152,14 @@ async def get_dashboard_stats(
             "leads_by_status": {s["_id"]: s["count"] for s in status_counts},
             "calls_per_user": {c["_id"]: c["count"] for c in calls_per_user},
             "active_telecallers": active_telecallers,
+            "incoming_calls": {
+                "count": incoming_data.get("total_incoming_calls", 0),
+                "total_time_seconds": incoming_data.get("total_incoming_time_seconds", 0)
+            },
+            "outgoing_calls": {
+                "count": incoming_data.get("total_outgoing_calls", 0),
+                "total_time_seconds": incoming_data.get("total_talk_time_seconds", 0)
+            },
             "period": period,
             "telecaller_id": telecaller_id
         }
@@ -479,11 +507,24 @@ async def get_telecaller_reports(
         }}
     ]
     
-    # Aggregation for lead stats per user
+    # Aggregation for lead stats per user (current assignments)
     lead_pipeline = [
         {"$match": {"assigned_to": {"$in": telecaller_ids}, **lead_time_filter}},
         {"$group": {
             "_id": {"user_id": "$assigned_to", "status": "$status"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    
+    # Aggregation for historical lead stats (reassigned leads - preserve old user's stats)
+    # This counts leads that were reassigned AWAY from a user, using their status at time of reassignment
+    historical_match = {"from_user_id": {"$in": telecaller_ids}}
+    if lead_time_filter:
+        historical_match.update(lead_time_filter)
+    historical_lead_pipeline = [
+        {"$match": historical_match},
+        {"$group": {
+            "_id": {"user_id": "$from_user_id", "status": "$previous_status"},
             "count": {"$sum": 1}
         }}
     ]
@@ -519,24 +560,37 @@ async def get_telecaller_reports(
         db.leads.aggregate(lead_pipeline).to_list(500),
         db.leads.aggregate(lead_created_pipeline).to_list(100),
         db.follow_ups.aggregate(followup_pipeline).to_list(200),
-        db.daily_sessions.aggregate(session_pipeline).to_list(100)
+        db.daily_sessions.aggregate(session_pipeline).to_list(100),
+        db.lead_assignment_history.aggregate(historical_lead_pipeline).to_list(500)
     )
     
-    call_stats, lead_stats, lead_created_stats, followup_stats, session_stats = results
+    call_stats, lead_stats, lead_created_stats, followup_stats, session_stats, historical_lead_stats = results
     
     # Build lookup maps
     call_map = {c["_id"]: c for c in call_stats}
     lead_created_map = {c["_id"]: c["count"] for c in lead_created_stats}
     session_map = {s["_id"]: s for s in session_stats}
     
-    # Build lead status map per user
+    # Build lead status map per user (current + historical for reassigned leads)
     lead_status_map = {}
+    
+    # First add current assignments
     for ls in lead_stats:
         user_id = ls["_id"]["user_id"]
         status = ls["_id"]["status"]
         if user_id not in lead_status_map:
             lead_status_map[user_id] = {}
         lead_status_map[user_id][status] = ls["count"]
+    
+    # Then add historical stats from reassigned leads (preserve old user's work)
+    for hs in historical_lead_stats:
+        user_id = hs["_id"]["user_id"]
+        status = hs["_id"]["status"]
+        if status and user_id:  # Skip if status is None/empty
+            if user_id not in lead_status_map:
+                lead_status_map[user_id] = {}
+            # Add to existing count (don't overwrite)
+            lead_status_map[user_id][status] = lead_status_map[user_id].get(status, 0) + hs["count"]
     
     # Build followup map per user
     followup_map = {}
