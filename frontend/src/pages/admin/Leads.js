@@ -227,6 +227,8 @@ const AdminLeads = () => {
     }
   };
 
+  const [importResult, setImportResult] = useState(null);
+
   const handleImport = async () => {
     if (!importFile) {
       alert('Please select a file');
@@ -234,14 +236,14 @@ const AdminLeads = () => {
     }
 
     setIsSubmitting(true);
+    setImportResult(null);
     try {
       const formData = new FormData();
       formData.append('file', importFile);
       const response = await api.post('/leads/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
-      alert(response.data.message);
-      setShowImportModal(false);
+      setImportResult(response.data);
       setImportFile(null);
       fetchData();
     } catch (error) {
@@ -609,38 +611,90 @@ const AdminLeads = () => {
       </Modal>
 
       {/* Import Modal */}
-      <Modal isOpen={showImportModal} onClose={() => setShowImportModal(false)} title="Import Leads">
+      <Modal isOpen={showImportModal} onClose={() => { setShowImportModal(false); setImportResult(null); setImportFile(null); }} title="Import Leads">
         <div className="p-4 space-y-4">
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-            <input
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              onChange={(e) => setImportFile(e.target.files[0])}
-              className="hidden"
-              id="file-upload"
-              data-testid="file-upload"
-            />
-            <label htmlFor="file-upload" className="cursor-pointer">
-              <Upload size={40} className="mx-auto text-gray-400 mb-3" />
-              <p className="text-gray-600">
-                {importFile ? importFile.name : 'Click to upload CSV or Excel file'}
-              </p>
-            </label>
-          </div>
-          <div className="text-sm text-gray-500">
-            <p className="font-medium mb-2">Required columns:</p>
-            <p>• name, phone</p>
-            <p className="font-medium mt-2 mb-1">Optional columns:</p>
-            <p>• email, source, city, status, notes, telecaller</p>
-          </div>
-          <button
-            onClick={handleImport}
-            disabled={isSubmitting || !importFile}
-            className="btn-primary w-full flex items-center justify-center gap-2"
-            data-testid="submit-import-btn"
-          >
-            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Import'}
-          </button>
+          {!importResult ? (
+            <>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <input
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={(e) => setImportFile(e.target.files[0])}
+                  className="hidden"
+                  id="file-upload"
+                  data-testid="file-upload"
+                />
+                <label htmlFor="file-upload" className="cursor-pointer">
+                  <Upload size={40} className="mx-auto text-gray-400 mb-3" />
+                  <p className="text-gray-600">
+                    {importFile ? importFile.name : 'Click to upload CSV or Excel file'}
+                  </p>
+                </label>
+              </div>
+              <div className="text-sm text-gray-500">
+                <p className="font-medium mb-2">Required columns:</p>
+                <p>• name, phone</p>
+                <p className="font-medium mt-2 mb-1">Optional columns:</p>
+                <p>• email, source, city, status, notes, telecaller</p>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+                <p className="font-medium mb-1">📱 Phone Deduplication Active</p>
+                <p>Duplicate phone numbers will be automatically skipped during import.</p>
+              </div>
+              <button
+                onClick={handleImport}
+                disabled={isSubmitting || !importFile}
+                className="btn-primary w-full flex items-center justify-center gap-2"
+                data-testid="submit-import-btn"
+              >
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Import'}
+              </button>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="text-center">
+                <CheckCircle2 size={48} className="mx-auto text-green-500 mb-3" />
+                <h3 className="text-xl font-bold text-gray-900">Import Complete</h3>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-green-600">{importResult.total_imported}</p>
+                  <p className="text-sm text-green-700">Imported</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{importResult.assigned || 0}</p>
+                  <p className="text-sm text-blue-700">Assigned</p>
+                </div>
+                {importResult.duplicates > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-yellow-600">{importResult.duplicates}</p>
+                    <p className="text-sm text-yellow-700">Duplicates Skipped</p>
+                  </div>
+                )}
+                {importResult.suppressed > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-red-600">{importResult.suppressed}</p>
+                    <p className="text-sm text-red-700">Suppressed</p>
+                  </div>
+                )}
+              </div>
+
+              {importResult.unassigned_telecallers?.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
+                  <p className="font-medium text-orange-800 mb-1">⚠️ Unmatched Telecallers:</p>
+                  <p className="text-orange-700">{importResult.unassigned_telecallers.join(', ')}</p>
+                </div>
+              )}
+
+              <button
+                onClick={() => { setShowImportModal(false); setImportResult(null); }}
+                className="btn-primary w-full"
+              >
+                Done
+              </button>
+            </div>
+          )}
         </div>
       </Modal>
 
