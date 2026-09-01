@@ -1,0 +1,90 @@
+[
+  {
+    "email": "admin@bankezee.com",
+    "plain_password": "ConnectSasha12!!",
+    "name": "Admin",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 05:48:28.248000",
+    "last_login": "2026-09-01 11:51:56.247000",
+    "last_activity": "2026-09-01 11:51:56.247000"
+  },
+  {
+    "email": "sasha.sgchr@gmail.com",
+    "plain_password": "Sas12sa!!",
+    "name": "Sasha",
+    "role": "telecaller",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 05:50:47.734000",
+    "last_login": "2026-02-11 06:18:18.819000",
+    "last_activity": "2026-02-11 06:20:19.181000"
+  },
+  {
+    "email": "rama@bankezee.com",
+    "plain_password": "rama@bzc12",
+    "name": "Rama",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.084000",
+    "last_login": null,
+    "last_activity": null
+  },
+  {
+    "email": "teja@bankezee.com",
+    "plain_password": "tejasme12",
+    "name": "Teja",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.365000",
+    "last_login": "2026-09-01 06:42:23.538000",
+    "last_activity": "2026-09-01 06:42:23.538000"
+  },
+  {
+    "email": "manager@bankezee.com",
+    "plain_password": "mgr@bzc12",
+    "name": "Manager",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.644000",
+    "last_login": null,
+    "last_activity": null
+  },
+  {
+    "email": "manager2@bankezee.com",
+    "plain_password": "mgr12@bzc!!",
+    "name": "Manager 2",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.919000",
+    "last_login": null,
+    "last_activity": null
+  },
+  {
+    "email": "agent@test.com",
+    "plain_password": "agent123",
+    "name": "Test Agent",
+    "role": "telecaller",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 13:18:09.324000",
+    "last_login": "2026-09-01 06:43:02.728000",
+    "last_activity": "2026-09-01 06:43:02.917000"
+  },
+  {
+    "email": "test_hr_user@bankezee.com",
+    "plain_password": "HrTest12!!",
+    "name": "TEST HR User",
+    "role": "hr",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-09-01 05:34:13.739000",
+    "last_login": "2026-09-01 05:34:14.108000",
+    "last_activity": "2026-09-01 05:34:14.108000"
+  }
+]
