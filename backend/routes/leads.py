@@ -623,23 +623,80 @@ async def import_leads(
 
 @router.post("/leads/assign")
 async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(require_admin)):
+    """
+    Assign leads to a user with CLEAN SLATE logic:
+    - Resets status to 'new' for the new assignee
+    - Preserves old agent's call history and reports (call logs stay intact)
+    - Marks call_logs as 'previous_agent' so new agent sees clean slate
+    - Records assignment history for audit trail
+    """
     user = await db.users.find_one({"_id": ObjectId(assignment.user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    now = datetime.now(timezone.utc)
     lead_object_ids = [ObjectId(lid) for lid in assignment.lead_ids]
-    result = await db.leads.update_many(
-        {"_id": {"$in": lead_object_ids}},
-        {
-            "$set": {
-                "assigned_to": assignment.user_id,
-                "telecaller_name": user["name"],
-                "updated_at": datetime.now(timezone.utc)
-            }
-        }
-    )
     
-    return {"message": f"Assigned {result.modified_count} leads to {user['name']}"}
+    # Get leads to check if they're being reassigned (have previous assignee)
+    leads = await db.leads.find({"_id": {"$in": lead_object_ids}}).to_list(len(lead_object_ids))
+    
+    reassignment_count = 0
+    for lead in leads:
+        old_assignee = lead.get("assigned_to")
+        lead_id = str(lead["_id"])
+        previous_status = lead.get("status", "new")
+        previous_outcome = lead.get("last_call_outcome")
+        
+        # If lead was previously assigned to someone else, mark their call logs
+        if old_assignee and old_assignee != assignment.user_id:
+            reassignment_count += 1
+            
+            # Mark existing call logs as 'previous_agent_history' for this lead
+            # This preserves the old agent's reports but hides from new agent
+            await db.call_logs.update_many(
+                {"lead_id": lead_id, "user_id": old_assignee},
+                {"$set": {"is_previous_agent_history": True}}
+            )
+            
+            # Record reassignment in history
+            await db.lead_assignment_history.insert_one({
+                "lead_id": lead_id,
+                "from_user_id": old_assignee,
+                "to_user_id": assignment.user_id,
+                "from_user_name": lead.get("telecaller_name", "Unknown"),
+                "to_user_name": user["name"],
+                "previous_status": previous_status,
+                "previous_outcome": previous_outcome,
+                "reassigned_by": current_user["id"],
+                "reassigned_at": now,
+                "reason": "Admin reassignment"
+            })
+        
+        # Update the lead with CLEAN SLATE
+        await db.leads.update_one(
+            {"_id": lead["_id"]},
+            {
+                "$set": {
+                    "assigned_to": assignment.user_id,
+                    "telecaller_name": user["name"],
+                    "status": "new",  # CLEAN SLATE: Reset to new
+                    "last_call_outcome": None,  # CLEAN SLATE: Clear outcome
+                    "reassigned_at": now,
+                    "reassigned_from_status": previous_status,  # Store actual previous status
+                    "updated_at": now
+                }
+            }
+        )
+    
+    message = f"Assigned {len(leads)} leads to {user['name']}"
+    if reassignment_count > 0:
+        message += f" ({reassignment_count} reassigned with clean slate)"
+    
+    return {
+        "message": message,
+        "assigned_count": len(leads),
+        "reassigned_count": reassignment_count
+    }
 
 @router.post("/leads/auto-distribute")
 async def auto_distribute_leads(data: AutoDistribute, current_user: dict = Depends(require_admin)):

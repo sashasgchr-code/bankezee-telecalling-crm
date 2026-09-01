@@ -1,0 +1,69 @@
+{
+  "summary": "Iteration 18 testing for Google Sheets Sync + Data Retention endpoints, Leave Management UI, and clean-slate lead reassignment. Backend: 14/15 pytest passed (all 8 sheets-sync/retention endpoints from the requested list working; 1 failure exposed a clean-slate bug). Frontend: /admin/leave page renders correctly with balance cards, Apply Leave/WFH buttons, My Requests + Pending Approval tabs (with count badge=2), and pending leave/WFH approval cards. Apply Leave modal opens successfully.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/leads/assign",
+        "issue": "reassigned_from_status is stored as literal object {'$ifNull': ['$status', 'new']} instead of the resolved previous status. Root cause: leads.py uses aggregation-expression syntax inside a plain $set update_many, which MongoDB treats as a literal value. Fix: either use pipeline update (pass list to update_many) or fetch each lead first and set the concrete previous status per-lead. This corrupts the audit trail. Additionally, the assignment_history record does capture previous_status correctly per-lead, so audit is preserved there, but the lead document itself now stores an invalid value.",
+        "priority": "HIGH"
+      },
+      {
+        "endpoint": "POST /api/auth/login",
+        "issue": "Login response leaks the bcrypt password hash AND plain_password field inside the user object. E.g. `user.password` (hash) and `user.plain_password` (cleartext) returned to any authenticated client. Sanitize the user before serialization.",
+        "priority": "HIGH"
+      }
+    ],
+    "minor": [
+      {
+        "endpoint": "GET /api/sheets-sync/leads-by-status",
+        "issue": "Signature requires api_key query param but also enforces require_admin JWT. api_key is never validated (dead parameter). Either drop the api_key or use it as an alternative auth path (as intended for App Script). App Script cannot send a JWT easily, so this endpoint is currently unusable from Sheets without a real user login."
+      },
+      {
+        "endpoint": "GET /api/sheets-sync/daily-report & /attendance-summary",
+        "issue": "user_stats dicts still contain MongoDB _id (group key). serialize_docs is imported but not applied here; if _id is ObjectId it would fail JSON encoding, currently it is the string user_id from group so it works, but records list in attendance-summary also does not go through serialize_docs — inconsistent."
+      },
+      {
+        "endpoint": "POST /api/sheets-sync/retention/export-*",
+        "issue": "Returns HTTP 404 when no rows match instead of an empty XLSX or 204. For a routine backup workflow, 404 is misleading. Consider returning an empty file or a 200 JSON with count=0."
+      },
+      {
+        "endpoint": "DELETE retention/*",
+        "issue": "confirm=false returns 200 with a `warning` field — semantically this is a dry-run and should be a separate GET /retention/*/preview endpoint. Also, no rate limit / idempotency key; a caller re-issuing with confirm=true would delete twice if the endpoint is called again."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/leave My Requests table", "issues": ["Leave from 05-Sept-2026 to 06-Sept-2026 shows DAYS=0 (weekday calc excluded both dates, or the range is being read exclusively). If both are weekdays, the count should be >=1. Verify weekday-only calc logic."]},
+      {"screen": "/admin/dashboard", "issues": ["Multiple React hydration warnings: <span> as child of <select>/<tbody>/<table>/<tfoot> due to instrumentation wrapper — inject-only issue but pollutes console. Not blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_sheets_sync_retention.py",
+    "/app/test_reports/pytest/iter18_sheets_sync.xml"
+  ],
+  "action_items": [
+    "Fix leads.py assign_leads: replace `{\"$ifNull\": [\"$status\", \"new\"]}` inside $set with a pipeline update or per-lead fetch/set so reassigned_from_status stores the actual previous status string.",
+    "Remove password hash and plain_password fields from every user-returning response (login, /me, /users list). Ideally stop storing plain_password entirely.",
+    "Decide on Google Sheets auth strategy: either accept a real static api_key checked against env (recommended for App Script) OR drop the api_key query param and document that App Script must use an admin JWT.",
+    "Consider returning empty XLSX (or 200 with count=0) instead of 404 from /retention/export-* when no rows.",
+    "Investigate leave_days=0 for a 2-day weekday range."
+  ],
+  "critical_code_review_comments": [
+    "sheets_sync.py: `datetime.min.replace(tzinfo=timezone.utc)` combined with count_documents `{$gte: datetime.min, $lt: cutoff}` scans entire collection with no index guarantee; add index on call_logs.created_at.",
+    "sheets_sync.py: pandas + openpyxl loaded at import time inflates cold-start memory; consider lazy import inside the export functions.",
+    "leads.py assign_leads: aggregation-expression inside plain $set is a common footgun — write a unit test that asserts type(reassigned_from_status) is str.",
+    "calls.py get_lead_call_logs: current filter combines lead assignment check + $or clause; if a telecaller is reassigned back to their own previously-marked history, is_previous_agent_history stays True forever (never reset). Consider clearing the flag when the same user is re-assigned to the lead.",
+    "Public /api/auth/register still accepts arbitrary role and stores plain_password (carried over from iter17 — still not fixed)."
+  ],
+  "updated_files": ["/app/backend/tests/test_sheets_sync_retention.py"],
+  "success_rate": {"backend": "93% (14/15)", "frontend": "100% (Leave Management page verified)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!, agent@test.com / agent123",
+  "seed_data_creation": "Reassigned one existing lead during test to exercise clean-slate flow; the lead's reassigned_from_status now contains the raw $ifNull object (data corruption — should be cleaned up after fix).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login response uses field name `token`, not `access_token`. The clean-slate reassignment test (test_reassign_marks_previous_agent_history) is the only failing test and asserts the exact bug. All 8 requested sheets-sync/retention endpoints pass. Frontend /admin/leave page has data-testid=apply-leave-btn / apply-wfh-btn; Pending Approval tab is text-based (`text=Pending Approval`).",
+  "rca of the issue": "MongoDB `update_many({...}, {\"$set\": {...}})` does not evaluate aggregation-expression operators like $ifNull. To do so, the update argument must be a list (pipeline update): `update_many({...}, [{\"$set\": {\"reassigned_from_status\": {\"$ifNull\": [\"$status\", \"new\"]}, ...}}])`. Current code writes the literal document instead of resolving the expression."
+}

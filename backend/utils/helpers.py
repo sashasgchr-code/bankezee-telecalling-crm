@@ -21,6 +21,9 @@ def serialize_doc(doc):
     if doc is None:
         return None
     doc["id"] = str(doc.pop("_id"))
+    # Remove sensitive fields
+    doc.pop("password", None)
+    doc.pop("plain_password", None)
     # Convert timestamp fields to IST
     if "timestamp" in doc and doc["timestamp"]:
         doc["timestamp"] = convert_to_ist(doc["timestamp"]).isoformat()

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, BarChart3, Settings, LogOut, ClipboardList, Clock } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, BarChart3, Settings, LogOut, ClipboardList, Clock, Calendar } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 
 const AdminLayout = () => {
@@ -19,6 +19,7 @@ const AdminLayout = () => {
     { path: '/admin/leads', icon: FileText, label: 'Data' },
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/attendance', icon: Clock, label: 'Attendance' },
+    { path: '/admin/leave', icon: Calendar, label: 'Leave' },
     { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
   ];
 

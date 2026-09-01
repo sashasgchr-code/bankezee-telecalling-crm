@@ -284,6 +284,11 @@ async def list_call_logs(
 
 @router.get("/leads/{lead_id}/call-logs")
 async def get_lead_call_logs(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Get call logs for a lead.
+    For telecallers: Only shows their own calls (hides previous agent's history)
+    For admins: Shows all calls with is_previous_agent_history flag
+    """
     lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -291,7 +296,16 @@ async def get_lead_call_logs(lead_id: str, current_user: dict = Depends(get_curr
     if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     
-    logs = await db.call_logs.find({"lead_id": lead_id}).sort("created_at", -1).to_list(100)
+    query = {"lead_id": lead_id}
+    
+    # For telecallers: Hide previous agent's call history (CLEAN SLATE)
+    if current_user["role"] == "telecaller":
+        query["$or"] = [
+            {"is_previous_agent_history": {"$ne": True}},
+            {"user_id": current_user["id"]}  # Show their own calls
+        ]
+    
+    logs = await db.call_logs.find(query).sort("created_at", -1).to_list(100)
     return serialize_docs(logs)
 
 @router.get("/call-outcomes")

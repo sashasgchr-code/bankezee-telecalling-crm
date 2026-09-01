@@ -100,9 +100,14 @@ async def login(credentials: UserLogin):
     
     token = create_access_token({"user_id": str(user["_id"])})
     
+    # Sanitize user data - never return password fields
+    safe_user = serialize_doc(user)
+    safe_user.pop("password", None)
+    safe_user.pop("plain_password", None)
+    
     return {
         "token": token,
-        "user": serialize_doc(user)
+        "user": safe_user
     }
 
 @router.get("/me")

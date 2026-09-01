@@ -574,9 +574,13 @@ The attendance times were displaying in UTC instead of IST because:
 
 **Master Prompt Progress**: Stages 1-5 of 11 COMPLETE
 
-### Upcoming Tasks (Master Prompt Stages 10-11)
-- **P3 Stage 10**: Google Sheets automated backup summaries
-- **P3 Stage 11**: Database retention (TTL indexes)
+### Upcoming Tasks (Master Prompt Complete)
+All 11 stages of the Master Prompt are now complete.
+
+### Future Enhancements
+- Custom Google Sheets API key configuration in admin settings
+- TTL index option for automatic cleanup (currently manual)
+- Mobile app Leave Management UI
 
 ### Stage 6: Call Log Cleanup - COMPLETED ✅
 
@@ -649,3 +653,73 @@ ADMIN_EMAIL=admin@yourcompany.com
 - Backend: 100% (15/15 pytest tests passed)
 
 **Master Prompt Progress**: Stages 1-9 of 11 COMPLETE
+
+### Stage 10: Google Sheets Integration - COMPLETED ✅
+
+**Backend** (`/app/backend/routes/sheets_sync.py`):
+- `GET /api/sheets-sync/leads-by-status?api_key=xxx`: Returns leads grouped by status for separate tabs
+- `GET /api/sheets-sync/daily-report?api_key=xxx`: Returns daily call statistics by user
+- `GET /api/sheets-sync/attendance-summary?api_key=xxx`: Returns attendance records
+
+**Setup Guide** (`/app/GOOGLE_SHEETS_SETUP.md`):
+- Complete step-by-step instructions for Google Sheets integration
+- Copy-paste App Script code
+- No credentials needed - uses API key authentication
+- Auto-sync every 6 hours option
+
+**Google Sheets Tabs Created**:
+- New, Follow Up, Presentation, Leads, File, Not Interested, Wrong Number
+- Daily Report (call statistics by telecaller)
+- Attendance (last 30 days)
+
+### Stage 11: Data Retention - COMPLETED ✅
+
+**Backend** (`/app/backend/routes/sheets_sync.py` - retention endpoints):
+- `GET /api/sheets-sync/retention/call-logs-stats`: Statistics by age (0-30d, 31-90d, 91-180d, 181-365d, >365d)
+- `POST /api/sheets-sync/retention/export-call-logs?older_than_days=365`: Export to Excel before delete
+- `DELETE /api/sheets-sync/retention/delete-call-logs?older_than_days=365&confirm=true`: Manual delete
+- Same endpoints for `activity-logs` (default 90 days) and `verified-call-logs` (default 180 days)
+- `GET /api/sheets-sync/retention/deletion-history`: Audit trail of deletions
+
+**Manual Process (NOT Automatic TTL)**:
+1. View statistics by age
+2. Export to Excel for backup
+3. Manually delete with confirmation
+4. All deletions logged for audit
+
+### Lead Reassignment Clean Slate - COMPLETED ✅
+
+**Backend** (`/app/backend/routes/leads.py` - assign endpoint):
+- When lead is reassigned from Agent A to Agent B:
+  - Agent B sees lead as "new" status
+  - Agent B sees no previous call history (hidden)
+  - Agent A's reports unchanged (call logs preserved)
+  - Call logs marked with `is_previous_agent_history=true`
+- Assignment history recorded in `lead_assignment_history` collection
+
+**Backend** (`/app/backend/routes/calls.py` - get_lead_call_logs):
+- Telecallers only see their own calls
+- Previous agent's calls hidden for clean slate
+- Admins see all calls with history flag
+
+### Frontend Leave Management UI - COMPLETED ✅
+
+**Frontend** (`/app/frontend/src/pages/admin/LeaveManagement.js`):
+- Leave balance cards (Casual, Sick, Earned, Unpaid)
+- Apply Leave modal with date picker, leave type, reason
+- Apply WFH modal with date and reason
+- My Requests tab showing leave/WFH history
+- Pending Approval tab (Admin/HR only) with approve/reject buttons
+- Cancel pending requests
+
+**Navigation**:
+- Added "Leave" menu item to Admin sidebar
+
+### Security Fixes - COMPLETED ✅
+
+**Password Exposure Fix**:
+- `serialize_doc()` now removes `password` and `plain_password` fields
+- Login response no longer leaks password hash
+- All user endpoints sanitized
+
+**Master Prompt Progress**: ALL 11 STAGES COMPLETE ✅

@@ -10,6 +10,7 @@ import AdminReports from "./pages/admin/Reports";
 import AdminSettings from "./pages/admin/Settings";
 import AdminAttendance from "./pages/admin/Attendance";
 import DailyTrackingSheet from "./pages/admin/DailyTrackingSheet";
+import LeaveManagement from "./pages/admin/LeaveManagement";
 import TelecallerDashboard from "./pages/telecaller/Dashboard";
 import TelecallerLeads from "./pages/telecaller/Leads";
 import TelecallerFollowUps from "./pages/telecaller/FollowUps";
@@ -81,6 +82,7 @@ function App() {
           <Route path="reports" element={<AdminReports />} />
           <Route path="tracking" element={<DailyTrackingSheet />} />
           <Route path="attendance" element={<AdminAttendance />} />
+          <Route path="leave" element={<LeaveManagement />} />
           <Route path="settings" element={<AdminSettings />} />
         </Route>
 
