@@ -459,13 +459,13 @@ const FilesDashboard = () => {
             <StatCard 
               label="Login" 
               value={stats?.login || 0}
-              subLabel={`C: ${stats?.by_status?.login || 0} S: 0`}
+              subLabel={`C: ${stats?.login_current || 0} S: ${stats?.login_spillover || 0}`}
               icon={LogIn}
             />
             <StatCard 
               label="Approved" 
               value={stats?.approved || 0}
-              subLabel={`C: ${stats?.approved || 0} S: 0`}
+              subLabel={`C: ${stats?.approved_current || 0} S: ${stats?.approved_spillover || 0}`}
               icon={CheckCircle}
               color="text-green-600"
             />
@@ -484,7 +484,7 @@ const FilesDashboard = () => {
             <StatCard 
               label="Disbursed" 
               value={stats?.disbursed || 0}
-              subLabel={`C: ${stats?.disbursed || 0} S: 0`}
+              subLabel={`C: ${stats?.disbursed_current || 0} S: ${stats?.disbursed_spillover || 0}`}
               icon={CheckCircle}
               color="text-emerald-600"
             />
@@ -499,14 +499,14 @@ const FilesDashboard = () => {
             <StatCard 
               label="Interim Rejects" 
               value={stats?.interim_rejects || 0}
-              subLabel={`C: ${stats?.interim_rejects || 0} S: 0`}
+              subLabel={`C: ${stats?.interim_rejects_current || 0} S: ${stats?.interim_rejects_spillover || 0}`}
               icon={AlertTriangle}
               color="text-amber-600"
             />
             <StatCard 
               label="Final Rejections" 
               value={stats?.final_rejections || 0}
-              subLabel={`C: ${stats?.final_rejections || 0} S: 0`}
+              subLabel={`C: ${stats?.final_rejections_current || 0} S: ${stats?.final_rejections_spillover || 0}`}
               icon={XCircle}
               color="text-red-600"
             />

@@ -950,155 +950,297 @@ async def delete_document(file_id: str, doc_id: str):
     return {"success": True, "message": "Document deleted"}
 
 
-# Dashboard stats for Files
+# Dashboard stats for Files - Following BankEzee CRM Statistics Rules
 @router.get("/dashboard/stats")
-async def get_files_dashboard_stats():
+async def get_files_dashboard_stats(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
     """
-    Get dashboard statistics for files - matching old CRM calculation rules:
+    Get dashboard statistics for files following the BankEzee CRM rules:
     
-    - In Progress: Contacted + Query + Hold + Documents Pending + Sent for Eligibility + Sent for Login + Underwriting
-    - Login: Files where ANY eligibility has login_done=true/yes
-    - Approved: Files where ANY eligibility has approved_amount > 0 or approval_status=approved
-    - Interim Rejects: FI + Declined + Customer Not Interested + Customer Not Supporting
-    - Final Rejections: Rejected + Not Eligible + Not Login + Not Disbursed
-    - Total Approved: Sum of approved_amount from ALL eligibilities
-    - Total Disbursed: Sum of disbursed_amount from ALL eligibilities
+    KEY RULES:
+    - Total Files: COUNT leads WHERE created_at IN date_range
+    - In Progress: COUNT leads WHERE created_at IN date_range AND status IN IN_PROGRESS (NO spillover)
+    - Login: COUNT leads WHERE status IN LOGIN_AND_BEYOND AND has activity in date_range (with C/S split)
+    - Approved: COUNT leads WHERE ANY eligibility has approved_at IN date_range (with C/S split)
+    - Disbursed: COUNT leads WHERE ANY eligibility has disbursed_at IN date_range (with C/S split)
+    - Amt in Pipeline: NO date filter - always current snapshot
+    
+    C = Current (created in range), S = Spillover (created before, activity in range)
+    All Time = No date filter, no C/S split
     """
+    from datetime import datetime, timezone
+    
+    # Status category definitions
+    IN_PROGRESS_STATUSES = [
+        'contacted', 'documents_collected', 'documents_pending', 'sent_for_eligibility',
+        'sent_for_login', 'login', 'sent_for_approval', 'underwriting', 'fi', 
+        'fi_reinitiated', 'query_hold', 'sent_to_bank', 'query'
+    ]
+    LOGIN_AND_BEYOND = [
+        'login', 'sent_for_approval', 'underwriting', 'fi', 'fi_negative', 'fi_reinitiated',
+        'query_hold', 'approved', 'disbursed', 'declined', 'not_disbursed'
+    ]
+    INTERIM_REJECTS = ['fi_negative', 'declined', 'customer_not_interested', 'customer_not_supporting']
+    FINAL_REJECTIONS = ['rejected', 'not_eligible', 'not_login', 'not_disbursed']
+    PIPELINE_EXCLUDED = ['rejected', 'not_eligible', 'not_login', 'not_disbursed', 'declined', 'disbursed']
+    
+    # Parse date range
+    is_all_time = not start_date and not end_date
+    date_start = None
+    date_end = None
+    
+    if start_date:
+        try:
+            date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            date_start = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    
+    if end_date:
+        try:
+            date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            date_end = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+    
+    def parse_timestamp(ts):
+        """Parse ISO timestamp string to datetime"""
+        if not ts:
+            return None
+        if isinstance(ts, datetime):
+            return ts
+        try:
+            return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        except (ValueError, TypeError, AttributeError):
+            return None
+    
+    def is_in_date_range(ts):
+        """Check if timestamp falls within date range"""
+        if is_all_time:
+            return True  # For All Time, always return True (no filter)
+        dt = parse_timestamp(ts)
+        if not dt:
+            return False  # If no timestamp and date filter is applied, exclude
+        if date_start and dt < date_start:
+            return False
+        if date_end and dt > date_end:
+            return False
+        return True
+    
+    def is_in_date_range_or_all_time(ts):
+        """Check if timestamp falls within date range, or if All Time, just check if data exists"""
+        if is_all_time:
+            return True  # For All Time, we include all records regardless of timestamp
+        return is_in_date_range(ts)
+    
+    def is_created_in_range(lead):
+        """Check if lead was created within date range"""
+        return is_in_date_range(lead.get('created_at'))
+    
+    def has_activity_in_range(lead):
+        """Check if lead has any activity within date range"""
+        if is_all_time:
+            return True
+        activities = lead.get('file_activities', []) or lead.get('activities', [])
+        for act in activities:
+            if is_in_date_range(act.get('timestamp')):
+                return True
+        # Also check eligibility timestamps
+        for elig in (lead.get('eligibilities') or []):
+            if is_in_date_range(elig.get('login_done_at')):
+                return True
+            if is_in_date_range(elig.get('approved_at')):
+                return True
+            if is_in_date_range(elig.get('disbursed_at')):
+                return True
+        return False
+    
+    def was_previously_logged(lead):
+        """Check if lead was previously in LOGIN_AND_BEYOND status"""
+        activities = lead.get('file_activities', []) or lead.get('activities', [])
+        for act in activities:
+            to_status = act.get('to_status') or act.get('new_status')
+            if to_status and to_status in LOGIN_AND_BEYOND:
+                return True
+        return False
+    
+    def is_login_done(elig):
+        """Check if eligibility has login_done"""
+        login_done = elig.get('login_done')
+        return login_done == True or (isinstance(login_done, str) and login_done.lower() in ['yes', 'true'])
+    
+    def is_disbursed(elig):
+        """Check if eligibility is disbursed"""
+        disbursed = elig.get('disbursed')
+        return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
+    
     # Get all files
-    all_files = await db.leads.find({"status": "file"}).to_list(5000)
-    total_files = len(all_files)
+    all_files = await db.leads.find({"status": "file"}).to_list(10000)
     
-    # Count statuses
-    status_counts = {}
-    for f in all_files:
-        status = f.get('file_status') or 'new'
-        status_counts[status] = status_counts.get(status, 0) + 1
+    # Initialize counters
+    total_files_current = 0
+    new_current = 0
+    in_progress_current = 0  # No spillover for in_progress
     
-    # NEW: Simple count of status=new
-    new_count = status_counts.get('new', 0)
+    login_current = 0
+    login_spillover = 0
+    approved_current = 0
+    approved_spillover = 0
+    disbursed_current = 0
+    disbursed_spillover = 0
+    interim_rejects_current = 0
+    interim_rejects_spillover = 0
+    final_rejections_current = 0
+    final_rejections_spillover = 0
     
-    # IN PROGRESS: Contacted + Query + Hold + documents_pending + sent_for_eligibility + sent_for_login + underwriting
-    in_progress = (
-        status_counts.get('contacted', 0) + 
-        status_counts.get('query', 0) + 
-        status_counts.get('hold', 0) +
-        status_counts.get('query_hold', 0) +
-        status_counts.get('documents_pending', 0) +
-        status_counts.get('documents_collected', 0) +
-        status_counts.get('sent_for_eligibility', 0) +
-        status_counts.get('sent_for_login', 0) +
-        status_counts.get('sent_to_bank', 0) +
-        status_counts.get('underwriting', 0)
-    )
-    
-    # Calculate eligibility-based counts
-    login_count = 0
-    approved_count = 0
-    disbursed_count = 0
     total_approved_amount = 0.0
     total_disbursed_amount = 0.0
     pipeline_amount = 0.0
     
+    # Status counts for breakdown
+    status_counts = {}
+    
     for f in all_files:
+        file_status = f.get('file_status') or 'new'
+        status_counts[file_status] = status_counts.get(file_status, 0) + 1
+        
+        created_in_range = is_created_in_range(f)
+        has_activity = has_activity_in_range(f)
+        
+        # Total Files: leads created in date range
+        if created_in_range:
+            total_files_current += 1
+        
+        # New: created in range AND status = new
+        if created_in_range and file_status == 'new':
+            new_current += 1
+        
+        # In Progress: created in range AND status in IN_PROGRESS (NO spillover)
+        if created_in_range and file_status in IN_PROGRESS_STATUSES:
+            in_progress_current += 1
+        
+        # Login: status in LOGIN_AND_BEYOND OR (rejected AND was_previously_logged) AND has activity in range
+        is_login_candidate = (
+            file_status in LOGIN_AND_BEYOND or 
+            (file_status == 'rejected' and was_previously_logged(f))
+        )
+        if is_login_candidate and has_activity:
+            if created_in_range:
+                login_current += 1
+            elif not is_all_time:
+                login_spillover += 1
+        
+        # Interim Rejects: status in INTERIM_REJECTS AND has activity in range
+        if file_status in INTERIM_REJECTS and has_activity:
+            if created_in_range:
+                interim_rejects_current += 1
+            elif not is_all_time:
+                interim_rejects_spillover += 1
+        
+        # Final Rejections: status in FINAL_REJECTIONS AND has activity in range
+        if file_status in FINAL_REJECTIONS and has_activity:
+            if created_in_range:
+                final_rejections_current += 1
+            elif not is_all_time:
+                final_rejections_spillover += 1
+        
+        # Process eligibilities for approved, disbursed, amounts, pipeline
         eligibilities = f.get('eligibilities', []) or []
-        file_has_login = False
-        file_has_approved = False
-        file_has_disbursed = False
+        file_has_approved_in_range = False
+        file_has_disbursed_in_range = False
         file_approved_amt = 0.0
         file_disbursed_amt = 0.0
-        file_eligible_amt = 0.0
+        file_pipeline_amt = 0.0
         
         for elig in eligibilities:
-            # Check login_done - can be True, 'yes', 'Yes', or 'YES'
-            login_done = elig.get('login_done')
-            if login_done == True or (isinstance(login_done, str) and login_done.lower() == 'yes'):
-                file_has_login = True
+            # Approved: approval_status = "approved" AND (All Time OR approved_at in range)
+            approved_at = elig.get('approved_at')
+            if elig.get('approval_status') == 'approved':
+                # For All Time: count all approvals
+                # For date range: only count if approved_at is in range
+                if is_all_time or is_in_date_range(approved_at):
+                    file_has_approved_in_range = True
+                    try:
+                        file_approved_amt += float(elig.get('approved_amount') or 0)
+                    except (ValueError, TypeError):
+                        pass
             
-            # Check approved - by amount or status
-            approved_amt = 0
-            try:
-                approved_amt = float(elig.get('approved_amount') or 0)
-            except (TypeError, ValueError):
-                pass
+            # Disbursed: disbursed = "yes" AND (All Time OR disbursed_at in range)
+            disbursed_at = elig.get('disbursed_at')
+            if is_disbursed(elig):
+                # For All Time: count all disbursals
+                # For date range: only count if disbursed_at is in range
+                if is_all_time or is_in_date_range(disbursed_at):
+                    file_has_disbursed_in_range = True
+                    try:
+                        file_disbursed_amt += float(elig.get('disbursed_amount') or 0)
+                    except (ValueError, TypeError):
+                        pass
             
-            if approved_amt > 0 or elig.get('approval_status') == 'approved':
-                file_has_approved = True
-                file_approved_amt += approved_amt
-            
-            # Check disbursed - can be True, 'yes', or has amount
-            disbursed = elig.get('disbursed')
-            disbursed_amt = 0
-            try:
-                disbursed_amt = float(elig.get('disbursed_amount') or 0)
-            except (TypeError, ValueError):
-                pass
-            
-            if disbursed == True or (isinstance(disbursed, str) and disbursed.lower() == 'yes') or disbursed_amt > 0:
-                file_has_disbursed = True
-                file_disbursed_amt += disbursed_amt
-            
-            # Pipeline: eligible amount where login done but not disbursed/declined
-            if file_has_login and not file_has_disbursed:
+            # Pipeline: login_done=yes AND application_id not blank AND disbursed!=yes 
+            # AND approval_status!=declined AND lead status NOT IN PIPELINE_EXCLUDED
+            # NO date filter - always current snapshot
+            app_id = elig.get('application_id')
+            if (is_login_done(elig) and 
+                app_id and str(app_id).strip() and
+                not is_disbursed(elig) and 
+                elig.get('approval_status') != 'declined' and
+                file_status not in PIPELINE_EXCLUDED):
                 try:
-                    file_eligible_amt += float(elig.get('eligible_amount') or 0)
-                except (TypeError, ValueError):
+                    file_pipeline_amt += float(elig.get('eligible_amount') or 0)
+                except (ValueError, TypeError):
                     pass
         
-        if file_has_login:
-            login_count += 1
-        if file_has_approved:
-            approved_count += 1
+        # Count approved/disbursed per lead (not per eligibility)
+        if file_has_approved_in_range:
+            if created_in_range:
+                approved_current += 1
+            elif not is_all_time:
+                approved_spillover += 1
             total_approved_amount += file_approved_amt
-        if file_has_disbursed:
-            disbursed_count += 1
+        
+        if file_has_disbursed_in_range:
+            if created_in_range:
+                disbursed_current += 1
+            elif not is_all_time:
+                disbursed_spillover += 1
             total_disbursed_amount += file_disbursed_amt
         
-        # Pipeline: only count if logged in but not disbursed and not declined/rejected
-        file_status = f.get('file_status', '')
-        if file_has_login and not file_has_disbursed and file_status not in ['declined', 'rejected', 'disbursed']:
-            pipeline_amount += file_eligible_amt
+        # Pipeline amount (no date filter)
+        pipeline_amount += file_pipeline_amt
     
-    # INTERIM REJECTS: FI + Declined + Customer Not Interested + Customer Not Supporting
-    interim_rejects = (
-        status_counts.get('fi', 0) +
-        status_counts.get('fi_negative', 0) +
-        status_counts.get('declined', 0) +
-        status_counts.get('customer_not_interested', 0) +
-        status_counts.get('not_interested', 0) +
-        status_counts.get('customer_not_supporting', 0) +
-        status_counts.get('supporting', 0)
-    )
-    
-    # FINAL REJECTIONS: Rejected + Not Eligible + Not Login + Not Disbursed
-    final_rejections = (
-        status_counts.get('rejected', 0) +
-        status_counts.get('not_eligible', 0) +
-        status_counts.get('not_login', 0) +
-        status_counts.get('not_disbursed', 0)
-    )
-    
-    # Status-based disbursed count (for display with C: X S: Y format)
-    status_disbursed = status_counts.get('disbursed', 0)
-    status_approved = status_counts.get('approved', 0)
-    status_login = status_counts.get('login', 0)
+    # For All Time, spillover = 0 and total = current
+    if is_all_time:
+        login_spillover = 0
+        approved_spillover = 0
+        disbursed_spillover = 0
+        interim_rejects_spillover = 0
+        final_rejections_spillover = 0
     
     return {
-        "total_files": total_files,
+        "total_files": total_files_current if not is_all_time else len(all_files),
         "by_status": status_counts,
         # Row 1 stats
-        "new": new_count,
-        "in_progress": in_progress,
-        "login": login_count,  # Eligibility-based
-        "login_status": status_login,  # Status-based for C: display
-        "approved": approved_count,  # Eligibility-based
-        "approved_status": status_approved,  # Status-based for C: display
+        "new": new_current,
+        "in_progress": in_progress_current,
+        "login": login_current + login_spillover,
+        "login_current": login_current,
+        "login_spillover": login_spillover,
+        "approved": approved_current + approved_spillover,
+        "approved_current": approved_current,
+        "approved_spillover": approved_spillover,
         "total_approved_amount": total_approved_amount,
         # Row 2 stats
-        "disbursed": disbursed_count,  # Eligibility-based
-        "disbursed_status": status_disbursed,  # Status-based for C: display
+        "disbursed": disbursed_current + disbursed_spillover,
+        "disbursed_current": disbursed_current,
+        "disbursed_spillover": disbursed_spillover,
         "total_disbursed_amount": total_disbursed_amount,
-        "interim_rejects": interim_rejects,
-        "final_rejections": final_rejections,
+        "interim_rejects": interim_rejects_current + interim_rejects_spillover,
+        "interim_rejects_current": interim_rejects_current,
+        "interim_rejects_spillover": interim_rejects_spillover,
+        "final_rejections": final_rejections_current + final_rejections_spillover,
+        "final_rejections_current": final_rejections_current,
+        "final_rejections_spillover": final_rejections_spillover,
         "amt_in_pipeline": pipeline_amount,
         # Legacy fields for backwards compatibility
         "contacted": status_counts.get("contacted", 0),

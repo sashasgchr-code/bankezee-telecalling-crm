@@ -807,6 +807,39 @@ ADMIN_EMAIL=admin@yourcompany.com
 ### Overview
 Merged old CRM (crm.bankezee.com) into BankEzee Connect. The "Lead" concept from the old CRM maps to "File" in Connect. When a lead's status is changed to "file", users are redirected to the File Details page for comprehensive file management.
 
+### Stats Calculation Rules - UPDATED (September 1, 2026)
+Completely rewrote the stats calculation logic in `/api/files/dashboard/stats` to match the BankEzee CRM rules.
+
+**Key Principles:**
+- **created_at**: Used for "Total Files", "In Progress" (NO spillover)
+- **activities[].timestamp**: Used for "Login", "Interim Rejects", "Final Rejections" (with C/S split)
+- **eligibilities[].approved_at**: Used for "Approved" count and amount (with C/S split)
+- **eligibilities[].disbursed_at**: Used for "Disbursed" count and amount (with C/S split)
+- **C/S Split**: Current (lead created in date range) vs Spillover (created before, activity in range)
+- **All Time**: No date filter, no C/S split (everything counts)
+
+**Status Categories:**
+```
+NEW:              [new]
+IN_PROGRESS:      [contacted, documents_collected, documents_pending, sent_for_eligibility,
+                   sent_for_login, login, sent_for_approval, underwriting, fi, fi_reinitiated, query_hold]
+LOGIN_AND_BEYOND: [login, sent_for_approval, underwriting, fi, fi_negative, fi_reinitiated,
+                   query_hold, approved, disbursed, declined, not_disbursed]
+INTERIM_REJECTS:  [fi_negative, declined, customer_not_interested, customer_not_supporting]
+FINAL_REJECTIONS: [rejected, not_eligible, not_login, not_disbursed]
+PIPELINE_EXCLUDED: [rejected, not_eligible, not_login, not_disbursed, declined, disbursed]
+```
+
+**Stat Calculations:**
+| Stat | Logic |
+|------|-------|
+| Total Files | COUNT leads WHERE created_at IN date_range |
+| In Progress | COUNT leads WHERE created_at IN range AND file_status IN IN_PROGRESS (no spillover) |
+| Login | COUNT leads WHERE (file_status IN LOGIN_AND_BEYOND OR (file_status='rejected' AND was_previously_logged)) AND has_activity_in_range |
+| Approved | COUNT leads WHERE ANY eligibility has approval_status='approved' AND (All Time OR approved_at in range) |
+| Disbursed | COUNT leads WHERE ANY eligibility has disbursed='yes' AND (All Time OR disbursed_at in range) |
+| Amt in Pipeline | SUM eligible_amount WHERE login_done='yes' AND application_id NOT blank AND disbursed≠'yes' AND approval_status≠'declined' AND file_status NOT IN PIPELINE_EXCLUDED (NO date filter) |
+
 ### Backend (`/app/backend/routes/files_crm.py`)
 - `GET/POST /api/files` - List and create files (leads with status="file")
 - `GET /api/files/{file_id}` - Get file details

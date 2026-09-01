@@ -1,0 +1,32 @@
+{
+  "summary": "Verified BankEzee Connect CRM Files Dashboard after merge of 454 leads from old CRM. Backend GET /api/files/dashboard/stats returns correct eligibility-based counts. Frontend /admin/files renders all expected numbers (Total 454, Login 135, Approved 50, Disbursed 40, Total Approved ₹7.18Cr, Total Disbursed ₹6.26Cr, Interim Rejects 88, Final Rejections 254, Amt in Pipeline ₹2.48Cr). File detail page opens correctly via row view (eye) icon.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Files Dashboard donut chart", "issues": ["'File Status Distribution' donut chart shows 'In Progress: 0' but the stat card above shows 'In Progress: 16'. The donut only aggregates literal 'in_progress' status while the stat card sums several statuses (contacted, query_hold, documents_pending, sent_for_login, sent_to_bank, underwriting, sent_for_eligibility). Inconsistent presentation."]},
+      {"screen": "Files Dashboard stat cards C:/S: labels", "issues": ["Cards show C: (eligibility-based) and S: (status-based) but the smaller C value in some cards (e.g., Login shows 135 big number but 'C: 7 S: 0') is confusing – appears C: is displaying the status_login (7) rather than the eligibility-based count. Please recheck mapping in FilesDashboard.js vs API fields: login=135 (elig), login_status=7 (status)."]},
+      {"screen": "Files Dashboard - HTML hydration warnings", "issues": ["Console throws multiple 'In HTML, <span> cannot be a child of <select>/<tbody>/<tfoot>/<table>' hydration errors originating from dev-time instrumentation spans wrapping <option>/<tr>/<tbody>. Non-blocking but noisy in console."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_files_dashboard_stats.py",
+    "/app/test_reports/pytest/pytest_files_dashboard.xml"
+  ],
+  "action_items": [
+    "Verify the C:/S: label mapping on Login/Approved/Disbursed stat cards in FilesDashboard.js so C: reflects eligibility-based value consistently (or clarify what C:/S: mean if intentional).",
+    "Align the File Status Distribution donut chart data source with the stat cards so 'In Progress' reflects the aggregated set (currently 0 vs 16)."
+  ],
+  "critical_code_review_comments": [
+    "files_crm.py get_files_dashboard_stats loads all files via to_list(5000) with no projection – acceptable at 454 records but should switch to a Mongo aggregation pipeline for scalability.",
+    "Pipeline-amount logic inside the eligibilities loop references file_has_login/file_has_disbursed while they are still being computed within the same loop – order-dependent; safer to compute after the inner loop completes."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!",
+  "seed_data_creation": "None; used existing imported 454 leads.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend stats API returns: total_files=454, login=135, login_status=7, approved=50, approved_status=8, disbursed=40, disbursed_status=79, total_approved_amount=71,832,946, total_disbursed_amount=62,569,567, interim_rejects=88, final_rejections=254, amt_in_pipeline=24,800,019. File detail page opens via [data-testid*='view-file'] icon inside file-row-<id>."
+}
