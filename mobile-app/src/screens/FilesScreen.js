@@ -286,10 +286,11 @@ const FilesScreen = ({ navigation, user }) => {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {renderStatsCard('Total', stats.total_files, '#6B7280')}
             {renderStatsCard('New', stats.new, '#3B82F6')}
-            {renderStatsCard('Docs', stats.documents_collected, '#8B5CF6')}
-            {renderStatsCard('Bank', stats.sent_to_bank, '#6366F1')}
+            {renderStatsCard('In Progress', stats.in_progress, '#F59E0B')}
+            {renderStatsCard('Login', stats.login, '#6366F1')}
             {renderStatsCard('Approved', stats.approved, '#22C55E')}
             {renderStatsCard('Disbursed', stats.disbursed, '#10B981')}
+            {renderStatsCard('Rejected', stats.final_rejections, '#EF4444')}
           </ScrollView>
         </View>
       )}

@@ -451,15 +451,15 @@ const FilesDashboard = () => {
             />
             <StatCard 
               label="In Progress" 
-              value={derivedStats.inProgress || stats?.contacted || 0}
+              value={stats?.in_progress || 0}
               subLabel="Created date"
               icon={Clock}
               color="text-orange-600"
             />
             <StatCard 
               label="Login" 
-              value={stats?.login || derivedStats.loginTotal || 0}
-              subLabel={`C: ${stats?.login || 0} S: 0`}
+              value={stats?.login || 0}
+              subLabel={`C: ${stats?.by_status?.login || 0} S: 0`}
               icon={LogIn}
             />
             <StatCard 
@@ -471,7 +471,7 @@ const FilesDashboard = () => {
             />
             <StatCard 
               label="Total Approved" 
-              value={reports?.summary?.total_disbursed_amount || 0}
+              value={stats?.total_approved_amount || 0}
               subLabel="Activity date"
               color="text-green-600"
               icon={TrendingUp}
@@ -490,7 +490,7 @@ const FilesDashboard = () => {
             />
             <StatCard 
               label="Total Disbursed" 
-              value={reports?.summary?.total_disbursed_amount || 0}
+              value={stats?.total_disbursed_amount || 0}
               subLabel="Activity date"
               color="text-emerald-600"
               icon={DollarSign}
@@ -498,21 +498,21 @@ const FilesDashboard = () => {
             />
             <StatCard 
               label="Interim Rejects" 
-              value={derivedStats.interimRejects || 0}
-              subLabel={`C: ${derivedStats.interimRejects || 0} S: 0`}
+              value={stats?.interim_rejects || 0}
+              subLabel={`C: ${stats?.interim_rejects || 0} S: 0`}
               icon={AlertTriangle}
               color="text-amber-600"
             />
             <StatCard 
               label="Final Rejections" 
-              value={derivedStats.finalRejections || stats?.rejected || 0}
-              subLabel={`C: ${stats?.rejected || 0} S: 0`}
+              value={stats?.final_rejections || 0}
+              subLabel={`C: ${stats?.final_rejections || 0} S: 0`}
               icon={XCircle}
               color="text-red-600"
             />
             <StatCard 
               label="Amt in Pipeline" 
-              value={reports?.summary?.total_disbursed_amount * 0.1 || 0}
+              value={stats?.amt_in_pipeline || 0}
               subLabel="Login=Yes & App ID"
               color="text-blue-600"
               icon={TrendingUp}
