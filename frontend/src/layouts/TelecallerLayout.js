@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText } from 'lucide-react';
+import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText, CalendarDays } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import CallModal from '../components/CallModal';
@@ -206,6 +206,7 @@ const TelecallerLayout = () => {
     { path: '/agent/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/agent/files', icon: FileText, label: 'Files' },
     { path: '/agent/followups', icon: Calendar, label: 'Follow-ups' },
+    { path: '/agent/leave', icon: CalendarDays, label: 'Leave' },
     { path: '/agent/profile', icon: User, label: 'Profile' },
   ];
 

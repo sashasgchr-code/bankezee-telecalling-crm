@@ -107,6 +107,7 @@ function App() {
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="followups" element={<TelecallerFollowUps />} />
+          <Route path="leave" element={<LeaveManagement />} />
           <Route path="profile" element={<TelecallerProfile />} />
         </Route>
 

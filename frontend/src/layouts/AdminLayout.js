@@ -20,6 +20,8 @@ const AdminLayout = () => {
     { path: '/admin/files', icon: FolderOpen, label: 'Files' },
     { path: '/admin/tracking', icon: ClipboardList, label: 'Tracking' },
     { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/admin/attendance', icon: Clock, label: 'Attendance' },
+    { path: '/admin/leave', icon: Calendar, label: 'Leave' },
   ];
 
   return (
