@@ -512,17 +512,69 @@ The attendance times were displaying in UTC instead of IST because:
 - `/app/mobile-app/src/screens/DataScreen.js`: Updated to parse paginated response, added infinite scroll with `onEndReached`
 - Shows "X of Y leads" header with page info
 
+### Stage 2: Bulk Select All - COMPLETED ✅
+
+**Backend**:
+- `POST /api/leads/select-all-ids`: Returns all lead IDs matching current filters (database-level selection)
+- `POST /api/leads/bulk-assign-filtered`: Assign all leads matching filters to a user without passing IDs
+- Uses reusable `build_leads_query()` helper function
+
+**Frontend**:
+- Admin Leads page shows "Select all X matching" button when total > visible page
+- Selected count shows actual total when "select all filtered" is active
+- Bulk operations work on all filtered results, not just visible page
+
+### Stage 3: Wrong Number Suppression - COMPLETED ✅
+
+**Backend**:
+- New `suppression_list` collection for storing suppressed phone numbers
+- `GET /api/suppression-list`: Paginated list of suppressed numbers
+- `POST /api/suppression-list`: Add phone to suppression list + mark existing leads as invalid
+- `DELETE /api/suppression-list/{phone}`: Remove from suppression
+- `POST /api/leads/{lead_id}/mark-wrong-number`: Mark lead as wrong number, auto-add to suppression
+- Phone normalization: Last 10 digits stored as `normalized_phone` for matching
+
+**Import Enhancement**:
+- Import now checks suppression list and skips suppressed numbers
+- Returns `suppressed` count in response
+- Skipped numbers stored in import batch record
+
+### Stage 4: Archive & Import Management - COMPLETED ✅
+
+**Backend**:
+- `POST /api/leads/archive`: Archive/unarchive leads by IDs or filters
+- Leads have `archived`, `archived_at`, `archived_by` fields
+- Archived leads excluded from default queries (must pass `archived=true` to see them)
+- New `import_batches` collection tracks import history
+- `GET /api/import-batches`: Paginated list of import batches
+- `GET /api/import-batches/{batch_id}`: Details of specific import
+- Each lead has `import_batch_id` linking to its import
+
+**Import Enhancement**:
+- Import now creates batch record with statistics
+- Tracks: total_rows, total_imported, assigned, suppressed, duplicates
+- Duplicate detection: Skips phone numbers that already exist in active leads
+
+### Stage 5: Excel Export - COMPLETED ✅
+
+**Backend**:
+- `POST /api/leads/export`: Export leads matching filters to Excel file
+- Returns downloadable .xlsx file with all lead fields
+- Respects all active filters (status, assigned_to, search, etc.)
+- Limited to 50k rows for memory safety
+
+**Frontend**:
+- Export button in Admin Leads header
+- Exports current filtered view
+- Shows loading spinner during export
+
 **Test Results**:
-- Backend: 100% (7/7 pytest tests passed)
-- Frontend: 100% (Admin + Telecaller leads pages work correctly)
+- Backend: 100% (13/13 pytest tests passed)
+- Frontend: 100%
 
-**Master Prompt Progress**: Stage 1 of 11 COMPLETE
+**Master Prompt Progress**: Stages 1-5 of 11 COMPLETE
 
-### Upcoming Tasks (Master Prompt Stages 2-11)
-- **P1 Stage 2**: Bulk selection/reassignment (Select all filtered results, not just visible page)
-- **P1 Stage 3**: Wrong-number suppression architecture
-- **P1 Stage 4**: Archive and Import management tracking
-- **P1 Stage 5**: Excel exports respecting active filters
+### Upcoming Tasks (Master Prompt Stages 6-11)
 - **P2 Stage 6**: Canonical call-log / data cleanup architecture
 - **P2 Stage 7**: Leave + WFH application workflows
 - **P2 Stage 8**: HR Role implementation (Attendance/Leave access, NO customer data)

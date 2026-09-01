@@ -1,15 +1,17 @@
 """
-Lead management routes - Enhanced with pagination, filters, suppression
+Lead management routes - Enhanced with pagination, filters, suppression, archive, export
 """
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 from bson import ObjectId
 import pandas as pd
 import io
 import re
+import uuid
 
-from models.schemas import LeadCreate, LeadUpdate, LeadAssign, AutoDistribute, BulkDeleteRequest
+from models.schemas import LeadCreate, LeadUpdate, LeadAssign, AutoDistribute, BulkDeleteRequest, BulkOperationByFilter, BulkAssignByFilter, BulkArchiveRequest, SuppressionEntry
 from utils.database import db
 from utils.auth import get_current_user, require_admin
 from utils.helpers import serialize_doc, serialize_docs
@@ -26,38 +28,25 @@ def normalize_phone(phone: str) -> str:
         return digits[-10:]
     return digits
 
-@router.get("/leads")
-async def list_leads(
-    # Pagination
-    page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=10, le=200, description="Items per page"),
-    # Filters
+def build_leads_query(
+    current_user: dict,
     status: Optional[str] = None,
-    statuses: Optional[str] = None,  # Comma-separated for multi-select
+    statuses: Optional[str] = None,
     assigned_to: Optional[str] = None,
     search: Optional[str] = None,
     last_call_outcome: Optional[str] = None,
-    outcomes: Optional[str] = None,  # Comma-separated for multi-select
+    outcomes: Optional[str] = None,
     source: Optional[str] = None,
-    # Date filters
     created_from: Optional[str] = None,
     created_to: Optional[str] = None,
     last_called_from: Optional[str] = None,
     last_called_to: Optional[str] = None,
-    # Special filters
     never_called: Optional[bool] = None,
     archived: Optional[bool] = None,
     is_invalid: Optional[bool] = None,
-    import_batch_id: Optional[str] = None,
-    # Sorting
-    sort_by: str = Query("created_at", description="Field to sort by"),
-    sort_order: str = Query("desc", description="asc or desc"),
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    List leads with server-side pagination and enhanced filtering.
-    Returns paginated results with total count for "X matching leads" display.
-    """
+    import_batch_id: Optional[str] = None
+) -> dict:
+    """Build MongoDB query from filter parameters - reusable across endpoints"""
     query = {}
     
     # Role-based access control
@@ -174,6 +163,59 @@ async def list_leads(
     # Clean up empty $and
     if "$and" in query and not query["$and"]:
         del query["$and"]
+    
+    return query
+
+@router.get("/leads")
+async def list_leads(
+    # Pagination
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=10, le=200, description="Items per page"),
+    # Filters
+    status: Optional[str] = None,
+    statuses: Optional[str] = None,  # Comma-separated for multi-select
+    assigned_to: Optional[str] = None,
+    search: Optional[str] = None,
+    last_call_outcome: Optional[str] = None,
+    outcomes: Optional[str] = None,  # Comma-separated for multi-select
+    source: Optional[str] = None,
+    # Date filters
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    last_called_from: Optional[str] = None,
+    last_called_to: Optional[str] = None,
+    # Special filters
+    never_called: Optional[bool] = None,
+    archived: Optional[bool] = None,
+    is_invalid: Optional[bool] = None,
+    import_batch_id: Optional[str] = None,
+    # Sorting
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="asc or desc"),
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    List leads with server-side pagination and enhanced filtering.
+    Returns paginated results with total count for "X matching leads" display.
+    """
+    query = build_leads_query(
+        current_user=current_user,
+        status=status,
+        statuses=statuses,
+        assigned_to=assigned_to,
+        search=search,
+        last_call_outcome=last_call_outcome,
+        outcomes=outcomes,
+        source=source,
+        created_from=created_from,
+        created_to=created_to,
+        last_called_from=last_called_from,
+        last_called_to=last_called_to,
+        never_called=never_called,
+        archived=archived,
+        is_invalid=is_invalid,
+        import_batch_id=import_batch_id
+    )
     
     # Get total count for pagination info
     total_count = await db.leads.count_documents(query)
@@ -411,6 +453,12 @@ async def import_leads(
     file: UploadFile = File(...),
     current_user: dict = Depends(require_admin)
 ):
+    """
+    Import leads from CSV/Excel file.
+    - Checks suppression list and skips suppressed numbers
+    - Tracks import batch for history
+    - Normalizes phone numbers
+    """
     try:
         content = await file.read()
         
@@ -426,6 +474,15 @@ async def import_leads(
         if 'phone' not in df.columns:
             raise HTTPException(status_code=400, detail="Phone column is required")
         
+        # Generate import batch ID
+        batch_id = str(uuid.uuid4())
+        
+        # Get suppression list for checking
+        suppressed_phones = set()
+        suppression_cursor = db.suppression_list.find({}, {"normalized_phone": 1})
+        async for entry in suppression_cursor:
+            suppressed_phones.add(entry.get("normalized_phone", ""))
+        
         telecallers = await db.users.find({"role": "telecaller", "is_active": True}).to_list(1000)
         telecaller_map = {}
         for tc in telecallers:
@@ -435,7 +492,22 @@ async def import_leads(
         leads_to_insert = []
         assigned_count = 0
         unassigned_count = 0
+        suppressed_count = 0
+        duplicate_count = 0
         unassigned_telecallers = set()
+        suppressed_numbers = []
+        
+        # Get existing phone numbers for duplicate detection
+        existing_phones = set()
+        existing_cursor = db.leads.find(
+            {"$or": [{"archived": {"$exists": False}}, {"archived": False}]},
+            {"normalized_phone": 1, "phone": 1}
+        )
+        async for lead in existing_cursor:
+            if lead.get("normalized_phone"):
+                existing_phones.add(lead["normalized_phone"])
+            elif lead.get("phone"):
+                existing_phones.add(normalize_phone(lead["phone"]))
         
         for _, row in df.iterrows():
             phone = str(row.get('phone', '')).strip()
@@ -445,6 +517,23 @@ async def import_leads(
             name = str(row.get('name', '')).strip()
             if not name:
                 continue
+            
+            # Normalize phone for checking
+            normalized = normalize_phone(phone)
+            
+            # Check suppression list
+            if normalized in suppressed_phones:
+                suppressed_count += 1
+                suppressed_numbers.append(phone)
+                continue
+            
+            # Check for duplicates
+            if normalized in existing_phones:
+                duplicate_count += 1
+                continue
+            
+            # Add to existing phones to prevent duplicates within this import
+            existing_phones.add(normalized)
             
             assigned_to = None
             telecaller_name = None
@@ -464,6 +553,7 @@ async def import_leads(
             lead_doc = {
                 "name": name,
                 "phone": phone,
+                "normalized_phone": normalized,
                 "email": str(row.get('email', '')).strip() if pd.notna(row.get('email')) else None,
                 "source": str(row.get('source', '')).strip() if pd.notna(row.get('source')) else None,
                 "city": str(row.get('city', '')).strip() if pd.notna(row.get('city')) else None,
@@ -472,6 +562,7 @@ async def import_leads(
                 "custom_fields": {},
                 "assigned_to": assigned_to,
                 "telecaller_name": telecaller_name,
+                "import_batch_id": batch_id,
                 "created_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
                 "created_by": current_user["id"]
@@ -484,24 +575,48 @@ async def import_leads(
             
             leads_to_insert.append(lead_doc)
         
+        total_imported = 0
         if leads_to_insert:
             result = await db.leads.insert_many(leads_to_insert)
-            
-            message = f"Successfully imported {len(result.inserted_ids)} leads. "
-            if assigned_count > 0:
-                message += f"{assigned_count} leads assigned to telecallers. "
-            if unassigned_count > 0:
-                message += f"{unassigned_count} leads could not be assigned"
-            
-            return {
-                "message": message,
-                "total_imported": len(result.inserted_ids),
-                "assigned": assigned_count,
-                "unassigned": unassigned_count,
-                "unassigned_telecallers": list(unassigned_telecallers)
-            }
-        else:
-            return {"message": "No valid leads found in file", "total_imported": 0}
+            total_imported = len(result.inserted_ids)
+        
+        # Create import batch record
+        batch_doc = {
+            "batch_id": batch_id,
+            "filename": file.filename,
+            "total_rows": len(df),
+            "total_imported": total_imported,
+            "assigned_count": assigned_count,
+            "unassigned_count": unassigned_count,
+            "suppressed_count": suppressed_count,
+            "duplicate_count": duplicate_count,
+            "suppressed_numbers": suppressed_numbers[:100],  # Store first 100 for reference
+            "imported_by": current_user["id"],
+            "imported_at": datetime.now(timezone.utc)
+        }
+        await db.import_batches.insert_one(batch_doc)
+        
+        # Build response message
+        message_parts = [f"Successfully imported {total_imported} leads"]
+        if assigned_count > 0:
+            message_parts.append(f"{assigned_count} assigned to telecallers")
+        if suppressed_count > 0:
+            message_parts.append(f"{suppressed_count} skipped (suppressed)")
+        if duplicate_count > 0:
+            message_parts.append(f"{duplicate_count} skipped (duplicates)")
+        if unassigned_count > 0:
+            message_parts.append(f"{unassigned_count} could not be assigned")
+        
+        return {
+            "message": ". ".join(message_parts),
+            "batch_id": batch_id,
+            "total_imported": total_imported,
+            "assigned": assigned_count,
+            "unassigned": unassigned_count,
+            "suppressed": suppressed_count,
+            "duplicates": duplicate_count,
+            "unassigned_telecallers": list(unassigned_telecallers)
+        }
     
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
@@ -557,3 +672,385 @@ async def auto_distribute_leads(data: AutoDistribute, current_user: dict = Depen
         assigned_count += 1
     
     return {"message": f"Distributed {assigned_count} leads among {num_telecallers} telecallers"}
+
+
+# ===================== STAGE 2: BULK SELECT ALL =====================
+
+@router.post("/leads/select-all-ids")
+async def get_all_filtered_lead_ids(
+    filters: BulkOperationByFilter,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get all lead IDs matching the current filters.
+    Used for "Select all X matching leads" functionality.
+    """
+    query = build_leads_query(
+        current_user=current_user,
+        statuses=filters.statuses,
+        assigned_to=filters.assigned_to,
+        search=filters.search,
+        outcomes=filters.outcomes,
+        source=filters.source,
+        created_from=filters.created_from,
+        created_to=filters.created_to,
+        last_called_from=filters.last_called_from,
+        last_called_to=filters.last_called_to,
+        never_called=filters.never_called,
+        archived=filters.archived,
+        is_invalid=filters.is_invalid,
+        import_batch_id=filters.import_batch_id
+    )
+    
+    # Get all IDs (projection to minimize data transfer)
+    leads = await db.leads.find(query, {"_id": 1}).to_list(100000)
+    lead_ids = [str(lead["_id"]) for lead in leads]
+    
+    return {
+        "lead_ids": lead_ids,
+        "count": len(lead_ids)
+    }
+
+@router.post("/leads/bulk-assign-filtered")
+async def bulk_assign_by_filter(
+    data: BulkAssignByFilter,
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Assign all leads matching filter criteria to a user.
+    More efficient than passing thousands of IDs.
+    """
+    user = await db.users.find_one({"_id": ObjectId(data.user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    query = build_leads_query(
+        current_user=current_user,
+        statuses=data.filters.statuses,
+        assigned_to=data.filters.assigned_to,
+        search=data.filters.search,
+        outcomes=data.filters.outcomes,
+        source=data.filters.source,
+        created_from=data.filters.created_from,
+        created_to=data.filters.created_to,
+        last_called_from=data.filters.last_called_from,
+        last_called_to=data.filters.last_called_to,
+        never_called=data.filters.never_called,
+        archived=data.filters.archived,
+        is_invalid=data.filters.is_invalid,
+        import_batch_id=data.filters.import_batch_id
+    )
+    
+    result = await db.leads.update_many(
+        query,
+        {
+            "$set": {
+                "assigned_to": data.user_id,
+                "telecaller_name": user["name"],
+                "updated_at": datetime.now(timezone.utc)
+            }
+        }
+    )
+    
+    return {
+        "message": f"Assigned {result.modified_count} leads to {user['name']}",
+        "modified_count": result.modified_count
+    }
+
+
+# ===================== STAGE 3: WRONG NUMBER SUPPRESSION =====================
+
+@router.get("/suppression-list")
+async def get_suppression_list(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=10, le=200),
+    search: Optional[str] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get paginated suppression list"""
+    query = {}
+    if search:
+        query["$or"] = [
+            {"phone": {"$regex": search, "$options": "i"}},
+            {"normalized_phone": {"$regex": search, "$options": "i"}},
+            {"reason": {"$regex": search, "$options": "i"}}
+        ]
+    
+    total = await db.suppression_list.count_documents(query)
+    skip = (page - 1) * page_size
+    
+    entries = await db.suppression_list.find(query).sort("added_at", -1).skip(skip).limit(page_size).to_list(page_size)
+    
+    return {
+        "entries": serialize_docs(entries),
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_count": total,
+            "total_pages": (total + page_size - 1) // page_size
+        }
+    }
+
+@router.post("/suppression-list")
+async def add_to_suppression_list(
+    entry: SuppressionEntry,
+    current_user: dict = Depends(require_admin)
+):
+    """Manually add a phone to suppression list"""
+    normalized = normalize_phone(entry.phone)
+    
+    # Check if already exists
+    existing = await db.suppression_list.find_one({"normalized_phone": normalized})
+    if existing:
+        return {"message": "Phone already in suppression list", "already_exists": True}
+    
+    doc = {
+        "phone": entry.phone,
+        "normalized_phone": normalized,
+        "reason": entry.reason,
+        "notes": entry.notes,
+        "added_by": current_user["id"],
+        "added_at": datetime.now(timezone.utc)
+    }
+    
+    await db.suppression_list.insert_one(doc)
+    
+    # Also mark any existing leads with this number as invalid
+    await db.leads.update_many(
+        {"$or": [
+            {"phone": entry.phone},
+            {"normalized_phone": normalized}
+        ]},
+        {
+            "$set": {
+                "is_invalid": True,
+                "invalid_reason": entry.reason,
+                "updated_at": datetime.now(timezone.utc)
+            }
+        }
+    )
+    
+    return {"message": "Phone added to suppression list", "normalized_phone": normalized}
+
+@router.delete("/suppression-list/{phone}")
+async def remove_from_suppression_list(
+    phone: str,
+    current_user: dict = Depends(require_admin)
+):
+    """Remove a phone from suppression list"""
+    normalized = normalize_phone(phone)
+    result = await db.suppression_list.delete_one({"normalized_phone": normalized})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Phone not found in suppression list")
+    
+    # Optionally restore leads (don't auto-restore, admin can manually unmark)
+    return {"message": "Phone removed from suppression list"}
+
+@router.post("/leads/{lead_id}/mark-wrong-number")
+async def mark_lead_wrong_number(
+    lead_id: str,
+    notes: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Mark a lead as wrong number - adds to suppression list and marks invalid.
+    Called after selecting 'wrong_number' outcome.
+    """
+    lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    phone = lead.get("phone", "")
+    normalized = normalize_phone(phone)
+    
+    # Add to suppression list if not exists
+    existing = await db.suppression_list.find_one({"normalized_phone": normalized})
+    if not existing:
+        await db.suppression_list.insert_one({
+            "phone": phone,
+            "normalized_phone": normalized,
+            "reason": "wrong_number",
+            "notes": notes,
+            "lead_id": lead_id,
+            "added_by": current_user["id"],
+            "added_at": datetime.now(timezone.utc)
+        })
+    
+    # Mark lead as invalid
+    await db.leads.update_one(
+        {"_id": ObjectId(lead_id)},
+        {
+            "$set": {
+                "is_invalid": True,
+                "invalid_reason": "wrong_number",
+                "updated_at": datetime.now(timezone.utc)
+            }
+        }
+    )
+    
+    return {"message": "Lead marked as wrong number and phone added to suppression list"}
+
+
+# ===================== STAGE 4: ARCHIVE & IMPORT MANAGEMENT =====================
+
+@router.post("/leads/archive")
+async def archive_leads(
+    data: BulkArchiveRequest,
+    current_user: dict = Depends(require_admin)
+):
+    """Archive or unarchive leads by IDs or filter"""
+    if data.lead_ids:
+        # Archive by explicit IDs
+        object_ids = [ObjectId(lid) for lid in data.lead_ids]
+        query = {"_id": {"$in": object_ids}}
+    elif data.filters:
+        # Archive by filter
+        query = build_leads_query(
+            current_user=current_user,
+            statuses=data.filters.statuses,
+            assigned_to=data.filters.assigned_to,
+            search=data.filters.search,
+            outcomes=data.filters.outcomes,
+            source=data.filters.source,
+            created_from=data.filters.created_from,
+            created_to=data.filters.created_to,
+            last_called_from=data.filters.last_called_from,
+            last_called_to=data.filters.last_called_to,
+            never_called=data.filters.never_called,
+            archived=not data.archive,  # If archiving, filter non-archived; if unarchiving, filter archived
+            is_invalid=data.filters.is_invalid,
+            import_batch_id=data.filters.import_batch_id
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Provide lead_ids or filters")
+    
+    result = await db.leads.update_many(
+        query,
+        {
+            "$set": {
+                "archived": data.archive,
+                "archived_at": datetime.now(timezone.utc) if data.archive else None,
+                "archived_by": current_user["id"] if data.archive else None,
+                "updated_at": datetime.now(timezone.utc)
+            }
+        }
+    )
+    
+    action = "archived" if data.archive else "unarchived"
+    return {"message": f"{result.modified_count} leads {action}", "modified_count": result.modified_count}
+
+@router.get("/import-batches")
+async def list_import_batches(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=10, le=100),
+    current_user: dict = Depends(require_admin)
+):
+    """List all import batches with statistics"""
+    total = await db.import_batches.count_documents({})
+    skip = (page - 1) * page_size
+    
+    batches = await db.import_batches.find({}).sort("imported_at", -1).skip(skip).limit(page_size).to_list(page_size)
+    
+    return {
+        "batches": serialize_docs(batches),
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_count": total,
+            "total_pages": (total + page_size - 1) // page_size
+        }
+    }
+
+@router.get("/import-batches/{batch_id}")
+async def get_import_batch(
+    batch_id: str,
+    current_user: dict = Depends(require_admin)
+):
+    """Get details of a specific import batch"""
+    batch = await db.import_batches.find_one({"_id": ObjectId(batch_id)})
+    if not batch:
+        raise HTTPException(status_code=404, detail="Import batch not found")
+    
+    # Get current count of leads from this batch
+    lead_count = await db.leads.count_documents({"import_batch_id": batch_id})
+    
+    return {
+        **serialize_doc(batch),
+        "current_lead_count": lead_count
+    }
+
+
+# ===================== STAGE 5: EXCEL EXPORT =====================
+
+@router.post("/leads/export")
+async def export_leads(
+    filters: BulkOperationByFilter,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Export leads matching filters to Excel file.
+    Returns a downloadable Excel file.
+    """
+    query = build_leads_query(
+        current_user=current_user,
+        statuses=filters.statuses,
+        assigned_to=filters.assigned_to,
+        search=filters.search,
+        outcomes=filters.outcomes,
+        source=filters.source,
+        created_from=filters.created_from,
+        created_to=filters.created_to,
+        last_called_from=filters.last_called_from,
+        last_called_to=filters.last_called_to,
+        never_called=filters.never_called,
+        archived=filters.archived,
+        is_invalid=filters.is_invalid,
+        import_batch_id=filters.import_batch_id
+    )
+    
+    # Fetch all matching leads (limit to 50k for safety)
+    leads = await db.leads.find(query).sort("created_at", -1).to_list(50000)
+    
+    if not leads:
+        raise HTTPException(status_code=404, detail="No leads found matching filters")
+    
+    # Prepare data for export
+    export_data = []
+    for lead in leads:
+        export_data.append({
+            "Name": lead.get("name", ""),
+            "Phone": lead.get("phone", ""),
+            "Email": lead.get("email", ""),
+            "City": lead.get("city", ""),
+            "Source": lead.get("source", ""),
+            "Status": lead.get("status", ""),
+            "Last Call Outcome": lead.get("last_call_outcome", ""),
+            "Telecaller": lead.get("telecaller_name", ""),
+            "Notes": lead.get("notes", ""),
+            "Created At": lead.get("created_at", "").isoformat() if lead.get("created_at") else "",
+            "Last Called At": lead.get("last_call_at", "").isoformat() if lead.get("last_call_at") else "",
+        })
+    
+    # Create DataFrame and Excel file
+    df = pd.DataFrame(export_data)
+    output = io.BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Leads')
+    
+    output.seek(0)
+    
+    # Generate filename with timestamp
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"leads_export_{timestamp}.xlsx"
+    
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
+# ===================== UPDATED IMPORT WITH SUPPRESSION CHECK =====================
+

@@ -61,6 +61,40 @@ class AutoDistribute(BaseModel):
 class BulkDeleteRequest(BaseModel):
     lead_ids: List[str]
 
+class BulkOperationByFilter(BaseModel):
+    """For bulk operations using filter criteria instead of explicit IDs"""
+    # Same filters as /leads endpoint
+    statuses: Optional[str] = None  # Comma-separated status list
+    assigned_to: Optional[str] = None
+    search: Optional[str] = None
+    outcomes: Optional[str] = None  # Comma-separated outcomes
+    source: Optional[str] = None
+    created_from: Optional[str] = None
+    created_to: Optional[str] = None
+    last_called_from: Optional[str] = None
+    last_called_to: Optional[str] = None
+    never_called: Optional[bool] = None
+    archived: Optional[bool] = None
+    is_invalid: Optional[bool] = None
+    import_batch_id: Optional[str] = None
+
+class BulkAssignByFilter(BaseModel):
+    """Assign leads matching filter to a user"""
+    filters: BulkOperationByFilter
+    user_id: str
+
+class BulkArchiveRequest(BaseModel):
+    """Archive/unarchive leads by IDs or filter"""
+    lead_ids: Optional[List[str]] = None
+    filters: Optional[BulkOperationByFilter] = None
+    archive: bool = True  # True = archive, False = unarchive
+
+class SuppressionEntry(BaseModel):
+    """Add phone to suppression list"""
+    phone: str
+    reason: str = "wrong_number"
+    notes: Optional[str] = None
+
 # ===================== CALL MODELS =====================
 
 class CallLogCreate(BaseModel):

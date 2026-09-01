@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Upload, Plus, Users, Trash2, RefreshCw, Loader2, CheckSquare, Square, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Filter, Upload, Plus, Users, Trash2, RefreshCw, Loader2, CheckSquare, Square, X, ChevronLeft, ChevronRight, Download, Archive, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
 import LeadCard from '../../components/LeadCard';
 import Modal from '../../components/Modal';
@@ -31,11 +31,13 @@ const AdminLeads = () => {
   // Selection
   const [selectedLeads, setSelectedLeads] = useState([]);
   const [selectMode, setSelectMode] = useState(false);
+  const [selectAllFiltered, setSelectAllFiltered] = useState(false); // NEW: For "select all X matching"
   
   // Form
   const [newLead, setNewLead] = useState({ name: '', phone: '', email: '', city: '', source: '', notes: '' });
   const [importFile, setImportFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   const statuses = ['new', 'not_interested', 'follow_up', 'presentation', 'leads', 'file'];
 
@@ -115,8 +117,94 @@ const AdminLeads = () => {
   const selectAll = () => {
     if (selectedLeads.length === leads.length) {
       setSelectedLeads([]);
+      setSelectAllFiltered(false);
     } else {
       setSelectedLeads(leads.map(l => l.id));
+    }
+  };
+
+  // NEW: Select all leads matching current filters (database-level)
+  const handleSelectAllFiltered = async () => {
+    if (selectAllFiltered) {
+      setSelectAllFiltered(false);
+      setSelectedLeads([]);
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      const filters = {};
+      if (statusFilter) filters.statuses = statusFilter;
+      if (assignedFilter) filters.assigned_to = assignedFilter;
+      if (searchQuery) filters.search = searchQuery;
+      
+      const response = await api.post('/leads/select-all-ids', filters);
+      setSelectedLeads(response.data.lead_ids);
+      setSelectAllFiltered(true);
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to select all');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // NEW: Export leads to Excel
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const filters = {};
+      if (statusFilter) filters.statuses = statusFilter;
+      if (assignedFilter) filters.assigned_to = assignedFilter;
+      if (searchQuery) filters.search = searchQuery;
+      
+      const response = await api.post('/leads/export', filters, {
+        responseType: 'blob'
+      });
+      
+      // Create download link
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `leads_export_${new Date().toISOString().split('T')[0]}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to export leads');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // NEW: Archive selected leads
+  const handleArchive = async () => {
+    if (selectedLeads.length === 0) return;
+    
+    if (window.confirm(`Archive ${selectAllFiltered ? totalCount : selectedLeads.length} leads?`)) {
+      setIsSubmitting(true);
+      try {
+        if (selectAllFiltered) {
+          // Archive by filter
+          const filters = {};
+          if (statusFilter) filters.statuses = statusFilter;
+          if (assignedFilter) filters.assigned_to = assignedFilter;
+          if (searchQuery) filters.search = searchQuery;
+          
+          await api.post('/leads/archive', { filters, archive: true });
+        } else {
+          // Archive by IDs
+          await api.post('/leads/archive', { lead_ids: selectedLeads, archive: true });
+        }
+        setSelectedLeads([]);
+        setSelectMode(false);
+        setSelectAllFiltered(false);
+        fetchData();
+      } catch (error) {
+        alert(error.response?.data?.detail || 'Failed to archive leads');
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -243,6 +331,15 @@ const AdminLeads = () => {
             Import
           </button>
           <button
+            onClick={handleExport}
+            disabled={isExporting || totalCount === 0}
+            className="btn-secondary flex items-center gap-1 text-sm py-2"
+            data-testid="export-btn"
+          >
+            {isExporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+            Export
+          </button>
+          <button
             onClick={() => setSelectMode(!selectMode)}
             className={`flex items-center gap-1 text-sm py-2 px-3 rounded-lg transition-colors ${
               selectMode ? 'bg-green-100 text-green-700' : 'btn-secondary'
@@ -325,29 +422,50 @@ const AdminLeads = () => {
 
       {/* Selection Actions */}
       {selectMode && selectedLeads.length > 0 && (
-        <div className="p-3 bg-green-50 border-b border-green-200 flex items-center justify-between">
+        <div className="p-3 bg-green-50 border-b border-green-200 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <button onClick={selectAll} className="text-sm text-green-700 font-medium">
-              {selectedLeads.length === leads.length ? 'Deselect All' : 'Select All'}
+            <button onClick={selectAll} className="text-sm text-green-700 font-medium hover:underline">
+              {selectedLeads.length === leads.length ? 'Deselect Page' : 'Select Page'}
             </button>
-            <span className="text-green-700 font-semibold">{selectedLeads.length} selected</span>
+            {totalCount > leads.length && (
+              <button 
+                onClick={handleSelectAllFiltered} 
+                className={`text-sm font-medium hover:underline ${selectAllFiltered ? 'text-blue-700' : 'text-green-700'}`}
+                disabled={isSubmitting}
+              >
+                {selectAllFiltered ? `✓ All ${totalCount} selected` : `Select all ${totalCount} matching`}
+              </button>
+            )}
+            <span className="text-green-700 font-semibold">
+              {selectAllFiltered ? `${totalCount} selected` : `${selectedLeads.length} selected`}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowAssignModal(true)}
               className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium"
+              data-testid="assign-selected-btn"
             >
               <Users size={16} />
               Assign
             </button>
             <button
+              onClick={handleArchive}
+              className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium"
+              data-testid="archive-selected-btn"
+            >
+              <Archive size={16} />
+              Archive
+            </button>
+            <button
               onClick={handleBulkDelete}
               className="flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm font-medium"
+              data-testid="delete-selected-btn"
             >
               <Trash2 size={16} />
             </button>
             <button
-              onClick={() => { setSelectedLeads([]); setSelectMode(false); }}
+              onClick={() => { setSelectedLeads([]); setSelectMode(false); setSelectAllFiltered(false); }}
               className="p-1.5 text-gray-600"
             >
               <X size={20} />

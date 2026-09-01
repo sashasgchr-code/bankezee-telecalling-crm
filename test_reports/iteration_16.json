@@ -1,0 +1,44 @@
+{
+  "summary": "Tested Stages 2-5 (Bulk Select All, Suppression List, Archive, Import Batches, Excel Export). 13/13 backend pytest tests passed. Frontend Export button in admin/leads header downloads a valid xlsx (leads_export_YYYY-MM-DD.xlsx). Select mode toggles checkboxes as expected. Since DB has only 2 leads (< page_size 50), 'Select all X matching' bar is correctly not shown. All endpoints validated: /api/leads/select-all-ids, /api/leads/export, /api/suppression-list (GET/POST/DELETE), /api/leads/archive (with archived filter round-trip), /api/import-batches.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/leads/select-all-ids", "issue": "Uses .to_list(100000) hard cap; if lead volume exceeds 100k, some IDs will be silently truncated. Should stream or paginate for larger datasets."},
+      {"endpoint": "/api/leads/export", "issue": "Uses .to_list(50000) hard cap; loading 50k rows into memory + pandas + openpyxl can be slow / OOM. Consider streaming xlsxwriter constant-memory writer for large exports."},
+      {"endpoint": "/api/auth/login", "issue": "(Carry-over from iter_15) Login response still leaks password hash / plain_password. Not part of this iteration but remains unfixed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Dashboard", "issues": ["Persistent React hydration warnings from ve-dynamic span wrappers around <select>/<option>/<tr>/<tbody>/<tfoot>/<table>. Pre-existing from prior iteration; not blocking."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stage_2_5_features.py",
+    "/app/test_reports/pytest/iteration_16.xml"
+  ],
+  "action_items": [
+    "Consider replacing hardcoded 100k / 50k list caps in select-all-ids and export with streaming/cursor iteration for future scale.",
+    "Fix login response to strip password hash & plain_password (pre-existing security issue)."
+  ],
+  "critical_code_review_comments": [
+    "leads.py build_leads_query correctly composes $or/$and clauses across archived/is_invalid/search filters — verified via archived round-trip test.",
+    "POST /api/leads/select-all-ids and /api/leads/export are correctly available to telecallers with server-side role scoping (assigned_to = current_user['id']).",
+    "POST /api/leads/archive supports both lead_ids and filters branches and returns modified_count; validated round-trip archive → hidden from default listing → visible under archived=true → unarchive.",
+    "Suppression list add is idempotent (returns already_exists=True on duplicate) and correctly marks matching existing leads as invalid — good.",
+    "import-batches list is empty as expected (no imports in DB). Import route already updates suppressed_count/duplicate_count/import_batch_id."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stage_2_5_features.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!! (admin), agent@test.com/agent123 (telecaller).",
+  "seed_data_creation": "None. Existing 2 leads used. Suppression entry added & cleaned up within test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Stage 2-5 endpoints work end-to-end with existing tiny dataset (2 leads). To exercise the 'Select all X matching' UI bar and pagination-with-archive edge cases, seed >50 leads. Export currently returns 404 when no leads match (frontend disables the button when totalCount==0, so this path is not user-reachable). Backend uses .to_list(100000)/(50000) caps — flag for scale testing.",
+  "rca of the issue": "N/A — all features work as designed."
+}
