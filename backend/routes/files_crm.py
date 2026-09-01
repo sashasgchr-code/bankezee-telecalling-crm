@@ -128,9 +128,15 @@ async def get_operations_team():
     """Get list of operations team members for assignment"""
     # In Connect, we'll use telecallers or a specific role
     ops_team = await db.users.find(
-        {"role": {"$in": ["telecaller", "admin"]}, "is_active": True},
-        {"_id": 0, "id": 1, "full_name": 1, "email": 1}
+        {"role": {"$in": ["telecaller", "admin"]}},
+        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}
     ).to_list(100)
+    # Normalize name field
+    for member in ops_team:
+        if not member.get('full_name') and member.get('name'):
+            member['full_name'] = member['name']
+        elif not member.get('full_name'):
+            member['full_name'] = member.get('email', '').split('@')[0]
     return ops_team
 
 
