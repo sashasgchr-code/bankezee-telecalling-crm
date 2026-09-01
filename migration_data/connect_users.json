@@ -1,0 +1,98 @@
+[
+  {
+    "email": "admin@bankezee.com",
+    "password": "$2b$12$B6SIrLkO8XgnbhN2tN3jWO4Ans5uFGx/oOgu.uxresnqdFCJv2Jau",
+    "plain_password": "ConnectSasha12!!",
+    "name": "Admin",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 05:48:28.248000",
+    "last_login": "2026-09-01 11:51:56.247000",
+    "last_activity": "2026-09-01 11:51:56.247000"
+  },
+  {
+    "email": "sasha.sgchr@gmail.com",
+    "password": "$2b$12$p2tgFk1u.p4Zwn0KvEVQDuy4dqxd0Wwy6.0FBQcEMZdY8ynaI4aTe",
+    "plain_password": "Sas12sa!!",
+    "name": "Sasha",
+    "role": "telecaller",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 05:50:47.734000",
+    "last_login": "2026-02-11 06:18:18.819000",
+    "last_activity": "2026-02-11 06:20:19.181000"
+  },
+  {
+    "email": "rama@bankezee.com",
+    "password": "$2b$12$kN43CO/p3HoidlYIk2Jef.4kg2lf4nwVrnF1e3ShVkPmqay54l8.O",
+    "plain_password": "rama@bzc12",
+    "name": "Rama",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.084000",
+    "last_login": null,
+    "last_activity": null
+  },
+  {
+    "email": "teja@bankezee.com",
+    "password": "$2b$12$4HDVzuj56cimXo8Bexpc8e6xsmaTbeDvl5fO.BPTaPFr51sVAjPHy",
+    "plain_password": "tejasme12",
+    "name": "Teja",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.365000",
+    "last_login": "2026-09-01 06:42:23.538000",
+    "last_activity": "2026-09-01 06:42:23.538000"
+  },
+  {
+    "email": "manager@bankezee.com",
+    "password": "$2b$12$kIMhUEg5EO32TBFkEZZLWOtN8INj5.vvijNQV7Op3G1HPejEA6Ota",
+    "plain_password": "mgr@bzc12",
+    "name": "Manager",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.644000",
+    "last_login": null,
+    "last_activity": null
+  },
+  {
+    "email": "manager2@bankezee.com",
+    "password": "$2b$12$mJ9Ht4AniBt9zn.mvxHyqu3an.zAl4LqRpKhOcN2Rdj9ATQJRlQwK",
+    "plain_password": "mgr12@bzc!!",
+    "name": "Manager 2",
+    "role": "admin",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 06:34:38.919000",
+    "last_login": null,
+    "last_activity": null
+  },
+  {
+    "email": "agent@test.com",
+    "password": "$2b$12$CA20pp8EDpe.5DDKyKiBV.1VvXkSSxrXlH17kryANDG17Uii6p7zm",
+    "plain_password": "agent123",
+    "name": "Test Agent",
+    "role": "telecaller",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-02-11 13:18:09.324000",
+    "last_login": "2026-09-01 06:43:02.728000",
+    "last_activity": "2026-09-01 06:43:02.917000"
+  },
+  {
+    "email": "test_hr_user@bankezee.com",
+    "password": "$2b$12$BFRO24CPs7yLjFw.NcrwD.pvc2ZB8t5z73tQp7Oxq/FHzkLbFmY7K",
+    "plain_password": "HrTest12!!",
+    "name": "TEST HR User",
+    "role": "hr",
+    "phone": null,
+    "is_active": true,
+    "created_at": "2026-09-01 05:34:13.739000",
+    "last_login": "2026-09-01 05:34:14.108000",
+    "last_activity": "2026-09-01 05:34:14.108000"
+  }
+]
