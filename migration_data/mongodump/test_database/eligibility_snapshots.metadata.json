@@ -1,0 +1,1 @@
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"14ececc9d75348b691f84d7355ebdddb","collectionName":"eligibility_snapshots","type":"collection"}
