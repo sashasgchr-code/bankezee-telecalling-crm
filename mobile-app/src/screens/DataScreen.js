@@ -32,6 +32,13 @@ const DataScreen = ({ user }) => {
   const [selectedTelecaller, setSelectedTelecaller] = useState('all');
   const [statusCounts, setStatusCounts] = useState({});
   const filtersLoaded = useRef(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const PAGE_SIZE = 50;
 
   const isAdmin = user?.role === 'admin';
 
@@ -107,15 +114,13 @@ const DataScreen = ({ user }) => {
     setStatusCounts(counts);
   };
 
-  const loadLeads = useCallback(async (applyFilters = true) => {
+  const loadLeads = useCallback(async (applyFilters = true, page = 1, append = false) => {
     try {
-      // First load ALL leads to get counts
-      const allResponse = await getLeads({});
-      setAllLeads(allResponse);
-      calculateStatusCounts(allResponse);
-
       // Build params for filtered/searched leads
-      let params = {};
+      let params = {
+        page: page,
+        page_size: PAGE_SIZE,
+      };
       
       // If searching, pass search to backend for server-side search
       if (searchQuery && searchQuery.trim().length >= 2) {
@@ -135,21 +140,43 @@ const DataScreen = ({ user }) => {
       }
       
       const response = await getLeads(params);
-      setLeads(response);
       
-      // If server-side search was used, use results directly
-      // Otherwise apply client-side filtering for immediate feedback
-      if (searchQuery && searchQuery.trim().length >= 2) {
-        setFilteredLeads(response);
+      // Handle paginated response
+      const leadsData = response.leads || response || [];
+      const pagination = response.pagination || {};
+      
+      if (append && page > 1) {
+        // Append to existing leads for infinite scroll
+        setLeads(prev => [...prev, ...leadsData]);
+        setFilteredLeads(prev => [...prev, ...leadsData]);
       } else {
-        filterLeads(response, searchQuery);
+        // Replace leads for initial load or filter change
+        setLeads(leadsData);
+        setFilteredLeads(leadsData);
+      }
+      
+      setCurrentPage(pagination.page || page);
+      setTotalPages(pagination.total_pages || 1);
+      setTotalCount(pagination.total_count || leadsData.length);
+      
+      // Update status counts from stats endpoint for accurate counts
+      if (!append) {
+        calculateStatusCounts(leadsData);
       }
     } catch (error) {
       console.error('Error loading leads:', error);
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [statusFilter, outcomeFilter, selectedTelecaller, isAdmin, searchQuery]);
+
+  const loadMoreLeads = useCallback(() => {
+    if (!loadingMore && currentPage < totalPages) {
+      setLoadingMore(true);
+      loadLeads(true, currentPage + 1, true);
+    }
+  }, [loadingMore, currentPage, totalPages, loadLeads]);
 
   const loadTelecallers = async () => {
     if (isAdmin) {
@@ -166,7 +193,8 @@ const DataScreen = ({ user }) => {
   useFocusEffect(
     useCallback(() => {
       if (filtersLoaded.current) {
-        loadLeads();
+        setCurrentPage(1);
+        loadLeads(true, 1, false);
       }
     }, [loadLeads])
   );
@@ -201,7 +229,8 @@ const DataScreen = ({ user }) => {
     // For longer queries, debounce and trigger server-side search
     else {
       const debounceTimer = setTimeout(() => {
-        loadLeads();
+        setCurrentPage(1);
+        loadLeads(true, 1, false);
       }, 500); // Wait 500ms after user stops typing
       return () => clearTimeout(debounceTimer);
     }
@@ -210,13 +239,15 @@ const DataScreen = ({ user }) => {
   // Reload when filters change (but not search - that's handled above)
   useEffect(() => {
     if (filtersLoaded.current && (!searchQuery || searchQuery.trim().length < 2)) {
-      loadLeads();
+      setCurrentPage(1);
+      loadLeads(true, 1, false);
     }
   }, [statusFilter, outcomeFilter, selectedTelecaller]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await loadLeads();
+    setCurrentPage(1);
+    await loadLeads(true, 1, false);
     setRefreshing(false);
   };
 
@@ -266,8 +297,17 @@ const DataScreen = ({ user }) => {
 
   // Get count for a status
   const getStatusCount = (statusId) => {
-    if (statusId === 'all') return allLeads.length;
+    if (statusId === 'all') return totalCount;
     return statusCounts[statusId] || 0;
+  };
+
+  const renderFooter = () => {
+    if (!loadingMore) return null;
+    return (
+      <View style={styles.loadingFooter}>
+        <Text style={styles.loadingText}>Loading more...</Text>
+      </View>
+    );
   };
 
   const renderLead = ({ item }) => (
@@ -317,7 +357,10 @@ const DataScreen = ({ user }) => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Data</Text>
-        <Text style={styles.headerCount}>{filteredLeads.length} leads</Text>
+        <Text style={styles.headerCount}>
+          {filteredLeads.length} of {totalCount} leads
+          {totalPages > 1 && ` (Page ${currentPage}/${totalPages})`}
+        </Text>
       </View>
 
       {/* New Data Banner */}
@@ -433,6 +476,9 @@ const DataScreen = ({ user }) => {
         renderItem={renderLead}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.listContent}
+        onEndReached={loadMoreLeads}
+        onEndReachedThreshold={0.3}
+        ListFooterComponent={renderFooter}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>📋</Text>
@@ -662,6 +708,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9ca3af',
     marginTop: 4,
+  },
+  loadingFooter: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#6b7280',
   },
 });
 

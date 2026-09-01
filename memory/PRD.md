@@ -489,3 +489,43 @@ The attendance times were displaying in UTC instead of IST because:
 
 **Current Mobile Version:** 2.4.0 (versionCode 11)
 
+## Recent Changes (Sep 1, 2026)
+
+### Stage 1: Server-Side Pagination - COMPLETED ✅
+
+**Backend Changes** (`/app/backend/routes/leads.py`):
+- `GET /api/leads` now returns paginated response: `{leads: [], pagination: {page, page_size, total_count, total_pages, has_next, has_prev}}`
+- Pagination parameters: `page` (default 1), `page_size` (10-200, default 50)
+- Multi-select filters: `statuses` (comma-separated), `outcomes` (comma-separated)
+- Date range filters: `created_from`, `created_to`, `last_called_from`, `last_called_to`
+- Special filters: `never_called`, `archived`, `is_invalid`, `import_batch_id`
+- Sorting: `sort_by`, `sort_order` parameters
+- New `GET /api/leads/count` endpoint for getting count of filtered results
+- New `GET /api/leads/stats` endpoint for dashboard statistics
+
+**Frontend Changes (Web)**:
+- `/app/frontend/src/pages/admin/Leads.js`: Updated to parse `data.leads` and `data.pagination`, added pagination state and controls
+- `/app/frontend/src/pages/telecaller/Leads.js`: Updated to parse paginated response, added pagination controls
+- Both pages show total count and page navigation when data exceeds page_size
+
+**Mobile Changes**:
+- `/app/mobile-app/src/screens/DataScreen.js`: Updated to parse paginated response, added infinite scroll with `onEndReached`
+- Shows "X of Y leads" header with page info
+
+**Test Results**:
+- Backend: 100% (7/7 pytest tests passed)
+- Frontend: 100% (Admin + Telecaller leads pages work correctly)
+
+**Master Prompt Progress**: Stage 1 of 11 COMPLETE
+
+### Upcoming Tasks (Master Prompt Stages 2-11)
+- **P1 Stage 2**: Bulk selection/reassignment (Select all filtered results, not just visible page)
+- **P1 Stage 3**: Wrong-number suppression architecture
+- **P1 Stage 4**: Archive and Import management tracking
+- **P1 Stage 5**: Excel exports respecting active filters
+- **P2 Stage 6**: Canonical call-log / data cleanup architecture
+- **P2 Stage 7**: Leave + WFH application workflows
+- **P2 Stage 8**: HR Role implementation (Attendance/Leave access, NO customer data)
+- **P2 Stage 9**: Email notifications for approvals
+- **P3 Stage 10**: Google Sheets automated backup summaries
+- **P3 Stage 11**: Database retention (TTL indexes)

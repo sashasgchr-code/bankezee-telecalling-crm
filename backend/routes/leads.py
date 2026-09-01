@@ -1,12 +1,13 @@
 """
-Lead management routes
+Lead management routes - Enhanced with pagination, filters, suppression
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from datetime import datetime, timezone
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from datetime import datetime, timezone, timedelta
+from typing import Optional, List
 from bson import ObjectId
 import pandas as pd
 import io
+import re
 
 from models.schemas import LeadCreate, LeadUpdate, LeadAssign, AutoDistribute, BulkDeleteRequest
 from utils.database import db
@@ -15,56 +16,180 @@ from utils.helpers import serialize_doc, serialize_docs
 
 router = APIRouter(prefix="/api", tags=["Leads"])
 
+# Phone number normalization helper
+def normalize_phone(phone: str) -> str:
+    """Normalize phone number to last 10 digits for Indian numbers"""
+    if not phone:
+        return ""
+    digits = re.sub(r'\D', '', str(phone))
+    if len(digits) > 10:
+        return digits[-10:]
+    return digits
+
 @router.get("/leads")
 async def list_leads(
+    # Pagination
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(50, ge=10, le=200, description="Items per page"),
+    # Filters
     status: Optional[str] = None,
+    statuses: Optional[str] = None,  # Comma-separated for multi-select
     assigned_to: Optional[str] = None,
     search: Optional[str] = None,
     last_call_outcome: Optional[str] = None,
+    outcomes: Optional[str] = None,  # Comma-separated for multi-select
+    source: Optional[str] = None,
+    # Date filters
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    last_called_from: Optional[str] = None,
+    last_called_to: Optional[str] = None,
+    # Special filters
+    never_called: Optional[bool] = None,
+    archived: Optional[bool] = None,
+    is_invalid: Optional[bool] = None,
+    import_batch_id: Optional[str] = None,
+    # Sorting
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="asc or desc"),
     current_user: dict = Depends(get_current_user)
 ):
+    """
+    List leads with server-side pagination and enhanced filtering.
+    Returns paginated results with total count for "X matching leads" display.
+    """
     query = {}
     
+    # Role-based access control
     if current_user["role"] == "telecaller":
         query["assigned_to"] = current_user["id"]
     elif assigned_to:
         if assigned_to == "unassigned":
             query["assigned_to"] = None
+        elif assigned_to == "all":
+            pass  # No filter
         else:
             query["assigned_to"] = assigned_to
     
-    if status:
+    # Status filter (single or multi-select)
+    if statuses:
+        status_list = [s.strip() for s in statuses.split(",") if s.strip()]
+        if status_list:
+            query["status"] = {"$in": status_list}
+    elif status:
         query["status"] = status
     
-    if last_call_outcome:
+    # Outcome filter (single or multi-select)
+    if outcomes:
+        outcome_list = [o.strip() for o in outcomes.split(",") if o.strip()]
+        if outcome_list:
+            query["last_call_outcome"] = {"$in": outcome_list}
+    elif last_call_outcome:
         query["last_call_outcome"] = last_call_outcome
     
+    # Source filter
+    if source:
+        query["source"] = {"$regex": source, "$options": "i"}
+    
+    # Date range filters
+    if created_from or created_to:
+        date_query = {}
+        if created_from:
+            try:
+                from_date = datetime.fromisoformat(created_from.replace('Z', '+00:00'))
+                date_query["$gte"] = from_date
+            except ValueError:
+                pass
+        if created_to:
+            try:
+                to_date = datetime.fromisoformat(created_to.replace('Z', '+00:00'))
+                date_query["$lte"] = to_date + timedelta(days=1)
+            except ValueError:
+                pass
+        if date_query:
+            query["created_at"] = date_query
+    
+    if last_called_from or last_called_to:
+        call_date_query = {}
+        if last_called_from:
+            try:
+                from_date = datetime.fromisoformat(last_called_from.replace('Z', '+00:00'))
+                call_date_query["$gte"] = from_date
+            except ValueError:
+                pass
+        if last_called_to:
+            try:
+                to_date = datetime.fromisoformat(last_called_to.replace('Z', '+00:00'))
+                call_date_query["$lte"] = to_date + timedelta(days=1)
+            except ValueError:
+                pass
+        if call_date_query:
+            query["last_call_at"] = call_date_query
+    
+    # Never called filter
+    if never_called is True:
+        query["last_call_at"] = {"$exists": False}
+    elif never_called is False:
+        query["last_call_at"] = {"$exists": True}
+    
+    # Archived filter (default to non-archived)
+    if archived is True:
+        query["archived"] = True
+    elif archived is False or archived is None:
+        query["$or"] = [{"archived": {"$exists": False}}, {"archived": False}]
+    
+    # Invalid/suppressed filter
+    if is_invalid is True:
+        query["is_invalid"] = True
+    elif is_invalid is False or is_invalid is None:
+        # Default: exclude invalid leads from normal views
+        query["$and"] = query.get("$and", [])
+        query.setdefault("$and", []).append({"$or": [{"is_invalid": {"$exists": False}}, {"is_invalid": False}]})
+    
+    # Import batch filter
+    if import_batch_id:
+        query["import_batch_id"] = import_batch_id
+    
+    # Search (name, email, phone)
     if search:
-        # Normalize search term for phone numbers (remove non-digits for phone search)
-        normalized_search = ''.join(filter(str.isdigit, search))
-        # Take last 10 digits for phone matching
-        if len(normalized_search) > 10:
-            normalized_search = normalized_search[-10:]
-        
-        # Build search conditions - case insensitive partial match on name/email
-        # For phone, also try normalized version
+        normalized_search = normalize_phone(search)
         search_conditions = [
             {"name": {"$regex": search, "$options": "i"}},
-            {"email": {"$regex": search, "$options": "i"}}
+            {"email": {"$regex": search, "$options": "i"}},
+            {"phone": {"$regex": search, "$options": "i"}}
         ]
-        
-        # Add phone search with original search term
-        search_conditions.append({"phone": {"$regex": search, "$options": "i"}})
-        
-        # If normalized search has digits, also search by phone ending with those digits
-        # Use end-anchor ($) to avoid false positives with phones that contain the digits elsewhere
         if normalized_search and len(normalized_search) >= 3:
+            search_conditions.append({"normalized_phone": {"$regex": normalized_search + "$", "$options": "i"}})
             search_conditions.append({"phone": {"$regex": normalized_search + "$", "$options": "i"}})
         
-        query["$or"] = search_conditions
+        # Merge with existing $or if present
+        if "$or" in query:
+            existing_or = query.pop("$or")
+            query["$and"] = query.get("$and", [])
+            query["$and"].append({"$or": existing_or})
+            query["$and"].append({"$or": search_conditions})
+        else:
+            query["$or"] = search_conditions
     
-    leads = await db.leads.find(query).sort("created_at", -1).to_list(1000)
+    # Clean up empty $and
+    if "$and" in query and not query["$and"]:
+        del query["$and"]
     
+    # Get total count for pagination info
+    total_count = await db.leads.count_documents(query)
+    
+    # Calculate pagination
+    skip = (page - 1) * page_size
+    total_pages = (total_count + page_size - 1) // page_size
+    
+    # Sorting
+    sort_direction = -1 if sort_order == "desc" else 1
+    sort_field = sort_by if sort_by in ["created_at", "updated_at", "name", "last_call_at", "status"] else "created_at"
+    
+    # Fetch paginated results
+    leads = await db.leads.find(query).sort(sort_field, sort_direction).skip(skip).limit(page_size).to_list(page_size)
+    
+    # Enrich with telecaller info for admin
     if current_user["role"] == "admin":
         for lead in leads:
             if lead.get("assigned_to"):
@@ -72,9 +197,129 @@ async def list_leads(
                 if telecaller:
                     lead["telecaller_name"] = telecaller.get("name", "Unknown")
                     lead["telecaller_email"] = telecaller.get("email", "")
-                    lead["telecaller_phone"] = telecaller.get("phone", "")
     
-    return serialize_docs(leads)
+    return {
+        "leads": serialize_docs(leads),
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total_count": total_count,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+    }
+
+@router.get("/leads/count")
+async def get_leads_count(
+    # Same filters as list_leads
+    status: Optional[str] = None,
+    statuses: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    search: Optional[str] = None,
+    last_call_outcome: Optional[str] = None,
+    outcomes: Optional[str] = None,
+    source: Optional[str] = None,
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    never_called: Optional[bool] = None,
+    archived: Optional[bool] = None,
+    is_invalid: Optional[bool] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get count of leads matching filters - for 'X matching leads' display"""
+    query = {}
+    
+    if current_user["role"] == "telecaller":
+        query["assigned_to"] = current_user["id"]
+    elif assigned_to:
+        if assigned_to == "unassigned":
+            query["assigned_to"] = None
+        elif assigned_to != "all":
+            query["assigned_to"] = assigned_to
+    
+    if statuses:
+        query["status"] = {"$in": [s.strip() for s in statuses.split(",") if s.strip()]}
+    elif status:
+        query["status"] = status
+    
+    if outcomes:
+        query["last_call_outcome"] = {"$in": [o.strip() for o in outcomes.split(",") if o.strip()]}
+    elif last_call_outcome:
+        query["last_call_outcome"] = last_call_outcome
+    
+    if source:
+        query["source"] = {"$regex": source, "$options": "i"}
+    
+    if never_called is True:
+        query["last_call_at"] = {"$exists": False}
+    
+    if archived is None or archived is False:
+        query["$or"] = [{"archived": {"$exists": False}}, {"archived": False}]
+    elif archived is True:
+        query["archived"] = True
+    
+    if is_invalid is None or is_invalid is False:
+        pass  # Normal view excludes invalid
+    
+    if search:
+        normalized_search = normalize_phone(search)
+        search_conditions = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"email": {"$regex": search, "$options": "i"}},
+            {"phone": {"$regex": search, "$options": "i"}}
+        ]
+        if normalized_search and len(normalized_search) >= 3:
+            search_conditions.append({"phone": {"$regex": normalized_search + "$", "$options": "i"}})
+        query["$or"] = search_conditions
+    
+    count = await db.leads.count_documents(query)
+    return {"count": count}
+
+@router.get("/leads/stats")
+async def get_leads_stats(current_user: dict = Depends(get_current_user)):
+    """Get lead statistics for dashboard"""
+    base_query = {}
+    if current_user["role"] == "telecaller":
+        base_query["assigned_to"] = current_user["id"]
+    
+    # Exclude archived and invalid
+    base_query["$or"] = [{"archived": {"$exists": False}}, {"archived": False}]
+    
+    pipeline = [
+        {"$match": base_query},
+        {"$facet": {
+            "by_status": [
+                {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+            ],
+            "by_outcome": [
+                {"$match": {"last_call_outcome": {"$exists": True}}},
+                {"$group": {"_id": "$last_call_outcome", "count": {"$sum": 1}}}
+            ],
+            "totals": [
+                {"$group": {
+                    "_id": None,
+                    "total": {"$sum": 1},
+                    "assigned": {"$sum": {"$cond": [{"$ne": ["$assigned_to", None]}, 1, 0]}},
+                    "unassigned": {"$sum": {"$cond": [{"$eq": ["$assigned_to", None]}, 1, 0]}},
+                    "never_called": {"$sum": {"$cond": [{"$not": ["$last_call_at"]}, 1, 0]}},
+                    "called": {"$sum": {"$cond": [{"$ifNull": ["$last_call_at", False]}, 1, 0]}}
+                }}
+            ]
+        }}
+    ]
+    
+    result = await db.leads.aggregate(pipeline).to_list(1)
+    
+    if not result:
+        return {"by_status": {}, "by_outcome": {}, "totals": {}}
+    
+    data = result[0]
+    return {
+        "by_status": {item["_id"]: item["count"] for item in data.get("by_status", []) if item["_id"]},
+        "by_outcome": {item["_id"]: item["count"] for item in data.get("by_outcome", []) if item["_id"]},
+        "totals": data.get("totals", [{}])[0] if data.get("totals") else {}
+    }
 
 @router.get("/leads/unassigned")
 async def list_unassigned_leads(current_user: dict = Depends(require_admin)):

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Filter, Upload, Plus, Users, Trash2, RefreshCw, Loader2, CheckSquare, Square, X } from 'lucide-react';
+import { Search, Filter, Upload, Plus, Users, Trash2, RefreshCw, Loader2, CheckSquare, Square, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../../services/api';
 import LeadCard from '../../components/LeadCard';
 import Modal from '../../components/Modal';
@@ -16,6 +16,12 @@ const AdminLeads = () => {
   const [assignedFilter, setAssignedFilter] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize] = useState(50);
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -33,9 +39,12 @@ const AdminLeads = () => {
 
   const statuses = ['new', 'not_interested', 'follow_up', 'presentation', 'leads', 'file'];
 
-  const fetchData = async () => {
+  const fetchData = async (page = currentPage) => {
     try {
-      const params = {};
+      const params = {
+        page: page,
+        page_size: pageSize,
+      };
       if (searchQuery) params.search = searchQuery;
       if (statusFilter) params.status = statusFilter;
       if (assignedFilter) params.assigned_to = assignedFilter;
@@ -44,7 +53,14 @@ const AdminLeads = () => {
         api.get('/leads', { params }),
         api.get('/users/telecallers'),
       ]);
-      setLeads(leadsRes.data);
+      
+      // Handle paginated response
+      const leadsData = leadsRes.data;
+      setLeads(leadsData.leads || []);
+      setTotalCount(leadsData.pagination?.total_count || 0);
+      setTotalPages(leadsData.pagination?.total_pages || 1);
+      setCurrentPage(leadsData.pagination?.page || 1);
+      
       setTelecallers(telecallersRes.data);
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -55,8 +71,17 @@ const AdminLeads = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    setCurrentPage(1); // Reset to page 1 when filters change
+    fetchData(1);
   }, [searchQuery, statusFilter, assignedFilter]);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setIsLoading(true);
+      setCurrentPage(newPage);
+      fetchData(newPage);
+    }
+  };
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -331,11 +356,41 @@ const AdminLeads = () => {
         </div>
       )}
 
-      {/* Data Count */}
-      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+      {/* Data Count & Pagination Info */}
+      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
         <p className="text-sm text-gray-600">
-          <span className="font-semibold">{leads.length}</span> data
+          <span className="font-semibold">{totalCount}</span> total data
+          {totalPages > 1 && (
+            <span className="ml-2 text-gray-500">
+              (Page {currentPage} of {totalPages})
+            </span>
+          )}
         </p>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1 || isLoading}
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+              data-testid="prev-page-btn"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-sm text-gray-700 min-w-[60px] text-center">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages || isLoading}
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+              data-testid="next-page-btn"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Data List */}

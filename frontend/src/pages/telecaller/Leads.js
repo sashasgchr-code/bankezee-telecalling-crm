@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
-import { Search, Filter, RefreshCw, Loader2 } from 'lucide-react';
+import { Search, Filter, RefreshCw, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../../services/api';
 import LeadCard from '../../components/LeadCard';
 import { StatusColors, StatusLabels } from '../../constants/colors';
@@ -10,11 +10,16 @@ const TelecallerLeads = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { startCall, activeCall } = useOutletContext();
   const [leads, setLeads] = useState([]);
-  const [allLeads, setAllLeads] = useState([]);
   const [statusCounts, setStatusCounts] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(true); // Default open
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize] = useState(50);
   
   // Read filters from URL params (persist on navigation)
   const searchQuery = searchParams.get('search') || '';
@@ -56,21 +61,28 @@ const TelecallerLeads = () => {
     setStatusCounts(counts);
   };
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (page = currentPage) => {
     try {
-      // First get all leads for counts
-      const allResponse = await api.get('/leads');
-      setAllLeads(allResponse.data);
-      calculateStatusCounts(allResponse.data);
-
-      // Then get filtered leads
-      const params = {};
+      // Build params for the request
+      const params = {
+        page: page,
+        page_size: pageSize,
+      };
       if (searchQuery) params.search = searchQuery;
       if (statusFilter) params.status = statusFilter;
       if (outcomeFilter) params.last_call_outcome = outcomeFilter;
       
       const response = await api.get('/leads', { params });
-      setLeads(response.data);
+      
+      // Handle paginated response
+      const leadsData = response.data;
+      setLeads(leadsData.leads || []);
+      setTotalCount(leadsData.pagination?.total_count || 0);
+      setTotalPages(leadsData.pagination?.total_pages || 1);
+      setCurrentPage(leadsData.pagination?.page || 1);
+      
+      // Calculate status counts from current data
+      calculateStatusCounts(leadsData.leads || []);
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
@@ -80,8 +92,17 @@ const TelecallerLeads = () => {
   };
 
   useEffect(() => {
-    fetchLeads();
+    setCurrentPage(1); // Reset to page 1 when filters change
+    fetchLeads(1);
   }, [searchQuery, statusFilter, outcomeFilter]);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setIsLoading(true);
+      setCurrentPage(newPage);
+      fetchLeads(newPage);
+    }
+  };
 
   const handleRefresh = () => {
     setIsRefreshing(true);
@@ -224,12 +245,42 @@ const TelecallerLeads = () => {
         )}
       </div>
 
-      {/* Data Count */}
-      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
+      {/* Data Count & Pagination */}
+      <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
         <p className="text-sm text-gray-600">
-          <span className="font-semibold">{leads.length}</span> data 
+          <span className="font-semibold">{totalCount}</span> data 
           {(statusFilter || outcomeFilter) ? ' (filtered)' : ' assigned to you'}
+          {totalPages > 1 && (
+            <span className="ml-2 text-gray-500">
+              (Page {currentPage} of {totalPages})
+            </span>
+          )}
         </p>
+        
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage <= 1 || isLoading}
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+              data-testid="prev-page-btn"
+            >
+              <ChevronLeft size={18} />
+            </button>
+            <span className="text-sm text-gray-700 min-w-[60px] text-center">
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage >= totalPages || isLoading}
+              className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+              data-testid="next-page-btn"
+            >
+              <ChevronRight size={18} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Data List */}
