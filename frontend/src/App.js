@@ -17,6 +17,7 @@ import TelecallerFollowUps from "./pages/telecaller/FollowUps";
 import TelecallerProfile from "./pages/telecaller/Profile";
 import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
+import DataMigration from "./pages/files/DataMigration";
 import AdminLayout from "./layouts/AdminLayout";
 import TelecallerLayout from "./layouts/TelecallerLayout";
 import LoadingScreen from "./components/LoadingScreen";
@@ -81,6 +82,7 @@ function App() {
           <Route path="leads/:id" element={<LeadDetail />} />
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
+          <Route path="files/migrate" element={<DataMigration />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="tracking" element={<DailyTrackingSheet />} />

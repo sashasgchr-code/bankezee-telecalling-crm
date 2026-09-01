@@ -289,69 +289,197 @@ async def get_files_reports(
 # ============ DATA MIGRATION ============
 
 class MigrationData(BaseModel):
-    leads: List[dict]
+    leads: Optional[List[dict]] = None
+    files: Optional[List[dict]] = None  # Support both 'leads' and 'files' keys
     source: str = "crm_import"
+
+
+def transform_old_crm_record(record: dict) -> dict:
+    """
+    Transform old CRM record to Connect format.
+    Maps fields from old schema to new schema.
+    """
+    # Handle different field names from old CRM
+    transformed = {
+        "name": record.get("name") or record.get("fullName") or record.get("full_name") or "",
+        "phone": str(record.get("phone") or record.get("mobile") or record.get("mobileNumber") or "").replace(" ", "").replace("-", ""),
+        "email": record.get("email") or record.get("emailId") or "",
+        "city": record.get("city") or record.get("location") or "",
+        "requirement": record.get("requirement") or record.get("loanType") or record.get("type_of_loan") or "",
+        "source": record.get("source") or record.get("leadSource") or "crm_import",
+        "employment_type": record.get("employment_type") or record.get("employmentType") or "",
+    }
+    
+    # Map file status - handle various old CRM status names
+    old_status = str(record.get("status") or record.get("fileStatus") or record.get("file_status") or "new").lower()
+    status_mapping = {
+        "new": "new",
+        "contacted": "contacted",
+        "in progress": "contacted",
+        "inprogress": "contacted",
+        "query": "query",
+        "hold": "hold",
+        "on hold": "hold",
+        "documents collected": "documents_collected",
+        "docs collected": "documents_collected",
+        "documents_collected": "documents_collected",
+        "not eligible": "not_eligible",
+        "noteligible": "not_eligible",
+        "not_eligible": "not_eligible",
+        "sent to bank": "sent_to_bank",
+        "sent_to_bank": "sent_to_bank",
+        "senttobank": "sent_to_bank",
+        "login": "login",
+        "logged in": "login",
+        "not login": "not_login",
+        "not_login": "not_login",
+        "notlogin": "not_login",
+        "approved": "approved",
+        "sanctioned": "approved",
+        "declined": "declined",
+        "rejected": "rejected",
+        "disbursed": "disbursed",
+        "disbursement": "disbursed",
+        "not disbursed": "not_disbursed",
+        "not_disbursed": "not_disbursed",
+        "fi negative": "fi_negative",
+        "fi_negative": "fi_negative",
+        "not interested": "not_interested",
+        "not_interested": "not_interested",
+        "supporting": "supporting",
+    }
+    transformed["file_status"] = status_mapping.get(old_status, "new")
+    
+    # Build file_details from various possible fields
+    file_details = record.get("file_details") or record.get("fileDetails") or {}
+    if not file_details:
+        file_details = {
+            "mother_name": record.get("motherName") or record.get("mother_name") or "",
+            "current_address": record.get("currentAddress") or record.get("current_address") or record.get("address") or "",
+            "company_name": record.get("companyName") or record.get("company_name") or record.get("company") or "",
+            "net_salary": record.get("netSalary") or record.get("net_salary") or record.get("salary") or "",
+            "office_address": record.get("officeAddress") or record.get("office_address") or "",
+            "obligations_emi": record.get("obligationsEmi") or record.get("obligations_emi") or record.get("emi") or "",
+            "existing_loan_1": record.get("existingLoan1") or record.get("existing_loan_1") or "",
+            "existing_loan_2": record.get("existingLoan2") or record.get("existing_loan_2") or "",
+            "existing_loan_3": record.get("existingLoan3") or record.get("existing_loan_3") or "",
+            "type_of_loan": record.get("typeOfLoan") or record.get("type_of_loan") or record.get("loanType") or transformed["requirement"],
+            "cibil_score": record.get("cibilScore") or record.get("cibil_score") or record.get("cibil") or "",
+            "loan_amount_required": record.get("loanAmountRequired") or record.get("loan_amount_required") or record.get("loanAmount") or "",
+            "tenure_required": record.get("tenureRequired") or record.get("tenure_required") or record.get("tenure") or "",
+        }
+    transformed["file_details"] = file_details
+    
+    # Copy eligibilities if present
+    transformed["eligibilities"] = record.get("eligibilities") or record.get("bankEligibilities") or []
+    
+    # Copy activities/notes if present
+    old_activities = record.get("file_activities") or record.get("activities") or record.get("notes") or []
+    if isinstance(old_activities, list):
+        transformed["file_activities"] = old_activities
+    else:
+        transformed["file_activities"] = []
+    
+    # Copy other metadata
+    transformed["rating"] = record.get("rating") or record.get("stars") or 0
+    transformed["score"] = record.get("score") or 0
+    transformed["created_at"] = record.get("created_at") or record.get("createdAt") or record.get("dateCreated") or datetime.now(timezone.utc).isoformat()
+    transformed["assigned_to"] = record.get("assigned_to") or record.get("assignedTo") or record.get("telecaller") or None
+    transformed["file_assigned_to"] = record.get("file_assigned_to") or record.get("opsAssignedTo") or None
+    
+    return transformed
 
 
 @router.post("/import")
 async def import_crm_data(migration_data: MigrationData):
     """
-    Import leads from external CRM system.
-    Each lead should have: name, phone, email, city, and optionally file_details.
+    Import leads/files from external CRM system.
+    Accepts both 'leads' and 'files' keys in the JSON payload.
+    Automatically transforms old CRM field names to Connect format.
     """
+    # Support both 'leads' and 'files' keys
+    records = migration_data.files or migration_data.leads or []
+    
+    if not records:
+        raise HTTPException(status_code=400, detail="No data to import. Provide 'leads' or 'files' array.")
+    
     imported_count = 0
+    updated_count = 0
     skipped_count = 0
     errors = []
     
-    for lead in migration_data.leads:
+    for record in records:
         try:
-            # Check if lead with same phone exists
-            phone = str(lead.get("phone", "")).replace(" ", "").replace("-", "")
+            # Transform old CRM format to Connect format
+            transformed = transform_old_crm_record(record)
+            
+            phone = transformed["phone"]
             if not phone:
                 skipped_count += 1
                 continue
             
             existing = await db.leads.find_one({"phone": phone})
             if existing:
-                # Update existing lead with CRM data
+                # Update existing lead with CRM data (merge, don't overwrite)
                 update_data = {
                     "status": "file",
-                    "file_status": lead.get("file_status", "new"),
-                    "file_details": lead.get("file_details", {}),
-                    "eligibilities": lead.get("eligibilities", []),
-                    "file_activities": lead.get("file_activities", []),
+                    "file_status": transformed["file_status"],
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                     "import_source": migration_data.source
                 }
-                if lead.get("name"):
-                    update_data["name"] = lead["name"]
-                if lead.get("email"):
-                    update_data["email"] = lead["email"]
-                if lead.get("city"):
-                    update_data["city"] = lead["city"]
+                
+                # Only update fields that have values
+                if transformed["name"]:
+                    update_data["name"] = transformed["name"]
+                if transformed["email"]:
+                    update_data["email"] = transformed["email"]
+                if transformed["city"]:
+                    update_data["city"] = transformed["city"]
+                if transformed["requirement"]:
+                    update_data["requirement"] = transformed["requirement"]
+                if transformed["employment_type"]:
+                    update_data["employment_type"] = transformed["employment_type"]
+                if transformed["file_details"]:
+                    # Merge file_details instead of replacing
+                    existing_details = existing.get("file_details") or {}
+                    merged_details = {**existing_details, **{k: v for k, v in transformed["file_details"].items() if v}}
+                    update_data["file_details"] = merged_details
+                if transformed["eligibilities"]:
+                    update_data["eligibilities"] = transformed["eligibilities"]
+                if transformed["rating"]:
+                    update_data["rating"] = transformed["rating"]
+                if transformed["score"]:
+                    update_data["score"] = transformed["score"]
+                if transformed["file_assigned_to"]:
+                    update_data["file_assigned_to"] = transformed["file_assigned_to"]
                 
                 await db.leads.update_one({"phone": phone}, {"$set": update_data})
-                imported_count += 1
+                updated_count += 1
             else:
-                # Create new lead
+                # Create new lead/file
                 new_lead = {
-                    "id": str(uuid.uuid4())[:24],
-                    "name": lead.get("name", ""),
+                    "id": str(uuid.uuid4()),
+                    "name": transformed["name"],
                     "phone": phone,
-                    "email": lead.get("email", ""),
-                    "city": lead.get("city", ""),
-                    "requirement": lead.get("requirement", ""),
-                    "source": lead.get("source", migration_data.source),
+                    "email": transformed["email"],
+                    "city": transformed["city"],
+                    "requirement": transformed["requirement"],
+                    "employment_type": transformed["employment_type"],
+                    "source": transformed["source"],
                     "status": "file",
-                    "file_status": lead.get("file_status", "new"),
-                    "file_details": lead.get("file_details", {}),
-                    "eligibilities": lead.get("eligibilities", []),
-                    "file_activities": [{
+                    "file_status": transformed["file_status"],
+                    "file_details": transformed["file_details"],
+                    "eligibilities": transformed["eligibilities"],
+                    "rating": transformed["rating"],
+                    "score": transformed["score"],
+                    "assigned_to": transformed["assigned_to"],
+                    "file_assigned_to": transformed["file_assigned_to"],
+                    "file_activities": transformed["file_activities"] + [{
                         "type": "import",
                         "message": f"Imported from {migration_data.source}",
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }],
-                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "created_at": transformed["created_at"],
                     "updated_at": datetime.now(timezone.utc).isoformat(),
                     "import_source": migration_data.source
                 }
@@ -359,15 +487,53 @@ async def import_crm_data(migration_data: MigrationData):
                 imported_count += 1
                 
         except Exception as e:
-            errors.append({"phone": lead.get("phone"), "error": str(e)})
+            errors.append({"phone": record.get("phone"), "error": str(e)})
             skipped_count += 1
     
     return {
         "success": True,
-        "imported": imported_count,
+        "total_processed": len(records),
+        "new_records": imported_count,
+        "updated_records": updated_count,
         "skipped": skipped_count,
-        "errors": errors[:10]  # Return first 10 errors
+        "errors": errors[:20]  # Return first 20 errors
     }
+
+
+@router.post("/import/upload")
+async def import_crm_file(file: UploadFile = File(...)):
+    """
+    Import from uploaded JSON file (from export script).
+    Accepts the JSON file generated by export_old_crm.py
+    """
+    import json
+    
+    if not file.filename.endswith('.json'):
+        raise HTTPException(status_code=400, detail="Only JSON files are supported")
+    
+    try:
+        content = await file.read()
+        data = json.loads(content.decode('utf-8'))
+        
+        # Handle both direct array and wrapped format
+        if isinstance(data, list):
+            records = data
+            source = "file_upload"
+        elif isinstance(data, dict):
+            records = data.get("files") or data.get("leads") or data.get("data") or []
+            source = data.get("export_info", {}).get("source_database", "file_upload")
+        else:
+            raise HTTPException(status_code=400, detail="Invalid JSON format")
+        
+        if not records:
+            raise HTTPException(status_code=400, detail="No records found in the file")
+        
+        # Use the import function
+        migration_data = MigrationData(files=records, source=source)
+        return await import_crm_data(migration_data)
+        
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
 
 
 @router.get("/export")

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FileText, Search, ChevronDown, Eye, Trash2, Download, RefreshCw, 
   Clock, DollarSign, TrendingUp, CheckCircle, XCircle, LogIn, AlertTriangle,
-  BarChart3, Star, ChevronLeft, ChevronRight, Loader2, Filter
+  BarChart3, Star, ChevronLeft, ChevronRight, Loader2, Filter, Database
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
@@ -295,6 +295,15 @@ const FilesDashboard = () => {
               <BarChart3 size={14} />
               Export Stats
             </button>
+            {isAdmin && (
+              <button 
+                onClick={() => navigate('/admin/files/migrate')}
+                className="px-3 py-1.5 text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1"
+              >
+                <Database size={14} />
+                Import Data
+              </button>
+            )}
           </div>
         </div>
       </div>
