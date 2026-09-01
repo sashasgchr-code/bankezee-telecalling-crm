@@ -1,0 +1,49 @@
+{
+  "summary": "Backend-only regression for 4 requested fixes. 18/18 pytest tests passed. Verified: (1) GET /api/attendance/admin/today accepts optional 'date' query param (falls back to today for invalid values). (2) GET /api/attendance/admin/summary accepts 'date' param and echoes the requested IST date. (3) NEW GET /api/attendance/admin/weekly-summary returns week_start/week_end/employees[]/summary{} with per-employee days_present/late/absent/wfh/office/leave counts and daily_records. (4) NEW GET /api/attendance/admin/monthly-summary returns month/year/working_days/employees[]/summary{} with attendance_percentage (0-100) per employee sorted desc, plus half-day handling (contributes 0.5 to days_present). (5) GET /api/reports/detailed-calls now merges both call_logs and verified_call_logs collections; every returned call includes 'source' (web|mobile) and 'is_verified' fields; results sorted by date/time desc and capped by limit. All endpoints enforce admin auth (403/401 without token). Also confirmed via grep that call recording UI was removed from /app/mobile-app/src/screens/HomeScreen.js and /app/frontend/src/pages/admin/Reports.js (no 'recording' occurrences left).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/attendance/admin/today?date=<invalid>",
+        "issue": "Invalid date string silently falls back to today without returning 400. Consider returning HTTP 400 with a helpful error message so clients can distinguish bad input from empty results."
+      },
+      {
+        "endpoint": "GET /api/attendance/admin/weekly-summary",
+        "issue": "days_absent is hardcoded to (5 - days_present - days_leave) i.e. Mon-Fri only. If the queried week straddles a public holiday or if the org works Saturdays, the count is misleading. Consider using attendance_settings/working_days_of_week."
+      },
+      {
+        "endpoint": "GET /api/attendance/admin/monthly-summary",
+        "issue": "attendance_percentage = days_present / working_days * 100. days_present is incremented by +0.5 for HALF_DAY AND separately counted for PRESENT/LATE; if a record has status HALF_DAY, only 0.5 is added (never 1) - correct. But days_absent uses int(days_present) which floors 4.5 -> 4, so a user with 4 full + 1 half day (4.5) will show 4 present and (working_days-4-leave) absent, double-counting the half day as absent. Recommend: days_absent = max(0, working_days - ceil(days_present) - days_leave) OR use days_present + days_half_day + days_leave."
+      },
+      {
+        "endpoint": "GET /api/reports/detailed-calls",
+        "issue": "The verified pipeline uses call_timestamp but the date-range filter falls back to a period='today' start when no dates supplied - so 'today' start_date is applied. That was pre-existing behavior. Also, list is sorted by (call_date, call_time) as strings which works for YYYY-MM-DD but call_time is 'hh:MM AM/PM' (12-hour) so sort order across noon boundary is lexicographic, not chronological (e.g. '12:30 PM' < '1:30 PM' fails). Consider sorting on original datetime before formatting."
+    }
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_iteration_14_fixes.py",
+    "/app/test_reports/pytest/iteration_14.xml"
+  ],
+  "action_items": [
+    "(Optional) Fix chronological sort of detailed-calls (use raw datetime, not formatted 12-hour string).",
+    "(Optional) Correct days_absent calc in monthly-summary to account for HALF_DAY (0.5) contributions.",
+    "(Optional) Return 400 on invalid 'date' param in /attendance/admin/today instead of silent fallback.",
+    "(Optional) Make weekly-summary working_days configurable rather than hardcoded 5."
+  ],
+  "critical_code_review_comments": [
+    "attendance.py is now ~1370 lines - split into attendance_agent.py, attendance_admin.py, attendance_reports.py.",
+    "reports.py detailed-calls duplicates the aggregation pipeline for call_logs vs verified_call_logs; extract a shared helper.",
+    "detailed-calls sort key uses formatted strings and can misorder cross-noon rows.",
+    "monthly-summary half-day handling causes double-count in days_absent (see minor issue #3).",
+    "weekly-summary loops over attendance_records without status guard for status=='PRESENT' plus HALF_DAY - half-days are not counted in days_present nor tracked separately unlike monthly-summary."
+  ],
+  "updated_files": ["/app/backend/tests/test_iteration_14_fixes.py"],
+  "success_rate": {"backend": "100% (18/18 passed)", "frontend": "N/A (backend-only request)"},
+  "test_credentials": "Used /app/memory/test_credentials.md - admin@bankezee.com / ConnectSasha12!!",
+  "seed_data_creation": "None - tests read existing data only.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Iteration 14 verified: attendance date filters (today, summary), new weekly/monthly summary endpoints, detailed-calls merges call_logs + verified_call_logs with source/is_verified. Frontend recording removals confirmed via grep (no 'recording' in mobile HomeScreen.js or admin Reports.js). Open (non-blocking) issues around half-day double-counting in monthly-summary days_absent and lexicographic time sort in detailed-calls."
+}

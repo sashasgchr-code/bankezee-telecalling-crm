@@ -355,6 +355,7 @@ async def get_detailed_call_report(
         
         detailed_calls.append({
             "id": log.get("id", ""),
+            "_sort_datetime": call_time.isoformat() if call_time else "",
             "call_date": call_time_ist.strftime("%Y-%m-%d") if call_time_ist else "",
             "call_time": call_time_ist.strftime("%I:%M %p") if call_time_ist else "",
             "caller_name": log.get("user_name", "Unknown"),
@@ -393,6 +394,7 @@ async def get_detailed_call_report(
         
         detailed_calls.append({
             "id": log.get("id", ""),
+            "_sort_datetime": call_time.isoformat() if call_time else "",
             "call_date": call_time_ist.strftime("%Y-%m-%d") if call_time_ist else "",
             "call_time": call_time_ist.strftime("%I:%M %p") if call_time_ist else "",
             "caller_name": log.get("user_name", "Unknown"),
@@ -413,11 +415,13 @@ async def get_detailed_call_report(
             "is_verified": True,
         })
     
-    # Sort all calls by date/time descending
-    detailed_calls.sort(key=lambda x: (x["call_date"], x["call_time"]), reverse=True)
+    # Sort all calls by actual datetime descending (not formatted string)
+    detailed_calls.sort(key=lambda x: x.get("_sort_datetime", ""), reverse=True)
     
-    # Limit total results
+    # Limit total results and remove internal sort field
     detailed_calls = detailed_calls[:limit]
+    for call in detailed_calls:
+        call.pop("_sort_datetime", None)
     
     return {
         "calls": detailed_calls,

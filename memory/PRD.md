@@ -444,3 +444,48 @@ The attendance times were displaying in UTC instead of IST because:
 3. Consider refactoring large files (Reports.js > 1700 lines, DailyTrackingSheet.js > 800 lines)
 4. Web/Mobile feature parity: Add incoming call tracking to web app
 
+## Recent Changes (Aug 31, 2026 - Session 2)
+
+### v2.4.0 Changes
+
+**1. Call Recording Removed**
+- Removed call recording toggle from mobile app HomeScreen (Android 9+ blocks third-party call recording)
+- Removed Recordings tab from admin Reports page
+- Cleaned up related imports and styles
+
+**2. Unified Call Reports**
+- `/api/reports/detailed-calls` now merges both `call_logs` AND `verified_call_logs` collections
+- Each call includes `source` field (web/mobile) and `is_verified` flag
+- Admin can see all calls from both web and mobile in one report
+- Fixed sort order to use actual datetime instead of formatted string
+
+**3. Attendance Date Filter Enhancement**
+- `/api/attendance/admin/today` now accepts `date` parameter to filter by any date
+- `/api/attendance/admin/summary` uses same date parameter
+- Admin can view attendance records for any historical date
+
+**4. Weekly & Monthly Attendance Reports (NEW)**
+- `GET /api/attendance/admin/weekly-summary` - Returns per-employee weekly stats:
+  - days_present, days_late, days_absent, days_wfh, days_office, days_leave
+  - daily_records with check-in/out times
+  - Summary totals
+- `GET /api/attendance/admin/monthly-summary` - Returns per-employee monthly stats:
+  - attendance_percentage (0-100%)
+  - days_present, days_late, days_half_day, days_absent
+  - total_working_hours, total_late_minutes
+  - Sorted by attendance percentage (best performers first)
+
+**5. Mobile Search Enhancement**
+- Mobile app now uses server-side search (passes `search` param to API)
+- Debounced search (500ms) to avoid excessive API calls
+- Search by name, email, or phone now works on mobile
+
+**Files Changed:**
+- `/app/mobile-app/src/screens/HomeScreen.js` - Removed recording toggle
+- `/app/mobile-app/src/screens/DataScreen.js` - Server-side search
+- `/app/frontend/src/pages/admin/Reports.js` - Removed recordings tab, added source column
+- `/app/backend/routes/attendance.py` - Date filter, weekly/monthly summaries
+- `/app/backend/routes/reports.py` - Merged verified_call_logs into detailed-calls
+
+**Current Mobile Version:** 2.4.0 (versionCode 11)
+

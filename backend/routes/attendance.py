@@ -535,13 +535,30 @@ async def get_my_wfh_requests(current_user: dict = Depends(get_current_user)):
 async def admin_get_today_attendance(
     work_mode: Optional[str] = None,
     status: Optional[str] = None,
+    target_date: Optional[str] = Query(None, alias="date"),
     current_user: dict = Depends(require_admin)
 ):
-    """Get today's attendance for all users (Admin only)"""
-    # Use IST date boundaries to ensure correct date at midnight
-    today_start, today_end = get_ist_today_range()
+    """Get attendance for a specific date (defaults to today) for all users (Admin only)"""
+    # Parse target date or use today in IST
+    if target_date:
+        try:
+            parsed_date = datetime.fromisoformat(target_date.replace('Z', '+00:00'))
+            if parsed_date.tzinfo is None:
+                parsed_date = parsed_date.replace(tzinfo=IST)
+            elif parsed_date.tzinfo == timezone.utc:
+                parsed_date = parsed_date.astimezone(IST)
+            today_start = parsed_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        except ValueError:
+            today_start, _ = get_ist_today_range()
+    else:
+        today_start, _ = get_ist_today_range()
     
-    query = {"attendance_date": {"$gte": today_start, "$lt": today_end}}
+    # Calculate day boundaries in UTC for query
+    today_end = today_start + timedelta(days=1)
+    today_start_utc = today_start.astimezone(timezone.utc)
+    today_end_utc = today_end.astimezone(timezone.utc)
+    
+    query = {"attendance_date": {"$gte": today_start_utc, "$lt": today_end_utc}}
     
     if work_mode:
         query["work_mode"] = work_mode
@@ -1129,3 +1146,228 @@ async def admin_export_attendance(
         })
     
     return export_data
+
+
+
+@router.get("/admin/weekly-summary")
+async def admin_get_weekly_attendance_summary(
+    start_date: Optional[str] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get weekly attendance summary for all employees (Admin only)"""
+    ist_now = get_ist_now()
+    
+    # Calculate week start (Monday) and end (Sunday)
+    if start_date:
+        try:
+            week_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            if week_start.tzinfo is None:
+                week_start = week_start.replace(tzinfo=IST)
+        except ValueError:
+            week_start = ist_now - timedelta(days=ist_now.weekday())
+    else:
+        # Default to current week (Monday start)
+        week_start = ist_now - timedelta(days=ist_now.weekday())
+    
+    week_start = week_start.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_end = week_start + timedelta(days=7)
+    
+    # Convert to UTC for queries
+    week_start_utc = week_start.astimezone(timezone.utc)
+    week_end_utc = week_end.astimezone(timezone.utc)
+    
+    # Get all active users
+    users = await db.users.find({"is_active": True, "role": {"$ne": "admin"}}).to_list(100)
+    
+    # Get attendance records for the week
+    attendance_records = await db.attendance.find({
+        "attendance_date": {"$gte": week_start_utc, "$lt": week_end_utc}
+    }).to_list(1000)
+    
+    # Group by user
+    user_attendance = {}
+    for user in users:
+        user_id = str(user["_id"])
+        user_attendance[user_id] = {
+            "user_id": user_id,
+            "user_name": user.get("name", "Unknown"),
+            "user_email": user.get("email", ""),
+            "days_present": 0,
+            "days_late": 0,
+            "days_absent": 0,
+            "days_wfh": 0,
+            "days_office": 0,
+            "days_leave": 0,
+            "total_working_minutes": 0,
+            "daily_records": []
+        }
+    
+    for record in attendance_records:
+        user_id = record.get("user_id")
+        if user_id not in user_attendance:
+            continue
+        
+        status = record.get("attendance_status", "")
+        work_mode = record.get("work_mode", "")
+        
+        if status in ["PRESENT", "LATE"]:
+            user_attendance[user_id]["days_present"] += 1
+        if status == "LATE":
+            user_attendance[user_id]["days_late"] += 1
+        if status == "ON_LEAVE":
+            user_attendance[user_id]["days_leave"] += 1
+        
+        if work_mode == "OFFICE":
+            user_attendance[user_id]["days_office"] += 1
+        elif work_mode == "WORK_FROM_HOME":
+            user_attendance[user_id]["days_wfh"] += 1
+        
+        user_attendance[user_id]["total_working_minutes"] += record.get("working_minutes", 0)
+        
+        # Add daily record
+        check_in_ist = utc_to_ist(record.get("check_in_time")) if record.get("check_in_time") else None
+        check_out_ist = utc_to_ist(record.get("check_out_time")) if record.get("check_out_time") else None
+        attendance_date_ist = utc_to_ist(record.get("attendance_date")) if record.get("attendance_date") else None
+        
+        user_attendance[user_id]["daily_records"].append({
+            "date": attendance_date_ist.strftime("%Y-%m-%d") if attendance_date_ist else "",
+            "day": attendance_date_ist.strftime("%A") if attendance_date_ist else "",
+            "status": status,
+            "work_mode": work_mode,
+            "check_in": check_in_ist.strftime("%I:%M %p") if check_in_ist else None,
+            "check_out": check_out_ist.strftime("%I:%M %p") if check_out_ist else None,
+            "working_minutes": record.get("working_minutes", 0)
+        })
+    
+    # Calculate absent days (working days without attendance)
+    working_days = 5  # Mon-Fri
+    for user_id, data in user_attendance.items():
+        data["days_absent"] = max(0, working_days - data["days_present"] - data["days_leave"])
+        data["total_working_hours"] = f"{data['total_working_minutes'] // 60}h {data['total_working_minutes'] % 60}m"
+        data["daily_records"].sort(key=lambda x: x["date"])
+    
+    return {
+        "week_start": week_start.strftime("%Y-%m-%d"),
+        "week_end": (week_end - timedelta(days=1)).strftime("%Y-%m-%d"),
+        "employees": list(user_attendance.values()),
+        "summary": {
+            "total_employees": len(users),
+            "total_present_days": sum(e["days_present"] for e in user_attendance.values()),
+            "total_late_days": sum(e["days_late"] for e in user_attendance.values()),
+            "total_absent_days": sum(e["days_absent"] for e in user_attendance.values()),
+            "total_leave_days": sum(e["days_leave"] for e in user_attendance.values())
+        }
+    }
+
+@router.get("/admin/monthly-summary")
+async def admin_get_monthly_attendance_summary(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Get monthly attendance summary for all employees (Admin only)"""
+    ist_now = get_ist_now()
+    target_month = month or ist_now.month
+    target_year = year or ist_now.year
+    
+    # Calculate month boundaries in IST
+    month_start = datetime(target_year, target_month, 1, tzinfo=IST)
+    if target_month == 12:
+        month_end = datetime(target_year + 1, 1, 1, tzinfo=IST)
+    else:
+        month_end = datetime(target_year, target_month + 1, 1, tzinfo=IST)
+    
+    # Convert to UTC for queries
+    month_start_utc = month_start.astimezone(timezone.utc)
+    month_end_utc = month_end.astimezone(timezone.utc)
+    
+    # Calculate working days in month (excluding weekends)
+    working_days = 0
+    current_day = month_start
+    while current_day < month_end:
+        if current_day.weekday() < 5:  # Monday = 0, Friday = 4
+            working_days += 1
+        current_day += timedelta(days=1)
+    
+    # Get all active users
+    users = await db.users.find({"is_active": True, "role": {"$ne": "admin"}}).to_list(100)
+    
+    # Get attendance records for the month
+    attendance_records = await db.attendance.find({
+        "attendance_date": {"$gte": month_start_utc, "$lt": month_end_utc}
+    }).to_list(5000)
+    
+    # Group by user
+    user_attendance = {}
+    for user in users:
+        user_id = str(user["_id"])
+        user_attendance[user_id] = {
+            "user_id": user_id,
+            "user_name": user.get("name", "Unknown"),
+            "user_email": user.get("email", ""),
+            "days_present": 0,
+            "days_late": 0,
+            "days_half_day": 0,
+            "days_absent": 0,
+            "days_wfh": 0,
+            "days_office": 0,
+            "days_leave": 0,
+            "total_working_minutes": 0,
+            "total_late_minutes": 0,
+            "attendance_percentage": 0
+        }
+    
+    for record in attendance_records:
+        user_id = record.get("user_id")
+        if user_id not in user_attendance:
+            continue
+        
+        status = record.get("attendance_status", "")
+        work_mode = record.get("work_mode", "")
+        
+        if status in ["PRESENT", "LATE"]:
+            user_attendance[user_id]["days_present"] += 1
+        if status == "LATE":
+            user_attendance[user_id]["days_late"] += 1
+            user_attendance[user_id]["total_late_minutes"] += record.get("late_minutes", 0)
+        if status == "HALF_DAY":
+            user_attendance[user_id]["days_half_day"] += 1
+            user_attendance[user_id]["days_present"] += 0.5
+        if status == "ON_LEAVE":
+            user_attendance[user_id]["days_leave"] += 1
+        
+        if work_mode == "OFFICE":
+            user_attendance[user_id]["days_office"] += 1
+        elif work_mode == "WORK_FROM_HOME":
+            user_attendance[user_id]["days_wfh"] += 1
+        
+        user_attendance[user_id]["total_working_minutes"] += record.get("working_minutes", 0)
+    
+    # Calculate absent days and attendance percentage
+    for user_id, data in user_attendance.items():
+        # Use ceiling of days_present to properly account for half days
+        effective_present = int(data["days_present"]) + (1 if data["days_present"] % 1 > 0 else 0)
+        data["days_absent"] = max(0, working_days - effective_present - data["days_leave"])
+        data["total_working_hours"] = f"{data['total_working_minutes'] // 60}h {data['total_working_minutes'] % 60}m"
+        data["attendance_percentage"] = round((data["days_present"] / working_days) * 100, 1) if working_days > 0 else 0
+    
+    # Sort by attendance percentage descending
+    employees_list = sorted(user_attendance.values(), key=lambda x: x["attendance_percentage"], reverse=True)
+    
+    return {
+        "month": target_month,
+        "year": target_year,
+        "month_name": month_start.strftime("%B %Y"),
+        "working_days": working_days,
+        "employees": employees_list,
+        "summary": {
+            "total_employees": len(users),
+            "avg_attendance_percentage": round(sum(e["attendance_percentage"] for e in employees_list) / len(employees_list), 1) if employees_list else 0,
+            "total_present_days": sum(int(e["days_present"]) for e in employees_list),
+            "total_late_days": sum(e["days_late"] for e in employees_list),
+            "total_absent_days": sum(e["days_absent"] for e in employees_list),
+            "total_leave_days": sum(e["days_leave"] for e in employees_list),
+            "total_wfh_days": sum(e["days_wfh"] for e in employees_list),
+            "total_office_days": sum(e["days_office"] for e in employees_list)
+        }
+    }
