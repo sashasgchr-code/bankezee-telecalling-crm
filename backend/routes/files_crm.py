@@ -994,25 +994,40 @@ async def get_files_dashboard_stats(
     if start_date:
         try:
             date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            if date_start.tzinfo is None:
+                date_start = date_start.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError):
             date_start = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
     
     if end_date:
         try:
             date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            if date_end.tzinfo is None:
+                date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
         except (ValueError, TypeError):
             date_end = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
     
     def parse_timestamp(ts):
-        """Parse ISO timestamp string to datetime"""
+        """Parse ISO timestamp string to datetime - always returns timezone-aware datetime"""
         if not ts:
             return None
         if isinstance(ts, datetime):
+            # Ensure timezone-aware
+            if ts.tzinfo is None:
+                return ts.replace(tzinfo=timezone.utc)
             return ts
         try:
-            return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except (ValueError, TypeError, AttributeError):
-            return None
+            # Try parsing as date string
+            try:
+                dt = datetime.strptime(ts[:10], '%Y-%m-%d')
+                return dt.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError, AttributeError):
+                return None
     
     def is_in_date_range(ts):
         """Check if timestamp falls within date range"""
@@ -1248,5 +1263,457 @@ async def get_files_dashboard_stats(
         "sent_to_bank": status_counts.get("sent_to_bank", 0),
         "rejected": status_counts.get("rejected", 0)
     }
+
+
+# Bank Performance Report
+@router.get("/reports/bank-performance")
+async def get_bank_performance(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    Get bank-wise performance breakdown from eligibilities.
+    
+    For each bank:
+    - Logins: COUNT eligibilities where login_done='yes' (or has approval/disbursal)
+    - Approvals: COUNT eligibilities where approval_status='approved' AND approved_at in range
+    - Disbursals: COUNT eligibilities where disbursed='yes' AND disbursed_at in range
+    - Disbursal Amount: SUM disbursed_amount for disbursed eligibilities
+    """
+    from datetime import datetime, timezone
+    
+    # Parse date range
+    is_all_time = not start_date and not end_date
+    date_start = None
+    date_end = None
+    
+    if start_date:
+        try:
+            date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            if date_start.tzinfo is None:
+                date_start = date_start.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            date_start = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    
+    if end_date:
+        try:
+            date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            if date_end.tzinfo is None:
+                date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            date_end = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+    
+    def parse_timestamp(ts):
+        if not ts:
+            return None
+        if isinstance(ts, datetime):
+            if ts.tzinfo is None:
+                return ts.replace(tzinfo=timezone.utc)
+            return ts
+        try:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except (ValueError, TypeError, AttributeError):
+            return None
+    
+    def is_in_date_range(ts):
+        if is_all_time:
+            return True
+        dt = parse_timestamp(ts)
+        if not dt:
+            return False
+        if date_start and dt < date_start:
+            return False
+        if date_end and dt > date_end:
+            return False
+        return True
+    
+    def is_login_done(elig):
+        login_done = elig.get('login_done')
+        return login_done == True or (isinstance(login_done, str) and login_done.lower() in ['yes', 'true'])
+    
+    def is_disbursed(elig):
+        disbursed = elig.get('disbursed')
+        return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
+    
+    # Bank stats aggregation
+    bank_stats = {}
+    
+    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    
+    for f in all_files:
+        for elig in (f.get('eligibilities') or []):
+            bank_name = elig.get('bank_name')
+            if not bank_name:
+                continue
+            
+            if bank_name not in bank_stats:
+                bank_stats[bank_name] = {
+                    'bank_name': bank_name,
+                    'logins': 0,
+                    'approvals': 0,
+                    'disbursals': 0,
+                    'approved_amount': 0.0,
+                    'disbursed_amount': 0.0
+                }
+            
+            # Logins: login_done=yes OR has approval OR has disbursal
+            if is_login_done(elig) or elig.get('approval_status') in ['approved', 'declined'] or is_disbursed(elig):
+                bank_stats[bank_name]['logins'] += 1
+            
+            # Approvals: approval_status='approved' AND (All Time OR approved_at in range)
+            approved_at = elig.get('approved_at')
+            if elig.get('approval_status') == 'approved':
+                if is_all_time or is_in_date_range(approved_at):
+                    bank_stats[bank_name]['approvals'] += 1
+                    try:
+                        bank_stats[bank_name]['approved_amount'] += float(elig.get('approved_amount') or 0)
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Disbursals: disbursed='yes' AND (All Time OR disbursed_at in range)
+            disbursed_at = elig.get('disbursed_at')
+            if is_disbursed(elig):
+                if is_all_time or is_in_date_range(disbursed_at):
+                    bank_stats[bank_name]['disbursals'] += 1
+                    try:
+                        bank_stats[bank_name]['disbursed_amount'] += float(elig.get('disbursed_amount') or 0)
+                    except (ValueError, TypeError):
+                        pass
+    
+    # Sort by disbursed amount descending
+    banks = sorted(bank_stats.values(), key=lambda x: -x['disbursed_amount'])
+    
+    return {
+        "banks": banks,
+        "total_banks": len(banks),
+        "date_range": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "is_all_time": is_all_time
+        }
+    }
+
+
+# TAT (Turnaround Time) Metrics
+@router.get("/reports/tat-metrics")
+async def get_tat_metrics(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    Calculate Turnaround Time metrics:
+    - Lead-to-Login: login_done_at - created_at
+    - Login-to-Approval: approved_at - login_done_at
+    - Approval-to-Disbursal: disbursed_at - approved_at
+    - Lead-to-Disbursal: disbursed_at - created_at
+    
+    Returns: Average, Mode (most frequent bucket), Distribution buckets
+    """
+    from datetime import datetime, timezone
+    from collections import Counter
+    
+    def parse_timestamp(ts):
+        if not ts:
+            return None
+        if isinstance(ts, datetime):
+            return ts
+        try:
+            return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+        except (ValueError, TypeError, AttributeError):
+            return None
+    
+    def days_between(start, end):
+        """Calculate days between two timestamps"""
+        start_dt = parse_timestamp(start)
+        end_dt = parse_timestamp(end)
+        if not start_dt or not end_dt:
+            return None
+        diff = end_dt - start_dt
+        return max(0, diff.days)
+    
+    def get_bucket(days):
+        """Get bucket label for days"""
+        if days is None:
+            return None
+        if days == 0:
+            return "Same day"
+        elif days == 1:
+            return "1 day"
+        elif days <= 3:
+            return "2-3 days"
+        elif days <= 7:
+            return "4-7 days"
+        elif days <= 14:
+            return "1-2 weeks"
+        elif days <= 30:
+            return "2-4 weeks"
+        else:
+            return "30+ days"
+    
+    # Initialize TAT data
+    lead_to_login = []
+    login_to_approval = []
+    approval_to_disbursal = []
+    lead_to_disbursal = []
+    
+    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    
+    for f in all_files:
+        created_at = f.get('created_at')
+        
+        for elig in (f.get('eligibilities') or []):
+            login_done_at = elig.get('login_done_at')
+            approved_at = elig.get('approved_at')
+            disbursed_at = elig.get('disbursed_at')
+            
+            # Lead-to-Login
+            if login_done_at and created_at:
+                days = days_between(created_at, login_done_at)
+                if days is not None:
+                    lead_to_login.append(days)
+            
+            # Login-to-Approval
+            if approved_at and login_done_at:
+                days = days_between(login_done_at, approved_at)
+                if days is not None:
+                    login_to_approval.append(days)
+            
+            # Approval-to-Disbursal
+            if disbursed_at and approved_at:
+                days = days_between(approved_at, disbursed_at)
+                if days is not None:
+                    approval_to_disbursal.append(days)
+            
+            # Lead-to-Disbursal
+            if disbursed_at and created_at:
+                days = days_between(created_at, disbursed_at)
+                if days is not None:
+                    lead_to_disbursal.append(days)
+    
+    def calculate_stats(days_list):
+        if not days_list:
+            return {
+                "count": 0,
+                "average": None,
+                "mode": None,
+                "mode_bucket": None,
+                "distribution": {}
+            }
+        
+        avg = sum(days_list) / len(days_list)
+        mode = Counter(days_list).most_common(1)[0][0] if days_list else None
+        
+        # Calculate bucket distribution
+        buckets = Counter([get_bucket(d) for d in days_list])
+        distribution = dict(buckets.most_common())
+        
+        return {
+            "count": len(days_list),
+            "average": round(avg, 1),
+            "mode": mode,
+            "mode_bucket": get_bucket(mode),
+            "distribution": distribution
+        }
+    
+    return {
+        "lead_to_login": calculate_stats(lead_to_login),
+        "login_to_approval": calculate_stats(login_to_approval),
+        "approval_to_disbursal": calculate_stats(approval_to_disbursal),
+        "lead_to_disbursal": calculate_stats(lead_to_disbursal)
+    }
+
+
+# Growth Partner Report
+@router.get("/reports/growth-partner")
+async def get_growth_partner_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """
+    Per-agent/partner stats filtered by source_id.
+    
+    For each agent:
+    - Files Generated: COUNT leads WHERE source_id = agent_id AND created_at IN date_range
+    - Logins: COUNT leads with login activity in range, filtered by source_id
+    - Approvals: COUNT leads with approval in range, filtered by source_id
+    - Disbursals: COUNT leads with disbursal in range, filtered by source_id
+    - Disbursal Amount: SUM disbursed_amount
+    """
+    from datetime import datetime, timezone
+    
+    # Parse date range
+    is_all_time = not start_date and not end_date
+    date_start = None
+    date_end = None
+    
+    if start_date:
+        try:
+            date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            date_start = datetime.strptime(start_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        if date_start.tzinfo is None:
+            date_start = date_start.replace(tzinfo=timezone.utc)
+    
+    if end_date:
+        try:
+            date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            date_end = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+        if date_end.tzinfo is None:
+            date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+    
+    def parse_timestamp(ts):
+        if not ts:
+            return None
+        if isinstance(ts, datetime):
+            if ts.tzinfo is None:
+                return ts.replace(tzinfo=timezone.utc)
+            return ts
+        try:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except (ValueError, TypeError, AttributeError):
+            return None
+    
+    def is_in_date_range(ts):
+        if is_all_time:
+            return True
+        dt = parse_timestamp(ts)
+        if not dt:
+            return False
+        if date_start and dt < date_start:
+            return False
+        if date_end and dt > date_end:
+            return False
+        return True
+    
+    def is_disbursed(elig):
+        disbursed = elig.get('disbursed')
+        return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
+    
+    # Get all users to map IDs to names
+    users = await db.users.find({}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}).to_list(1000)
+    user_map = {}
+    for u in users:
+        uid = u.get('id')
+        if uid:
+            user_map[uid] = u.get('full_name') or u.get('name') or u.get('email', '').split('@')[0]
+    
+    # Agent stats aggregation
+    agent_stats = {}
+    
+    LOGIN_AND_BEYOND = [
+        'login', 'sent_for_approval', 'underwriting', 'fi', 'fi_negative', 'fi_reinitiated',
+        'query_hold', 'approved', 'disbursed', 'declined', 'not_disbursed'
+    ]
+    
+    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    
+    for f in all_files:
+        source_id = f.get('source_id')
+        if not source_id:
+            continue
+        
+        if source_id not in agent_stats:
+            agent_stats[source_id] = {
+                'agent_id': source_id,
+                'agent_name': user_map.get(source_id, source_id),
+                'files_generated': 0,
+                'logins': 0,
+                'approvals': 0,
+                'disbursals': 0,
+                'approved_amount': 0.0,
+                'disbursed_amount': 0.0
+            }
+        
+        created_at = f.get('created_at')
+        file_status = f.get('file_status') or 'new'
+        
+        # Files Generated: created_at in range
+        if is_in_date_range(created_at):
+            agent_stats[source_id]['files_generated'] += 1
+        
+        # Check eligibilities for login/approval/disbursal
+        has_login_in_range = False
+        has_approval_in_range = False
+        has_disbursal_in_range = False
+        file_approved_amt = 0.0
+        file_disbursed_amt = 0.0
+        
+        for elig in (f.get('eligibilities') or []):
+            # Login
+            login_done = elig.get('login_done')
+            login_done_at = elig.get('login_done_at')
+            if login_done == True or (isinstance(login_done, str) and login_done.lower() in ['yes', 'true']):
+                if is_all_time or is_in_date_range(login_done_at):
+                    has_login_in_range = True
+            
+            # Approval
+            approved_at = elig.get('approved_at')
+            if elig.get('approval_status') == 'approved':
+                if is_all_time or is_in_date_range(approved_at):
+                    has_approval_in_range = True
+                    try:
+                        file_approved_amt += float(elig.get('approved_amount') or 0)
+                    except (ValueError, TypeError):
+                        pass
+            
+            # Disbursal
+            disbursed_at = elig.get('disbursed_at')
+            if is_disbursed(elig):
+                if is_all_time or is_in_date_range(disbursed_at):
+                    has_disbursal_in_range = True
+                    try:
+                        file_disbursed_amt += float(elig.get('disbursed_amount') or 0)
+                    except (ValueError, TypeError):
+                        pass
+        
+        # Also count login if status is in LOGIN_AND_BEYOND
+        if file_status in LOGIN_AND_BEYOND:
+            # Check for any activity in range
+            activities = f.get('file_activities', []) or f.get('activities', [])
+            for act in activities:
+                if is_in_date_range(act.get('timestamp')):
+                    has_login_in_range = True
+                    break
+        
+        if has_login_in_range:
+            agent_stats[source_id]['logins'] += 1
+        if has_approval_in_range:
+            agent_stats[source_id]['approvals'] += 1
+            agent_stats[source_id]['approved_amount'] += file_approved_amt
+        if has_disbursal_in_range:
+            agent_stats[source_id]['disbursals'] += 1
+            agent_stats[source_id]['disbursed_amount'] += file_disbursed_amt
+    
+    # Sort by disbursed amount descending
+    agents = sorted(agent_stats.values(), key=lambda x: -x['disbursed_amount'])
+    
+    # Calculate totals
+    totals = {
+        'files_generated': sum(a['files_generated'] for a in agents),
+        'logins': sum(a['logins'] for a in agents),
+        'approvals': sum(a['approvals'] for a in agents),
+        'disbursals': sum(a['disbursals'] for a in agents),
+        'approved_amount': sum(a['approved_amount'] for a in agents),
+        'disbursed_amount': sum(a['disbursed_amount'] for a in agents)
+    }
+    
+    return {
+        "agents": agents,
+        "totals": totals,
+        "total_agents": len(agents),
+        "date_range": {
+            "start_date": start_date,
+            "end_date": end_date,
+            "is_all_time": is_all_time
+        }
+    }
+
 
 

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   FileText, Search, ChevronDown, Eye, Trash2, Download, RefreshCw, 
   Clock, DollarSign, TrendingUp, CheckCircle, XCircle, LogIn, AlertTriangle,
-  BarChart3, Star, ChevronLeft, ChevronRight, Loader2, Filter, Database
+  BarChart3, Star, ChevronLeft, ChevronRight, Loader2, Filter, Database,
+  Calendar, Users, Building2, Timer
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
@@ -64,6 +65,19 @@ const FilesDashboard = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalFiles, setTotalFiles] = useState(0);
   
+  // Date Range State
+  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'week', 'month', 'custom'
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  
+  // Reports State
+  const [bankPerformance, setBankPerformance] = useState(null);
+  const [tatMetrics, setTatMetrics] = useState(null);
+  const [growthPartner, setGrowthPartner] = useState(null);
+  const [showBankTable, setShowBankTable] = useState(false);
+  const [showTatMetrics, setShowTatMetrics] = useState(false);
+  const [showGrowthPartner, setShowGrowthPartner] = useState(false);
+  
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -80,10 +94,48 @@ const FilesDashboard = () => {
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
+  
+  // Calculate date range based on filter
+  const getDateRange = () => {
+    const now = new Date();
+    let startDate = null;
+    let endDate = null;
+    
+    switch(dateFilter) {
+      case 'today':
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+        endDate = now.toISOString();
+        break;
+      case 'week':
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - now.getDay());
+        startDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()).toISOString();
+        endDate = now.toISOString();
+        break;
+      case 'month':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+        endDate = now.toISOString();
+        break;
+      case 'last_month':
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+        startDate = lastMonth.toISOString();
+        endDate = lastDay.toISOString();
+        break;
+      case 'custom':
+        if (customStartDate) startDate = new Date(customStartDate).toISOString();
+        if (customEndDate) endDate = new Date(customEndDate + 'T23:59:59').toISOString();
+        break;
+      default:
+        // all time - no dates
+        break;
+    }
+    return { startDate, endDate };
+  };
 
   useEffect(() => {
     fetchAll();
-  }, [page, statusFilter, managerFilter]);
+  }, [page, statusFilter, managerFilter, dateFilter, customStartDate, customEndDate]);
 
   const fetchAll = async () => {
     setLoading(true);
@@ -92,7 +144,10 @@ const FilesDashboard = () => {
         fetchFiles(),
         fetchStats(),
         fetchReports(),
-        fetchOpsTeam()
+        fetchOpsTeam(),
+        fetchBankPerformance(),
+        fetchTatMetrics(),
+        fetchGrowthPartner()
       ]);
     } finally {
       setLoading(false);
@@ -118,7 +173,11 @@ const FilesDashboard = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await api.get('/files/dashboard/stats');
+      const { startDate, endDate } = getDateRange();
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      const response = await api.get(`/files/dashboard/stats?${params.toString()}`);
       setStats(response.data);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -131,6 +190,45 @@ const FilesDashboard = () => {
       setReports(response.data);
     } catch (error) {
       console.error('Failed to fetch reports:', error);
+    }
+  };
+  
+  const fetchBankPerformance = async () => {
+    try {
+      const { startDate, endDate } = getDateRange();
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      const response = await api.get(`/files/reports/bank-performance?${params.toString()}`);
+      setBankPerformance(response.data);
+    } catch (error) {
+      console.error('Failed to fetch bank performance:', error);
+    }
+  };
+  
+  const fetchTatMetrics = async () => {
+    try {
+      const { startDate, endDate } = getDateRange();
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      const response = await api.get(`/files/reports/tat-metrics?${params.toString()}`);
+      setTatMetrics(response.data);
+    } catch (error) {
+      console.error('Failed to fetch TAT metrics:', error);
+    }
+  };
+  
+  const fetchGrowthPartner = async () => {
+    try {
+      const { startDate, endDate } = getDateRange();
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      const response = await api.get(`/files/reports/growth-partner?${params.toString()}`);
+      setGrowthPartner(response.data);
+    } catch (error) {
+      console.error('Failed to fetch growth partner:', error);
     }
   };
 
@@ -271,13 +369,26 @@ const FilesDashboard = () => {
               <XCircle size={14} />
               Rejected Cases
             </button>
-            <button className="px-3 py-1.5 text-sm bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center gap-1">
-              <BarChart3 size={14} />
-              Growth Partner Performance
+            <button 
+              onClick={() => setShowGrowthPartner(!showGrowthPartner)}
+              className={`px-3 py-1.5 text-sm border rounded-lg flex items-center gap-1 ${showGrowthPartner ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
+            >
+              <Users size={14} />
+              Growth Partner
             </button>
-            <button className="px-3 py-1.5 text-sm bg-green-50 text-green-600 border border-green-200 rounded-lg hover:bg-green-100 flex items-center gap-1">
-              <BarChart3 size={14} />
-              Sales & Ops Report
+            <button 
+              onClick={() => setShowBankTable(!showBankTable)}
+              className={`px-3 py-1.5 text-sm border rounded-lg flex items-center gap-1 ${showBankTable ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}
+            >
+              <Building2 size={14} />
+              Bank Performance
+            </button>
+            <button 
+              onClick={() => setShowTatMetrics(!showTatMetrics)}
+              className={`px-3 py-1.5 text-sm border rounded-lg flex items-center gap-1 ${showTatMetrics ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'}`}
+            >
+              <Timer size={14} />
+              TAT Metrics
             </button>
             <button className="px-3 py-1.5 text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1">
               <Star size={14} />
@@ -348,27 +459,41 @@ const FilesDashboard = () => {
             </div>
             
             {/* Date Filters */}
-            <select
-              value={createdDateFilter}
-              onChange={(e) => setCreatedDateFilter(e.target.value)}
-              className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="all">File Created</option>
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-            </select>
-            
-            <select
-              value={activityDateFilter}
-              onChange={(e) => setActivityDateFilter(e.target.value)}
-              className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="all">Activity Date</option>
-              <option value="today">Today</option>
-              <option value="week">This Week</option>
-              <option value="month">This Month</option>
-            </select>
+            <div className="flex items-center gap-2">
+              <Calendar size={16} className="text-gray-400" />
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white font-medium"
+                data-testid="date-filter"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+                <option value="last_month">Last Month</option>
+                <option value="custom">Custom Range</option>
+              </select>
+              {dateFilter === 'custom' && (
+                <>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                    data-testid="custom-start-date"
+                  />
+                  <span className="text-gray-400">to</span>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                    data-testid="custom-end-date"
+                  />
+                </>
+              )}
+            </div>
             
             {/* Loan Type */}
             <select
@@ -610,6 +735,204 @@ const FilesDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Bank Performance Table */}
+        {showBankTable && bankPerformance && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" data-testid="bank-performance-table">
+            <div className="px-4 py-3 border-b border-gray-200 bg-green-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Building2 size={18} className="text-green-600" />
+                  <h3 className="font-semibold text-gray-900">Bank Performance</h3>
+                  <span className="text-sm text-gray-500">({bankPerformance.total_banks} banks)</span>
+                </div>
+                <button onClick={() => setShowBankTable(false)} className="text-gray-400 hover:text-gray-600">
+                  <XCircle size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Bank Name</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Logins</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Approvals</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Approved Amt</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Disbursals</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Disbursed Amt</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {bankPerformance.banks?.map((bank, idx) => (
+                    <tr key={bank.bank_name || idx} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{bank.bank_name}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{bank.logins}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{bank.approvals}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{formatCurrency(bank.approved_amount, true)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600">{bank.disbursals}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-medium">{formatCurrency(bank.disbursed_amount, true)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-100 font-medium">
+                  <tr>
+                    <td className="px-4 py-3">Total</td>
+                    <td className="px-4 py-3 text-right">{bankPerformance.banks?.reduce((a, b) => a + b.logins, 0)}</td>
+                    <td className="px-4 py-3 text-right">{bankPerformance.banks?.reduce((a, b) => a + b.approvals, 0)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(bankPerformance.banks?.reduce((a, b) => a + b.approved_amount, 0), true)}</td>
+                    <td className="px-4 py-3 text-right">{bankPerformance.banks?.reduce((a, b) => a + b.disbursals, 0)}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(bankPerformance.banks?.reduce((a, b) => a + b.disbursed_amount, 0), true)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAT Metrics */}
+        {showTatMetrics && tatMetrics && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" data-testid="tat-metrics-panel">
+            <div className="px-4 py-3 border-b border-gray-200 bg-purple-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Timer size={18} className="text-purple-600" />
+                  <h3 className="font-semibold text-gray-900">Turnaround Time (TAT) Metrics</h3>
+                </div>
+                <button onClick={() => setShowTatMetrics(false)} className="text-gray-400 hover:text-gray-600">
+                  <XCircle size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Lead to Login */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h4 className="font-medium text-gray-700 mb-2">Lead to Login</h4>
+                <div className="text-3xl font-bold text-blue-600">
+                  {tatMetrics.lead_to_login?.average ? `${tatMetrics.lead_to_login.average} days` : 'N/A'}
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  Mode: {tatMetrics.lead_to_login?.mode_bucket || 'N/A'}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {tatMetrics.lead_to_login?.count || 0} samples
+                </p>
+                {tatMetrics.lead_to_login?.distribution && Object.keys(tatMetrics.lead_to_login.distribution).length > 0 && (
+                  <div className="mt-3 space-y-1">
+                    {Object.entries(tatMetrics.lead_to_login.distribution).slice(0, 4).map(([bucket, count]) => (
+                      <div key={bucket} className="flex items-center gap-2 text-xs">
+                        <span className="w-16 text-gray-600">{bucket}</span>
+                        <div className="flex-1 bg-gray-100 rounded h-2">
+                          <div className="bg-blue-500 h-2 rounded" style={{width: `${(count / tatMetrics.lead_to_login.count) * 100}%`}}></div>
+                        </div>
+                        <span className="w-8 text-right text-gray-500">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              {/* Login to Approval */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h4 className="font-medium text-gray-700 mb-2">Login to Approval</h4>
+                <div className="text-3xl font-bold text-green-600">
+                  {tatMetrics.login_to_approval?.average ? `${tatMetrics.login_to_approval.average} days` : 'N/A'}
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  Mode: {tatMetrics.login_to_approval?.mode_bucket || 'N/A'}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {tatMetrics.login_to_approval?.count || 0} samples
+                </p>
+              </div>
+              
+              {/* Approval to Disbursal */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h4 className="font-medium text-gray-700 mb-2">Approval to Disbursal</h4>
+                <div className="text-3xl font-bold text-emerald-600">
+                  {tatMetrics.approval_to_disbursal?.average ? `${tatMetrics.approval_to_disbursal.average} days` : 'N/A'}
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  Mode: {tatMetrics.approval_to_disbursal?.mode_bucket || 'N/A'}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {tatMetrics.approval_to_disbursal?.count || 0} samples
+                </p>
+              </div>
+              
+              {/* Lead to Disbursal */}
+              <div className="border border-gray-200 rounded-lg p-4">
+                <h4 className="font-medium text-gray-700 mb-2">Lead to Disbursal</h4>
+                <div className="text-3xl font-bold text-purple-600">
+                  {tatMetrics.lead_to_disbursal?.average ? `${tatMetrics.lead_to_disbursal.average} days` : 'N/A'}
+                </div>
+                <p className="text-sm text-gray-500 mt-1">
+                  Mode: {tatMetrics.lead_to_disbursal?.mode_bucket || 'N/A'}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">
+                  {tatMetrics.lead_to_disbursal?.count || 0} samples
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Growth Partner Report */}
+        {showGrowthPartner && growthPartner && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" data-testid="growth-partner-table">
+            <div className="px-4 py-3 border-b border-gray-200 bg-blue-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Users size={18} className="text-blue-600" />
+                  <h3 className="font-semibold text-gray-900">Growth Partner Performance</h3>
+                  <span className="text-sm text-gray-500">({growthPartner.total_agents} partners)</span>
+                </div>
+                <button onClick={() => setShowGrowthPartner(false)} className="text-gray-400 hover:text-gray-600">
+                  <XCircle size={18} />
+                </button>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Partner</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Files Generated</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Logins</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Approvals</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Approved Amt</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Disbursals</th>
+                    <th className="px-4 py-3 text-right font-medium text-gray-700">Disbursed Amt</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {growthPartner.agents?.map((agent, idx) => (
+                    <tr key={agent.agent_id || idx} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{agent.agent_name}</td>
+                      <td className="px-4 py-3 text-right">{agent.files_generated}</td>
+                      <td className="px-4 py-3 text-right text-blue-600">{agent.logins}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{agent.approvals}</td>
+                      <td className="px-4 py-3 text-right text-green-600">{formatCurrency(agent.approved_amount, true)}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600">{agent.disbursals}</td>
+                      <td className="px-4 py-3 text-right text-emerald-600 font-medium">{formatCurrency(agent.disbursed_amount, true)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-gray-100 font-medium">
+                  <tr>
+                    <td className="px-4 py-3">Total</td>
+                    <td className="px-4 py-3 text-right">{growthPartner.totals?.files_generated}</td>
+                    <td className="px-4 py-3 text-right">{growthPartner.totals?.logins}</td>
+                    <td className="px-4 py-3 text-right">{growthPartner.totals?.approvals}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(growthPartner.totals?.approved_amount, true)}</td>
+                    <td className="px-4 py-3 text-right">{growthPartner.totals?.disbursals}</td>
+                    <td className="px-4 py-3 text-right">{formatCurrency(growthPartner.totals?.disbursed_amount, true)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Files List */}
         <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

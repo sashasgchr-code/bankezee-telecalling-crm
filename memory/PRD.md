@@ -852,8 +852,11 @@ PIPELINE_EXCLUDED: [rejected, not_eligible, not_login, not_disbursed, declined, 
 - `GET /api/files/{file_id}/documents` - List file documents
 - `DELETE /api/files/{file_id}/documents/{doc_id}` - Delete document
 - `GET /api/files/download/{doc_id}` - Download document
-- `GET /api/files/dashboard/stats` - Dashboard statistics
+- `GET /api/files/dashboard/stats` - Dashboard statistics with date filtering and C/S split
 - `GET /api/files/reports` - Reporting data
+- `GET /api/files/reports/bank-performance` - Bank-wise performance (Logins, Approvals, Disbursals)
+- `GET /api/files/reports/tat-metrics` - Turnaround Time metrics (Lead-to-Login, Login-to-Approval, etc.)
+- `GET /api/files/reports/growth-partner` - Per-agent/partner performance stats
 - `GET /api/files/operations-team` - Get operations team members
 - `POST /api/files/import` - Import files from old CRM
 - `GET /api/files/export` - Export files to CSV
@@ -861,12 +864,16 @@ PIPELINE_EXCLUDED: [rejected, not_eligible, not_login, not_disbursed, declined, 
 
 ### Web Frontend (`/app/frontend/src/pages/files/`)
 **FilesDashboard.js** - Exact replica of old CRM dashboard:
-- Top report buttons: Daily Report, Rejected Cases, Growth Partner Performance, Sales & Ops Report, Quality Report, Policy Master, Export Disbursed, Export Stats
+- Top report buttons: Daily Report, Rejected Cases, Growth Partner Performance (toggle), Bank Performance (toggle), TAT Metrics (toggle), Quality Report, Policy Master, Export Disbursed, Export Stats, Import Data
+- Date Filter: All Time, Today, This Week, This Month, Last Month, Custom Range (date pickers)
 - Tabs: Dashboard, Approvals, Users
-- Filters: Search, File Created, Activity Date, All Loan Types, All Status, All Managers, All Sources, All Stars
-- Two rows of stat cards: Total Files, New, In Progress, Login, Approved, Total Approved, Disbursed, Total Disbursed, Interim Rejects, Final Rejections, Amt in Pipeline
+- Filters: Search, All Loan Types, All Status, All Managers, All Sources, All Stars
+- Two rows of stat cards with Current/Spillover split: Total Files, New, In Progress, Login (C/S), Approved (C/S), Total Approved, Disbursed (C/S), Total Disbursed, Interim Rejects (C/S), Final Rejections (C/S), Amt in Pipeline
 - Status definitions text
 - Charts: File Status Distribution (donut), Monthly Performance (bar), Loans by Type (horizontal bar)
+- **Bank Performance Table**: Shows per-bank Logins, Approvals, Disbursals, Amounts
+- **TAT Metrics Panel**: Lead-to-Login, Login-to-Approval, Approval-to-Disbursal, Lead-to-Disbursal with averages and distribution
+- **Growth Partner Report**: Per-agent Files Generated, Logins, Approvals, Disbursals, Amounts
 - Files list with checkbox, name, masked phone, loan type, date, assignee, status badge, view/delete actions
 
 **FileDetailsPage.js** - Exact replica of old CRM lead details:
