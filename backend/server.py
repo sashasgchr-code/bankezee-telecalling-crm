@@ -19,6 +19,8 @@ from routes.follow_ups import router as follow_ups_router
 from routes.reports import router as reports_router
 from routes.recordings import router as recordings_router
 from routes.attendance import router as attendance_router
+from routes.leave_management import router as leave_router
+from routes.data_cleanup import router as data_cleanup_router
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -41,6 +43,8 @@ app.include_router(follow_ups_router)
 app.include_router(reports_router)
 app.include_router(recordings_router)
 app.include_router(attendance_router)
+app.include_router(leave_router)
+app.include_router(data_cleanup_router)
 
 # Predefined admin accounts
 ADMIN_ACCOUNTS = [
@@ -97,6 +101,15 @@ async def setup_admin_accounts():
         await db.wfh_approvals.create_index([("user_id", 1), ("date", 1)])
         await db.wfh_requests.create_index([("user_id", 1), ("status", 1)])
         await db.leave_approvals.create_index([("user_id", 1), ("start_date", 1), ("end_date", 1)])
+        await db.leave_requests.create_index([("user_id", 1), ("status", 1)])
+        await db.leave_requests.create_index([("status", 1), ("created_at", -1)])
+        await db.leave_balances.create_index("user_id", unique=True)
+        
+        # Suppression list index
+        await db.suppression_list.create_index("normalized_phone", unique=True)
+        
+        # Import batches index
+        await db.import_batches.create_index("imported_at")
         
         print("✅ Database indexes created/verified")
     except Exception as e:

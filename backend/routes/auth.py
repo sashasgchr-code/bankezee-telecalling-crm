@@ -21,12 +21,15 @@ async def register(user: UserRegister):
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
+    # Security: Public registration only allows telecaller role
+    # Admin/HR must be created by admin through /api/users endpoint
+    allowed_role = user.role if user.role == "telecaller" else "telecaller"
+    
     user_doc = {
         "email": user.email.lower(),
         "password": get_password_hash(user.password),
-        "plain_password": user.password,
         "name": user.name,
-        "role": user.role,
+        "role": allowed_role,
         "phone": None,
         "is_active": True,
         "created_at": datetime.now(timezone.utc),
@@ -122,8 +125,7 @@ async def change_password(data: ChangePassword, current_user: dict = Depends(get
     await db.users.update_one(
         {"_id": ObjectId(current_user["id"])},
         {"$set": {
-            "password": new_password_hash,
-            "plain_password": data.new_password
+            "password": new_password_hash
         }}
     )
     

@@ -1,0 +1,38 @@
+{
+  "summary": "Backend testing for Stages 6-9 (Leave/WFH workflows, HR RBAC, Data cleanup). Created pytest suite with 15 tests covering all requested endpoints. All 15/15 tests PASSED. Created a TEST HR user (TEST_hr_user@bankezee.com / HrTest12!!) via /api/auth/register to verify HR RBAC. Verified: leave balance defaults (casual=12, sick=6, earned=15, unpaid=Unlimited), leave request submission with weekday date calc (leave_days>=1 confirmed), invalid leave type rejection (400), end-before-start rejection (400), GET my requests, HR/admin gating on /leave/requests/pending (403 for telecaller), approval flow (PATCH -> status APPROVED), WFH submission, HR user gets 403 on /api/leads while being allowed on /leave/requests/pending and /leave/balance, data-cleanup /stats, /call-log-analysis, /deduplicate-call-logs dry_run (deleted_count absent when dry_run=true), and telecaller forbidden from cleanup endpoints.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/leads/* (non-list endpoints)", "issue": "Only GET /api/leads list has require_not_hr. Other lead endpoints (GET /api/leads/{id}, PATCH, DELETE, stats, unassigned, assign, bulk operations) use require_admin or get_current_user without require_not_hr. Since HR is a non-admin role, admin-only endpoints already block HR, but shared endpoints like GET /api/leads/{id} and GET /api/leads/stats currently allow HR access. Recommend applying require_not_hr consistently on all lead/call/report endpoints to fully enforce 'HR cannot access customer data'."},
+      {"endpoint": "/api/auth/register", "issue": "Endpoint is public (no auth dependency) and accepts arbitrary role including 'hr' and 'admin'. This allows unauthenticated privilege escalation. Should require admin auth to create hr/admin users, or restrict role field to 'telecaller' for public registration."},
+      {"endpoint": "/api/auth/register", "issue": "Stores plain_password field on user document alongside hashed password - security concern (plaintext credential retention)."},
+      {"endpoint": "/api/leave/balance", "issue": "Uses datetime.now().year (naive) in one place and datetime.now(timezone.utc).year in another - minor inconsistency; also aggregation includes UNPAID/EMERGENCY/GENERAL types but the balance response only surfaces 4 categories (EMERGENCY & GENERAL used-days are dropped)."},
+      {"endpoint": "/api/data-cleanup/deduplicate-call-logs", "issue": "Groups by 10-minute time_bucket which could over-aggregate legitimate distinct calls to the same lead within 10 min; consider stricter matching (same duration ± N sec, or same device_timestamp)."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_stage_6_9_leave_wfh_cleanup.py",
+    "/app/test_reports/pytest/stage_6_9_results.xml"
+  ],
+  "action_items": [
+    "Consider applying require_not_hr to remaining /api/leads/*, /api/calls/*, /api/reports/* endpoints for defense-in-depth (currently only GET /api/leads list is guarded).",
+    "Secure /api/auth/register: require admin auth OR restrict role field so unauthenticated users cannot self-register as admin/hr.",
+    "Remove plain_password storage in user documents.",
+    "Configure RESEND_API_KEY for real email delivery (currently notifications silently no-op, which is acceptable per spec)."
+  ],
+  "critical_code_review_comments": [
+    "leave_management.py is 550 lines - approaching the 700-line threshold; consider splitting into leave_requests.py + wfh.py + balances.py.",
+    "Duplicate leave-days aggregation logic between /leave/balance and /leave/balances/all - extract into a helper.",
+    "handle_leave_request builds attendance records inline; extract to helper for testability.",
+    "Public /api/auth/register accepting role=admin/hr is a security bug (see action items)."
+  ],
+  "updated_files": ["/app/backend/tests/test_stage_6_9_leave_wfh_cleanup.py"],
+  "success_rate": {"backend": "100% (15/15)", "frontend": "N/A"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!, agent@test.com / agent123, TEST_hr_user@bankezee.com / HrTest12!! (created during testing)",
+  "seed_data_creation": "Created HR user TEST_hr_user@bankezee.com (role=hr) via /api/auth/register for RBAC testing. Also created a TEST_ leave request (later approved) and a TEST_ WFH request under agent@test.com.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "HR user TEST_hr_user@bankezee.com exists in DB with role=hr. Approved leave requests will have created attendance records with work_mode=LEAVE for the agent user on future weekdays. If retesting leave submission, use dates further in the future to avoid overlap 400s.",
+  "rca of the issue": "No blocking issues. All 10 requested endpoints behave per spec. Weekday date calculation returns leave_days>=1 as expected (verified). Email service functions no-op cleanly when RESEND_API_KEY is unset (no errors raised, confirmed by successful POST /leave/requests responses)."
+}

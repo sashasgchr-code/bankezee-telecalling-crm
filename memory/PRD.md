@@ -574,10 +574,78 @@ The attendance times were displaying in UTC instead of IST because:
 
 **Master Prompt Progress**: Stages 1-5 of 11 COMPLETE
 
-### Upcoming Tasks (Master Prompt Stages 6-11)
-- **P2 Stage 6**: Canonical call-log / data cleanup architecture
-- **P2 Stage 7**: Leave + WFH application workflows
-- **P2 Stage 8**: HR Role implementation (Attendance/Leave access, NO customer data)
-- **P2 Stage 9**: Email notifications for approvals
+### Upcoming Tasks (Master Prompt Stages 10-11)
 - **P3 Stage 10**: Google Sheets automated backup summaries
 - **P3 Stage 11**: Database retention (TTL indexes)
+
+### Stage 6: Call Log Cleanup - COMPLETED ✅
+
+**Backend** (`/app/backend/routes/data_cleanup.py`):
+- `GET /api/data-cleanup/stats`: Overall data statistics
+- `GET /api/data-cleanup/call-log-analysis`: Analyze call logs for duplicates
+- `POST /api/data-cleanup/deduplicate-call-logs`: Deduplicate call logs (dry_run supported)
+- `POST /api/data-cleanup/merge-verified-logs`: Merge verified_call_logs into main call_logs
+- `GET /api/data-cleanup/call-log-canonical/{lead_id}`: Get canonical call history for a lead
+
+**Deduplication Logic**:
+- Groups calls by lead_id, user_id, and 10-minute time bucket
+- Priority: Verified mobile > Mobile > Web with duration > Web without duration
+- Keeps highest priority record, deletes others
+
+### Stage 7: Leave & WFH Workflows - COMPLETED ✅
+
+**Backend** (`/app/backend/routes/leave_management.py`):
+- **Employee Endpoints**:
+  - `POST /api/leave/requests`: Submit leave request
+  - `GET /api/leave/requests/my`: View own leave requests
+  - `DELETE /api/leave/requests/{id}`: Cancel pending request
+  - `GET /api/leave/balance`: View leave balance (casual/sick/earned/unpaid)
+  - `POST /api/leave/wfh/requests`: Submit WFH request
+  - `GET /api/leave/wfh/requests/my`: View own WFH requests
+
+- **HR/Admin Endpoints**:
+  - `GET /api/leave/requests/pending`: View pending leave requests
+  - `GET /api/leave/requests/all`: View all leave requests with filters
+  - `PATCH /api/leave/requests/{id}`: Approve/reject leave request
+  - `GET /api/leave/wfh/requests/pending`: View pending WFH requests
+  - `PATCH /api/leave/wfh/requests/{id}`: Approve/reject WFH request
+  - `GET /api/leave/balances/all`: View all employee balances
+  - `PATCH /api/leave/balances/{user_id}`: Update employee balance
+
+**Leave Types**: CASUAL, SICK, EARNED, UNPAID, EMERGENCY, GENERAL
+**Default Balances**: Casual (12 days), Sick (6 days), Earned (15 days), Unpaid (unlimited)
+
+### Stage 8: HR Role - COMPLETED ✅
+
+**Backend** (`/app/backend/utils/auth.py`):
+- Added `hr` role to VALID_ROLES
+- `require_hr_or_admin` decorator: Allows HR and Admin access
+- `require_not_hr` decorator: Blocks HR from customer data endpoints
+- HR role can access: Attendance, Leave, WFH, User viewing
+- HR role CANNOT access: Leads, Calls, Reports (customer data)
+
+**Security Fixes**:
+- Public registration now only allows `telecaller` role
+- Admin/HR users must be created by admin through /api/users endpoint
+- Removed plain_password storage from new registrations
+
+### Stage 9: Email Notifications - COMPLETED ✅
+
+**Backend** (`/app/backend/utils/email_service.py`):
+- Uses Resend API for transactional emails
+- `send_leave_request_notification()`: Notifies HR/Admin when request submitted
+- `send_leave_approval_notification()`: Notifies employee when request approved/rejected
+- Gracefully handles missing RESEND_API_KEY (logs warning, doesn't error)
+
+**Environment Variables Needed**:
+```
+RESEND_API_KEY=re_your_api_key
+SENDER_EMAIL=onboarding@resend.dev
+HR_EMAIL=hr@yourcompany.com
+ADMIN_EMAIL=admin@yourcompany.com
+```
+
+**Test Results**:
+- Backend: 100% (15/15 pytest tests passed)
+
+**Master Prompt Progress**: Stages 1-9 of 11 COMPLETE

@@ -13,7 +13,7 @@ import uuid
 
 from models.schemas import LeadCreate, LeadUpdate, LeadAssign, AutoDistribute, BulkDeleteRequest, BulkOperationByFilter, BulkAssignByFilter, BulkArchiveRequest, SuppressionEntry
 from utils.database import db
-from utils.auth import get_current_user, require_admin
+from utils.auth import get_current_user, require_admin, require_not_hr
 from utils.helpers import serialize_doc, serialize_docs
 
 router = APIRouter(prefix="/api", tags=["Leads"])
@@ -192,7 +192,7 @@ async def list_leads(
     # Sorting
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="asc or desc"),
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_not_hr)  # HR cannot access leads
 ):
     """
     List leads with server-side pagination and enhanced filtering.

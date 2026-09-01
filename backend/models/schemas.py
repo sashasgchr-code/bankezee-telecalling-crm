@@ -163,3 +163,32 @@ class FollowUpUpdate(BaseModel):
 
 class BulkDeleteUsersRequest(BaseModel):
     user_ids: List[str]
+
+# ===================== LEAVE & WFH REQUEST SCHEMAS =====================
+
+class LeaveRequest(BaseModel):
+    """Employee-initiated leave request"""
+    start_date: str
+    end_date: str
+    leave_type: str = "CASUAL"  # CASUAL, SICK, EARNED, UNPAID
+    reason: str
+    half_day: Optional[bool] = False
+    half_day_type: Optional[str] = None  # FIRST_HALF, SECOND_HALF
+
+class LeaveRequestApproval(BaseModel):
+    """Admin/HR approval of leave request"""
+    status: str  # APPROVED, REJECTED
+    admin_notes: Optional[str] = None
+
+class WFHRequestCreate(BaseModel):
+    """Employee-initiated WFH request"""
+    date: str
+    reason: str
+
+class WFHRequestApproval(BaseModel):
+    """Admin/HR approval of WFH request"""
+    status: str  # APPROVED, REJECTED
+    admin_notes: Optional[str] = None
+    # For direct assignment
+    user_id: Optional[str] = None
+    date: Optional[str] = None

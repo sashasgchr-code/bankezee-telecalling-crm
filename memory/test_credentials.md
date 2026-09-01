@@ -14,6 +14,11 @@
 |-------|----------|------|
 | agent@test.com | agent123 | Test Agent |
 
+## HR Test Account
+| Email | Password | Name |
+|-------|----------|------|
+| TEST_hr_user@bankezee.com | HrTest12!! | HR User |
+
 ## Application URLs
 - **Preview URL**: https://responsive-crm-app-1.preview.emergentagent.com
 - **Production URL**: connect.bankezee.com
@@ -27,3 +32,5 @@
 - All admin accounts are seeded automatically on backend startup
 - Use telecaller account to test telecaller-specific features
 - Mobile app requires physical Android device for call/recording features
+- HR role can access Attendance/Leave but NOT customer data (leads/calls)
+- Email notifications require RESEND_API_KEY in /app/backend/.env
