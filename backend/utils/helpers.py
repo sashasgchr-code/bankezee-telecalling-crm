@@ -11,6 +11,9 @@ def convert_to_ist(dt):
     """Convert a datetime to IST"""
     if dt is None:
         return None
+    # If already a string, return as-is
+    if isinstance(dt, str):
+        return dt
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     ist_time = dt + IST_OFFSET
@@ -24,17 +27,18 @@ def serialize_doc(doc):
     # Remove sensitive fields
     doc.pop("password", None)
     doc.pop("plain_password", None)
-    # Convert timestamp fields to IST
-    if "timestamp" in doc and doc["timestamp"]:
-        doc["timestamp"] = convert_to_ist(doc["timestamp"]).isoformat()
-    if "created_at" in doc and doc["created_at"]:
-        doc["created_at"] = convert_to_ist(doc["created_at"]).isoformat()
-    if "updated_at" in doc and doc["updated_at"]:
-        doc["updated_at"] = convert_to_ist(doc["updated_at"]).isoformat()
-    if "login_time" in doc and doc["login_time"]:
-        doc["login_time"] = convert_to_ist(doc["login_time"]).isoformat()
-    if "logout_time" in doc and doc["logout_time"]:
-        doc["logout_time"] = convert_to_ist(doc["logout_time"]).isoformat()
+    # Convert timestamp fields to IST (handle both datetime and string)
+    timestamp_fields = ["timestamp", "created_at", "updated_at", "login_time", "logout_time"]
+    for field in timestamp_fields:
+        if field in doc and doc[field]:
+            val = doc[field]
+            if isinstance(val, str):
+                doc[field] = val  # Already a string
+            else:
+                try:
+                    doc[field] = convert_to_ist(val).isoformat()
+                except (AttributeError, TypeError):
+                    doc[field] = str(val)  # Fallback to string
     return doc
 
 def serialize_docs(docs):

@@ -68,28 +68,36 @@ def build_leads_query(
             if "unset" in status_list or "none" in status_list:
                 # Include leads with null/empty status
                 status_list = [s for s in status_list if s not in ("unset", "none")]
+                status_condition = None
                 if status_list:
-                    query["$or"] = [
+                    status_condition = {"$or": [
                         {"status": {"$in": status_list}},
                         {"status": {"$exists": False}},
                         {"status": None},
                         {"status": ""}
-                    ]
+                    ]}
                 else:
-                    query["$or"] = [
+                    status_condition = {"$or": [
                         {"status": {"$exists": False}},
                         {"status": None},
                         {"status": ""}
-                    ]
+                    ]}
+                # Add to $and array to avoid conflicts
+                if "$and" not in query:
+                    query["$and"] = []
+                query["$and"].append(status_condition)
             else:
                 query["status"] = {"$in": status_list}
     elif status:
         if status in ("unset", "none"):
-            query["$or"] = [
+            status_condition = {"$or": [
                 {"status": {"$exists": False}},
                 {"status": None},
                 {"status": ""}
-            ]
+            ]}
+            if "$and" not in query:
+                query["$and"] = []
+            query["$and"].append(status_condition)
         else:
             query["status"] = status
     
@@ -150,15 +158,19 @@ def build_leads_query(
     if archived is True:
         query["archived"] = True
     elif archived is False or archived is None:
-        query["$or"] = [{"archived": {"$exists": False}}, {"archived": False}]
+        # Use $and to properly combine with other $or conditions
+        if "$and" not in query:
+            query["$and"] = []
+        query["$and"].append({"$or": [{"archived": {"$exists": False}}, {"archived": False}]})
     
     # Invalid/suppressed filter
     if is_invalid is True:
         query["is_invalid"] = True
     elif is_invalid is False or is_invalid is None:
         # Default: exclude invalid leads from normal views
-        query["$and"] = query.get("$and", [])
-        query.setdefault("$and", []).append({"$or": [{"is_invalid": {"$exists": False}}, {"is_invalid": False}]})
+        if "$and" not in query:
+            query["$and"] = []
+        query["$and"].append({"$or": [{"is_invalid": {"$exists": False}}, {"is_invalid": False}]})
     
     # Import batch filter
     if import_batch_id:
@@ -260,10 +272,20 @@ async def list_leads(
     if current_user["role"] == "admin":
         for lead in leads:
             if lead.get("assigned_to"):
-                telecaller = await db.users.find_one({"_id": ObjectId(lead["assigned_to"])})
-                if telecaller:
-                    lead["telecaller_name"] = telecaller.get("name", "Unknown")
-                    lead["telecaller_email"] = telecaller.get("email", "")
+                try:
+                    # Try ObjectId first, then string match
+                    telecaller = None
+                    assigned_id = lead["assigned_to"]
+                    if len(assigned_id) == 24:
+                        telecaller = await db.users.find_one({"_id": ObjectId(assigned_id)})
+                    if not telecaller:
+                        # Try matching by connect_id (UUID format)
+                        telecaller = await db.users.find_one({"connect_id": assigned_id})
+                    if telecaller:
+                        lead["telecaller_name"] = telecaller.get("name", "Unknown")
+                        lead["telecaller_email"] = telecaller.get("email", "")
+                except Exception:
+                    pass  # Skip if user lookup fails
     
     return {
         "leads": serialize_docs(leads),
