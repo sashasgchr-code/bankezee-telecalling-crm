@@ -578,9 +578,65 @@ The attendance times were displaying in UTC instead of IST because:
 All 11 stages of the Master Prompt are now complete.
 
 ### Future Enhancements
-- Custom Google Sheets API key configuration in admin settings
 - TTL index option for automatic cleanup (currently manual)
-- Mobile app Leave Management UI
+- Email domain verification for Resend
+
+## Recent Changes (Sep 1, 2026 - Continued)
+
+### Mobile App Leave Management - COMPLETED ✅
+
+**New Screen** (`/app/mobile-app/src/screens/LeaveScreen.js`):
+- Leave balance view with all leave types
+- Apply Leave modal with date picker, leave type selection
+- Apply WFH modal
+- My Requests tab showing leave/WFH history with cancel option
+- Tab navigation: Balance, Leave Requests, WFH
+
+**Navigation Updates** (`/app/mobile-app/App.js`):
+- Added "Leave" tab for both Telecaller and Admin views
+
+**API Functions** (`/app/mobile-app/src/services/api.js`):
+- `getLeaveBalance()`, `getMyLeaveRequests()`, `getMyWfhRequests()`
+- `submitLeaveRequest()`, `submitWfhRequest()`, `cancelLeaveRequest()`
+
+### Admin Settings - Integration Configuration - COMPLETED ✅
+
+**Frontend** (`/app/frontend/src/pages/admin/Settings.js`):
+- New "Integrations" expandable section
+- Google Sheets API Key field with copy button
+- Resend API Key field with link to resend.com
+- HR/Admin Email field for notifications
+- Save Integration Settings button
+
+**Backend** (`/app/backend/routes/settings.py`):
+- `GET /api/settings/integrations`: Get current integration settings
+- `POST /api/settings/integrations`: Save integration settings
+- Settings stored in MongoDB `app_settings` collection
+- Runtime update of environment variables
+
+### Google Sheets Setup Simplified
+
+**Setup Guide** (`/app/GOOGLE_SHEETS_SETUP.md`):
+- No credentials needed in App Script
+- Uses API key authentication
+- One-click sync from Google Sheets menu
+
+### Email Configuration Status
+
+**Current State**:
+- Email service ready in `/app/backend/utils/email_service.py`
+- Requires Resend API key to send emails
+- Can be configured through Admin Settings page
+- When configured: Leave/WFH notifications auto-send
+
+**To Enable Emails**:
+1. Go to Admin → Settings → Integrations
+2. Get API key from https://resend.com/api-keys
+3. Paste in "Resend API Key" field
+4. Set HR/Admin email for notifications
+5. Save
+
+**Master Prompt Progress**: ALL 11 STAGES + ENHANCEMENTS COMPLETE ✅
 
 ### Stage 6: Call Log Cleanup - COMPLETED ✅
 

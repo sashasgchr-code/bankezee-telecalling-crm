@@ -295,4 +295,36 @@ export const getMyWFHRequests = async () => {
   return response.data;
 };
 
+// ===================== LEAVE MANAGEMENT =====================
+
+export const getLeaveBalance = async () => {
+  const response = await api.get('/leave/balance');
+  return response.data;
+};
+
+export const getMyLeaveRequests = async () => {
+  const response = await api.get('/leave/requests/my');
+  return response.data;
+};
+
+export const getMyWfhRequests = async () => {
+  const response = await api.get('/leave/wfh/requests/my');
+  return response.data;
+};
+
+export const submitLeaveRequest = async (data) => {
+  const response = await api.post('/leave/requests', data);
+  return response.data;
+};
+
+export const submitWfhRequest = async (data) => {
+  const response = await api.post('/leave/wfh/requests', data);
+  return response.data;
+};
+
+export const cancelLeaveRequest = async (requestId) => {
+  const response = await api.delete(`/leave/requests/${requestId}`);
+  return response.data;
+};
+
 export default api;

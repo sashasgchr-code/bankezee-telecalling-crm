@@ -22,6 +22,7 @@ from routes.attendance import router as attendance_router
 from routes.leave_management import router as leave_router
 from routes.data_cleanup import router as data_cleanup_router
 from routes.sheets_sync import router as sheets_sync_router
+from routes.settings import router as settings_router
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -47,6 +48,7 @@ app.include_router(attendance_router)
 app.include_router(leave_router)
 app.include_router(data_cleanup_router)
 app.include_router(sheets_sync_router)
+app.include_router(settings_router)
 
 # Predefined admin accounts
 ADMIN_ACCOUNTS = [

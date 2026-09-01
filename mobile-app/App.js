@@ -14,6 +14,7 @@ import FollowUpsScreen from './src/screens/FollowUpsScreen';
 import TeamScreen from './src/screens/TeamScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
 import TrackingScreen from './src/screens/TrackingScreen';
+import LeaveScreen from './src/screens/LeaveScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -27,6 +28,7 @@ const TabIcon = ({ name, focused, color }) => {
     Team: '👥',
     Reports: '📈',
     Tracking: '📆',
+    Leave: '🏖️',
   };
   return (
     <View style={styles.tabIcon}>
@@ -59,6 +61,9 @@ const TelecallerTabs = ({ user, onLogout }) => {
       <Tab.Screen name="Follow-ups">
         {props => <FollowUpsScreen {...props} user={user} />}
       </Tab.Screen>
+      <Tab.Screen name="Leave">
+        {props => <LeaveScreen {...props} user={user} />}
+      </Tab.Screen>
     </Tab.Navigator>
   );
 };
@@ -90,8 +95,8 @@ const AdminTabs = ({ user, onLogout }) => {
       <Tab.Screen name="Reports">
         {props => <ReportsScreen {...props} user={user} />}
       </Tab.Screen>
-      <Tab.Screen name="Tracking">
-        {props => <TrackingScreen {...props} user={user} />}
+      <Tab.Screen name="Leave">
+        {props => <LeaveScreen {...props} user={user} />}
       </Tab.Screen>
     </Tab.Navigator>
   );

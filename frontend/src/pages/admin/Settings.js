@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Info, Lock, Loader2 } from 'lucide-react';
+import { LogOut, Info, Lock, Loader2, Key, Mail, FileSpreadsheet, Copy, Check } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import api from '../../services/api';
 
@@ -12,6 +12,57 @@ const AdminSettings = () => {
   const [newPassword, setNewPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  
+  // Integration settings
+  const [showIntegrations, setShowIntegrations] = useState(false);
+  const [integrationSettings, setIntegrationSettings] = useState({
+    sheets_api_key: '',
+    resend_api_key: '',
+    hr_email: '',
+  });
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [copiedKey, setCopiedKey] = useState('');
+
+  useEffect(() => {
+    if (showIntegrations) {
+      loadIntegrationSettings();
+    }
+  }, [showIntegrations]);
+
+  const loadIntegrationSettings = async () => {
+    setLoadingSettings(true);
+    try {
+      const response = await api.get('/settings/integrations');
+      setIntegrationSettings(response.data);
+    } catch (error) {
+      // Settings may not exist yet, use defaults
+      setIntegrationSettings({
+        sheets_api_key: 'bankezee_sheets_sync_2026',
+        resend_api_key: '',
+        hr_email: 'admin@bankezee.com',
+      });
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  const handleSaveIntegrations = async () => {
+    setIsSubmitting(true);
+    try {
+      await api.post('/settings/integrations', integrationSettings);
+      setMessage({ type: 'success', text: 'Integration settings saved successfully' });
+    } catch (error) {
+      setMessage({ type: 'error', text: error.response?.data?.detail || 'Failed to save settings' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const copyToClipboard = (text, key) => {
+    navigator.clipboard.writeText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey(''), 2000);
+  };
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
@@ -122,6 +173,110 @@ const AdminSettings = () => {
                 'Update Password'
               )}
             </button>
+          </div>
+        )}
+      </div>
+
+      {/* Integrations */}
+      <div className="card p-6 mb-6">
+        <button
+          onClick={() => setShowIntegrations(!showIntegrations)}
+          className="flex items-center gap-3 w-full text-left"
+        >
+          <Key size={20} className="text-gray-600" />
+          <span className="font-medium text-gray-900">Integrations</span>
+        </button>
+
+        {showIntegrations && (
+          <div className="mt-4 space-y-5">
+            {loadingSettings ? (
+              <div className="flex justify-center py-4">
+                <Loader2 className="animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                {/* Google Sheets API Key */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                    <FileSpreadsheet size={16} className="text-green-600" />
+                    Google Sheets API Key
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={integrationSettings.sheets_api_key}
+                      onChange={(e) => setIntegrationSettings({ ...integrationSettings, sheets_api_key: e.target.value })}
+                      placeholder="Enter API key for Google Sheets sync"
+                      className="input-field flex-1"
+                      data-testid="sheets-api-key-input"
+                    />
+                    <button
+                      onClick={() => copyToClipboard(integrationSettings.sheets_api_key, 'sheets')}
+                      className="px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                      title="Copy API Key"
+                    >
+                      {copiedKey === 'sheets' ? <Check size={18} className="text-green-600" /> : <Copy size={18} />}
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Use this key in your Google Apps Script to sync data
+                  </p>
+                </div>
+
+                {/* Resend API Key */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                    <Mail size={16} className="text-blue-600" />
+                    Resend API Key (Email Notifications)
+                  </label>
+                  <input
+                    type="password"
+                    value={integrationSettings.resend_api_key}
+                    onChange={(e) => setIntegrationSettings({ ...integrationSettings, resend_api_key: e.target.value })}
+                    placeholder="re_xxxxxxxxxx (from resend.com)"
+                    className="input-field"
+                    data-testid="resend-api-key-input"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    <a href="https://resend.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                      Get your Resend API key here
+                    </a>
+                  </p>
+                </div>
+
+                {/* HR Email */}
+                <div>
+                  <label className="flex items-center gap-2 text-sm font-medium text-gray-700 mb-2">
+                    <Mail size={16} className="text-amber-600" />
+                    HR/Admin Email (Notifications)
+                  </label>
+                  <input
+                    type="email"
+                    value={integrationSettings.hr_email}
+                    onChange={(e) => setIntegrationSettings({ ...integrationSettings, hr_email: e.target.value })}
+                    placeholder="hr@yourcompany.com"
+                    className="input-field"
+                    data-testid="hr-email-input"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave/WFH request notifications will be sent to this email
+                  </p>
+                </div>
+
+                <button
+                  onClick={handleSaveIntegrations}
+                  disabled={isSubmitting}
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                  data-testid="save-integrations-btn"
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    'Save Integration Settings'
+                  )}
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
