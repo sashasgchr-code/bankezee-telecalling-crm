@@ -16,6 +16,7 @@ import TelecallerLeads from "./pages/telecaller/Leads";
 import TelecallerFollowUps from "./pages/telecaller/FollowUps";
 import TelecallerProfile from "./pages/telecaller/Profile";
 import LeadDetail from "./pages/LeadDetail";
+import { FilesDashboard, FileDetailsPage } from "./pages/files";
 import AdminLayout from "./layouts/AdminLayout";
 import TelecallerLayout from "./layouts/TelecallerLayout";
 import LoadingScreen from "./components/LoadingScreen";
@@ -78,6 +79,8 @@ function App() {
           <Route index element={<AdminDashboard />} />
           <Route path="leads" element={<AdminLeads />} />
           <Route path="leads/:id" element={<LeadDetail />} />
+          <Route path="files" element={<FilesDashboard />} />
+          <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="tracking" element={<DailyTrackingSheet />} />
@@ -96,6 +99,8 @@ function App() {
           <Route path="dashboard" element={<TelecallerDashboard />} />
           <Route path="leads" element={<TelecallerLeads />} />
           <Route path="leads/:id" element={<LeadDetail />} />
+          <Route path="files" element={<FilesDashboard />} />
+          <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="followups" element={<TelecallerFollowUps />} />
           <Route path="profile" element={<TelecallerProfile />} />
         </Route>

@@ -143,6 +143,12 @@ www.BankEzee.com`;
       });
       setLead(editData);
       setIsEditing(false);
+      
+      // If status changed to 'file', redirect to File Details page
+      if (editData.status === 'file') {
+        const basePath = user?.role === 'admin' ? '/admin' : '/agent';
+        navigate(`${basePath}/files/${id}`);
+      }
     } catch (error) {
       alert(error.response?.data?.detail || 'Failed to save changes');
     } finally {
