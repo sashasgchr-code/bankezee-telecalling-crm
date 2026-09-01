@@ -956,145 +956,155 @@ async def get_files_dashboard_stats():
     """
     Get dashboard statistics for files - matching old CRM calculation rules:
     
-    - In Progress: Contacted + Query + Hold (created date based)
-    - Login: Login + Approved + Declined + Not Disbursed + Rejected-after-login
-    - Interim Rejects: FI Negative + Declined + Cust. Not Interested/Supporting
+    - In Progress: Contacted + Query + Hold + Documents Pending + Sent for Eligibility + Sent for Login + Underwriting
+    - Login: Files where ANY eligibility has login_done=true/yes
+    - Approved: Files where ANY eligibility has approved_amount > 0 or approval_status=approved
+    - Interim Rejects: FI + Declined + Customer Not Interested + Customer Not Supporting
     - Final Rejections: Rejected + Not Eligible + Not Login + Not Disbursed
-    - Total Approved: Sum of approved_amount from eligibilities
-    - Total Disbursed: Sum of disbursed_amount from eligibilities
-    - Amt in Pipeline: Sum of eligible_amount where Login=Yes & App ID filled, excl. disbursed/declined/rejected
+    - Total Approved: Sum of approved_amount from ALL eligibilities
+    - Total Disbursed: Sum of disbursed_amount from ALL eligibilities
     """
-    # Get status counts
-    pipeline = [
-        {"$match": {"status": "file"}},
-        {"$group": {
-            "_id": "$file_status",
-            "count": {"$sum": 1}
-        }}
-    ]
+    # Get all files
+    all_files = await db.leads.find({"status": "file"}).to_list(5000)
+    total_files = len(all_files)
     
-    status_counts = await db.leads.aggregate(pipeline).to_list(100)
-    status_dict = {s["_id"]: s["count"] for s in status_counts if s["_id"]}
+    # Count statuses
+    status_counts = {}
+    for f in all_files:
+        status = f.get('file_status') or 'new'
+        status_counts[status] = status_counts.get(status, 0) + 1
     
-    total_files = await db.leads.count_documents({"status": "file"})
+    # NEW: Simple count of status=new
+    new_count = status_counts.get('new', 0)
     
-    # Calculate aggregated stats matching old CRM rules
-    new_count = status_dict.get("new", 0)
-    
-    # In Progress: Contacted + Query + Hold
+    # IN PROGRESS: Contacted + Query + Hold + documents_pending + sent_for_eligibility + sent_for_login + underwriting
     in_progress = (
-        status_dict.get("contacted", 0) + 
-        status_dict.get("query", 0) + 
-        status_dict.get("hold", 0)
+        status_counts.get('contacted', 0) + 
+        status_counts.get('query', 0) + 
+        status_counts.get('hold', 0) +
+        status_counts.get('query_hold', 0) +
+        status_counts.get('documents_pending', 0) +
+        status_counts.get('documents_collected', 0) +
+        status_counts.get('sent_for_eligibility', 0) +
+        status_counts.get('sent_for_login', 0) +
+        status_counts.get('sent_to_bank', 0) +
+        status_counts.get('underwriting', 0)
     )
     
-    # Login: Login + Approved + Declined + Not Disbursed + Rejected-after-login
-    login_count = (
-        status_dict.get("login", 0) + 
-        status_dict.get("approved", 0) + 
-        status_dict.get("declined", 0) + 
-        status_dict.get("not_disbursed", 0) +
-        status_dict.get("fi_negative", 0)  # FI stage counts as login stage
-    )
+    # Calculate eligibility-based counts
+    login_count = 0
+    approved_count = 0
+    disbursed_count = 0
+    total_approved_amount = 0.0
+    total_disbursed_amount = 0.0
+    pipeline_amount = 0.0
     
-    # Approved count (raw)
-    approved_count = status_dict.get("approved", 0)
+    for f in all_files:
+        eligibilities = f.get('eligibilities', []) or []
+        file_has_login = False
+        file_has_approved = False
+        file_has_disbursed = False
+        file_approved_amt = 0.0
+        file_disbursed_amt = 0.0
+        file_eligible_amt = 0.0
+        
+        for elig in eligibilities:
+            # Check login_done - can be True, 'yes', 'Yes', or 'YES'
+            login_done = elig.get('login_done')
+            if login_done == True or (isinstance(login_done, str) and login_done.lower() == 'yes'):
+                file_has_login = True
+            
+            # Check approved - by amount or status
+            approved_amt = 0
+            try:
+                approved_amt = float(elig.get('approved_amount') or 0)
+            except (TypeError, ValueError):
+                pass
+            
+            if approved_amt > 0 or elig.get('approval_status') == 'approved':
+                file_has_approved = True
+                file_approved_amt += approved_amt
+            
+            # Check disbursed - can be True, 'yes', or has amount
+            disbursed = elig.get('disbursed')
+            disbursed_amt = 0
+            try:
+                disbursed_amt = float(elig.get('disbursed_amount') or 0)
+            except (TypeError, ValueError):
+                pass
+            
+            if disbursed == True or (isinstance(disbursed, str) and disbursed.lower() == 'yes') or disbursed_amt > 0:
+                file_has_disbursed = True
+                file_disbursed_amt += disbursed_amt
+            
+            # Pipeline: eligible amount where login done but not disbursed/declined
+            if file_has_login and not file_has_disbursed:
+                try:
+                    file_eligible_amt += float(elig.get('eligible_amount') or 0)
+                except (TypeError, ValueError):
+                    pass
+        
+        if file_has_login:
+            login_count += 1
+        if file_has_approved:
+            approved_count += 1
+            total_approved_amount += file_approved_amt
+        if file_has_disbursed:
+            disbursed_count += 1
+            total_disbursed_amount += file_disbursed_amt
+        
+        # Pipeline: only count if logged in but not disbursed and not declined/rejected
+        file_status = f.get('file_status', '')
+        if file_has_login and not file_has_disbursed and file_status not in ['declined', 'rejected', 'disbursed']:
+            pipeline_amount += file_eligible_amt
     
-    # Disbursed count (raw)
-    disbursed_count = status_dict.get("disbursed", 0)
-    
-    # Interim Rejects: FI Negative + Declined + Not Interested + Supporting
+    # INTERIM REJECTS: FI + Declined + Customer Not Interested + Customer Not Supporting
     interim_rejects = (
-        status_dict.get("fi_negative", 0) + 
-        status_dict.get("declined", 0) + 
-        status_dict.get("not_interested", 0) +
-        status_dict.get("supporting", 0)
+        status_counts.get('fi', 0) +
+        status_counts.get('fi_negative', 0) +
+        status_counts.get('declined', 0) +
+        status_counts.get('customer_not_interested', 0) +
+        status_counts.get('not_interested', 0) +
+        status_counts.get('customer_not_supporting', 0) +
+        status_counts.get('supporting', 0)
     )
     
-    # Final Rejections: Rejected + Not Eligible + Not Login + Not Disbursed
+    # FINAL REJECTIONS: Rejected + Not Eligible + Not Login + Not Disbursed
     final_rejections = (
-        status_dict.get("rejected", 0) + 
-        status_dict.get("not_eligible", 0) + 
-        status_dict.get("not_login", 0) + 
-        status_dict.get("not_disbursed", 0)
+        status_counts.get('rejected', 0) +
+        status_counts.get('not_eligible', 0) +
+        status_counts.get('not_login', 0) +
+        status_counts.get('not_disbursed', 0)
     )
     
-    # Calculate total amounts from eligibilities
-    # Total Approved Amount - from approved eligibilities
-    approved_amount_pipeline = [
-        {"$match": {"status": "file"}},
-        {"$unwind": {"path": "$eligibilities", "preserveNullAndEmptyArrays": False}},
-        {"$match": {
-            "$or": [
-                {"eligibilities.approval_status": "approved"},
-                {"eligibilities.approved_amount": {"$gt": 0}}
-            ]
-        }},
-        {"$group": {
-            "_id": None,
-            "total": {"$sum": {"$ifNull": ["$eligibilities.approved_amount", 0]}}
-        }}
-    ]
-    approved_amount_result = await db.leads.aggregate(approved_amount_pipeline).to_list(1)
-    total_approved_amount = approved_amount_result[0]["total"] if approved_amount_result else 0
-    
-    # Total Disbursed Amount - from disbursed eligibilities
-    disbursed_amount_pipeline = [
-        {"$match": {"status": "file"}},
-        {"$unwind": {"path": "$eligibilities", "preserveNullAndEmptyArrays": False}},
-        {"$match": {
-            "$or": [
-                {"eligibilities.disbursed": True},
-                {"eligibilities.disbursed_amount": {"$gt": 0}}
-            ]
-        }},
-        {"$group": {
-            "_id": None,
-            "total": {"$sum": {"$ifNull": ["$eligibilities.disbursed_amount", 0]}}
-        }}
-    ]
-    disbursed_amount_result = await db.leads.aggregate(disbursed_amount_pipeline).to_list(1)
-    total_disbursed_amount = disbursed_amount_result[0]["total"] if disbursed_amount_result else 0
-    
-    # Amount in Pipeline - eligible amount where login done, app ID filled, not disbursed/declined/rejected
-    pipeline_amount_pipeline = [
-        {"$match": {
-            "status": "file",
-            "file_status": {"$in": ["login", "approved"]}  # Active pipeline stages
-        }},
-        {"$unwind": {"path": "$eligibilities", "preserveNullAndEmptyArrays": False}},
-        {"$match": {
-            "eligibilities.login_done": True,
-            "eligibilities.disbursed": {"$ne": True},
-            "eligibilities.approval_status": {"$nin": ["declined", "rejected"]}
-        }},
-        {"$group": {
-            "_id": None,
-            "total": {"$sum": {"$ifNull": ["$eligibilities.eligible_amount", 0]}}
-        }}
-    ]
-    pipeline_amount_result = await db.leads.aggregate(pipeline_amount_pipeline).to_list(1)
-    amt_in_pipeline = pipeline_amount_result[0]["total"] if pipeline_amount_result else 0
+    # Status-based disbursed count (for display with C: X S: Y format)
+    status_disbursed = status_counts.get('disbursed', 0)
+    status_approved = status_counts.get('approved', 0)
+    status_login = status_counts.get('login', 0)
     
     return {
         "total_files": total_files,
-        "by_status": status_dict,
+        "by_status": status_counts,
         # Row 1 stats
         "new": new_count,
         "in_progress": in_progress,
-        "login": login_count,
-        "approved": approved_count,
+        "login": login_count,  # Eligibility-based
+        "login_status": status_login,  # Status-based for C: display
+        "approved": approved_count,  # Eligibility-based
+        "approved_status": status_approved,  # Status-based for C: display
         "total_approved_amount": total_approved_amount,
         # Row 2 stats
-        "disbursed": disbursed_count,
+        "disbursed": disbursed_count,  # Eligibility-based
+        "disbursed_status": status_disbursed,  # Status-based for C: display
         "total_disbursed_amount": total_disbursed_amount,
         "interim_rejects": interim_rejects,
         "final_rejections": final_rejections,
-        "amt_in_pipeline": amt_in_pipeline,
+        "amt_in_pipeline": pipeline_amount,
         # Legacy fields for backwards compatibility
-        "contacted": status_dict.get("contacted", 0),
-        "documents_collected": status_dict.get("documents_collected", 0),
-        "sent_to_bank": status_dict.get("sent_to_bank", 0),
-        "rejected": status_dict.get("rejected", 0)
+        "contacted": status_counts.get("contacted", 0),
+        "documents_collected": status_counts.get("documents_collected", 0),
+        "sent_to_bank": status_counts.get("sent_to_bank", 0),
+        "rejected": status_counts.get("rejected", 0)
     }
+
 
