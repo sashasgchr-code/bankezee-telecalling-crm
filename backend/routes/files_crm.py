@@ -1596,13 +1596,18 @@ async def get_growth_partner_report(
         disbursed = elig.get('disbursed')
         return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
     
-    # Get all users to map IDs to names
-    users = await db.users.find({}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}).to_list(1000)
+    # Get all users to map IDs to names (using connect_id for matching)
+    users = await db.users.find({}, {"_id": 0, "id": 1, "connect_id": 1, "full_name": 1, "name": 1, "email": 1}).to_list(1000)
     user_map = {}
     for u in users:
+        # Map by id
         uid = u.get('id')
         if uid:
             user_map[uid] = u.get('full_name') or u.get('name') or u.get('email', '').split('@')[0]
+        # Also map by connect_id if different
+        cid = u.get('connect_id')
+        if cid and cid != uid:
+            user_map[cid] = u.get('full_name') or u.get('name') or u.get('email', '').split('@')[0]
     
     # Agent stats aggregation
     agent_stats = {}

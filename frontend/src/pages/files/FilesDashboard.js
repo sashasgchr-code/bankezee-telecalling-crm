@@ -350,69 +350,68 @@ const FilesDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Top Header with Report Links */}
       <div className="bg-white border-b border-gray-200 px-4 py-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex items-center gap-4">
             <div>
               <h1 className="text-xl font-bold text-gray-900">Admin</h1>
               <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
             </div>
-            <span className="text-sm text-gray-500">Welcome, Admin User</span>
+            <span className="text-sm text-gray-500 hidden md:inline">Welcome, Admin User</span>
           </div>
           
-          {/* Report Buttons - Match old CRM */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1">
+          {/* Report Buttons - Responsive wrap */}
+          <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-2 lg:pb-0">
+            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
               <FileText size={14} />
-              Daily Report
+              <span className="hidden sm:inline">Daily Report</span>
+              <span className="sm:hidden">Daily</span>
             </button>
-            <button className="px-3 py-1.5 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1">
+            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 whitespace-nowrap">
               <XCircle size={14} />
-              Rejected Cases
+              <span className="hidden sm:inline">Rejected</span>
             </button>
             <button 
               onClick={() => setShowGrowthPartner(!showGrowthPartner)}
-              className={`px-3 py-1.5 text-sm border rounded-lg flex items-center gap-1 ${showGrowthPartner ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
+              className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showGrowthPartner ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
             >
               <Users size={14} />
-              Growth Partner
+              <span className="hidden sm:inline">Growth Partner</span>
+              <span className="sm:hidden">Partners</span>
             </button>
             <button 
               onClick={() => setShowBankTable(!showBankTable)}
-              className={`px-3 py-1.5 text-sm border rounded-lg flex items-center gap-1 ${showBankTable ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}
+              className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showBankTable ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}
             >
               <Building2 size={14} />
-              Bank Performance
+              <span className="hidden sm:inline">Bank Perf.</span>
+              <span className="sm:hidden">Banks</span>
             </button>
             <button 
               onClick={() => setShowTatMetrics(!showTatMetrics)}
-              className={`px-3 py-1.5 text-sm border rounded-lg flex items-center gap-1 ${showTatMetrics ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'}`}
+              className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showTatMetrics ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'}`}
             >
               <Timer size={14} />
-              TAT Metrics
+              <span className="hidden sm:inline">TAT</span>
             </button>
-            <button className="px-3 py-1.5 text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1">
+            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1 whitespace-nowrap">
               <Star size={14} />
-              Quality Report
+              <span className="hidden sm:inline">Quality</span>
             </button>
-            <button className="px-3 py-1.5 text-sm bg-purple-50 text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-100 flex items-center gap-1">
+            <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-purple-50 text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-100 flex items-center gap-1 whitespace-nowrap">
               <FileText size={14} />
-              Policy Master
+              <span className="hidden sm:inline">Policy</span>
             </button>
-            <button onClick={handleExportCSV} className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1">
+            <button onClick={handleExportCSV} className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
               <Download size={14} />
-              Export Disbursed
-            </button>
-            <button className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1">
-              <BarChart3 size={14} />
-              Export Stats
+              <span className="hidden sm:inline">Export</span>
             </button>
             {isAdmin && (
               <button 
                 onClick={() => navigate('/admin/files/migrate')}
-                className="px-3 py-1.5 text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1"
+                className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1 whitespace-nowrap"
               >
                 <Database size={14} />
-                Import Data
+                <span className="hidden sm:inline">Import</span>
               </button>
             )}
           </div>

@@ -913,4 +913,26 @@ Files are stored in the `leads` collection with `status = "file"`:
 ### Bugs Fixed (September 1, 2026)
 1. Trailing slash redirect issue on `/api/files` - Added dual route decorators
 2. False 404 on `/activities`, `/documents`, `/eligibilities` endpoints - Fixed projection empty dict check
+3. Stats calculation rules - Completely rewrote to follow BankEzee CRM rules (created_at vs activity timestamp)
+4. Named Partners in Growth Report - Added connect_id mapping for user names
+5. Responsive buttons - Fixed report buttons extending off-screen on mobile
+
+### Deployment Ready (September 1, 2026)
+- ✅ Web frontend: All environment variables configured
+- ✅ Backend: MongoDB connection via MONGO_URL env var
+- ✅ Mobile app: API URL configurable via EXPO_PUBLIC_API_URL
+- ✅ EAS build profiles: preview and production with correct API URLs
+- ✅ No hardcoded secrets or URLs
+
+### Mobile App Build Instructions
+```bash
+cd /app/mobile-app
+
+# For preview APK (points to preview backend)
+eas build --platform android --profile preview
+
+# For production APK (points to production backend)
+eas build --platform android --profile production
+```
+
 
