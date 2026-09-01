@@ -316,7 +316,6 @@ const LeadDetailScreen = ({ route, navigation }) => {
       new: '#3b82f6',
       follow_up: '#8b5cf6',
       not_interested: '#6b7280',
-      presentation: '#f59e0b',
       leads: '#22c55e',
       file: '#ef4444',
     };

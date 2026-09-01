@@ -376,7 +376,6 @@ const AdminReports = () => {
         { label: 'Total Calls', value: reports.overall?.total_calls || 0, color: colors.primary },
         { label: 'Leads', value: reports.overall?.total_leads_generated || 0, color: colors.secondary },
         { label: 'File', value: reports.overall?.total_file || 0, color: colors.orange },
-        { label: 'Presentations', value: reports.overall?.total_presentations || 0, color: colors.indigo },
         { label: 'Talk Time', value: formatTime(reports.overall?.total_call_seconds), color: colors.purple },
         { label: 'Avg Call', value: formatTime(reports.overall?.avg_call_time_seconds), color: colors.cyan },
         { label: 'Idle Time', value: formatTime(reports.overall?.total_idle_seconds), color: colors.red },
@@ -414,7 +413,6 @@ const AdminReports = () => {
         tc.total_calls || 0,
         tc.leads_generated || 0,
         tc.file || 0,
-        tc.presentations || 0,
         formatTime(tc.total_call_seconds),
         formatTime(tc.avg_call_time_seconds),
         formatTime(tc.total_idle_seconds),
@@ -424,7 +422,7 @@ const AdminReports = () => {
 
       autoTable(doc, {
         startY: yPos,
-        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Pres', 'Talk', 'Avg', 'Idle', 'Form Fill', 'File %']],
+        head: [['Name', 'Status', 'Calls', 'Leads', 'File', 'Talk', 'Avg', 'Idle', 'Form Fill', 'File %']],
         body: tableData,
         theme: 'grid',
         headStyles: { fillColor: colors.primary, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 6 },
@@ -478,7 +476,7 @@ const AdminReports = () => {
       doc.text('Caller-wise Hourly Report', 14, 14);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'normal');
-      doc.text('C = Calls, P = Presentations, L = Leads, F = File', 14, 23);
+      doc.text('C = Calls, L = Leads, F = File', 14, 23);
       doc.text(`Date: ${hourlyDate}`, landPageWidth - 14, 14, { align: 'right' });
       yPos = 36;
 
@@ -491,7 +489,7 @@ const AdminReports = () => {
 
       const getHourData = (tc, hour) => {
         const hb = tc.hourly_breakdown?.find(h => h.hour === hour);
-        return hb || { calls: 0, presentations: 0, leads: 0, file: 0 };
+        return hb || { calls: 0, leads: 0, file: 0 };
       };
 
       if (sortedHours.length > 0 && hourlyReports.telecallers?.length > 0) {
@@ -499,20 +497,17 @@ const AdminReports = () => {
         const headerRow = ['Telecaller'];
         sortedHours.forEach(hour => {
           headerRow.push(`${hour.toString().padStart(2, '0')}:00`);
-          headerRow.push(''); // Span for P
           headerRow.push(''); // Span for L
           headerRow.push(''); // Span for F
         });
         headerRow.push('TOTAL');
         headerRow.push('');
         headerRow.push('');
-        headerRow.push('');
 
-        // Build sub-header row with C P L F
+        // Build sub-header row with C L F
         const subHeaderRow = [''];
         for (let i = 0; i <= sortedHours.length; i++) {
           subHeaderRow.push('C');
-          subHeaderRow.push('P');
           subHeaderRow.push('L');
           subHeaderRow.push('F');
         }
@@ -525,13 +520,11 @@ const AdminReports = () => {
           sortedHours.forEach(hour => {
             const data = getHourData(tc, hour);
             row.push(data.calls > 0 ? data.calls : '-');
-            row.push(data.presentations > 0 ? data.presentations : '-');
             row.push(data.leads > 0 ? data.leads : '-');
             row.push(data.file > 0 ? data.file : '-');
           });
           // TOTAL column
           row.push(tc.total_calls || 0);
-          row.push(tc.total_presentations || 0);
           row.push(tc.total_leads || 0);
           row.push(tc.total_file || 0);
           bodyData.push(row);
@@ -544,31 +537,27 @@ const AdminReports = () => {
             const data = getHourData(tc, hour);
             return {
               c: acc.c + (data.calls || 0),
-              p: acc.p + (data.presentations || 0),
               l: acc.l + (data.leads || 0),
               f: acc.f + (data.file || 0)
             };
-          }, { c: 0, p: 0, l: 0, f: 0 });
+          }, { c: 0, l: 0, f: 0 });
           totalRow.push(totals.c || '-');
-          totalRow.push(totals.p || '-');
           totalRow.push(totals.l || '-');
           totalRow.push(totals.f || '-');
         });
         // Grand totals
         const grandTotals = {
           c: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_calls || 0), 0),
-          p: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_presentations || 0), 0),
           l: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_leads || 0), 0),
           f: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_file || 0), 0)
         };
         totalRow.push(grandTotals.c);
-        totalRow.push(grandTotals.p);
         totalRow.push(grandTotals.l);
         totalRow.push(grandTotals.f);
         bodyData.push(totalRow);
 
         // Calculate column widths
-        const totalDataCols = (sortedHours.length + 1) * 4; // Each hour has 4 columns (C,P,L,F)
+        const totalDataCols = (sortedHours.length + 1) * 3; // Each hour has 3 columns (C,L,F)
         const telecallerColWidth = 40;
         const availableWidth = landPageWidth - telecallerColWidth - 16;
         const dataColWidth = Math.max(8, availableWidth / totalDataCols);
@@ -1030,10 +1019,6 @@ const AdminReports = () => {
                     <p className="text-xs text-gray-500">File</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-xl font-bold text-indigo-600">{reports.overall.total_presentations || 0}</p>
-                    <p className="text-xs text-gray-500">Presentations</p>
-                  </div>
-                  <div className="text-center">
                     <p className="text-xl font-bold text-purple-600">
                       {formatTime(reports.overall.total_call_seconds)}
                     </p>
@@ -1126,10 +1111,6 @@ const AdminReports = () => {
                           <p className="text-xs text-gray-500">File</p>
                         </div>
                         <div className="text-center">
-                          <p className="text-lg font-bold text-indigo-600">{tc.presentations || 0}</p>
-                          <p className="text-xs text-gray-500">Presentations</p>
-                        </div>
-                        <div className="text-center">
                           <p className="text-lg font-bold text-purple-600">{formatTime(tc.total_call_seconds)}</p>
                           <p className="text-xs text-gray-500">Talk Time</p>
                         </div>
@@ -1159,7 +1140,6 @@ const AdminReports = () => {
                             { key: 'new', label: 'New', color: '#4CAF50' },
                             { key: 'not_interested', label: 'Not Interested', color: '#9E9E9E' },
                             { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
-                            { key: 'presentation', label: 'Presentation', color: '#673AB7' },
                             { key: 'leads', label: 'Lead', color: '#00C853' },
                             { key: 'file', label: 'File', color: '#FF9800' },
                           ].map((status) => (
@@ -1264,7 +1244,7 @@ const AdminReports = () => {
                 
                 const getHourData = (tc, hour) => {
                   const hb = tc.hourly_breakdown?.find(h => h.hour === hour);
-                  return hb || { calls: 0, connected: 0, presentations: 0, leads: 0, file: 0 };
+                  return hb || { calls: 0, connected: 0, leads: 0, file: 0 };
                 };
 
                 if (sortedHours.length === 0) {
@@ -1275,7 +1255,7 @@ const AdminReports = () => {
                   <div className="card overflow-hidden">
                     <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3">
                       <h3 className="text-lg font-semibold text-white">Caller-wise Hourly Report</h3>
-                      <p className="text-green-100 text-xs mt-1">C = Calls, P = Presentations, L = Leads, F = File</p>
+                      <p className="text-green-100 text-xs mt-1">C = Calls, L = Leads, F = File</p>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm border-collapse">
@@ -1288,13 +1268,13 @@ const AdminReports = () => {
                             {sortedHours.map(hour => (
                               <th 
                                 key={hour} 
-                                colSpan={4} 
+                                colSpan={3} 
                                 className="text-center py-2 px-1 font-bold text-gray-800 border-b border-l border-gray-300 bg-gray-50"
                               >
                                 {`${hour.toString().padStart(2, '0')}:00`}
                               </th>
                             ))}
-                            <th colSpan={4} className="text-center py-2 px-1 font-bold text-white bg-gray-700 border-l border-gray-300">
+                            <th colSpan={3} className="text-center py-2 px-1 font-bold text-white bg-gray-700 border-l border-gray-300">
                               TOTAL
                             </th>
                           </tr>
@@ -1303,13 +1283,11 @@ const AdminReports = () => {
                             {sortedHours.map(hour => (
                               <React.Fragment key={`sub-${hour}`}>
                                 <th className="py-2 px-1 text-xs font-semibold text-blue-600 border-l border-gray-200 w-10">C</th>
-                                <th className="py-2 px-1 text-xs font-semibold text-indigo-600 w-10">P</th>
                                 <th className="py-2 px-1 text-xs font-semibold text-teal-600 w-10">L</th>
                                 <th className="py-2 px-1 text-xs font-semibold text-orange-600 w-10">F</th>
                               </React.Fragment>
                             ))}
                             <th className="py-2 px-1 text-xs font-semibold text-blue-200 bg-gray-700 border-l border-gray-500 w-10">C</th>
-                            <th className="py-2 px-1 text-xs font-semibold text-indigo-200 bg-gray-700 w-10">P</th>
                             <th className="py-2 px-1 text-xs font-semibold text-teal-200 bg-gray-700 w-10">L</th>
                             <th className="py-2 px-1 text-xs font-semibold text-orange-200 bg-gray-700 w-10">F</th>
                           </tr>
@@ -1330,11 +1308,6 @@ const AdminReports = () => {
                                       ) : <span className="text-gray-300">-</span>}
                                     </td>
                                     <td className="py-2 px-1 text-center">
-                                      {data.presentations > 0 ? (
-                                        <span className="inline-block w-7 h-7 leading-7 rounded bg-indigo-100 text-indigo-700 font-bold text-xs">{data.presentations}</span>
-                                      ) : <span className="text-gray-300">-</span>}
-                                    </td>
-                                    <td className="py-2 px-1 text-center">
                                       {data.leads > 0 ? (
                                         <span className="inline-block w-7 h-7 leading-7 rounded bg-teal-100 text-teal-700 font-bold text-xs">{data.leads}</span>
                                       ) : <span className="text-gray-300">-</span>}
@@ -1352,9 +1325,6 @@ const AdminReports = () => {
                                 <span className="inline-block w-8 h-7 leading-7 rounded bg-blue-600 text-white font-bold text-xs">{tc.total_calls}</span>
                               </td>
                               <td className="py-2 px-1 text-center bg-gray-100">
-                                <span className="inline-block w-8 h-7 leading-7 rounded bg-indigo-600 text-white font-bold text-xs">{tc.total_presentations || 0}</span>
-                              </td>
-                              <td className="py-2 px-1 text-center bg-gray-100">
                                 <span className="inline-block w-8 h-7 leading-7 rounded bg-teal-600 text-white font-bold text-xs">{tc.total_leads || 0}</span>
                               </td>
                               <td className="py-2 px-1 text-center bg-gray-100">
@@ -1370,15 +1340,13 @@ const AdminReports = () => {
                                 const data = getHourData(tc, hour);
                                 return {
                                   calls: acc.calls + data.calls,
-                                  presentations: acc.presentations + data.presentations,
                                   leads: acc.leads + data.leads,
                                   file: acc.file + data.file
                                 };
-                              }, { calls: 0, presentations: 0, leads: 0, file: 0 });
+                              }, { calls: 0, leads: 0, file: 0 });
                               return (
                                 <React.Fragment key={`total-${hour}`}>
                                   <td className="py-2 px-1 text-center border-l border-green-500 text-blue-200">{totals.calls || '-'}</td>
-                                  <td className="py-2 px-1 text-center text-indigo-200">{totals.presentations || '-'}</td>
                                   <td className="py-2 px-1 text-center text-teal-200">{totals.leads || '-'}</td>
                                   <td className="py-2 px-1 text-center text-orange-200">{totals.file || '-'}</td>
                                 </React.Fragment>
@@ -1387,9 +1355,6 @@ const AdminReports = () => {
                             {/* Grand Totals */}
                             <td className="py-2 px-1 text-center bg-green-700 border-l border-green-500">
                               {hourlyReports.telecallers?.reduce((sum, tc) => sum + tc.total_calls, 0) || 0}
-                            </td>
-                            <td className="py-2 px-1 text-center bg-green-700">
-                              {hourlyReports.telecallers?.reduce((sum, tc) => sum + (tc.total_presentations || 0), 0) || 0}
                             </td>
                             <td className="py-2 px-1 text-center bg-green-700">
                               {hourlyReports.telecallers?.reduce((sum, tc) => sum + (tc.total_leads || 0), 0) || 0}
@@ -1708,7 +1673,6 @@ const AdminReports = () => {
                                 call.lead_status === 'new' ? 'bg-blue-100 text-blue-700' :
                                 call.lead_status === 'contacted' ? 'bg-yellow-100 text-yellow-700' :
                                 call.lead_status === 'follow_up' ? 'bg-orange-100 text-orange-700' :
-                                call.lead_status === 'presentation' ? 'bg-indigo-100 text-indigo-700' :
                                 call.lead_status === 'leads' ? 'bg-teal-100 text-teal-700' :
                                 call.lead_status === 'file' ? 'bg-green-100 text-green-700' :
                                 call.lead_status === 'not_interested' ? 'bg-red-100 text-red-700' :

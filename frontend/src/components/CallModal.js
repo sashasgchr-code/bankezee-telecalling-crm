@@ -15,7 +15,7 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
   const [hasCustomerAnswered, setHasCustomerAnswered] = useState(false); // Whether customer picked up
 
   // Update Status options - only shown when call is connected
-  const updateStatuses = ['not_interested', 'follow_up', 'presentation', 'leads', 'file'];
+  const updateStatuses = ['not_interested', 'follow_up', 'leads', 'file'];
   
   // Call Outcomes
   const callOutcomes = [

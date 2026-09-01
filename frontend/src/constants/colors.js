@@ -22,7 +22,6 @@ export const StatusColors = {
   contacted: '#2196F3',
   not_interested: '#9E9E9E',
   follow_up: '#9C27B0',
-  presentation: '#673AB7',
   leads: '#00C853',
   file: '#FF9800',
 };
@@ -32,7 +31,6 @@ export const StatusLabels = {
   contacted: 'Contacted',
   not_interested: 'Not Interested',
   follow_up: 'Follow Up',
-  presentation: 'Presentation',
   leads: 'Lead',
   file: 'File',
 };

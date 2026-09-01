@@ -101,6 +101,24 @@ Location: `/app/mobile-app/`
 
 ## Recent Updates (Aug 26, 2026)
 
+### Presentation Status Removal - COMPLETED ✅ (Sept 1, 2026)
+**User Request:** Remove "presentation" status globally from the entire application.
+
+**Changes Made:**
+- **Backend:** Removed "presentation" from `/api/statuses` endpoint (routes/reports.py)
+- **Frontend Web:**
+  - Removed from Admin Dashboard status breakdown (admin/Dashboard.js)
+  - Removed from Admin Reports overall stats and telecaller cards (admin/Reports.js)
+  - Removed from Reports PDF export metrics and table columns
+  - Removed from Hourly Reports table (C/L/F columns only, no P)
+  - Removed from Telecaller Dashboard status breakdown (telecaller/Dashboard.js)
+  - Removed from colors.js StatusColors and StatusLabels
+- **Mobile App:**
+  - Removed from DashboardScreen.js statusItems
+  - Removed from HomeScreen.js and TrackingScreen.js
+
+**Note:** Backend still computes `presentations` field for backward compatibility (returns 0), but frontend no longer displays it.
+
 ### Call Recording Feature - COMPLETED ✅
 **Mobile App:**
 - Added `recordingService.js` with audio recording capabilities
@@ -195,7 +213,7 @@ Benefits:
    - `verified_call_logs` - Stores synced call data from devices
 
 ## Status Options
-- new, contacted, file, not_interested, follow_up, leads, not_answering, wrong_number, presentation
+- new, not_interested, follow_up, leads, file (presentation status removed)
 
 ## Prioritized Backlog
 

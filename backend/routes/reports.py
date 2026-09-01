@@ -21,7 +21,6 @@ async def get_statuses(current_user: dict = Depends(get_current_user)):
     return [
         {"id": "not_interested", "name": "Not Interested", "color": "#9E9E9E"},
         {"id": "follow_up", "name": "Follow Up", "color": "#9C27B0"},
-        {"id": "presentation", "name": "Presentation", "color": "#673AB7"},
         {"id": "leads", "name": "Lead", "color": "#00C853"},
         {"id": "file", "name": "File", "color": "#FF9800"}
     ]

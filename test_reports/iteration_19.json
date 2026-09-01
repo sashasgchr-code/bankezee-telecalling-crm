@@ -1,0 +1,36 @@
+{
+  "summary": "Iteration 19: Verified global removal of 'presentation' status across UI and API. Backend 6/6 pytest passed. /api/statuses returns exactly {not_interested, follow_up, leads, file} (no presentation). Admin Dashboard, Admin Reports (Summary + Hourly), Admin Data/Leads, Telecaller Dashboard, and Telecaller Data all render without any 'Presentation' label. Status filter chips on telecaller data page show exactly: All | New | Not Interested | Follow Up | Lead | File. Reports Summary Overall Performance metrics tile row has no Presentation card. Hourly report table (empty state today) shows no P column. Pagination on /admin/leads works (2 total data shown).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/reports/telecallers", "issue": "Response payload still contains legacy fields 'presentations', 'total_presentations', and 'status_counts.presentation' (always 0 for new data). Not visible to user because frontend ignores them, but should be cleaned up for consistency with the 'global removal' goal."},
+      {"endpoint": "/api/reports/hourly", "issue": "Backend still computes and returns 'presentations'/'total_presentations' in each telecaller/overall_hourly item and matches status=='presentation' in the aggregation. Dead code path — should be removed to match front-end removal."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/dashboard", "issues": ["Pre-existing (iter18) hydration warnings from instrumentation <span> wrappers around <select>/<option>/<table>/<tbody>/<tfoot>. Non-blocking, injected by preview tooling."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_presentation_removal.py",
+    "/app/test_reports/pytest/iter19_presentation.xml"
+  ],
+  "action_items": [
+    "Optional cleanup: remove residual 'presentation' references in backend routes/reports.py get_telecaller_reports() (user_presentations, total_presentations, leads.get('presentation',0)) and get_hourly_report() (hours[hour]['presentations'], status=='presentation' branch, overall_hourly presentations key)."
+  ],
+  "critical_code_review_comments": [
+    "routes/reports.py get_telecaller_reports still computes user_presentations = leads.get('presentation', 0) and returns 'total_presentations' in overall — dead field, remove to keep API contract in sync with UI.",
+    "routes/reports.py get_hourly_report still branches on status == 'presentation' and includes 'presentations' in overall_hourly filter condition (line 754). Since /api/statuses no longer returns presentation, this branch is unreachable for new data but still pollutes the response schema.",
+    "Frontend TC Dashboard comment on line ~84 says 'without new and presentation' — accurate, but consider removing the historical reference in the comment for clarity."
+  ],
+  "updated_files": ["/app/backend/tests/test_presentation_removal.py"],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (all 8 requested flows verified)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!, agent@test.com / agent123 (teja@bankezee.com is admin per /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Verified against existing data: 1 lead 'Test Customer' (assigned to Sasha, status=new) and 1 lead 'Test Lead' (assigned to Test Agent, status=follow_up).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Presentation removal task is fully verified on frontend and confirmed at /api/statuses. The residual 'presentation' branches in backend routes/reports.py (get_telecaller_reports + get_hourly_report) are the only leftover — they are dead code paths (frontend does not render them and no leads have status='presentation' anymore) so they don't affect UX. Login field name is 'token' (not access_token). Frontend nav for telecaller uses /agent route (not /telecaller)."
+}

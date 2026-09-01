@@ -46,7 +46,7 @@ async def get_leads_by_status_for_sheets(
     
     # Group by status
     grouped = {}
-    status_list = ["new", "not_interested", "follow_up", "presentation", "leads", "file"]
+    status_list = ["new", "not_interested", "follow_up", "leads", "file"]
     
     for status in status_list:
         grouped[status] = []

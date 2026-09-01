@@ -39,7 +39,7 @@ const AdminLeads = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
-  const statuses = ['new', 'not_interested', 'follow_up', 'presentation', 'leads', 'file'];
+  const statuses = ['new', 'not_interested', 'follow_up', 'leads', 'file'];
 
   const fetchData = async (page = currentPage) => {
     try {
