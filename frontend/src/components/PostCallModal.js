@@ -7,9 +7,8 @@ import { queueCallLog, isOnline } from '../services/offlineQueue';
 /**
  * PostCallModal - Triggered after a call from LeadDetail page
  * Supports both outgoing and incoming calls for feature parity with mobile
- * Now with auto-detected call duration and auto-connected detection
  */
-const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoing', detectedDuration = 0 }) => {
+const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoing' }) => {
   const [outcome, setOutcome] = useState(null);
   const [notes, setNotes] = useState('');
   const [newStatus, setNewStatus] = useState(null);
@@ -18,7 +17,6 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [isOffline, setIsOffline] = useState(!isOnline());
-  const [showManualOutcomeSelection, setShowManualOutcomeSelection] = useState(false);
 
   const isIncoming = callType === 'incoming';
 
@@ -66,28 +64,11 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
   useEffect(() => {
     if (isOpen && lead) {
       // Reset form state
+      setOutcome(null);
       setNotes('');
       setNewStatus(null);
       setScheduleFollowUp(false);
-      setShowManualOutcomeSelection(false);
-      
-      // Use detected duration from parent component
-      const duration = detectedDuration || 0;
-      setCallDuration(duration);
-      
-      // Auto-detect outcome based on duration
-      // If call lasted more than 5 seconds, customer likely answered
-      if (duration >= 5) {
-        setOutcome('connected');
-      } else if (duration > 0 && duration < 5) {
-        // Very short call - might be rejected/busy, let agent decide
-        setOutcome(null);
-        setShowManualOutcomeSelection(true);
-      } else {
-        // Zero duration - definitely not answered
-        setOutcome(null);
-        setShowManualOutcomeSelection(true);
-      }
+      setCallDuration(0);
       
       // Set default follow up date to tomorrow at 10 AM
       const tomorrow = new Date();
@@ -95,9 +76,7 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
       tomorrow.setHours(10, 0, 0, 0);
       setFollowUpDate(tomorrow.toISOString().slice(0, 16));
     }
-  }, [isOpen, lead, detectedDuration]);
-
-  // No longer need auto-detect effect since we do it on open
+  }, [isOpen, lead]);
 
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -224,35 +203,41 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
             </p>
           </div>
 
-          {/* Auto-Detected Call Duration Display */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold text-gray-700">Call Duration</p>
-                <p className="text-2xl font-bold text-gray-900">{formatDuration(callDuration)}</p>
-              </div>
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
-                callDuration >= 5 ? 'bg-green-100' : 'bg-gray-200'
-              }`}>
-                <Clock size={24} className={callDuration >= 5 ? 'text-green-600' : 'text-gray-500'} />
-              </div>
+          {/* Call Duration Input (manual entry for web) */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Call Duration (approximate)
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                value={Math.floor(callDuration / 60)}
+                onChange={(e) => {
+                  const mins = parseInt(e.target.value, 10) || 0;
+                  setCallDuration(mins * 60 + (callDuration % 60));
+                }}
+                className="input-field w-20 text-center"
+                placeholder="0"
+              />
+              <span className="text-gray-500">min</span>
+              <input
+                type="number"
+                min="0"
+                max="59"
+                value={callDuration % 60}
+                onChange={(e) => {
+                  const secs = parseInt(e.target.value, 10) || 0;
+                  setCallDuration(Math.floor(callDuration / 60) * 60 + Math.min(secs, 59));
+                }}
+                className="input-field w-20 text-center"
+                placeholder="0"
+              />
+              <span className="text-gray-500">sec</span>
             </div>
-            {callDuration >= 5 && (
-              <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
-                <CheckCircle size={14} />
-                Customer answered the call
-              </p>
-            )}
-            {callDuration > 0 && callDuration < 5 && (
-              <p className="text-xs text-amber-600 mt-2">
-                Short call - please select outcome below
-              </p>
-            )}
-            {callDuration === 0 && (
-              <p className="text-xs text-gray-500 mt-2">
-                Call not connected - please select outcome below
-              </p>
-            )}
+            <p className="text-xs text-gray-400 mt-1">
+              Total: {formatDuration(callDuration)}
+            </p>
           </div>
 
           {/* Call Outcome */}
@@ -260,51 +245,26 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Call Outcome <span className="text-red-500">*</span>
             </label>
-            
-            {/* Auto-detected connected message */}
-            {callDuration >= 5 && outcome === 'connected' && !showManualOutcomeSelection && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3 flex items-center gap-2">
-                <CheckCircle size={18} className="text-green-600 flex-shrink-0" />
-                <p className="text-sm text-green-700">
-                  <strong>Auto-detected as Connected</strong> - Call duration indicates customer answered.
-                  <button 
-                    onClick={() => setShowManualOutcomeSelection(true)} 
-                    className="ml-2 text-green-600 underline hover:text-green-800"
-                  >
-                    Change
-                  </button>
-                </p>
-              </div>
-            )}
-            
-            {/* Show outcome buttons if: call not connected or user wants to change */}
-            {(showManualOutcomeSelection || callDuration < 5 || outcome !== 'connected') && (
-              <div className="grid grid-cols-2 gap-2">
-                {callOutcomes.map((o) => (
-                  <button
-                    key={o.id}
-                    onClick={() => {
-                      setOutcome(o.id);
-                      if (o.id === 'connected') {
-                        setShowManualOutcomeSelection(false);
-                      }
-                    }}
-                    data-testid={`outcome-${o.id}`}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
-                      outcome === o.id
-                        ? 'text-white border-transparent'
-                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                    }`}
-                    style={{
-                      backgroundColor: outcome === o.id ? o.color : undefined
-                    }}
-                  >
-                    <o.icon size={16} />
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="grid grid-cols-2 gap-2">
+              {callOutcomes.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => setOutcome(o.id)}
+                  data-testid={`outcome-${o.id}`}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                    outcome === o.id
+                      ? 'text-white border-transparent'
+                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                  style={{
+                    backgroundColor: outcome === o.id ? o.color : undefined
+                  }}
+                >
+                  <o.icon size={16} />
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Status Update (optional) */}
