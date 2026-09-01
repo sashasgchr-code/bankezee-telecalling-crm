@@ -922,6 +922,7 @@ Files are stored in the `leads` collection with `status = "file"`:
 9. **"No Status" Filter**: Added ability to filter leads without a status (`status=unset`)
 10. **Dynamic User Name in Dashboard**: FilesDashboard now shows actual user name instead of hardcoded "Admin User"
 11. **Users Tab Hidden for Telecallers**: Telecallers no longer see the "Users" tab in Files Dashboard
+12. **CSV Export for Reports**: Added Export buttons to Bank Performance, TAT Metrics, and Growth Partner reports
 
 ### Deployment Ready (September 1, 2026)
 - ✅ Web frontend: All environment variables configured

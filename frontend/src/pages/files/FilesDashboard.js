@@ -304,6 +304,104 @@ const FilesDashboard = () => {
     }
   };
 
+  // Export Bank Performance Report to CSV
+  const handleExportBankPerformance = () => {
+    if (!bankPerformance?.banks?.length) {
+      toast.error('No data to export');
+      return;
+    }
+    const headers = ['Bank Name', 'Logins', 'Approvals', 'Approved Amount', 'Disbursals', 'Disbursed Amount'];
+    const rows = bankPerformance.banks.map(b => [
+      b.bank_name || '',
+      b.logins || 0,
+      b.approvals || 0,
+      b.approved_amount || 0,
+      b.disbursals || 0,
+      b.disbursed_amount || 0
+    ]);
+    // Add totals row
+    rows.push([
+      'TOTAL',
+      bankPerformance.banks.reduce((a, b) => a + b.logins, 0),
+      bankPerformance.banks.reduce((a, b) => a + b.approvals, 0),
+      bankPerformance.banks.reduce((a, b) => a + b.approved_amount, 0),
+      bankPerformance.banks.reduce((a, b) => a + b.disbursals, 0),
+      bankPerformance.banks.reduce((a, b) => a + b.disbursed_amount, 0)
+    ]);
+    
+    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bank_performance_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    toast.success('Bank Performance report exported');
+  };
+
+  // Export TAT Metrics Report to CSV
+  const handleExportTatMetrics = () => {
+    if (!tatMetrics) {
+      toast.error('No data to export');
+      return;
+    }
+    const headers = ['Metric', 'Average (days)', 'Mode Bucket', 'Sample Count'];
+    const rows = [
+      ['Lead to Login', tatMetrics.lead_to_login?.average || 'N/A', tatMetrics.lead_to_login?.mode_bucket || 'N/A', tatMetrics.lead_to_login?.count || 0],
+      ['Login to Approval', tatMetrics.login_to_approval?.average || 'N/A', tatMetrics.login_to_approval?.mode_bucket || 'N/A', tatMetrics.login_to_approval?.count || 0],
+      ['Approval to Disbursal', tatMetrics.approval_to_disbursal?.average || 'N/A', tatMetrics.approval_to_disbursal?.mode_bucket || 'N/A', tatMetrics.approval_to_disbursal?.count || 0],
+      ['Lead to Disbursal', tatMetrics.lead_to_disbursal?.average || 'N/A', tatMetrics.lead_to_disbursal?.mode_bucket || 'N/A', tatMetrics.lead_to_disbursal?.count || 0]
+    ];
+    
+    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `tat_metrics_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    toast.success('TAT Metrics report exported');
+  };
+
+  // Export Growth Partner Report to CSV
+  const handleExportGrowthPartner = () => {
+    if (!growthPartner?.agents?.length) {
+      toast.error('No data to export');
+      return;
+    }
+    const headers = ['Partner Name', 'Files Generated', 'Logins', 'Approvals', 'Approved Amount', 'Disbursals', 'Disbursed Amount'];
+    const rows = growthPartner.agents.map(a => [
+      a.agent_name || '',
+      a.files_generated || 0,
+      a.logins || 0,
+      a.approvals || 0,
+      a.approved_amount || 0,
+      a.disbursals || 0,
+      a.disbursed_amount || 0
+    ]);
+    // Add totals row
+    if (growthPartner.totals) {
+      rows.push([
+        'TOTAL',
+        growthPartner.totals.files_generated || 0,
+        growthPartner.totals.logins || 0,
+        growthPartner.totals.approvals || 0,
+        growthPartner.totals.approved_amount || 0,
+        growthPartner.totals.disbursals || 0,
+        growthPartner.totals.disbursed_amount || 0
+      ]);
+    }
+    
+    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `growth_partner_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    toast.success('Growth Partner report exported');
+  };
+
   const toggleFileSelection = (fileId) => {
     setSelectedFiles(prev => 
       prev.includes(fileId) ? prev.filter(id => id !== fileId) : [...prev, fileId]
@@ -790,9 +888,18 @@ const FilesDashboard = () => {
                   <h3 className="font-semibold text-gray-900">Bank Performance</h3>
                   <span className="text-sm text-gray-500">({bankPerformance.total_banks} banks)</span>
                 </div>
-                <button onClick={() => setShowBankTable(false)} className="text-gray-400 hover:text-gray-600">
-                  <XCircle size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleExportBankPerformance}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 bg-white"
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowBankTable(false)} className="text-gray-400 hover:text-gray-600">
+                    <XCircle size={18} />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="overflow-x-auto">
@@ -843,9 +950,18 @@ const FilesDashboard = () => {
                   <Timer size={18} className="text-purple-600" />
                   <h3 className="font-semibold text-gray-900">Turnaround Time (TAT) Metrics</h3>
                 </div>
-                <button onClick={() => setShowTatMetrics(false)} className="text-gray-400 hover:text-gray-600">
-                  <XCircle size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleExportTatMetrics}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 bg-white"
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowTatMetrics(false)} className="text-gray-400 hover:text-gray-600">
+                    <XCircle size={18} />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -931,9 +1047,18 @@ const FilesDashboard = () => {
                   <h3 className="font-semibold text-gray-900">Growth Partner Performance</h3>
                   <span className="text-sm text-gray-500">({growthPartner.total_agents} partners)</span>
                 </div>
-                <button onClick={() => setShowGrowthPartner(false)} className="text-gray-400 hover:text-gray-600">
-                  <XCircle size={18} />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleExportGrowthPartner}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 bg-white"
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowGrowthPartner(false)} className="text-gray-400 hover:text-gray-600">
+                    <XCircle size={18} />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="overflow-x-auto">
