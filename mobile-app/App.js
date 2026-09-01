@@ -10,6 +10,8 @@ import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import DataScreen from './src/screens/DataScreen';
 import LeadDetailScreen from './src/screens/LeadDetailScreen';
+import FilesScreen from './src/screens/FilesScreen';
+import FileDetailScreen from './src/screens/FileDetailScreen';
 import FollowUpsScreen from './src/screens/FollowUpsScreen';
 import TeamScreen from './src/screens/TeamScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
@@ -24,6 +26,7 @@ const TabIcon = ({ name, focused, color }) => {
   const icons = {
     Dashboard: '📊',
     Data: '📋',
+    Files: '📁',
     'Follow-ups': '📅',
     Team: '👥',
     Reports: '📈',
@@ -58,6 +61,9 @@ const TelecallerTabs = ({ user, onLogout }) => {
       <Tab.Screen name="Data">
         {props => <DataScreen {...props} user={user} />}
       </Tab.Screen>
+      <Tab.Screen name="Files">
+        {props => <FilesScreen {...props} user={user} />}
+      </Tab.Screen>
       <Tab.Screen name="Follow-ups">
         {props => <FollowUpsScreen {...props} user={user} />}
       </Tab.Screen>
@@ -89,6 +95,9 @@ const AdminTabs = ({ user, onLogout }) => {
       <Tab.Screen name="Data">
         {props => <DataScreen {...props} user={user} />}
       </Tab.Screen>
+      <Tab.Screen name="Files">
+        {props => <FilesScreen {...props} user={user} />}
+      </Tab.Screen>
       <Tab.Screen name="Team">
         {props => <TeamScreen {...props} user={user} />}
       </Tab.Screen>
@@ -118,6 +127,11 @@ const AppNavigator = ({ user, onLogout }) => {
         name="LeadDetail" 
         component={LeadDetailScreen}
         options={{ headerShown: true, title: 'Lead Details' }}
+      />
+      <Stack.Screen 
+        name="FileDetail" 
+        component={FileDetailScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Edit2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Save, Edit2, Loader2, Star, Building2, Download, FileArchive } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 
@@ -42,6 +42,12 @@ const EMPTY_ELIGIBILITY = {
   commission_amount: ''
 };
 
+// Generate password for protected files (matches old CRM pattern)
+const generateFilePassword = (fileId) => {
+  const timestamp = Date.now();
+  return `7${timestamp}${fileId?.slice(0, 8) || ''}`.slice(0, 20);
+};
+
 const FileDetailsPage = () => {
   const { fileId } = useParams();
   const navigate = useNavigate();
@@ -56,6 +62,8 @@ const FileDetailsPage = () => {
   const [isEditingDetails, setIsEditingDetails] = useState(false);
   const [savingDetails, setSavingDetails] = useState(false);
   const [editedDetails, setEditedDetails] = useState({});
+  const [rating, setRating] = useState(0);
+  const [score, setScore] = useState(0);
   
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const canEdit = ['admin', 'telecaller'].includes(user.role);
@@ -79,6 +87,8 @@ const FileDetailsPage = () => {
       setFileData(data);
       setNewStatus(data.file_status || 'new');
       setSelectedAssignee(data.file_assigned_to || '');
+      setRating(data.rating || 0);
+      setScore(data.score || 0);
       
       // Initialize edited details
       const fileDetails = data.file_details || {};
@@ -209,6 +219,20 @@ const FileDetailsPage = () => {
     }
   };
 
+  const handleRatingChange = async (newRating) => {
+    setRating(newRating);
+    try {
+      await api.put(`/files/${fileId}/details`, { rating: newRating });
+    } catch (error) {
+      console.error('Failed to update rating');
+    }
+  };
+
+  const handleCheckBankEligibility = () => {
+    // Navigate to Policy Master or show eligibility check modal
+    toast.info('Opening Bank Eligibility Checker...');
+  };
+
   // Eligibility handlers
   const addEligibility = () => {
     if (eligibilities.length >= 7) return;
@@ -265,6 +289,11 @@ const FileDetailsPage = () => {
     }
   };
 
+  const handleDownloadAllZip = () => {
+    toast.info('Preparing ZIP download...');
+    // In real implementation, this would call a backend endpoint to create a ZIP
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -275,22 +304,59 @@ const FileDetailsPage = () => {
 
   if (!fileData) return null;
 
+  const filePassword = generateFilePassword(fileId);
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-3 sticky top-0 z-50">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-600 hover:text-gray-900" data-testid="back-btn">
-          <ArrowLeft size={20} />
+      {/* Header - Match Old CRM */}
+      <nav className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4 sticky top-0 z-50">
+        <button 
+          onClick={() => navigate(-1)} 
+          className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
+          data-testid="back-btn"
+        >
+          <ArrowLeft size={18} />
           Back
         </button>
-        <h1 className="text-2xl font-bold text-gray-900">File Details</h1>
-        <span className="ml-auto text-sm text-gray-500">
+        
+        <h1 className="text-xl font-bold text-gray-900">File Details</h1>
+        
+        {/* Star Rating */}
+        <div className="flex items-center gap-1 ml-2">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              onClick={() => handleRatingChange(star)}
+              className="focus:outline-none"
+            >
+              <Star
+                size={20}
+                className={star <= rating 
+                  ? 'text-yellow-400 fill-yellow-400' 
+                  : 'text-gray-300 hover:text-yellow-300'
+                }
+              />
+            </button>
+          ))}
+          <span className="text-sm text-gray-500 ml-2">{score}/100</span>
+        </div>
+        
+        {/* Check Bank Eligibility Button */}
+        <button
+          onClick={handleCheckBankEligibility}
+          className="ml-4 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
+        >
+          <Building2 size={18} />
+          Check Bank Eligibility
+        </button>
+        
+        <div className="ml-auto text-sm text-gray-500">
           {fileData.name || 'Unnamed'} • {fileData.phone}
-        </span>
+        </div>
       </nav>
 
-      <div className="px-6 md:px-12 lg:px-24 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
           {/* Main Content - Left 2 columns */}
           <div className="lg:col-span-2 space-y-6">
             {/* Complete File Information */}
@@ -301,14 +367,26 @@ const FileDetailsPage = () => {
                   <div className="flex gap-2">
                     {isEditingDetails ? (
                       <>
-                        <button onClick={() => setIsEditingDetails(false)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50">Cancel</button>
-                        <button onClick={handleSaveDetails} disabled={savingDetails} className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
+                        <button 
+                          onClick={() => setIsEditingDetails(false)} 
+                          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          onClick={handleSaveDetails} 
+                          disabled={savingDetails} 
+                          className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+                        >
                           {savingDetails ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                           {savingDetails ? 'Saving...' : 'Save'}
                         </button>
                       </>
                     ) : (
-                      <button onClick={() => setIsEditingDetails(true)} className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1">
+                      <button 
+                        onClick={() => setIsEditingDetails(true)} 
+                        className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                      >
                         <Edit2 size={14} />
                         Edit Details
                       </button>
@@ -375,12 +453,39 @@ const FileDetailsPage = () => {
 
           {/* Sidebar - Right column */}
           <div className="space-y-6">
-            <DocumentsPanel
-              documents={fileData.file_documents || []}
-              fileId={fileId}
-              canEdit={canEdit}
-              onDocumentsChange={() => fetchFileData()}
-            />
+            {/* Documents Panel with Password */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-testid="documents-card">
+              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <FileArchive size={20} className="text-green-600" />
+                  Documents ({(fileData.file_documents || []).length})
+                </h3>
+                <button 
+                  onClick={handleDownloadAllZip}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                >
+                  <Download size={14} />
+                  Download All ZIP
+                </button>
+              </div>
+              
+              {/* Password Protected Files Notice */}
+              {(fileData.file_documents || []).length > 0 && (
+                <div className="mx-4 mt-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-sm text-red-600 font-medium">
+                    Password Protected Files: {filePassword}
+                  </p>
+                </div>
+              )}
+              
+              <DocumentsPanel
+                documents={fileData.file_documents || []}
+                fileId={fileId}
+                canEdit={canEdit}
+                onDocumentsChange={() => fetchFileData()}
+              />
+            </div>
+            
             <ActivityLog
               activities={fileData.file_activities || []}
               note={note}

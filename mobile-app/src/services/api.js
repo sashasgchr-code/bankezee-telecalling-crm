@@ -327,4 +327,98 @@ export const cancelLeaveRequest = async (requestId) => {
   return response.data;
 };
 
+// ============ FILES CRM API ============
+
+// Get files (leads with status='file')
+export const getFiles = async (params = {}) => {
+  const response = await api.get('/files', { params });
+  return response.data;
+};
+
+// Get files dashboard stats
+export const getFilesStats = async () => {
+  const response = await api.get('/files/dashboard/stats');
+  return response.data;
+};
+
+// Get file details
+export const getFileDetails = async (fileId) => {
+  const response = await api.get(`/files/${fileId}`);
+  return response.data;
+};
+
+// Update file details
+export const updateFileDetails = async (fileId, data) => {
+  const response = await api.put(`/files/${fileId}/details`, data);
+  return response.data;
+};
+
+// Update file status
+export const updateFileStatus = async (fileId, status) => {
+  const response = await api.put(`/files/${fileId}/file-status`, { file_status: status });
+  return response.data;
+};
+
+// Add note to file
+export const addFileNote = async (fileId, note) => {
+  const response = await api.post(`/files/${fileId}/notes`, { note });
+  return response.data;
+};
+
+// Assign file
+export const assignFile = async (fileId, assignedTo) => {
+  const response = await api.put(`/files/${fileId}/assign`, { assigned_to: assignedTo });
+  return response.data;
+};
+
+// Bulk assign files
+export const bulkAssignFiles = async (fileIds, assignedTo) => {
+  const response = await api.put('/files/bulk-assign', {
+    file_ids: fileIds,
+    assigned_to: assignedTo
+  });
+  return response.data;
+};
+
+// Get operations team
+export const getOpsTeam = async () => {
+  const response = await api.get('/files/operations-team');
+  return response.data;
+};
+
+// Update eligibilities
+export const updateEligibilities = async (fileId, eligibilities) => {
+  const response = await api.put(`/files/${fileId}/eligibilities`, { eligibilities });
+  return response.data;
+};
+
+// Get file activities
+export const getFileActivities = async (fileId) => {
+  const response = await api.get(`/files/${fileId}/activities`);
+  return response.data;
+};
+
+// Upload document
+export const uploadFileDocument = async (fileId, file, documentType = 'general') => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('document_type', documentType);
+  const response = await api.post(`/files/${fileId}/upload`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  });
+  return response.data;
+};
+
+// Get file documents
+export const getFileDocuments = async (fileId) => {
+  const response = await api.get(`/files/${fileId}/documents`);
+  return response.data;
+};
+
+// Files Reports
+export const getFilesReports = async (params = {}) => {
+  const response = await api.get('/files/reports', { params });
+  return response.data;
+};
+
 export default api;

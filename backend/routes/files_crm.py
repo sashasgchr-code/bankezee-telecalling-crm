@@ -134,6 +134,7 @@ async def get_operations_team():
     return ops_team
 
 
+@router.get("")
 @router.get("/")
 async def get_all_files(
     file_status: Optional[str] = None,
@@ -164,6 +165,229 @@ async def get_all_files(
         }
     }
 
+
+# ============ FILES REPORTS ============
+# Must be before /{file_id} to avoid route shadowing
+
+@router.get("/reports")
+async def get_files_reports(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    assigned_to: Optional[str] = None
+):
+    """Get files reports with disbursement analytics"""
+    query = {"status": "file"}
+    
+    if start_date:
+        query["created_at"] = {"$gte": start_date}
+    if end_date:
+        if "created_at" in query:
+            query["created_at"]["$lte"] = end_date
+        else:
+            query["created_at"] = {"$lte": end_date}
+    if assigned_to:
+        query["file_assigned_to"] = assigned_to
+    
+    # Status breakdown
+    status_pipeline = [
+        {"$match": query},
+        {"$group": {"_id": "$file_status", "count": {"$sum": 1}}}
+    ]
+    status_counts = await db.leads.aggregate(status_pipeline).to_list(100)
+    
+    # Disbursement stats
+    disbursement_pipeline = [
+        {"$match": {**query, "eligibilities": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$eligibilities"},
+        {"$match": {"eligibilities.disbursed": True}},
+        {"$group": {
+            "_id": None,
+            "total_disbursed_count": {"$sum": 1},
+            "total_disbursed_amount": {"$sum": {"$toDouble": {"$ifNull": ["$eligibilities.disbursed_amount", 0]}}},
+            "total_commission": {"$sum": {"$toDouble": {"$ifNull": ["$eligibilities.commission_amount", 0]}}}
+        }}
+    ]
+    disbursement_stats = await db.leads.aggregate(disbursement_pipeline).to_list(1)
+    
+    # Bank-wise breakdown
+    bank_pipeline = [
+        {"$match": {**query, "eligibilities": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$eligibilities"},
+        {"$match": {"eligibilities.bank_name": {"$exists": True, "$ne": ""}}},
+        {"$group": {
+            "_id": "$eligibilities.bank_name",
+            "total": {"$sum": 1},
+            "eligible": {"$sum": {"$cond": [{"$eq": ["$eligibilities.is_eligible", True]}, 1, 0]}},
+            "login": {"$sum": {"$cond": [{"$eq": ["$eligibilities.login_done", True]}, 1, 0]}},
+            "approved": {"$sum": {"$cond": [{"$eq": ["$eligibilities.approval_status", "approved"]}, 1, 0]}},
+            "disbursed": {"$sum": {"$cond": [{"$eq": ["$eligibilities.disbursed", True]}, 1, 0]}},
+            "disbursed_amount": {"$sum": {"$cond": [
+                {"$eq": ["$eligibilities.disbursed", True]},
+                {"$toDouble": {"$ifNull": ["$eligibilities.disbursed_amount", 0]}},
+                0
+            ]}},
+            "commission_amount": {"$sum": {"$toDouble": {"$ifNull": ["$eligibilities.commission_amount", 0]}}}
+        }},
+        {"$sort": {"disbursed_amount": -1}}
+    ]
+    bank_stats = await db.leads.aggregate(bank_pipeline).to_list(50)
+    
+    # Team member performance
+    team_pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": "$file_assigned_to",
+            "total_files": {"$sum": 1},
+            "disbursed": {"$sum": {"$cond": [{"$eq": ["$file_status", "disbursed"]}, 1, 0]}},
+            "approved": {"$sum": {"$cond": [{"$eq": ["$file_status", "approved"]}, 1, 0]}},
+            "rejected": {"$sum": {"$cond": [{"$in": ["$file_status", ["rejected", "declined", "not_eligible"]]}, 1, 0]}}
+        }}
+    ]
+    team_stats_raw = await db.leads.aggregate(team_pipeline).to_list(100)
+    
+    # Enrich team stats with names
+    team_stats = []
+    for ts in team_stats_raw:
+        if ts["_id"]:
+            user = await db.users.find_one({"id": ts["_id"]}, {"_id": 0, "full_name": 1, "name": 1})
+            ts["name"] = user.get("full_name") or user.get("name") if user else "Unknown"
+        else:
+            ts["name"] = "Unassigned"
+        team_stats.append(ts)
+    
+    # Conversion funnel
+    total_files = await db.leads.count_documents(query)
+    docs_collected = await db.leads.count_documents({**query, "file_status": "documents_collected"})
+    sent_to_bank = await db.leads.count_documents({**query, "file_status": {"$in": ["sent_to_bank", "login", "approved", "disbursed"]}})
+    login_done = await db.leads.count_documents({**query, "file_status": {"$in": ["login", "approved", "disbursed"]}})
+    approved = await db.leads.count_documents({**query, "file_status": {"$in": ["approved", "disbursed"]}})
+    disbursed = await db.leads.count_documents({**query, "file_status": "disbursed"})
+    
+    disb = disbursement_stats[0] if disbursement_stats else {}
+    
+    return {
+        "summary": {
+            "total_files": total_files,
+            "by_status": {s["_id"]: s["count"] for s in status_counts if s["_id"]},
+            "total_disbursed_count": disb.get("total_disbursed_count", 0),
+            "total_disbursed_amount": disb.get("total_disbursed_amount", 0),
+            "total_commission": disb.get("total_commission", 0)
+        },
+        "funnel": {
+            "total_files": total_files,
+            "docs_collected": docs_collected,
+            "sent_to_bank": sent_to_bank,
+            "login_done": login_done,
+            "approved": approved,
+            "disbursed": disbursed
+        },
+        "bank_stats": bank_stats,
+        "team_stats": team_stats
+    }
+
+
+# ============ DATA MIGRATION ============
+
+class MigrationData(BaseModel):
+    leads: List[dict]
+    source: str = "crm_import"
+
+
+@router.post("/import")
+async def import_crm_data(migration_data: MigrationData):
+    """
+    Import leads from external CRM system.
+    Each lead should have: name, phone, email, city, and optionally file_details.
+    """
+    imported_count = 0
+    skipped_count = 0
+    errors = []
+    
+    for lead in migration_data.leads:
+        try:
+            # Check if lead with same phone exists
+            phone = str(lead.get("phone", "")).replace(" ", "").replace("-", "")
+            if not phone:
+                skipped_count += 1
+                continue
+            
+            existing = await db.leads.find_one({"phone": phone})
+            if existing:
+                # Update existing lead with CRM data
+                update_data = {
+                    "status": "file",
+                    "file_status": lead.get("file_status", "new"),
+                    "file_details": lead.get("file_details", {}),
+                    "eligibilities": lead.get("eligibilities", []),
+                    "file_activities": lead.get("file_activities", []),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "import_source": migration_data.source
+                }
+                if lead.get("name"):
+                    update_data["name"] = lead["name"]
+                if lead.get("email"):
+                    update_data["email"] = lead["email"]
+                if lead.get("city"):
+                    update_data["city"] = lead["city"]
+                
+                await db.leads.update_one({"phone": phone}, {"$set": update_data})
+                imported_count += 1
+            else:
+                # Create new lead
+                new_lead = {
+                    "id": str(uuid.uuid4())[:24],
+                    "name": lead.get("name", ""),
+                    "phone": phone,
+                    "email": lead.get("email", ""),
+                    "city": lead.get("city", ""),
+                    "requirement": lead.get("requirement", ""),
+                    "source": lead.get("source", migration_data.source),
+                    "status": "file",
+                    "file_status": lead.get("file_status", "new"),
+                    "file_details": lead.get("file_details", {}),
+                    "eligibilities": lead.get("eligibilities", []),
+                    "file_activities": [{
+                        "type": "import",
+                        "message": f"Imported from {migration_data.source}",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "import_source": migration_data.source
+                }
+                await db.leads.insert_one(new_lead)
+                imported_count += 1
+                
+        except Exception as e:
+            errors.append({"phone": lead.get("phone"), "error": str(e)})
+            skipped_count += 1
+    
+    return {
+        "success": True,
+        "imported": imported_count,
+        "skipped": skipped_count,
+        "errors": errors[:10]  # Return first 10 errors
+    }
+
+
+@router.get("/export")
+async def export_files_data(file_status: Optional[str] = None):
+    """Export all files data for backup or migration"""
+    query = {"status": "file"}
+    if file_status:
+        query["file_status"] = file_status
+    
+    files = await db.leads.find(query, {"_id": 0}).to_list(10000)
+    
+    return {
+        "count": len(files),
+        "files": files,
+        "exported_at": datetime.now(timezone.utc).isoformat()
+    }
+
+
+# ============ FILE BY ID ROUTES ============
+# These must be after literal routes like /reports, /import, /export
 
 @router.get("/{file_id}")
 async def get_file_details(file_id: str):
@@ -386,19 +610,25 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
 @router.get("/{file_id}/eligibilities")
 async def get_eligibilities(file_id: str):
     """Get file eligibilities"""
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "eligibilities": 1})
-    if not file_doc:
+    # First check if file exists (without projection that may return empty dict)
+    file_exists = await db.leads.count_documents({"id": file_id})
+    if not file_exists:
         raise HTTPException(status_code=404, detail="File not found")
-    return file_doc.get("eligibilities", [])
+    
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "eligibilities": 1})
+    return file_doc.get("eligibilities", []) if file_doc else []
 
 
 @router.get("/{file_id}/activities")
 async def get_file_activities(file_id: str):
     """Get file activity log"""
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_activities": 1})
-    if not file_doc:
+    # First check if file exists (without projection that may return empty dict)
+    file_exists = await db.leads.count_documents({"id": file_id})
+    if not file_exists:
         raise HTTPException(status_code=404, detail="File not found")
-    return file_doc.get("file_activities", [])
+    
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_activities": 1})
+    return file_doc.get("file_activities", []) if file_doc else []
 
 
 # File Storage Routes - Using GridFS for persistent storage
@@ -467,10 +697,13 @@ async def upload_document(
 @router.get("/{file_id}/documents")
 async def list_file_documents(file_id: str):
     """List all documents for a file"""
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_documents": 1})
-    if not file_doc:
+    # First check if file exists (without projection that may return empty dict)
+    file_exists = await db.leads.count_documents({"id": file_id})
+    if not file_exists:
         raise HTTPException(status_code=404, detail="File not found")
-    return file_doc.get("file_documents", [])
+    
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_documents": 1})
+    return file_doc.get("file_documents", []) if file_doc else []
 
 
 @router.get("/download/{doc_id}")
@@ -575,3 +808,4 @@ async def get_files_dashboard_stats():
         "disbursed": status_dict.get("disbursed", 0),
         "rejected": status_dict.get("rejected", 0) + status_dict.get("declined", 0) + status_dict.get("not_eligible", 0)
     }
+

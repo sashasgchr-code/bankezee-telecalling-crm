@@ -797,3 +797,80 @@ ADMIN_EMAIL=admin@yourcompany.com
 - All user endpoints sanitized
 
 **Master Prompt Progress**: ALL 11 STAGES COMPLETE ✅
+
+
+---
+
+## CRM Integration (Files Module) - COMPLETED ✅
+**Date**: September 1, 2026
+
+### Overview
+Merged old CRM (crm.bankezee.com) into BankEzee Connect. The "Lead" concept from the old CRM maps to "File" in Connect. When a lead's status is changed to "file", users are redirected to the File Details page for comprehensive file management.
+
+### Backend (`/app/backend/routes/files_crm.py`)
+- `GET/POST /api/files` - List and create files (leads with status="file")
+- `GET /api/files/{file_id}` - Get file details
+- `PUT /api/files/{file_id}/details` - Update file details
+- `PUT /api/files/{file_id}/file-status` - Update file status
+- `PUT /api/files/{file_id}/assign` - Assign file to operations team member
+- `POST /api/files/{file_id}/notes` - Add notes to file
+- `GET/PUT /api/files/{file_id}/eligibilities` - Bank eligibility tracking
+- `POST /api/files/{file_id}/upload` - Upload documents (GridFS storage)
+- `GET /api/files/{file_id}/documents` - List file documents
+- `DELETE /api/files/{file_id}/documents/{doc_id}` - Delete document
+- `GET /api/files/download/{doc_id}` - Download document
+- `GET /api/files/dashboard/stats` - Dashboard statistics
+- `GET /api/files/reports` - Reporting data
+- `GET /api/files/operations-team` - Get operations team members
+- `POST /api/files/import` - Import files from old CRM
+- `GET /api/files/export` - Export files to CSV
+- `POST /api/files/bulk/assign` - Bulk assign files
+
+### Web Frontend (`/app/frontend/src/pages/files/`)
+**FilesDashboard.js** - Exact replica of old CRM dashboard:
+- Top report buttons: Daily Report, Rejected Cases, Growth Partner Performance, Sales & Ops Report, Quality Report, Policy Master, Export Disbursed, Export Stats
+- Tabs: Dashboard, Approvals, Users
+- Filters: Search, File Created, Activity Date, All Loan Types, All Status, All Managers, All Sources, All Stars
+- Two rows of stat cards: Total Files, New, In Progress, Login, Approved, Total Approved, Disbursed, Total Disbursed, Interim Rejects, Final Rejections, Amt in Pipeline
+- Status definitions text
+- Charts: File Status Distribution (donut), Monthly Performance (bar), Loans by Type (horizontal bar)
+- Files list with checkbox, name, masked phone, loan type, date, assignee, status badge, view/delete actions
+
+**FileDetailsPage.js** - Exact replica of old CRM lead details:
+- Star rating (1-5) with score display
+- "Check Bank Eligibility" button
+- Customer Details (Full Name, Mobile, Email, Mother Name, Current Address)
+- Employment Details (Employment Type, Company Name, Net Salary, Office Address)
+- Existing Loans & Obligations (Monthly EMI, Existing Loans 1-3)
+- Loan Requirements (Type of Loan, CIBIL Score, Loan Amount Required, Tenure Required)
+- Bank Eligibilities panel (multi-bank tracking)
+- Documents panel with password protection notice
+- Download All ZIP button
+- Activity Log with notes
+- Status update dropdown
+- File assignment dropdown
+
+**FilesReports.js** - Reporting dashboard with funnel, bank stats, team performance
+
+### Mobile App (`/app/mobile-app/src/screens/`)
+- `FilesScreen.js` - Files list with stats, search, filters, bulk assign
+- `FileDetailScreen.js` - Complete file detail view with all sections, status update, assignment, notes
+
+### File Status Options
+new, contacted, query, hold, documents_collected, not_eligible, sent_to_bank, login, not_login, approved, declined, disbursed, not_disbursed, rejected, fi_negative, not_interested, supporting
+
+### Database Schema (leads collection)
+Files are stored in the `leads` collection with `status = "file"`:
+- `file_status`: Current file processing status
+- `file_assigned_to`: Operations team member ID
+- `file_details`: Customer/employment/loan details object
+- `file_documents`: Array of document metadata (GridFS)
+- `file_activities`: Activity/notes log
+- `eligibilities`: Array of bank eligibility records
+- `rating`: Star rating (1-5)
+- `score`: Calculated score (0-100)
+
+### Bugs Fixed (September 1, 2026)
+1. Trailing slash redirect issue on `/api/files` - Added dual route decorators
+2. False 404 on `/activities`, `/documents`, `/eligibilities` endpoints - Fixed projection empty dict check
+

@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 20: Tested Files CRM merge (old CRM into BankEzee Connect). Backend: 9/12 pytest passed. Frontend: Files Dashboard renders with all 11 stat cards (Total Files, New, In Progress, Login, Approved, Total Approved, Disbursed, Total Disbursed, Interim Rejects, Final Rejections, Amt in Pipeline), all filter dropdowns (search, File Created, Activity Date, All Loan Types, All Status, All Managers, All Sources, All Stars), report buttons at top (Daily Report, Rejected Cases, Growth Partner Performance, Sales & Ops Report, Quality Report, Policy Master, Export Disbursed, Export Stats), 3 charts (File Status Distribution donut, Monthly Performance, Loans by Type bar), and Files list (2 files). File Details page loads correctly with Customer Details, Employment Details, Existing Loans & Obligations, Loan Requirements, Bank Eligibilities panel, Documents Upload panel, Activity Log, Update File Status, Check Bank Eligibility button, star rating, and score. Backend has a real bug: 3 GET endpoints return 404 for existing files that don't yet have the projected field.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "GET /api/files/{file_id}/activities", "issue": "Returns 404 'File not found' for a file that DOES exist (GET /api/files/{id} returns 200). Root cause: db.leads.find_one({'id': file_id}, {'_id': 0, 'file_activities': 1}) returns an empty dict {} when the document exists but has no 'file_activities' field. Empty dict is falsy in Python, so 'if not file_doc' triggers 404 incorrectly. Fix: check 'if file_doc is None' instead of 'if not file_doc', OR drop the projection and read .get('file_activities', []).", "priority": "HIGH"},
+      {"endpoint": "GET /api/files/{file_id}/documents", "issue": "Same bug pattern as /activities — returns 404 when file exists but has no 'file_documents' field. Change 'if not file_doc' to 'if file_doc is None' in list_file_documents().", "priority": "HIGH"},
+      {"endpoint": "GET /api/files/{file_id}/eligibilities", "issue": "Same bug pattern — returns 404 when file exists but has no 'eligibilities' field. Change 'if not file_doc' to 'if file_doc is None' in get_eligibilities().", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "/api/files/{file_id}", "issue": "Passlib bcrypt version-read AttributeError in backend logs (unrelated to files, pre-existing)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "File Details activity log / documents list / eligibilities list initial load", "issue": "Because the 3 backend endpoints return 404 for files with no prior activity/docs/eligibilities, the frontend components may show error/empty states incorrectly (Activity Log currently displays 'No activity yet' — likely because it falls back on 404). Verify after backend fix that a newly added note/document/eligibility appears without a page refresh error.", "affected_selectors": ["Activity Log panel", "Documents panel", "Bank Eligibilities panel"]}
+    ],
+    "design_issues": [
+      {"screen": "/admin/files (Files Dashboard)", "issues": [
+        "React console warning: 'Each child in a list should have a unique key prop' inside FilesDashboard render — one of the mapped lists (likely Loans by Type sample data or Monthly Performance months) is missing key={...} on its children.",
+        "React console warning: 'Cannot infer the option value of complex children. Pass a value prop or use a plain string as children to <option>' — an <option> element is being rendered with a JSX child instead of a plain string.",
+        "Monthly Performance chart shows empty area with only month numbers 1–12; no bars/data — acceptable if there is no data, but the axis should render or a placeholder message is preferred.",
+        "Loans by Type chart uses HARD-CODED sample data (New Personal Loan 143, Balance Transfer 125, etc. — see FilesDashboard.js line ~581 fallback). With only 2 test files in DB, the chart is misleading — should render from real aggregation or show 'No data'.",
+        "Persistent hydration warnings (span cannot be child of select/option/table/tbody/tfoot/tr) from preview tooling — pre-existing, non-blocking."
+      ]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_files_crm.py",
+    "/app/test_reports/pytest/iter20_files_crm.xml"
+  ],
+  "action_items": [
+    "FIX (backend, HIGH): In /app/backend/routes/files_crm.py, replace 'if not file_doc' with 'if file_doc is None' in get_file_activities, list_file_documents, and get_eligibilities. Empty-dict false-positive is causing 404 for valid files.",
+    "FIX (frontend): Remove/replace hard-coded sample data in Loans by Type chart (FilesDashboard.js ~line 581) — should reflect real backend aggregation.",
+    "FIX (frontend): Add unique key prop to the list currently missing it in FilesDashboard render.",
+    "FIX (frontend): Make sure every <option> child is a plain string (or provide value prop) to remove 'Cannot infer option value' warning.",
+    "Optional: also update GET /api/files/{file_id}/eligibilities and /documents to drop the projection, since it saves no bandwidth on small docs and is the root cause of the pattern."
+  ],
+  "critical_code_review_comments": [
+    "files_crm.py get_file_activities/list_file_documents/get_eligibilities: pattern 'file_doc = find_one(query, {_id:0, X:1}); if not file_doc: 404' is broken for docs missing field X. Same bug is not present in get_file_details because it doesn't use projection.",
+    "files_crm.py: new_lead id uses str(uuid.uuid4())[:24] — truncated UUIDs are non-standard, harder to debug and slightly increase collision risk. Prefer full uuid4() hex.",
+    "FilesDashboard.js hard-codes sample chart data — will mislead users about real business metrics. Must be wired to real backend endpoint.",
+    "FilesDashboard.js has 762 lines — over the 700-line guideline. Consider splitting stats cards, filters, and chart section into subcomponents.",
+    "Frontend: several React warnings (missing keys, complex option children, hydration errors) are surfacing on the /admin/files route — should be cleaned up."
+  ],
+  "updated_files": ["/app/backend/tests/test_files_crm.py", "/app/test_reports/iteration_20.json"],
+  "success_rate": {"backend": "75% (9/12 pytest)", "frontend": "90% (Dashboard and Details render; only chart hard-coded data and console warnings noted)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (per /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. Used existing 2 files: 'Test Customer' (id 217a3eea-5d88-4659-81b0-, status=file/new) and 'Test Import Lead' (status=file/new).",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The Files Dashboard UI is well built and mostly matches the old CRM (2-row stat cards, filters, charts, report buttons, files list). File Details page renders all required sections. Three backend endpoints (activities, documents, eligibilities) have a false-404 bug from mongo projection returning empty dict — reproduce with GET /api/files/{existing_id}/activities. Fix is trivial (if file_doc is None). Note: /api/files with prefix + '' vs '/' — both work correctly (dual @router.get('') and @router.get('/') decorators). Loans by Type chart in FilesDashboard uses hard-coded sample numbers, not real data.",
+  "rca of the issue": "MongoDB find_one() with projection {'_id': 0, 'field_x': 1} returns {} (empty dict) when the document exists but field_x is absent. Python evaluates {} as falsy, so 'if not file_doc: raise 404' incorrectly reports 'File not found'. Reproduction: GET /api/files (list) -> pick any file.id -> GET /api/files/{that_id} returns 200 OK, but GET /api/files/{that_id}/activities (or /documents, /eligibilities) returns 404. Mitigation: use 'if file_doc is None' or check existence with count_documents/find_one without projection restricted to the possibly-absent field."
+}
