@@ -8,7 +8,7 @@ import { queueCallLog, isOnline } from '../services/offlineQueue';
  * PostCallModal - Triggered after a call from LeadDetail page
  * Supports both outgoing and incoming calls for feature parity with mobile
  */
-const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoing' }) => {
+const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoing', detectedDuration = 0 }) => {
   const [outcome, setOutcome] = useState(null);
   const [notes, setNotes] = useState('');
   const [newStatus, setNewStatus] = useState(null);
@@ -68,7 +68,9 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
       setNotes('');
       setNewStatus(null);
       setScheduleFollowUp(false);
-      setCallDuration(0);
+      
+      // Use auto-detected duration from parent component
+      setCallDuration(detectedDuration || 0);
       
       // Set default follow up date to tomorrow at 10 AM
       const tomorrow = new Date();
@@ -76,7 +78,7 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
       tomorrow.setHours(10, 0, 0, 0);
       setFollowUpDate(tomorrow.toISOString().slice(0, 16));
     }
-  }, [isOpen, lead]);
+  }, [isOpen, lead, detectedDuration]);
 
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -203,41 +205,17 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
             </p>
           </div>
 
-          {/* Call Duration Input (manual entry for web) */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Call Duration (approximate)
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min="0"
-                value={Math.floor(callDuration / 60)}
-                onChange={(e) => {
-                  const mins = parseInt(e.target.value, 10) || 0;
-                  setCallDuration(mins * 60 + (callDuration % 60));
-                }}
-                className="input-field w-20 text-center"
-                placeholder="0"
-              />
-              <span className="text-gray-500">min</span>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={callDuration % 60}
-                onChange={(e) => {
-                  const secs = parseInt(e.target.value, 10) || 0;
-                  setCallDuration(Math.floor(callDuration / 60) * 60 + Math.min(secs, 59));
-                }}
-                className="input-field w-20 text-center"
-                placeholder="0"
-              />
-              <span className="text-gray-500">sec</span>
+          {/* Call Duration (auto-detected) */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold text-gray-700">Call Duration</p>
+                <p className="text-2xl font-bold text-gray-900">{formatDuration(callDuration)}</p>
+              </div>
+              <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center">
+                <Clock size={24} className="text-blue-600" />
+              </div>
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Total: {formatDuration(callDuration)}
-            </p>
           </div>
 
           {/* Call Outcome */}

@@ -30,6 +30,7 @@ const LeadDetail = () => {
   // Post-call modal
   const [showPostCallModal, setShowPostCallModal] = useState(false);
   const [postCallType, setPostCallType] = useState('outgoing'); // 'outgoing' or 'incoming'
+  const [detectedCallDuration, setDetectedCallDuration] = useState(0); // Auto-tracked duration
   
   // Offline queue state
   const [pendingQueueCount, setPendingQueueCount] = useState(getPendingCount());
@@ -170,14 +171,34 @@ www.BankEzee.com`;
         phone = '+91' + phone;
       }
       
+      // Track call start time
+      const callStartTime = Date.now();
+      
       // Initiate call
       window.location.href = `tel:${phone}`;
       
-      // Show post-call modal after a short delay (gives time for phone app to open)
+      // Listen for when user returns to the app (call ended)
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          // Calculate call duration
+          const duration = Math.round((Date.now() - callStartTime) / 1000);
+          
+          // Only show modal if user was away for at least 3 seconds (actually made a call)
+          if (duration >= 3) {
+            setDetectedCallDuration(duration);
+            setPostCallType('outgoing');
+            setShowPostCallModal(true);
+          }
+          
+          // Clean up listener
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        }
+      };
+      
+      // Add listener after a small delay (so it doesn't trigger immediately)
       setTimeout(() => {
-        setPostCallType('outgoing');
-        setShowPostCallModal(true);
-      }, 1000);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+      }, 500);
     }
   };
   
@@ -638,6 +659,7 @@ www.BankEzee.com`;
         lead={lead}
         onCallLogged={handlePostCallLogged}
         callType={postCallType}
+        detectedDuration={detectedCallDuration}
       />
     </div>
   );
