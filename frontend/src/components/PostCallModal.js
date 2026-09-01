@@ -78,6 +78,14 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
     }
   }, [isOpen, lead]);
 
+  // Auto-detect connected outcome based on call duration
+  // If duration > 5 seconds, customer likely answered - auto-select "connected"
+  useEffect(() => {
+    if (callDuration >= 5) {
+      setOutcome('connected');
+    }
+  }, [callDuration]);
+
   const formatDuration = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -245,26 +253,53 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Call Outcome <span className="text-red-500">*</span>
             </label>
-            <div className="grid grid-cols-2 gap-2">
-              {callOutcomes.map((o) => (
-                <button
-                  key={o.id}
-                  onClick={() => setOutcome(o.id)}
-                  data-testid={`outcome-${o.id}`}
-                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
-                    outcome === o.id
-                      ? 'text-white border-transparent'
-                      : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-                  }`}
-                  style={{
-                    backgroundColor: outcome === o.id ? o.color : undefined
-                  }}
-                >
-                  <o.icon size={16} />
-                  {o.label}
-                </button>
-              ))}
-            </div>
+            
+            {/* Auto-detected connected message */}
+            {callDuration >= 5 && outcome === 'connected' && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3 flex items-center gap-2">
+                <CheckCircle size={18} className="text-green-600 flex-shrink-0" />
+                <p className="text-sm text-green-700">
+                  <strong>Auto-detected as Connected</strong> - Call duration indicates customer answered.
+                  <button 
+                    onClick={() => setOutcome(null)} 
+                    className="ml-2 text-green-600 underline hover:text-green-800"
+                  >
+                    Change
+                  </button>
+                </p>
+              </div>
+            )}
+            
+            {/* Show outcome buttons if: no duration entered, or user clicked "Change", or outcome not yet set */}
+            {(callDuration < 5 || outcome !== 'connected' || outcome === null) && (
+              <div className="grid grid-cols-2 gap-2">
+                {callOutcomes.map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => setOutcome(o.id)}
+                    data-testid={`outcome-${o.id}`}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-sm font-medium transition-all ${
+                      outcome === o.id
+                        ? 'text-white border-transparent'
+                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                    style={{
+                      backgroundColor: outcome === o.id ? o.color : undefined
+                    }}
+                  >
+                    <o.icon size={16} />
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            {/* Tip for zero duration calls */}
+            {callDuration === 0 && (
+              <p className="text-xs text-gray-400 mt-2">
+                💡 Tip: Enter the call duration above. If the customer answered (duration &gt; 5 sec), "Connected" will be auto-selected.
+              </p>
+            )}
           </div>
 
           {/* Status Update (optional) */}
