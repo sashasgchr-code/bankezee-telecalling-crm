@@ -154,3 +154,116 @@ async def setup_admin_accounts():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+
+# Migration endpoint for production data restore
+from fastapi import Request, HTTPException
+import json
+
+MIGRATION_SECRET = "BANKEZEE_CRM_MIGRATION_2026_SECRET_KEY"
+
+@app.post("/api/admin/migrate-crm-data")
+async def migrate_crm_data(request: Request):
+    """
+    Secure endpoint to migrate CRM data from preview to production.
+    Requires secret key in header for authentication.
+    """
+    # Check secret key
+    secret = request.headers.get("X-Migration-Secret")
+    if secret != MIGRATION_SECRET:
+        raise HTTPException(status_code=403, detail="Invalid migration secret")
+    
+    try:
+        body = await request.json()
+        
+        files = body.get("files", [])
+        users = body.get("users", [])
+        policies = body.get("policies", [])
+        commissions = body.get("commissions", [])
+        user_mappings = body.get("user_mappings", [])
+        
+        results = {
+            "files_imported": 0,
+            "users_imported": 0,
+            "policies_imported": 0,
+            "commissions_imported": 0,
+            "mappings_imported": 0,
+            "errors": []
+        }
+        
+        # Import files (upsert by id)
+        for f in files:
+            try:
+                file_id = f.get("id")
+                if file_id:
+                    await db.leads.update_one(
+                        {"id": file_id},
+                        {"$set": f},
+                        upsert=True
+                    )
+                    results["files_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"File {f.get('id')}: {str(e)}")
+        
+        # Import users (upsert by email)
+        for u in users:
+            try:
+                email = u.get("email")
+                if email:
+                    await db.users.update_one(
+                        {"email": email},
+                        {"$set": u},
+                        upsert=True
+                    )
+                    results["users_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"User {u.get('email')}: {str(e)}")
+        
+        # Import policies (upsert by id)
+        for p in policies:
+            try:
+                policy_id = p.get("id")
+                if policy_id:
+                    await db.policies.update_one(
+                        {"id": policy_id},
+                        {"$set": p},
+                        upsert=True
+                    )
+                    results["policies_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"Policy {p.get('id')}: {str(e)}")
+        
+        # Import commissions (upsert by id)
+        for c in commissions:
+            try:
+                comm_id = c.get("id")
+                if comm_id:
+                    await db.commissions.update_one(
+                        {"id": comm_id},
+                        {"$set": c},
+                        upsert=True
+                    )
+                    results["commissions_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"Commission {c.get('id')}: {str(e)}")
+        
+        # Import user mappings (upsert by legacy_user_id)
+        for m in user_mappings:
+            try:
+                legacy_id = m.get("legacy_user_id")
+                if legacy_id:
+                    await db.user_mappings.update_one(
+                        {"legacy_user_id": legacy_id},
+                        {"$set": m},
+                        upsert=True
+                    )
+                    results["mappings_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"Mapping {m.get('legacy_user_id')}: {str(e)}")
+        
+        return {
+            "status": "success",
+            "results": results
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
