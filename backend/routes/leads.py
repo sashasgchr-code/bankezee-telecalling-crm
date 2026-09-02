@@ -458,7 +458,18 @@ async def list_unassigned_leads(current_user: dict = Depends(require_admin)):
 
 @router.get("/leads/{lead_id}")
 async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user)):
-    lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+    # Handle both ObjectId and UUID lead_ids
+    lead = None
+    try:
+        if len(lead_id) == 24:  # Valid ObjectId format
+            lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+    except Exception:
+        pass
+    
+    # Fallback to 'id' field lookup (for UUID-based lead ids)
+    if not lead:
+        lead = await db.leads.find_one({"id": lead_id})
+    
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
@@ -467,8 +478,26 @@ async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user))
     
     lead_data = serialize_doc(lead)
     
-    if lead_data.get("assigned_to"):
-        telecaller = await db.users.find_one({"_id": ObjectId(lead_data["assigned_to"])})
+    # Safely resolve telecaller/Growth Partner info - handle both ObjectId and UUID
+    assigned_id = lead_data.get("assigned_to")
+    if assigned_id:
+        telecaller = None
+        try:
+            # First try by ObjectId if it's a valid 24-char hex string
+            if isinstance(assigned_id, str) and len(assigned_id) == 24:
+                telecaller = await db.users.find_one({"_id": ObjectId(assigned_id)})
+            
+            # Fallback to connect_id or id field (for UUID-based user ids)
+            if not telecaller:
+                telecaller = await db.users.find_one({"connect_id": assigned_id})
+            if not telecaller:
+                telecaller = await db.users.find_one({"id": assigned_id})
+        except Exception:
+            # If ObjectId parsing fails, try alternate lookups
+            telecaller = await db.users.find_one({"connect_id": assigned_id})
+            if not telecaller:
+                telecaller = await db.users.find_one({"id": assigned_id})
+        
         if telecaller:
             lead_data["telecaller_name"] = telecaller.get("name", "Unknown")
             lead_data["telecaller_email"] = telecaller.get("email", "")
@@ -780,10 +809,21 @@ async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(requ
         raise HTTPException(status_code=404, detail="User not found")
     
     now = datetime.now(timezone.utc)
-    lead_object_ids = [ObjectId(lid) for lid in assignment.lead_ids]
     
-    # Get leads to check if they're being reassigned (have previous assignee)
-    leads = await db.leads.find({"_id": {"$in": lead_object_ids}}).to_list(len(lead_object_ids))
+    # Handle both ObjectId and UUID lead_ids
+    # Try to find leads by 'id' field (UUID) first, then by '_id' (ObjectId)
+    leads = []
+    for lid in assignment.lead_ids:
+        # First try by UUID 'id' field
+        lead = await db.leads.find_one({"id": lid})
+        if not lead:
+            # Try by ObjectId '_id' field
+            try:
+                lead = await db.leads.find_one({"_id": ObjectId(lid)})
+            except Exception:
+                pass
+        if lead:
+            leads.append(lead)
     
     reassignment_count = 0
     skipped_files = []  # Track Files that cannot be reassigned
@@ -892,9 +932,17 @@ async def auto_distribute_leads(data: AutoDistribute, current_user: dict = Depen
     lead_ids = data.lead_ids
     num_telecallers = len(telecallers)
     
-    # Fetch all leads to check their status
-    lead_object_ids = [ObjectId(lid) for lid in lead_ids]
-    leads = await db.leads.find({"_id": {"$in": lead_object_ids}}).to_list(len(lead_ids))
+    # Fetch all leads to check their status - handle both UUID and ObjectId
+    leads = []
+    for lid in lead_ids:
+        lead = await db.leads.find_one({"id": lid})
+        if not lead:
+            try:
+                lead = await db.leads.find_one({"_id": ObjectId(lid)})
+            except Exception:
+                pass
+        if lead:
+            leads.append(lead)
     
     assigned_count = 0
     skipped_files = []

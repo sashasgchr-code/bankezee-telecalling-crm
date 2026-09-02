@@ -353,7 +353,7 @@ const VerifiedCallStats = () => {
                 {stats.length === 0 && (
                   <tr>
                     <td colSpan={8} className="text-center py-8 text-gray-500">
-                      No telecallers found
+                      No Growth Partners found
                     </td>
                   </tr>
                 )}

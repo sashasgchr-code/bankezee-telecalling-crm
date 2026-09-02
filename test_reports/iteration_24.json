@@ -1,0 +1,63 @@
+{
+  "summary": "Iter 24 — Final E2E verification before production. Backend: 22/23 pytest passed (test_iter24_final_verification.py) + all 11 iter23 tests still pass (33/34 total). Verified Scenarios A–L, N–V. Found ONE new CRITICAL backend bug in Scenario M: GET /api/leads/{id} returns HTTP 500 for any lead whose assigned_to field is a UUID (which is the case for GP-assigned leads). Frontend loads correctly — Data page shows 457 total data with all status filters (All/New/Not Interested/Follow Up/Lead/File/No Status) and call outcome filters (Connected/No Answer/Switched Off/Not Connecting/Busy/Wrong Number/Voicemail/Never Called) rendered. Files Dashboard shows all 6 report buttons (Daily Report, Rejected, Growth Partner, Bank Perf., TAT, Quality) + Policy/Export/Import + 454 files count. Admin Dashboard shows 'All Growth Partners' and 'Active Growth Partners' terminology. Login endpoint returns token; auth works.",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "GET /api/leads/{lead_id}",
+        "issue": "500 Internal Server Error when the lead's assigned_to field contains a UUID (e.g., 'd4dad061-7403-4e38-bb06-b3cdf277237b'). Root cause: /app/backend/routes/leads.py line 471 calls `ObjectId(lead_data['assigned_to'])` unconditionally, which raises bson.errors.InvalidId for non-24-hex values. Since users are stored with UUID ids in this codebase, ANY File Detail view for an assigned lead will crash. Fix: mirror the defensive pattern from list_leads (lines 275-288): check length==24 before ObjectId(), then fallback to `db.users.find_one({'id': assigned_id})` or `{'connect_id': assigned_id}`, wrapped in try/except.",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": [
+      {"endpoint": "/api/files/reports/*", "issue": "(carried from iter 23) Report endpoints still have no auth guard — anonymous callers can fetch daily/rejected/quality/growth-partner/bank-performance/tat-metrics."},
+      {"endpoint": "/api/files/*", "issue": "(carried from iter 23) files_crm.py opens its own MongoClient at import instead of reusing utils.database.db."},
+      {"endpoint": "/api/leads/count", "issue": "(carried from iter 22) Does not reuse build_leads_query; filter semantics may drift from /leads listing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "File Detail open", "issue": "Because backend GET /api/leads/{id} 500s on GP-assigned leads (see critical backend bug), the File Detail page will fail to load CRM fields for the majority of files. Not verified in UI due to backend 500 blocking it.", "affected_selectors": ["file-detail-*"]}
+    ],
+    "design_issues": [
+      {"screen": "Admin Dashboard (VerifiedCallStats.js)", "issues": [
+        "(carried from iter 23) Line 210: 'Telecallers need to use the BANKEZEE Connect Mobile App...' — not yet renamed to Growth Partner.",
+        "(carried from iter 23) Line 58 CSV export header still 'Telecaller'."
+      ]},
+      {"screen": "Admin Reports (Reports.js)", "issues": [
+        "(carried from iter 23) Lines 497 & 695 CSV headers still 'Telecaller'; line 1582 dropdown label still 'All Telecallers'."
+      ]},
+      {"screen": "Global (pre-existing)", "issues": [
+        "React hydration warnings (<span> not valid inside <select>/<option>/<tbody>/<tfoot>/<table>/<tr>) originating from ve-dynamic preview-tooling wrappers on Dashboard.js, VerifiedCallStats.js, FilesDashboard.js. Non-blocking, noisy in console.",
+        "FilesDashboard: 'Each child in a list should have a unique key prop' and 'Cannot infer the option value of complex children' warnings persist."
+      ]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter24_final_verification.py",
+    "/app/backend/tests/test_iter23_reports_reassignment.py",
+    "/app/test_reports/pytest/iter24_final.xml",
+    "/app/test_reports/pytest/iter24.xml"
+  ],
+  "action_items": [
+    "CRITICAL — Fix GET /api/leads/{lead_id} in /app/backend/routes/leads.py line 471. Do NOT wrap assigned_to in ObjectId() unconditionally; apply the same length==24 + connect_id/id fallback + try/except pattern used in list_leads (lines 275-288). Without this fix, File Detail page is broken for every assigned file.",
+    "SECURITY (from iter 23) — Add Depends(require_admin) to all /api/files/reports/* endpoints.",
+    "TERMINOLOGY (from iter 23) — Replace 'Telecaller' with 'Growth Partner' in VerifiedCallStats.js (lines 58 CSV header, 210 empty-state text) and Reports.js (lines 497, 695 CSV headers, 1582 dropdown label).",
+    "CODE QUALITY (from iter 23) — Consolidate files_crm.py duplicate MongoClient into utils.database.db.",
+    "CODE QUALITY (from iter 22) — Align /api/leads/count query builder with build_leads_query."
+  ],
+  "critical_code_review_comments": [
+    "leads.py:471 uses raw ObjectId() on a value that is contractually a UUID (users have UUID ids across this codebase). This is an unhandled data-shape assumption. The same file already has correct handling at lines 275-288 — extract into a helper `resolve_user_by_assigned_id(assigned_id)` and reuse everywhere (also lines 778, 1033 have the same anti-pattern for OTHER inputs that come from the request body, so they're less risky but still fragile).",
+    "leads.py:778 and leads.py:1033 also call ObjectId(user_id) on incoming request body values — will 500 if a caller passes a non-hex string. Add explicit InvalidId handling and return 400.",
+    "SECURITY: Report endpoints in files_crm.py have no auth (iter 23 finding still open) — anonymous curl returns sensitive KPIs.",
+    "files_crm.py is ~1900 lines — recommend splitting for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter24_final_verification.py", "/app/test_reports/iteration_24.json"],
+  "success_rate": {"backend": "97% (33/34 pytest — 22/23 iter24 + 11/11 iter23)", "frontend": "Verified on Dashboard/Data/Files — all terminology + report buttons + filters + counts render correctly. File Detail flow NOT verifiable due to blocking backend 500."},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (from /app/memory/test_credentials.md). Login response uses key 'token' not 'access_token'.",
+  "seed_data_creation": "None. iter24 test suite is read-only (list/count/filter/report GETs).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "The ONLY blocker for production is the GET /api/leads/{lead_id} 500 (leads.py:471, unsafe ObjectId cast on UUID assigned_to). Everything else (reassignment block, clean slate, reports, terminology, filters, pagination, counts) is verified working. To reproduce the 500: login as admin → GET /api/leads?status=file&limit=1 → grab an id whose assigned_to is a UUID → GET /api/leads/{that_id} → 500 with bson.errors.InvalidId in /var/log/supervisor/backend.err.log. After main agent fixes it, re-run: `pytest /app/backend/tests/test_iter24_final_verification.py::test_file_detail_has_crm_fields -v`.",
+  "rca of the issue": "Bug: GET /api/leads/{lead_id} → HTTP 500. Reproduction: 1) POST /api/auth/login {admin@bankezee.com/ConnectSasha12!!} → get token. 2) GET /api/leads?status=file&limit=1 → note the first lead's id. 3) GET /api/leads/{id} → 500. Root cause: /app/backend/routes/leads.py line 471 executes `ObjectId(lead_data['assigned_to'])` where assigned_to is a UUID string like 'd4dad061-7403-4e38-bb06-b3cdf277237b'. bson.ObjectId() requires a 12-byte or 24-hex string and raises bson.errors.InvalidId otherwise. Mitigation: replace the block at lines 470-475 with the same defensive lookup used at lines 275-288 (`if len(assigned_id) == 24: try ObjectId; then fallback to {'connect_id': assigned_id} or {'id': assigned_id}`), wrapped in try/except to fail gracefully (return the lead without telecaller_name enrichment). Estimated fix: <10 lines. Impact of NOT fixing: File Detail page in the CRM UI is broken for every file that has a Growth Partner assigned (which is the majority)."
+}
