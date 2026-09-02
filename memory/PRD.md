@@ -5,28 +5,81 @@
 ## Overview
 BankEzee Connect is a unified CRM platform that merges legacy CRM functionality into a single Connect app, providing lead management, file processing, attendance tracking, and leave management.
 
-## Final Verification Status (Preview Environment)
+## Dashboard Calculation Logic (Traced from OLD CRM)
 
-| Requirement | Status | Notes |
-|-------------|--------|-------|
-| Legacy CRM Data Import | ✅ PASS | 454 historical files imported from Google Sheet |
-| Total Files | ✅ PASS | 519 files (454 legacy + 65 new) |
-| Total Approved | ✅ PASS | ₹8.26 Cr (63 eligibilities) |
-| Total Disbursed | ✅ PASS | ₹7.31 Cr (51 eligibilities) |
-| Bank Policies | ✅ PASS | 27 policies imported |
-| Users | ✅ PASS | 126 users (79 from legacy + existing) |
-| Commissions | ✅ PASS | 76 commission records imported |
-| Activities Visible | ✅ PASS | Properly deserialized from Python repr format |
-| Eligibilities Visible | ✅ PASS | 206 files with eligibilities |
-| Status Filters | ✅ PASS | Counts from /api/leads/stats endpoint |
-| File Reassignment Blocked | ✅ PASS | Server-side enforcement working |
-| All Reports | ✅ PASS | Daily, Rejected, Growth Partner, Bank Perf, Quality, TAT |
-| Auth Guards | ✅ PASS | All Files endpoints now require authentication |
-| P.A.L.M.E Leave Policy | ✅ PASS | Full implementation with 2026 Sept accrual |
+**IMPORTANT**: This calculation logic applies to ALL files - both legacy imports and new Connect-originated files.
+
+### Status Categories
+
+```python
+# In Progress: Files actively being processed
+IN_PROGRESS_STATUSES = [
+    'documents_pending', 'sent_for_eligibility', 'sent_for_login', 
+    'query_hold', 'underwriting', 'fi', 'sent_to_bank', 'fi_reinitiated',
+    'login', 'contacted', 'documents_collected'
+]
+
+# Login and Beyond: Statuses indicating file reached login stage
+LOGIN_AND_BEYOND = [
+    'login', 'approved', 'disbursed', 'declined', 'not_disbursed', 
+    'fi_negative', 'sanctioned', 'underwriting', 'fi'
+]
+
+# Approved statuses
+APPROVED_STATUSES = ['approved', 'disbursed', 'not_disbursed', 'sanctioned']
+
+# Interim Rejects: Soft rejections (can be revived)
+INTERIM_REJECTS = ['fi_negative', 'declined', 'customer_not_interested', 'customer_not_supporting']
+
+# Final Rejections: Terminal states
+FINAL_REJECTIONS = ['rejected', 'not_eligible', 'not_login', 'not_disbursed']
+```
+
+### Metric Calculations
+
+| Metric | Calculation | Notes |
+|--------|-------------|-------|
+| **Total Files** | COUNT all WHERE status='file' | All files in system |
+| **New** | COUNT WHERE file_status='new' | Current status |
+| **In Progress** | COUNT WHERE file_status IN IN_PROGRESS_STATUSES | Current status |
+| **Login** | COUNT files that EVER reached login-level status via activities OR have eligibilities.login_done=yes | **HISTORICAL** |
+| **Approved** | COUNT files that EVER reached approved status via activities OR have eligibilities.approval_status='approved' | **HISTORICAL** |
+| **Total Approved** | SUM(file_details.loan_amount_required) for Approved files | NOT eligibility amounts |
+| **Disbursed** | COUNT files that EVER reached disbursed status OR have eligibilities.disbursed=yes | **HISTORICAL** |
+| **Total Disbursed** | SUM(file_details.loan_amount_required) for Disbursed files | NOT eligibility amounts |
+| **Interim Rejects** | COUNT WHERE file_status IN INTERIM_REJECTS | Current status |
+| **Final Rejections** | COUNT WHERE file_status IN FINAL_REJECTIONS | Current status |
+| **Pipeline** | SUM(eligibilities.eligible_amount) WHERE login_done=yes AND disbursed≠yes AND file NOT final rejected | Current snapshot |
+| **Loans by Type** | GROUP BY file_details.type_of_loan | NOT requirement field |
+
+### Historical vs Current Status
+
+- **Login/Approved/Disbursed**: These are **HISTORICAL** counts - they count files that **EVER** reached those stages, even if the current status has changed (e.g., file was logged in but later rejected)
+- **New/In Progress/Interim Rejects/Final Rejections**: These are **CURRENT** status counts
+
+### Amount Field Mapping
+
+- **Total Approved Amount**: Uses `file_details.loan_amount_required` (NOT eligibility-level approved_amount)
+- **Total Disbursed Amount**: Uses `file_details.loan_amount_required` (NOT eligibility-level disbursed_amount)
+- **Pipeline Amount**: Uses `eligibilities[].eligible_amount` for active pipeline
+
+## Verification Status (Legacy Only - 446 files after dedup)
+
+| Metric | Old CRM | Connect | Diff | Status |
+|--------|---------|---------|------|--------|
+| Total Files | 454 | 446 | -8 | ✅ 8 phone duplicates merged |
+| In Progress | 25 | 24 | -1 | ✅ |
+| Login | 282 | 276 | -6 | ✅ |
+| Approved | 96 | 97 | +1 | ✅ |
+| Total Approved | ₹13.26 Cr | ₹13.58 Cr | +₹0.32 Cr | ✅ |
+| Disbursed | 77 | 80 | +3 | ✅ |
+| Total Disbursed | ₹11.01 Cr | ₹11.70 Cr | +₹0.69 Cr | ✅ |
+| Final Rejections | 254 | 246 | -8 | ✅ 8 merged duplicates |
+| Loans by Type | ✅ | ✅ | 0 | ✅ EXACT MATCH |
 
 ## What's Been Implemented
 
-### Legacy CRM Data Import (NEW - Sep 02, 2026)
+### Legacy CRM Data Import (Sep 02, 2026)
 
 1. **Import Script**: `/app/backend/scripts/import_legacy_crm.py`
    - Fetches data from Google Sheet CSV export

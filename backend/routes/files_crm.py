@@ -274,6 +274,42 @@ async def get_files_reports(
     
     disb = disbursement_stats[0] if disbursement_stats else {}
     
+    # Loan type stats (using file_details.type_of_loan - OLD CRM calculation)
+    loan_type_pipeline = [
+        {"$match": query},
+        {"$match": {"file_details.type_of_loan": {"$exists": True, "$ne": ""}}},
+        {"$group": {
+            "_id": "$file_details.type_of_loan",
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"count": -1}},
+        {"$limit": 10}
+    ]
+    loan_type_raw = await db.leads.aggregate(loan_type_pipeline).to_list(10)
+    
+    # Format loan type names for display
+    loan_type_display = {
+        'new_personal_loan': 'New Personal Loan',
+        'balance_transfer_topup_pl': 'Balance Transfer Topup PL',
+        'used_vehicle_loan_bt': 'Used Vehicle Loan BT',
+        'merge_multiple_loans': 'Merge Multiple Loans',
+        'balance_transfer_pl': 'Balance Transfer PL',
+        'top_up_pl': 'Top Up PL',
+        'business_loan': 'Business Loan',
+        'new_vehicle_loan': 'New Vehicle Loan',
+        'used_vehicle_loan_fresh': 'Used Vehicle Loan Fresh',
+        'balance_transfer_topup_hl': 'BT Topup HL',
+        'new_home_loan': 'New Home Loan'
+    }
+    
+    loan_type_stats = [
+        {
+            "type": loan_type_display.get(lt["_id"], lt["_id"].replace('_', ' ').title()),
+            "count": lt["count"]
+        }
+        for lt in loan_type_raw
+    ]
+    
     return {
         "summary": {
             "total_files": total_files,
@@ -291,7 +327,8 @@ async def get_files_reports(
             "disbursed": disbursed
         },
         "bank_stats": bank_stats,
-        "team_stats": team_stats
+        "team_stats": team_stats,
+        "loan_type_stats": loan_type_stats
     }
 
 
@@ -1299,6 +1336,7 @@ async def delete_document(file_id: str, doc_id: str):
 
 
 # Dashboard stats for Files - Following OLD CRM Exact Calculation Logic
+# This logic applies to ALL files (both legacy imported and new Connect-originated files)
 @router.get("/dashboard/stats")
 async def get_files_dashboard_stats(
     start_date: Optional[str] = None,
@@ -1308,30 +1346,48 @@ async def get_files_dashboard_stats(
 ):
     """
     Get dashboard statistics for files following the OLD CRM exact calculation logic.
+    This calculation applies to ALL files - both legacy CRM imports and new Connect files.
     
     KEY RULES (traced from legacy CRM):
-    - Total Files: COUNT all files
+    - Total Files: COUNT all files with status='file'
     - New: COUNT WHERE current file_status = 'new'
-    - In Progress: COUNT WHERE current file_status IN [documents_pending, sent_for_eligibility, sent_for_login, query_hold, underwriting, fi, sent_to_bank]
-    - Login: COUNT files that EVER reached login-level status (via activities) OR have login_done=yes in eligibilities
-    - Approved: COUNT files that EVER reached approved status (via activities) OR have approval_status=approved in eligibilities
-    - Total Approved: SUM of file_details.loan_amount_required for Approved files
-    - Disbursed: COUNT files that EVER reached disbursed status (via activities) OR have disbursed=yes in eligibilities
-    - Total Disbursed: SUM of file_details.loan_amount_required for Disbursed files
-    - Interim Rejects: COUNT WHERE current status IN [fi_negative, declined, customer_not_interested, customer_not_supporting]
-    - Final Rejections: COUNT WHERE current status IN [rejected, not_eligible, not_login, not_disbursed]
-    - Pipeline: SUM of eligible_amount from eligibilities where login_done=yes AND disbursed!=yes AND file not final rejected
-    - Loans by Type: GROUP BY file_details.type_of_loan (NOT requirement field)
+    - In Progress: COUNT WHERE current file_status IN [documents_pending, sent_for_eligibility, 
+      sent_for_login, query_hold, underwriting, fi, sent_to_bank, fi_reinitiated, login, 
+      contacted, documents_collected]
+    - Login: COUNT files that EVER reached login-level status (via activities) OR have 
+      login_done=yes in eligibilities (HISTORICAL count, not current status)
+    - Approved: COUNT files that EVER reached approved status (via activities) OR have 
+      approval_status=approved in eligibilities (HISTORICAL count)
+    - Total Approved: SUM of file_details.loan_amount_required for all Approved files
+    - Disbursed: COUNT files that EVER reached disbursed status (via activities) OR have 
+      disbursed=yes in eligibilities (HISTORICAL count)
+    - Total Disbursed: SUM of file_details.loan_amount_required for all Disbursed files
+    - Interim Rejects: COUNT WHERE current status IN [fi_negative, declined, 
+      customer_not_interested, customer_not_supporting]
+    - Final Rejections: COUNT WHERE current status IN [rejected, not_eligible, not_login, 
+      not_disbursed]
+    - Pipeline: SUM of eligible_amount from eligibilities where login_done=yes AND 
+      disbursed!=yes AND file not in final rejected state
+    - Loans by Type: GROUP BY file_details.type_of_loan (NOT the requirement field)
+    
+    IMPORTANT: Login/Approved/Disbursed are HISTORICAL counts - they count files that 
+    EVER reached those stages, even if the current status has changed (e.g., to rejected).
     """
     from datetime import datetime, timezone
     
-    # Status category definitions (from OLD CRM)
+    # Status category definitions (traced from OLD CRM - these apply to ALL files, legacy and new)
+    # In Progress: Files actively being processed (includes 'login' status)
     IN_PROGRESS_STATUSES = ['documents_pending', 'sent_for_eligibility', 'sent_for_login', 
-                            'query_hold', 'underwriting', 'fi', 'sent_to_bank', 'fi_reinitiated']
+                            'query_hold', 'underwriting', 'fi', 'sent_to_bank', 'fi_reinitiated',
+                            'login', 'contacted', 'documents_collected']
+    # Login and Beyond: Statuses that indicate file reached login stage at some point
     LOGIN_AND_BEYOND = ['login', 'approved', 'disbursed', 'declined', 'not_disbursed', 
                         'fi_negative', 'sanctioned', 'underwriting', 'fi']
+    # Approved statuses: File was approved (may or may not be disbursed yet)
     APPROVED_STATUSES = ['approved', 'disbursed', 'not_disbursed', 'sanctioned']
+    # Interim Rejects: Temporary/soft rejections that can potentially be revived
     INTERIM_REJECTS = ['fi_negative', 'declined', 'customer_not_interested', 'customer_not_supporting']
+    # Final Rejections: Terminal rejection states
     FINAL_REJECTIONS = ['rejected', 'not_eligible', 'not_login', 'not_disbursed']
     
     def ever_had_status_via_activities(activities, current_status, target_statuses):
