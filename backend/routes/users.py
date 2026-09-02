@@ -63,6 +63,41 @@ async def update_user(user_id: str, update: UserUpdate, current_user: dict = Dep
     user = await db.users.find_one({"_id": ObjectId(user_id)})
     return serialize_doc(user)
 
+
+@router.put("/users/{user_id}/change-password")
+async def change_user_password(user_id: str, password_data: dict, current_user: dict = Depends(require_admin)):
+    """Admin can change any user's password"""
+    new_password = password_data.get("new_password")
+    if not new_password or len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    # Find user by ObjectId or UUID
+    user = None
+    try:
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+    except Exception:
+        user = await db.users.find_one({"id": user_id})
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Update password
+    update_result = await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {
+            "password": get_password_hash(new_password),
+            "plain_password": new_password,  # Store plain for admin viewing
+            "password_changed_at": datetime.now(timezone.utc),
+            "password_changed_by": current_user.get("id")
+        }}
+    )
+    
+    if update_result.modified_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to update password")
+    
+    return {"message": "Password changed successfully", "user_id": user_id}
+
+
 @router.get("/users/{user_id}/activity")
 async def get_user_activity(user_id: str, current_user: dict = Depends(require_admin)):
     user = await db.users.find_one({"_id": ObjectId(user_id)})
