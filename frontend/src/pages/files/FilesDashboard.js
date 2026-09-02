@@ -78,6 +78,14 @@ const FilesDashboard = () => {
   const [showTatMetrics, setShowTatMetrics] = useState(false);
   const [showGrowthPartner, setShowGrowthPartner] = useState(false);
   
+  // Additional Reports State
+  const [showDailyReport, setShowDailyReport] = useState(false);
+  const [showRejectedReport, setShowRejectedReport] = useState(false);
+  const [showQualityReport, setShowQualityReport] = useState(false);
+  const [dailyReportData, setDailyReportData] = useState(null);
+  const [rejectedFiles, setRejectedFiles] = useState([]);
+  const [qualityData, setQualityData] = useState(null);
+  
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -250,6 +258,108 @@ const FilesDashboard = () => {
       setGrowthPartner(response.data);
     } catch (error) {
       console.error('Failed to fetch growth partner:', error);
+    }
+  };
+
+  // Fetch Daily Report - Summary of today's/selected date's activities
+  const fetchDailyReport = async () => {
+    try {
+      const { startDate, endDate } = getDateRange();
+      const params = new URLSearchParams();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      // Daily report uses the dashboard stats + file activities for the day
+      const [statsRes, filesRes] = await Promise.all([
+        api.get(`/files/dashboard/stats?${params.toString()}`),
+        api.get(`/files?limit=1000`)
+      ]);
+      
+      const stats = statsRes.data;
+      const allFiles = filesRes.data?.files || [];
+      
+      // Calculate daily metrics
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const dailyFiles = allFiles.filter(f => {
+        const updated = f.updated_at ? new Date(f.updated_at) : null;
+        return updated && updated >= today;
+      });
+      
+      setDailyReportData({
+        total_files: stats.total_files || 0,
+        new_files_today: dailyFiles.filter(f => f.file_status === 'new').length,
+        logins_today: dailyFiles.filter(f => f.file_status === 'login').length,
+        approvals_today: dailyFiles.filter(f => f.file_status === 'approved').length,
+        disbursals_today: dailyFiles.filter(f => f.file_status === 'disbursed').length,
+        rejections_today: dailyFiles.filter(f => ['rejected', 'declined', 'not_eligible'].includes(f.file_status)).length,
+        by_status: stats.by_status || {},
+        total_approved_amount: stats.total_approved_amount || 0,
+        total_disbursed_amount: stats.total_disbursed_amount || 0,
+        files_updated_today: dailyFiles.length
+      });
+    } catch (error) {
+      console.error('Failed to fetch daily report:', error);
+    }
+  };
+
+  // Fetch Rejected Files
+  const fetchRejectedFiles = async () => {
+    try {
+      // Get files with rejected statuses - using comma-separated values
+      const rejectedStatuses = 'rejected,declined,not_eligible,fi_negative,customer_not_interested,customer_not_supporting,not_disbursed,not_login';
+      const response = await api.get(`/files?file_status=${rejectedStatuses}&limit=500`);
+      setRejectedFiles(response.data?.files || []);
+    } catch (error) {
+      console.error('Failed to fetch rejected files:', error);
+    }
+  };
+
+  // Fetch Quality Report - File quality metrics
+  const fetchQualityReport = async () => {
+    try {
+      const filesRes = await api.get('/files?limit=1000');
+      const allFiles = filesRes.data?.files || [];
+      
+      // Calculate quality metrics
+      const withDocuments = allFiles.filter(f => (f.documents?.length || 0) > 0).length;
+      const withEligibilities = allFiles.filter(f => (f.eligibilities?.length || 0) > 0).length;
+      const withActivities = allFiles.filter(f => (f.activities?.length || 0) > 0).length;
+      const completeProfiles = allFiles.filter(f => f.name && f.phone && f.requirement).length;
+      
+      // Star ratings distribution
+      const starCounts = { 0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      allFiles.forEach(f => {
+        const stars = f.stars || 0;
+        starCounts[stars] = (starCounts[stars] || 0) + 1;
+      });
+      
+      // Conversion funnel
+      const total = allFiles.length;
+      const logins = allFiles.filter(f => ['login', 'approved', 'declined', 'disbursed', 'not_disbursed'].includes(f.file_status)).length;
+      const approvals = allFiles.filter(f => ['approved', 'disbursed', 'not_disbursed'].includes(f.file_status)).length;
+      const disbursals = allFiles.filter(f => f.file_status === 'disbursed').length;
+      
+      setQualityData({
+        total_files: total,
+        with_documents: withDocuments,
+        with_eligibilities: withEligibilities,
+        with_activities: withActivities,
+        complete_profiles: completeProfiles,
+        star_distribution: starCounts,
+        conversion_funnel: {
+          total,
+          logins,
+          approvals,
+          disbursals,
+          login_rate: total > 0 ? ((logins / total) * 100).toFixed(1) : 0,
+          approval_rate: logins > 0 ? ((approvals / logins) * 100).toFixed(1) : 0,
+          disbursal_rate: approvals > 0 ? ((disbursals / approvals) * 100).toFixed(1) : 0
+        },
+        data_quality_score: total > 0 ? (((completeProfiles + withDocuments) / (total * 2)) * 100).toFixed(1) : 0
+      });
+    } catch (error) {
+      console.error('Failed to fetch quality report:', error);
     }
   };
   
@@ -549,12 +659,18 @@ const FilesDashboard = () => {
           <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-2 lg:pb-0">
             {isAdmin && (
               <>
-                <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
+                <button 
+                  onClick={() => { setShowDailyReport(!showDailyReport); if (!showDailyReport) fetchDailyReport(); }}
+                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showDailyReport ? 'bg-gray-700 text-white border-gray-700' : 'border-gray-300 hover:bg-gray-50'}`}
+                >
                   <FileText size={14} />
                   <span className="hidden sm:inline">Daily Report</span>
                   <span className="sm:hidden">Daily</span>
                 </button>
-                <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 whitespace-nowrap">
+                <button 
+                  onClick={() => { setShowRejectedReport(!showRejectedReport); if (!showRejectedReport) fetchRejectedFiles(); }}
+                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showRejectedReport ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'}`}
+                >
                   <XCircle size={14} />
                   <span className="hidden sm:inline">Rejected</span>
                 </button>
@@ -581,7 +697,10 @@ const FilesDashboard = () => {
                   <Timer size={14} />
                   <span className="hidden sm:inline">TAT</span>
                 </button>
-                <button className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1 whitespace-nowrap">
+                <button 
+                  onClick={() => { setShowQualityReport(!showQualityReport); if (!showQualityReport) fetchQualityReport(); }}
+                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showQualityReport ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'}`}
+                >
                   <Star size={14} />
                   <span className="hidden sm:inline">Quality</span>
                 </button>
@@ -932,6 +1051,255 @@ const FilesDashboard = () => {
             </div>
           </div>
         </div>
+
+        {/* Daily Report Panel */}
+        {showDailyReport && dailyReportData && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" data-testid="daily-report-panel">
+            <div className="px-4 py-3 border-b border-gray-200 bg-gray-100">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText size={18} className="text-gray-700" />
+                  <h3 className="font-semibold text-gray-900">Daily Report</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      const headers = ['Metric', 'Count'];
+                      const rows = [
+                        ['Total Files', dailyReportData.total_files],
+                        ['Files Updated Today', dailyReportData.files_updated_today],
+                        ['New Files Today', dailyReportData.new_files_today],
+                        ['Logins Today', dailyReportData.logins_today],
+                        ['Approvals Today', dailyReportData.approvals_today],
+                        ['Disbursals Today', dailyReportData.disbursals_today],
+                        ['Rejections Today', dailyReportData.rejections_today]
+                      ];
+                      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `daily_report_${new Date().toISOString().split('T')[0]}.csv`;
+                      a.click();
+                      toast.success('Daily Report exported');
+                    }}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 bg-white"
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowDailyReport(false)} className="text-gray-400 hover:text-gray-600">
+                    <XCircle size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{dailyReportData.total_files}</p>
+                  <p className="text-sm text-gray-600">Total Files</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-green-600">{dailyReportData.files_updated_today}</p>
+                  <p className="text-sm text-gray-600">Updated Today</p>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-purple-600">{dailyReportData.logins_today}</p>
+                  <p className="text-sm text-gray-600">Logins Today</p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-amber-600">{dailyReportData.disbursals_today}</p>
+                  <p className="text-sm text-gray-600">Disbursals Today</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-green-100 rounded-lg p-3 text-center">
+                  <p className="text-xl font-bold text-green-700">{dailyReportData.new_files_today}</p>
+                  <p className="text-xs text-gray-600">New Files</p>
+                </div>
+                <div className="bg-blue-100 rounded-lg p-3 text-center">
+                  <p className="text-xl font-bold text-blue-700">{dailyReportData.approvals_today}</p>
+                  <p className="text-xs text-gray-600">Approvals</p>
+                </div>
+                <div className="bg-red-100 rounded-lg p-3 text-center">
+                  <p className="text-xl font-bold text-red-700">{dailyReportData.rejections_today}</p>
+                  <p className="text-xs text-gray-600">Rejections</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Rejected Files Report */}
+        {showRejectedReport && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" data-testid="rejected-report-panel">
+            <div className="px-4 py-3 border-b border-gray-200 bg-red-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <XCircle size={18} className="text-red-600" />
+                  <h3 className="font-semibold text-gray-900">Rejected Files ({rejectedFiles.length})</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      const headers = ['Name', 'Phone', 'Status', 'Bank', 'Reason', 'Updated'];
+                      const rows = rejectedFiles.map(f => [
+                        f.name || '',
+                        f.phone || '',
+                        f.file_status || '',
+                        f.bank_name || '',
+                        f.rejection_reason || f.remarks || '',
+                        f.updated_at ? new Date(f.updated_at).toLocaleDateString() : ''
+                      ]);
+                      const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `rejected_files_${new Date().toISOString().split('T')[0]}.csv`;
+                      a.click();
+                      toast.success('Rejected Files exported');
+                    }}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 bg-white"
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowRejectedReport(false)} className="text-gray-400 hover:text-gray-600">
+                    <XCircle size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 sticky top-0">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Name</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Phone</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Status</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Bank</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Reason</th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700">Updated</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {rejectedFiles.length === 0 ? (
+                    <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-500">No rejected files found</td></tr>
+                  ) : rejectedFiles.map((file) => (
+                    <tr key={file.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(isAdmin ? `/admin/files/${file.id}` : `/agent/files/${file.id}`)}>
+                      <td className="px-4 py-2 font-medium text-gray-900">{file.name || '-'}</td>
+                      <td className="px-4 py-2 text-gray-600">{file.phone || '-'}</td>
+                      <td className="px-4 py-2">
+                        <span className="px-2 py-1 rounded text-xs font-medium bg-red-100 text-red-700">
+                          {file.file_status?.replace('_', ' ') || 'rejected'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-600">{file.bank_name || '-'}</td>
+                      <td className="px-4 py-2 text-gray-600 max-w-xs truncate">{file.rejection_reason || file.remarks || '-'}</td>
+                      <td className="px-4 py-2 text-gray-500 text-xs">
+                        {file.updated_at ? new Date(file.updated_at).toLocaleDateString() : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Quality Report */}
+        {showQualityReport && qualityData && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" data-testid="quality-report-panel">
+            <div className="px-4 py-3 border-b border-gray-200 bg-amber-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Star size={18} className="text-amber-600" />
+                  <h3 className="font-semibold text-gray-900">Quality Report</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => {
+                      const headers = ['Metric', 'Value'];
+                      const rows = [
+                        ['Total Files', qualityData.total_files],
+                        ['Complete Profiles', qualityData.complete_profiles],
+                        ['With Documents', qualityData.with_documents],
+                        ['With Eligibilities', qualityData.with_eligibilities],
+                        ['Data Quality Score', qualityData.data_quality_score + '%'],
+                        ['Login Rate', qualityData.conversion_funnel.login_rate + '%'],
+                        ['Approval Rate', qualityData.conversion_funnel.approval_rate + '%'],
+                        ['Disbursal Rate', qualityData.conversion_funnel.disbursal_rate + '%']
+                      ];
+                      const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `quality_report_${new Date().toISOString().split('T')[0]}.csv`;
+                      a.click();
+                      toast.success('Quality Report exported');
+                    }}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 bg-white"
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowQualityReport(false)} className="text-gray-400 hover:text-gray-600">
+                    <XCircle size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                <div className="bg-amber-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-amber-600">{qualityData.data_quality_score}%</p>
+                  <p className="text-sm text-gray-600">Quality Score</p>
+                </div>
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{qualityData.complete_profiles}</p>
+                  <p className="text-sm text-gray-600">Complete Profiles</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-green-600">{qualityData.with_documents}</p>
+                  <p className="text-sm text-gray-600">With Documents</p>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-purple-600">{qualityData.with_eligibilities}</p>
+                  <p className="text-sm text-gray-600">With Eligibilities</p>
+                </div>
+              </div>
+              <div className="border-t pt-4">
+                <h4 className="font-medium text-gray-700 mb-3">Conversion Funnel</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Total → Login</span>
+                    <span className="font-medium text-green-600">{qualityData.conversion_funnel.login_rate}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-green-500 h-2 rounded-full" style={{width: `${qualityData.conversion_funnel.login_rate}%`}}></div>
+                  </div>
+                  <div className="flex items-center justify-between mt-3">
+                    <span className="text-sm text-gray-600">Login → Approval</span>
+                    <span className="font-medium text-blue-600">{qualityData.conversion_funnel.approval_rate}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-blue-500 h-2 rounded-full" style={{width: `${qualityData.conversion_funnel.approval_rate}%`}}></div>
+                  </div>
+                  <div className="flex items-center justify-between mt-3">
+                    <span className="text-sm text-gray-600">Approval → Disbursal</span>
+                    <span className="font-medium text-purple-600">{qualityData.conversion_funnel.disbursal_rate}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="bg-purple-500 h-2 rounded-full" style={{width: `${qualityData.conversion_funnel.disbursal_rate}%`}}></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Bank Performance Table */}
         {showBankTable && bankPerformance && (

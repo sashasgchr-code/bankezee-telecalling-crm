@@ -13,9 +13,22 @@ const AdminLeads = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState('');
   const [assignedFilter, setAssignedFilter] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
+  
+  // Call outcome filters
+  const callOutcomes = [
+    { id: 'connected', label: 'Connected', color: '#4CAF50' },
+    { id: 'no_answer', label: 'No Answer', color: '#F44336' },
+    { id: 'switched_off', label: 'Switched Off', color: '#9E9E9E' },
+    { id: 'not_connecting', label: 'Not Connecting', color: '#9E9E9E' },
+    { id: 'busy', label: 'Busy', color: '#FF9800' },
+    { id: 'wrong_number', label: 'Wrong Number', color: '#E91E63' },
+    { id: 'voicemail', label: 'Voicemail', color: '#9C27B0' },
+    { id: 'never_called', label: 'Never Called', color: '#607D8B' },
+  ];
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,6 +62,13 @@ const AdminLeads = () => {
       };
       if (searchQuery) params.search = searchQuery;
       if (statusFilter) params.status = statusFilter;
+      if (outcomeFilter) {
+        if (outcomeFilter === 'never_called') {
+          params.never_called = true;
+        } else {
+          params.last_call_outcome = outcomeFilter;
+        }
+      }
       if (assignedFilter) params.assigned_to = assignedFilter;
       
       const [leadsRes, telecallersRes] = await Promise.all([
@@ -75,7 +95,7 @@ const AdminLeads = () => {
   useEffect(() => {
     setCurrentPage(1); // Reset to page 1 when filters change
     fetchData(1);
-  }, [searchQuery, statusFilter, assignedFilter]);
+  }, [searchQuery, statusFilter, outcomeFilter, assignedFilter]);
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -137,6 +157,13 @@ const AdminLeads = () => {
       if (statusFilter) filters.statuses = statusFilter;
       if (assignedFilter) filters.assigned_to = assignedFilter;
       if (searchQuery) filters.search = searchQuery;
+      if (outcomeFilter) {
+        if (outcomeFilter === 'never_called') {
+          filters.never_called = true;
+        } else {
+          filters.outcomes = outcomeFilter;
+        }
+      }
       
       const response = await api.post('/leads/select-all-ids', filters);
       setSelectedLeads(response.data.lead_ids);
@@ -156,6 +183,13 @@ const AdminLeads = () => {
       if (statusFilter) filters.statuses = statusFilter;
       if (assignedFilter) filters.assigned_to = assignedFilter;
       if (searchQuery) filters.search = searchQuery;
+      if (outcomeFilter) {
+        if (outcomeFilter === 'never_called') {
+          filters.never_called = true;
+        } else {
+          filters.outcomes = outcomeFilter;
+        }
+      }
       
       const response = await api.post('/leads/export', filters, {
         responseType: 'blob'
@@ -190,6 +224,13 @@ const AdminLeads = () => {
           if (statusFilter) filters.statuses = statusFilter;
           if (assignedFilter) filters.assigned_to = assignedFilter;
           if (searchQuery) filters.search = searchQuery;
+          if (outcomeFilter) {
+            if (outcomeFilter === 'never_called') {
+              filters.never_called = true;
+            } else {
+              filters.outcomes = outcomeFilter;
+            }
+          }
           
           await api.post('/leads/archive', { filters, archive: true });
         } else {
@@ -368,7 +409,7 @@ const AdminLeads = () => {
           <button
             onClick={() => setShowFilters(!showFilters)}
             className={`p-2 rounded-lg border transition-colors ${
-              statusFilter || assignedFilter ? 'bg-green-50 border-green-600 text-green-600' : 'border-gray-200 text-gray-600'
+              statusFilter || outcomeFilter || assignedFilter ? 'bg-green-50 border-green-600 text-green-600' : 'border-gray-200 text-gray-600'
             }`}
           >
             <Filter size={20} />
@@ -404,6 +445,31 @@ const AdminLeads = () => {
                   style={{ backgroundColor: statusFilter === status ? StatusColors[status] : undefined }}
                 >
                   {StatusLabels[status] || status.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
+            
+            {/* Call Outcome Filters */}
+            <div className="flex flex-wrap gap-2">
+              <span className="px-2 py-1.5 text-xs font-medium text-gray-500 uppercase">Call Outcome:</span>
+              <button
+                onClick={() => setOutcomeFilter('')}
+                className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                  !outcomeFilter ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'
+                }`}
+              >
+                All Outcomes
+              </button>
+              {callOutcomes.map((outcome) => (
+                <button
+                  key={outcome.id}
+                  onClick={() => setOutcomeFilter(outcome.id)}
+                  className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                    outcomeFilter === outcome.id ? 'text-white' : 'bg-gray-100 text-gray-700'
+                  }`}
+                  style={{ backgroundColor: outcomeFilter === outcome.id ? outcome.color : undefined }}
+                >
+                  {outcome.label}
                 </button>
               ))}
             </div>
