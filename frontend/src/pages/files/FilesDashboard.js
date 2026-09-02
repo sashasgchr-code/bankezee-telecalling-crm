@@ -84,6 +84,8 @@ const FilesDashboard = () => {
   const [showQualityReport, setShowQualityReport] = useState(false);
   const [dailyReportData, setDailyReportData] = useState(null);
   const [rejectedFiles, setRejectedFiles] = useState([]);
+  const [rejectedBankSummary, setRejectedBankSummary] = useState([]);
+  const [rejectedTotals, setRejectedTotals] = useState({});
   const [qualityData, setQualityData] = useState(null);
   
   // Filters
@@ -306,12 +308,22 @@ const FilesDashboard = () => {
   // Fetch Rejected Files
   const fetchRejectedFiles = async () => {
     try {
-      // Get files with rejected statuses - using comma-separated values
-      const rejectedStatuses = 'rejected,declined,not_eligible,fi_negative,customer_not_interested,customer_not_supporting,not_disbursed,not_login';
-      const response = await api.get(`/files?file_status=${rejectedStatuses}&limit=500`);
+      // Use the enhanced rejected report endpoint with bank-level data
+      const response = await api.get('/files/reports/rejected');
       setRejectedFiles(response.data?.files || []);
+      // Store bank summary for display
+      setRejectedBankSummary(response.data?.bank_summary || []);
+      setRejectedTotals(response.data?.totals || {});
     } catch (error) {
       console.error('Failed to fetch rejected files:', error);
+      // Fallback to basic files query
+      try {
+        const rejectedStatuses = 'rejected,declined,not_eligible,fi_negative,customer_not_interested,customer_not_supporting,not_disbursed,not_login';
+        const fallbackResponse = await api.get(`/files?file_status=${rejectedStatuses}&limit=500`);
+        setRejectedFiles(fallbackResponse.data?.files || []);
+      } catch (e) {
+        console.error('Fallback also failed:', e);
+      }
     }
   };
 
@@ -1142,7 +1154,7 @@ const FilesDashboard = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <XCircle size={18} className="text-red-600" />
-                  <h3 className="font-semibold text-gray-900">Rejected Files ({rejectedFiles.length})</h3>
+                  <h3 className="font-semibold text-gray-900">Rejected Cases Report ({rejectedFiles.length})</h3>
                 </div>
                 <div className="flex items-center gap-2">
                   <button 
@@ -1176,6 +1188,78 @@ const FilesDashboard = () => {
                 </div>
               </div>
             </div>
+
+            {/* Bank-Level Summary - OLD CRM Feature */}
+            {rejectedBankSummary && rejectedBankSummary.length > 0 && (
+              <div className="p-4 border-b border-gray-200 bg-gray-50">
+                <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                  <Building2 size={16} className="text-gray-500" />
+                  Bank-Level Rejection Summary
+                </h4>
+                
+                {/* Summary Stats */}
+                <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
+                  <div className="bg-white rounded-lg p-2 text-center border border-gray-200">
+                    <p className="text-lg font-bold text-gray-700">{rejectedTotals.total_cases || 0}</p>
+                    <p className="text-xs text-gray-500">Total Cases</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-red-200">
+                    <p className="text-lg font-bold text-red-600">{rejectedTotals.not_eligible || 0}</p>
+                    <p className="text-xs text-gray-500">Not Eligible</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-orange-200">
+                    <p className="text-lg font-bold text-orange-600">{rejectedTotals.not_login || 0}</p>
+                    <p className="text-xs text-gray-500">Not Login</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-yellow-200">
+                    <p className="text-lg font-bold text-yellow-600">{rejectedTotals.fi_negative || 0}</p>
+                    <p className="text-xs text-gray-500">FI Negative</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-purple-200">
+                    <p className="text-lg font-bold text-purple-600">{rejectedTotals.declined || 0}</p>
+                    <p className="text-xs text-gray-500">Declined</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2 text-center border border-pink-200">
+                    <p className="text-lg font-bold text-pink-600">{rejectedTotals.not_disbursed || 0}</p>
+                    <p className="text-xs text-gray-500">Not Disbursed</p>
+                  </div>
+                </div>
+                
+                {/* Bank Table */}
+                <div className="overflow-x-auto max-h-48">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left font-medium text-gray-700">Bank</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-700">Cases</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-700">Eligible</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-700">Not Elig</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-700">Login</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-700">Approved</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-700">Declined</th>
+                        <th className="px-2 py-1.5 text-right font-medium text-gray-700">Disbursed</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {rejectedBankSummary.slice(0, 10).map((bank, idx) => (
+                        <tr key={idx} className="hover:bg-gray-50">
+                          <td className="px-2 py-1.5 font-medium text-gray-900">{bank.bank_name}</td>
+                          <td className="px-2 py-1.5 text-right">{bank.total_cases}</td>
+                          <td className="px-2 py-1.5 text-right text-green-600">{bank.eligible}</td>
+                          <td className="px-2 py-1.5 text-right text-red-600">{bank.not_eligible}</td>
+                          <td className="px-2 py-1.5 text-right text-blue-600">{bank.login}</td>
+                          <td className="px-2 py-1.5 text-right text-green-600">{bank.approved}</td>
+                          <td className="px-2 py-1.5 text-right text-red-600">{bank.declined}</td>
+                          <td className="px-2 py-1.5 text-right text-emerald-600">{bank.disbursed}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Files Table */}
             <div className="overflow-x-auto max-h-96">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
@@ -1191,7 +1275,7 @@ const FilesDashboard = () => {
                 <tbody className="divide-y divide-gray-100">
                   {rejectedFiles.length === 0 ? (
                     <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-500">No rejected files found</td></tr>
-                  ) : rejectedFiles.map((file) => (
+                  ) : rejectedFiles.slice(0, 100).map((file) => (
                     <tr key={file.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(isAdmin ? `/admin/files/${file.id}` : `/agent/files/${file.id}`)}>
                       <td className="px-4 py-2 font-medium text-gray-900">{file.name || '-'}</td>
                       <td className="px-4 py-2 text-gray-600">{file.phone || '-'}</td>

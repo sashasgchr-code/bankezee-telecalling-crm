@@ -1,11 +1,11 @@
 export { EditableField, EditableSelect } from './EditableField';
-export { default as CustomerDetailsSection } from './CustomerDetailsSection';
+export { default as CustomerDetailsSection, EMPLOYMENT_TYPES, COMPANY_CATEGORIES, CITIES } from './CustomerDetailsSection';
 export { default as EmploymentDetailsSection } from './EmploymentDetailsSection';
-export { default as ExistingLoansSection } from './ExistingLoansSection';
-export { default as LoanRequirementsSection, LOAN_TYPES } from './LoanRequirementsSection';
+export { default as ExistingLoansSection, EXISTING_LOAN_TYPES, COMMON_BANKS } from './ExistingLoansSection';
+export { default as LoanRequirementsSection, LOAN_TYPES, LOAN_PURPOSES } from './LoanRequirementsSection';
 export { default as BankEligibilityCard } from './BankEligibilityCard';
 export { default as EligibilityTracker } from './EligibilityTracker';
 export { default as DocumentsPanel } from './DocumentsPanel';
 export { default as ActivityLog } from './ActivityLog';
-export { default as FileStatusCard, FILE_STATUS_OPTIONS } from './FileStatusCard';
+export { default as FileStatusCard, FILE_STATUS_OPTIONS, STATUS_CATEGORIES } from './FileStatusCard';
 export { default as FileAssignmentCard } from './FileAssignmentCard';

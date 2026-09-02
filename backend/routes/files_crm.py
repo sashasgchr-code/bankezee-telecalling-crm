@@ -97,30 +97,64 @@ class BulkFileAssignment(BaseModel):
     assigned_to: str
 
 
-# File statuses for CRM processing
+# File statuses for CRM processing - Complete OLD CRM workflow preserved
+# All 24 statuses from old CRM mapped here
 FILE_STATUSES = [
-    "new", "contacted", "documents_collected", "not_eligible", 
-    "sent_to_bank", "login", "not_login", "approved", "declined",
-    "disbursed", "not_disbursed", "rejected"
+    # Initial Stages
+    "new", "contacted",
+    # Document Collection
+    "documents_pending", "documents_collected",
+    # Eligibility & Processing
+    "sent_for_eligibility", "not_eligible", "query_hold",
+    # Bank Submission
+    "sent_to_bank", "sent_for_login", "login", "not_login",
+    # Underwriting & FI
+    "underwriting", "fi", "fi_reinitiated", "fi_negative",
+    # Approval/Decline
+    "approved", "sanctioned", "declined",
+    # Disbursal
+    "disbursed", "not_disbursed",
+    # Final States
+    "rejected", "customer_not_interested", "customer_not_supporting", "supporting"
 ]
 
 
 @router.get("/statuses")
 async def get_file_statuses():
-    """Get list of available file statuses for CRM processing"""
+    """Get list of available file statuses for CRM processing - Complete OLD CRM workflow"""
     return [
-        {"id": "new", "label": "New"},
-        {"id": "contacted", "label": "Contacted"},
-        {"id": "documents_collected", "label": "Documents Collected"},
-        {"id": "not_eligible", "label": "Not Eligible"},
-        {"id": "sent_to_bank", "label": "Sent to Bank"},
-        {"id": "login", "label": "Login"},
-        {"id": "not_login", "label": "Not Login"},
-        {"id": "approved", "label": "Approved"},
-        {"id": "declined", "label": "Declined"},
-        {"id": "disbursed", "label": "Disbursed"},
-        {"id": "not_disbursed", "label": "Not Disbursed"},
-        {"id": "rejected", "label": "Rejected"}
+        # Initial Stages
+        {"id": "new", "label": "New", "category": "initial"},
+        {"id": "contacted", "label": "Contacted", "category": "initial"},
+        # Document Collection
+        {"id": "documents_pending", "label": "Documents Pending", "category": "documents"},
+        {"id": "documents_collected", "label": "Documents Collected", "category": "documents"},
+        # Eligibility & Processing
+        {"id": "sent_for_eligibility", "label": "Sent for Eligibility", "category": "processing"},
+        {"id": "not_eligible", "label": "Not Eligible", "category": "rejection"},
+        {"id": "query_hold", "label": "Query/Hold", "category": "processing"},
+        # Bank Submission
+        {"id": "sent_to_bank", "label": "Sent to Bank", "category": "bank"},
+        {"id": "sent_for_login", "label": "Sent for Login", "category": "bank"},
+        {"id": "login", "label": "Login", "category": "bank"},
+        {"id": "not_login", "label": "Not Login", "category": "rejection"},
+        # Underwriting & FI
+        {"id": "underwriting", "label": "Underwriting", "category": "underwriting"},
+        {"id": "fi", "label": "FI", "category": "underwriting"},
+        {"id": "fi_reinitiated", "label": "FI Reinitiated", "category": "underwriting"},
+        {"id": "fi_negative", "label": "FI Negative", "category": "rejection"},
+        # Approval/Decline
+        {"id": "approved", "label": "Approved", "category": "approval"},
+        {"id": "sanctioned", "label": "Sanctioned", "category": "approval"},
+        {"id": "declined", "label": "Declined", "category": "rejection"},
+        # Disbursal
+        {"id": "disbursed", "label": "Disbursed", "category": "disbursal"},
+        {"id": "not_disbursed", "label": "Not Disbursed", "category": "rejection"},
+        # Final States
+        {"id": "rejected", "label": "Rejected", "category": "rejection"},
+        {"id": "customer_not_interested", "label": "Customer Not Interested", "category": "rejection"},
+        {"id": "customer_not_supporting", "label": "Customer Not Supporting", "category": "rejection"},
+        {"id": "supporting", "label": "Supporting", "category": "other"}
     ]
 
 
@@ -446,18 +480,148 @@ async def get_daily_report(
 @router.get("/reports/rejected")
 async def get_rejected_files(current_user: dict = Depends(get_current_user)):
     """
-    Get all rejected/declined/not-eligible files.
-    """
-    rejected_statuses = ['rejected', 'declined', 'not_eligible', 'not_login', 'not_disbursed', 'fi_negative']
+    Rejected Cases Report - OLD CRM Bank-Level Report
     
-    files = await db.leads.find(
-        {"status": "file", "file_status": {"$in": rejected_statuses}},
+    For each File with any rejection status, include bank-level breakdown:
+    - Total Cases
+    - Not Eligible (count per bank)
+    - Not Login
+    - FI Negative
+    - Declined
+    - Not Disbursed
+    
+    Bank detail includes:
+    Bank | Eligible | Eligible Amount | Login | Approval | Approved Amount | Disbursed | Disbursed Amount | Reason
+    """
+    rejected_statuses = ['rejected', 'declined', 'not_eligible', 'not_login', 'not_disbursed', 
+                         'fi_negative', 'customer_not_interested', 'customer_not_supporting']
+    
+    # Get all files (not just rejected) to check bank-level rejections
+    all_files = await db.leads.find(
+        {"status": "file"},
         {"_id": 0}
-    ).sort("updated_at", -1).to_list(1000)
+    ).to_list(10000)
+    
+    # Build bank-level rejection summary
+    bank_summary = {}
+    rejected_files = []
+    
+    for f in all_files:
+        file_status = f.get('file_status', 'new')
+        eligibilities = f.get('eligibilities') or []
+        
+        # Check if file itself is in rejected status
+        is_rejected_file = file_status in rejected_statuses
+        
+        # Process each bank eligibility
+        file_had_rejection = False
+        for elig in eligibilities:
+            bank_name = elig.get('bank_name', 'Unknown')
+            if not bank_name:
+                continue
+            
+            if bank_name not in bank_summary:
+                bank_summary[bank_name] = {
+                    'bank_name': bank_name,
+                    'total_cases': 0,
+                    'eligible': 0,
+                    'eligible_amount': 0,
+                    'not_eligible': 0,
+                    'login': 0,
+                    'not_login': 0,
+                    'fi_negative': 0,
+                    'approved': 0,
+                    'approved_amount': 0,
+                    'declined': 0,
+                    'disbursed': 0,
+                    'disbursed_amount': 0,
+                    'not_disbursed': 0,
+                    'reasons': []
+                }
+            
+            bank_summary[bank_name]['total_cases'] += 1
+            
+            # Check eligibility status
+            is_eligible = elig.get('is_eligible')
+            if is_eligible == True or is_eligible == 'yes' or is_eligible == 'Yes':
+                bank_summary[bank_name]['eligible'] += 1
+                try:
+                    bank_summary[bank_name]['eligible_amount'] += float(elig.get('eligible_amount') or 0)
+                except (ValueError, TypeError):
+                    pass
+            elif is_eligible == False or is_eligible == 'no' or is_eligible == 'No':
+                bank_summary[bank_name]['not_eligible'] += 1
+                reason = elig.get('not_eligible_reason')
+                if reason:
+                    bank_summary[bank_name]['reasons'].append(reason)
+                file_had_rejection = True
+            
+            # Login status
+            login_done = elig.get('login_done')
+            if login_done == True or login_done == 'yes' or login_done == 'Yes':
+                bank_summary[bank_name]['login'] += 1
+            elif login_done == False or login_done == 'no' or login_done == 'No':
+                reason = elig.get('login_rejection_reason')
+                if reason:
+                    bank_summary[bank_name]['not_login'] += 1
+                    bank_summary[bank_name]['reasons'].append(reason)
+                    file_had_rejection = True
+            
+            # Approval status
+            approval_status = elig.get('approval_status')
+            if approval_status == 'approved':
+                bank_summary[bank_name]['approved'] += 1
+                try:
+                    bank_summary[bank_name]['approved_amount'] += float(elig.get('approved_amount') or 0)
+                except (ValueError, TypeError):
+                    pass
+            elif approval_status == 'declined':
+                bank_summary[bank_name]['declined'] += 1
+                reason = elig.get('declined_reason')
+                if reason:
+                    bank_summary[bank_name]['reasons'].append(reason)
+                file_had_rejection = True
+            elif approval_status == 'fi_negative':
+                bank_summary[bank_name]['fi_negative'] += 1
+                file_had_rejection = True
+            
+            # Disbursement status
+            disbursed = elig.get('disbursed')
+            if disbursed == True or disbursed == 'yes' or disbursed == 'Yes':
+                bank_summary[bank_name]['disbursed'] += 1
+                try:
+                    bank_summary[bank_name]['disbursed_amount'] += float(elig.get('disbursed_amount') or 0)
+                except (ValueError, TypeError):
+                    pass
+            elif disbursed == False or disbursed == 'no' or disbursed == 'No':
+                reason = elig.get('disbursement_rejection_reason')
+                if reason:
+                    bank_summary[bank_name]['not_disbursed'] += 1
+                    bank_summary[bank_name]['reasons'].append(reason)
+                    file_had_rejection = True
+        
+        # Add to rejected files list
+        if is_rejected_file or file_had_rejection:
+            rejected_files.append(f)
+    
+    # Sort bank summary by total cases
+    banks = sorted(bank_summary.values(), key=lambda x: x['total_cases'], reverse=True)
+    
+    # Calculate totals
+    totals = {
+        'total_cases': sum(b['total_cases'] for b in banks),
+        'not_eligible': sum(b['not_eligible'] for b in banks),
+        'not_login': sum(b['not_login'] for b in banks),
+        'fi_negative': sum(b['fi_negative'] for b in banks),
+        'declined': sum(b['declined'] for b in banks),
+        'not_disbursed': sum(b['not_disbursed'] for b in banks)
+    }
     
     return {
-        "files": files,
-        "total": len(files)
+        "files": rejected_files[:500],  # Limit for performance
+        "total": len(rejected_files),
+        "bank_summary": banks,
+        "totals": totals
     }
 
 
@@ -532,6 +696,207 @@ async def get_quality_report(current_user: dict = Depends(get_current_user)):
         "docs_complete_count": docs_complete_count,
         "conversion_count": conversion_count,
         "processed_count": processed_count
+    }
+
+
+# ============ STAR RATING CALCULATION - OLD CRM PORT ============
+
+def calculate_star_rating(file_data: dict) -> dict:
+    """
+    Calculate Star Rating and Score for a file - OLD CRM CALCULATION LOGIC
+    
+    Star Rating (1-5 stars) based on:
+    - Data Completeness (20 points)
+    - CIBIL Score (25 points)
+    - Income vs Loan Amount ratio (20 points)
+    - Employment Stability (15 points)
+    - Document Status (10 points)
+    - Existing Obligations (10 points)
+    
+    Total Score: 0-100
+    Stars: 1 (0-20), 2 (21-40), 3 (41-60), 4 (61-80), 5 (81-100)
+    """
+    score = 0
+    file_details = file_data.get('file_details') or file_data.get('additional_data') or {}
+    
+    # 1. Data Completeness (20 points)
+    completeness_fields = ['name', 'phone', 'email', 'city']
+    detail_fields = ['company_name', 'net_salary', 'cibil_score', 'loan_amount_required', 'type_of_loan']
+    
+    basic_filled = sum(1 for f in completeness_fields if file_data.get(f))
+    detail_filled = sum(1 for f in detail_fields if file_details.get(f))
+    
+    completeness_score = (basic_filled / 4) * 10 + (detail_filled / 5) * 10
+    score += completeness_score
+    
+    # 2. CIBIL Score (25 points)
+    try:
+        cibil = int(file_details.get('cibil_score') or 0)
+        if cibil >= 750:
+            score += 25
+        elif cibil >= 700:
+            score += 20
+        elif cibil >= 650:
+            score += 15
+        elif cibil >= 600:
+            score += 10
+        elif cibil > 0:
+            score += 5
+    except (ValueError, TypeError):
+        pass
+    
+    # 3. Income vs Loan Amount Ratio (20 points)
+    # Good ratio: loan_amount <= net_salary * 60 (5 year affordability)
+    try:
+        net_salary = float(file_details.get('net_salary') or 0)
+        loan_amount = float(file_details.get('loan_amount_required') or 0)
+        if net_salary > 0 and loan_amount > 0:
+            ratio = loan_amount / (net_salary * 60)
+            if ratio <= 0.5:
+                score += 20
+            elif ratio <= 0.75:
+                score += 15
+            elif ratio <= 1.0:
+                score += 10
+            elif ratio <= 1.5:
+                score += 5
+    except (ValueError, TypeError):
+        pass
+    
+    # 4. Employment Stability (15 points)
+    try:
+        present_emp = int(file_details.get('present_employment_months') or 0)
+        total_emp = int(file_details.get('total_employment_months') or 0)
+        
+        if present_emp >= 24 and total_emp >= 36:
+            score += 15
+        elif present_emp >= 12 and total_emp >= 24:
+            score += 12
+        elif present_emp >= 6 and total_emp >= 12:
+            score += 8
+        elif present_emp >= 3:
+            score += 5
+    except (ValueError, TypeError):
+        pass
+    
+    # 5. Document Status (10 points)
+    file_status = file_data.get('file_status', 'new')
+    if file_status in ['disbursed']:
+        score += 10
+    elif file_status in ['approved', 'sanctioned']:
+        score += 8
+    elif file_status in ['login', 'underwriting', 'fi']:
+        score += 6
+    elif file_status in ['sent_to_bank', 'sent_for_login']:
+        score += 4
+    elif file_status in ['documents_collected', 'sent_for_eligibility']:
+        score += 2
+    
+    # 6. Existing Obligations / FOIR (10 points)
+    try:
+        foir = float(file_details.get('foir') or 0)
+        if foir > 0:
+            if foir <= 40:
+                score += 10
+            elif foir <= 50:
+                score += 7
+            elif foir <= 60:
+                score += 4
+            elif foir <= 70:
+                score += 2
+        else:
+            # If FOIR not calculated, check EMI to salary ratio
+            obligations = float(file_details.get('obligations_emi') or 0)
+            net_salary = float(file_details.get('net_salary') or 0)
+            if net_salary > 0:
+                emi_ratio = (obligations / net_salary) * 100
+                if emi_ratio <= 40:
+                    score += 10
+                elif emi_ratio <= 50:
+                    score += 7
+                elif emi_ratio <= 60:
+                    score += 4
+    except (ValueError, TypeError):
+        pass
+    
+    # Calculate star rating
+    score = min(100, max(0, round(score)))
+    if score >= 81:
+        stars = 5
+    elif score >= 61:
+        stars = 4
+    elif score >= 41:
+        stars = 3
+    elif score >= 21:
+        stars = 2
+    else:
+        stars = 1
+    
+    return {
+        'star_rating': stars,
+        'star_score': score
+    }
+
+
+@router.get("/calculate-rating/{file_id}")
+async def calculate_file_rating(file_id: str, current_user: dict = Depends(get_current_user)):
+    """Calculate and optionally update the star rating for a file"""
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    if not file_doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    rating = calculate_star_rating(file_doc)
+    return rating
+
+
+@router.put("/update-rating/{file_id}")
+async def update_file_rating(file_id: str, current_user: dict = Depends(get_current_user)):
+    """Calculate and update the star rating for a file"""
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    if not file_doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    rating = calculate_star_rating(file_doc)
+    
+    await db.leads.update_one(
+        {"id": file_id},
+        {
+            "$set": {
+                "star_rating": rating['star_rating'],
+                "star_score": rating['star_score'],
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    
+    return {
+        "message": "Rating updated",
+        **rating
+    }
+
+
+@router.post("/recalculate-all-ratings")
+async def recalculate_all_ratings(current_user: dict = Depends(require_admin)):
+    """Recalculate star ratings for all files (admin only)"""
+    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    
+    updated = 0
+    for f in all_files:
+        rating = calculate_star_rating(f)
+        await db.leads.update_one(
+            {"id": f.get('id')},
+            {
+                "$set": {
+                    "star_rating": rating['star_rating'],
+                    "star_score": rating['star_score']
+                }
+            }
+        )
+        updated += 1
+    
+    return {
+        "message": f"Recalculated ratings for {updated} files",
+        "updated": updated
     }
 
 
@@ -956,7 +1321,7 @@ async def get_file_details(file_id: str, current_user: dict = Depends(get_curren
 
 
 @router.put("/{file_id}/details")
-async def update_file_details(file_id: str, update_data: FileDetailsUpdate):
+async def update_file_details(file_id: str, update_data: FileDetailsUpdate, current_user: dict = Depends(get_current_user)):
     """Update file customer details"""
     file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
     if not file_doc:
@@ -1003,7 +1368,7 @@ async def update_file_details(file_id: str, update_data: FileDetailsUpdate):
 
 
 @router.put("/{file_id}/file-status")
-async def update_file_status(file_id: str, status_update: FileStatusUpdate):
+async def update_file_status(file_id: str, status_update: FileStatusUpdate, current_user: dict = Depends(get_current_user)):
     """Update file CRM status"""
     if status_update.file_status not in FILE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Valid: {', '.join(FILE_STATUSES)}")
@@ -1033,7 +1398,7 @@ async def update_file_status(file_id: str, status_update: FileStatusUpdate):
 
 
 @router.post("/{file_id}/notes")
-async def add_file_note(file_id: str, note_data: NoteAdd):
+async def add_file_note(file_id: str, note_data: NoteAdd, current_user: dict = Depends(get_current_user)):
     """Add a note to a file"""
     result = await db.leads.update_one(
         {"id": file_id},
@@ -1056,7 +1421,7 @@ async def add_file_note(file_id: str, note_data: NoteAdd):
 
 
 @router.put("/{file_id}/assign")
-async def assign_file(file_id: str, assignment: FileAssignment):
+async def assign_file(file_id: str, assignment: FileAssignment, current_user: dict = Depends(get_current_user)):
     """Assign a file to an operations team member"""
     assignee = await db.users.find_one({"id": assignment.assigned_to}, {"_id": 0})
     if not assignee:
@@ -1087,8 +1452,8 @@ async def assign_file(file_id: str, assignment: FileAssignment):
 
 
 @router.put("/bulk-assign")
-async def bulk_assign_files(assignment: BulkFileAssignment):
-    """Bulk assign multiple files to an operations team member"""
+async def bulk_assign_files(assignment: BulkFileAssignment, current_user: dict = Depends(require_admin)):
+    """Bulk assign multiple files to an operations team member - Admin only"""
     if not assignment.file_ids:
         raise HTTPException(status_code=400, detail="No files selected")
     
@@ -1125,7 +1490,7 @@ async def bulk_assign_files(assignment: BulkFileAssignment):
 
 
 @router.put("/{file_id}/eligibilities")
-async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpdate):
+async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpdate, current_user: dict = Depends(get_current_user)):
     """Update file bank eligibilities (up to 7 banks)"""
     if len(eligibility_update.eligibilities) > 7:
         raise HTTPException(status_code=400, detail="Maximum 7 eligibilities allowed")
@@ -1165,7 +1530,7 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
 
 
 @router.get("/{file_id}/eligibilities")
-async def get_eligibilities(file_id: str):
+async def get_eligibilities(file_id: str, current_user: dict = Depends(get_current_user)):
     """Get file eligibilities"""
     # First check if file exists (without projection that may return empty dict)
     file_exists = await db.leads.count_documents({"id": file_id})
@@ -1177,7 +1542,7 @@ async def get_eligibilities(file_id: str):
 
 
 @router.get("/{file_id}/activities")
-async def get_file_activities(file_id: str):
+async def get_file_activities(file_id: str, current_user: dict = Depends(get_current_user)):
     """Get file activity log"""
     # First check if file exists (without projection that may return empty dict)
     file_exists = await db.leads.count_documents({"id": file_id})
@@ -1193,7 +1558,8 @@ async def get_file_activities(file_id: str):
 async def upload_document(
     file_id: str,
     file: UploadFile = File(...),
-    document_type: str = "general"
+    document_type: str = "general",
+    current_user: dict = Depends(get_current_user)
 ):
     """Upload a document for a file - stored in MongoDB GridFS"""
     file_ext = Path(file.filename).suffix.lower()
@@ -1264,7 +1630,7 @@ async def list_file_documents(file_id: str):
 
 
 @router.get("/download/{doc_id}")
-async def download_document(doc_id: str):
+async def download_document(doc_id: str, current_user: dict = Depends(get_current_user)):
     """Download a document from GridFS"""
     from fastapi.responses import StreamingResponse
     from bson import ObjectId
@@ -1300,7 +1666,7 @@ async def download_document(doc_id: str):
 
 
 @router.delete("/{file_id}/documents/{doc_id}")
-async def delete_document(file_id: str, doc_id: str):
+async def delete_document(file_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a document"""
     from bson import ObjectId
     
@@ -1828,22 +2194,32 @@ async def get_tat_metrics(
     }
 
 
-# Growth Partner Report
+# Growth Partner Report - OLD CRM COMPLETE PORT
+# Preserves: From/To Manager, Files Generated, In Progress, Login, Approved, Disbursed, Disbursed Amount, Current/Spillover logic
 @router.get("/reports/growth-partner")
 async def get_growth_partner_report(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    manager_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Per-agent/partner stats filtered by source_id.
+    Growth Partner Performance Report - COMPLETE OLD CRM PORT
     
-    For each agent:
-    - Files Generated: COUNT leads WHERE source_id = agent_id AND created_at IN date_range
-    - Logins: COUNT leads with login activity in range, filtered by source_id
-    - Approvals: COUNT leads with approval in range, filtered by source_id
-    - Disbursals: COUNT leads with disbursal in range, filtered by source_id
-    - Disbursal Amount: SUM disbursed_amount
+    Preserves:
+    - From/To Manager filter
+    - Files Generated: COUNT WHERE source_id = GP AND created_at IN date_range (CURRENT)
+                       + COUNT WHERE file was active with GP in date_range (SPILLOVER)
+    - In Progress: Active files not yet at terminal status
+    - Login: COUNT files that reached login-level status
+    - Approved: COUNT files approved
+    - Disbursed: COUNT files disbursed
+    - Disbursed Amount: SUM disbursed_amount
+    - Current vs Spillover: 
+        * CURRENT = file created within date range
+        * SPILLOVER = file created before date range but had activity/milestone within date range
+    
+    Historical performance uses ownership at EVENT TIME, not today's assignment.
     """
     from datetime import datetime, timezone
     
@@ -1895,119 +2271,221 @@ async def get_growth_partner_report(
             return False
         return True
     
+    def is_before_date_range(ts):
+        """Check if timestamp is before the date range (for spillover calculation)"""
+        if is_all_time:
+            return False
+        dt = parse_timestamp(ts)
+        if not dt:
+            return False
+        if date_start and dt < date_start:
+            return True
+        return False
+    
     def is_disbursed(elig):
         disbursed = elig.get('disbursed')
         return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
     
+    def is_login_done(elig):
+        login_done = elig.get('login_done')
+        return login_done == True or (isinstance(login_done, str) and login_done.lower() in ['yes', 'true'])
+    
     # Get all users to map IDs to names (using connect_id for matching)
-    users = await db.users.find({}, {"_id": 0, "id": 1, "connect_id": 1, "full_name": 1, "name": 1, "email": 1}).to_list(1000)
+    users = await db.users.find({}, {"_id": 0, "id": 1, "connect_id": 1, "full_name": 1, "name": 1, "email": 1, "manager_id": 1}).to_list(1000)
     user_map = {}
+    user_manager_map = {}
     for u in users:
-        # Map by id
         uid = u.get('id')
         if uid:
             user_map[uid] = u.get('full_name') or u.get('name') or u.get('email', '').split('@')[0]
-        # Also map by connect_id if different
+            user_manager_map[uid] = u.get('manager_id')
         cid = u.get('connect_id')
         if cid and cid != uid:
             user_map[cid] = u.get('full_name') or u.get('name') or u.get('email', '').split('@')[0]
+            user_manager_map[cid] = u.get('manager_id')
     
-    # Agent stats aggregation
-    agent_stats = {}
+    # Filter by manager if specified
+    gp_filter_ids = None
+    if manager_id:
+        gp_filter_ids = set()
+        for uid, mgr_id in user_manager_map.items():
+            if mgr_id == manager_id:
+                gp_filter_ids.add(uid)
     
-    LOGIN_AND_BEYOND = [
-        'login', 'sent_for_approval', 'underwriting', 'fi', 'fi_negative', 'fi_reinitiated',
-        'query_hold', 'approved', 'disbursed', 'declined', 'not_disbursed'
-    ]
+    # Growth Partner stats aggregation with Current/Spillover
+    gp_stats = {}
+    
+    # Status categories
+    IN_PROGRESS_STATUSES = ['documents_pending', 'sent_for_eligibility', 'sent_for_login', 
+                           'query_hold', 'underwriting', 'fi', 'sent_to_bank', 'fi_reinitiated',
+                           'login', 'contacted', 'documents_collected']
+    LOGIN_AND_BEYOND = ['login', 'approved', 'disbursed', 'declined', 'not_disbursed', 
+                        'fi_negative', 'sanctioned', 'underwriting', 'fi']
+    APPROVED_STATUSES = ['approved', 'disbursed', 'not_disbursed', 'sanctioned']
     
     all_files = await db.leads.find({"status": "file"}).to_list(10000)
     
     for f in all_files:
+        # Use source_id as the Growth Partner identifier (who generated the file)
         source_id = f.get('source_id')
         if not source_id:
             continue
         
-        if source_id not in agent_stats:
-            agent_stats[source_id] = {
+        # Filter by manager's team if specified
+        if gp_filter_ids is not None and source_id not in gp_filter_ids:
+            continue
+        
+        if source_id not in gp_stats:
+            gp_stats[source_id] = {
                 'agent_id': source_id,
                 'agent_name': user_map.get(source_id, source_id),
-                'files_generated': 0,
-                'logins': 0,
-                'approvals': 0,
-                'disbursals': 0,
-                'approved_amount': 0.0,
-                'disbursed_amount': 0.0
+                'manager_id': user_manager_map.get(source_id),
+                'manager_name': user_map.get(user_manager_map.get(source_id), 'Unassigned'),
+                # Current counts (file created within date range)
+                'files_generated_current': 0,
+                'in_progress_current': 0,
+                'logins_current': 0,
+                'approvals_current': 0,
+                'disbursals_current': 0,
+                'approved_amount_current': 0.0,
+                'disbursed_amount_current': 0.0,
+                # Spillover counts (file created before date range but had activity within range)
+                'files_generated_spillover': 0,
+                'in_progress_spillover': 0,
+                'logins_spillover': 0,
+                'approvals_spillover': 0,
+                'disbursals_spillover': 0,
+                'approved_amount_spillover': 0.0,
+                'disbursed_amount_spillover': 0.0
             }
         
         created_at = f.get('created_at')
         file_status = f.get('file_status') or 'new'
+        activities = f.get('file_activities', []) or f.get('activities', []) or []
+        eligibilities = f.get('eligibilities') or []
         
-        # Files Generated: created_at in range
-        if is_in_date_range(created_at):
-            agent_stats[source_id]['files_generated'] += 1
+        # Determine if CURRENT or SPILLOVER
+        file_created_in_range = is_in_date_range(created_at)
+        file_created_before_range = is_before_date_range(created_at)
         
-        # Check eligibilities for login/approval/disbursal
+        # Check for any activity/milestone within date range
+        had_activity_in_range = False
+        for act in activities:
+            if is_in_date_range(act.get('timestamp')):
+                had_activity_in_range = True
+                break
+        
+        # Check eligibilities for milestones in range
         has_login_in_range = False
         has_approval_in_range = False
         has_disbursal_in_range = False
         file_approved_amt = 0.0
         file_disbursed_amt = 0.0
         
-        for elig in (f.get('eligibilities') or []):
-            # Login
-            login_done = elig.get('login_done')
+        for elig in eligibilities:
             login_done_at = elig.get('login_done_at')
-            if login_done == True or (isinstance(login_done, str) and login_done.lower() in ['yes', 'true']):
+            approved_at = elig.get('approved_at')
+            disbursed_at = elig.get('disbursed_at')
+            
+            if is_login_done(elig):
                 if is_all_time or is_in_date_range(login_done_at):
                     has_login_in_range = True
+                    had_activity_in_range = True
             
-            # Approval
-            approved_at = elig.get('approved_at')
             if elig.get('approval_status') == 'approved':
                 if is_all_time or is_in_date_range(approved_at):
                     has_approval_in_range = True
+                    had_activity_in_range = True
                     try:
                         file_approved_amt += float(elig.get('approved_amount') or 0)
                     except (ValueError, TypeError):
                         pass
             
-            # Disbursal
-            disbursed_at = elig.get('disbursed_at')
             if is_disbursed(elig):
                 if is_all_time or is_in_date_range(disbursed_at):
                     has_disbursal_in_range = True
+                    had_activity_in_range = True
                     try:
                         file_disbursed_amt += float(elig.get('disbursed_amount') or 0)
                     except (ValueError, TypeError):
                         pass
         
-        # Also count login if status is in LOGIN_AND_BEYOND
-        if file_status in LOGIN_AND_BEYOND:
-            # Check for any activity in range
-            activities = f.get('file_activities', []) or f.get('activities', [])
-            for act in activities:
-                if is_in_date_range(act.get('timestamp')):
-                    has_login_in_range = True
-                    break
+        # Fallback: check if current status indicates milestone reached (when dates not recorded)
+        if file_status in LOGIN_AND_BEYOND and not has_login_in_range:
+            if had_activity_in_range:
+                has_login_in_range = True
+        if file_status in APPROVED_STATUSES and not has_approval_in_range:
+            if had_activity_in_range:
+                has_approval_in_range = True
+        if file_status == 'disbursed' and not has_disbursal_in_range:
+            if had_activity_in_range:
+                has_disbursal_in_range = True
         
+        # Assign to CURRENT or SPILLOVER
+        suffix = '_current' if file_created_in_range else '_spillover'
+        
+        # Only count spillover if there was activity within the date range
+        if file_created_before_range and not had_activity_in_range:
+            continue  # Skip files with no activity in range
+        
+        # Files Generated
+        if file_created_in_range:
+            gp_stats[source_id]['files_generated_current'] += 1
+        elif file_created_before_range and had_activity_in_range:
+            gp_stats[source_id]['files_generated_spillover'] += 1
+        
+        # In Progress
+        if file_status in IN_PROGRESS_STATUSES:
+            gp_stats[source_id][f'in_progress{suffix}'] += 1
+        
+        # Logins
         if has_login_in_range:
-            agent_stats[source_id]['logins'] += 1
+            gp_stats[source_id][f'logins{suffix}'] += 1
+        
+        # Approvals
         if has_approval_in_range:
-            agent_stats[source_id]['approvals'] += 1
-            agent_stats[source_id]['approved_amount'] += file_approved_amt
+            gp_stats[source_id][f'approvals{suffix}'] += 1
+            gp_stats[source_id][f'approved_amount{suffix}'] += file_approved_amt
+        
+        # Disbursals
         if has_disbursal_in_range:
-            agent_stats[source_id]['disbursals'] += 1
-            agent_stats[source_id]['disbursed_amount'] += file_disbursed_amt
+            gp_stats[source_id][f'disbursals{suffix}'] += 1
+            gp_stats[source_id][f'disbursed_amount{suffix}'] += file_disbursed_amt
+    
+    # Build output with combined totals
+    agents = []
+    for source_id, stats in gp_stats.items():
+        agent = {
+            **stats,
+            # Combined totals
+            'files_generated': stats['files_generated_current'] + stats['files_generated_spillover'],
+            'in_progress': stats['in_progress_current'] + stats['in_progress_spillover'],
+            'logins': stats['logins_current'] + stats['logins_spillover'],
+            'approvals': stats['approvals_current'] + stats['approvals_spillover'],
+            'disbursals': stats['disbursals_current'] + stats['disbursals_spillover'],
+            'approved_amount': stats['approved_amount_current'] + stats['approved_amount_spillover'],
+            'disbursed_amount': stats['disbursed_amount_current'] + stats['disbursed_amount_spillover']
+        }
+        agents.append(agent)
     
     # Sort by disbursed amount descending
-    agents = sorted(agent_stats.values(), key=lambda x: -x['disbursed_amount'])
+    agents = sorted(agents, key=lambda x: -x['disbursed_amount'])
     
     # Calculate totals
     totals = {
         'files_generated': sum(a['files_generated'] for a in agents),
+        'files_generated_current': sum(a['files_generated_current'] for a in agents),
+        'files_generated_spillover': sum(a['files_generated_spillover'] for a in agents),
+        'in_progress': sum(a['in_progress'] for a in agents),
         'logins': sum(a['logins'] for a in agents),
+        'logins_current': sum(a['logins_current'] for a in agents),
+        'logins_spillover': sum(a['logins_spillover'] for a in agents),
         'approvals': sum(a['approvals'] for a in agents),
+        'approvals_current': sum(a['approvals_current'] for a in agents),
+        'approvals_spillover': sum(a['approvals_spillover'] for a in agents),
         'disbursals': sum(a['disbursals'] for a in agents),
+        'disbursals_current': sum(a['disbursals_current'] for a in agents),
+        'disbursals_spillover': sum(a['disbursals_spillover'] for a in agents),
         'approved_amount': sum(a['approved_amount'] for a in agents),
         'disbursed_amount': sum(a['disbursed_amount'] for a in agents)
     }
@@ -2020,6 +2498,10 @@ async def get_growth_partner_report(
             "start_date": start_date,
             "end_date": end_date,
             "is_all_time": is_all_time
+        },
+        "filter": {
+            "manager_id": manager_id,
+            "manager_name": user_map.get(manager_id) if manager_id else None
         }
     }
 

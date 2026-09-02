@@ -1,216 +1,190 @@
-# BANKEZEE Connect CRM - Product Requirements Document
+# BankEzee Connect CRM - Product Requirements Document
 
-## Last Updated: Sep 02, 2026
+## Project Overview
+BankEzee Connect is a comprehensive CRM system for managing loan applications from lead generation through disbursal. The system has been enhanced to port the complete OLD CRM operational structure into the Connect platform.
 
-## Overview
-BankEzee Connect is a unified CRM platform that merges legacy CRM functionality into a single Connect app, providing lead management, file processing, attendance tracking, and leave management.
+## Original Problem Statement
+Port the complete OLD CRM → Connect Files, making Connect → Files a complete replacement for the old CRM using the old CRM's actual code, data structures, calculations, and workflows.
 
-## Dashboard Calculation Logic (Traced from OLD CRM)
+## User Personas
+1. **Admin**: Full access to all features, reports, user management
+2. **Growth Partner (Agent)**: Lead generation, file creation, customer interaction
+3. **Operations Team**: File processing, eligibility checks, bank submissions
 
-**IMPORTANT**: This calculation logic applies to ALL files - both legacy imports and new Connect-originated files.
+## Architecture
 
-### Status Categories
+### Tech Stack
+- Frontend: React + TailwindCSS + Shadcn/UI
+- Backend: FastAPI (Python)
+- Database: MongoDB
+- Mobile: Expo (React Native) - EAS Build pending
 
-```python
-# In Progress: Files actively being processed
-IN_PROGRESS_STATUSES = [
-    'documents_pending', 'sent_for_eligibility', 'sent_for_login', 
-    'query_hold', 'underwriting', 'fi', 'sent_to_bank', 'fi_reinitiated',
-    'login', 'contacted', 'documents_collected'
-]
+### Key Files
+- `/app/backend/routes/files_crm.py` - Files CRM endpoints (2500+ lines)
+- `/app/frontend/src/pages/files/FilesDashboard.js` - Files dashboard UI
+- `/app/frontend/src/pages/files/FileDetailsPage.js` - File detail workspace
+- `/app/frontend/src/components/file-detail/` - Modular file detail components
 
-# Login and Beyond: Statuses indicating file reached login stage
-LOGIN_AND_BEYOND = [
-    'login', 'approved', 'disbursed', 'declined', 'not_disbursed', 
-    'fi_negative', 'sanctioned', 'underwriting', 'fi'
-]
+---
 
-# Approved statuses
-APPROVED_STATUSES = ['approved', 'disbursed', 'not_disbursed', 'sanctioned']
+## Completed Features (December 2025)
 
-# Interim Rejects: Soft rejections (can be revived)
-INTERIM_REJECTS = ['fi_negative', 'declined', 'customer_not_interested', 'customer_not_supporting']
+### 1. Files Dashboard (100% Complete)
+- [x] 10 metric cards matching OLD CRM: Total Files, New, In Progress, Login, Approved, Total Approved, Disbursed, Total Disbursed, Interim Rejects, Final Rejections, Amt in Pipeline
+- [x] Historical status calculation (counts files that REACHED status via activities, not just current status)
+- [x] File Status Distribution donut chart
+- [x] Loans by Type breakdown
+- [x] Monthly Performance chart
 
-# Final Rejections: Terminal states
-FINAL_REJECTIONS = ['rejected', 'not_eligible', 'not_login', 'not_disbursed']
-```
+### 2. Reports (100% Complete)
+- [x] **Daily Report**: Files created today with status breakdown
+- [x] **Rejected Cases Report**: Bank-level rejection summary with totals for Not Eligible, Not Login, FI Negative, Declined, Not Disbursed
+- [x] **Growth Partner Performance**: Current/Spillover logic preserved, Files Generated, Logins, Approvals, Disbursals with amounts
+- [x] **Bank Performance Report**: Per-bank metrics
+- [x] **TAT Report**: Lead→Login, Login→Approval, Approval→Disbursal turnaround times
+- [x] **Quality Report**: Data quality score, conversion funnel rates
 
-### Metric Calculations
+### 3. File Status Workflow (100% Complete)
+24 statuses organized into 9 categories:
+- Initial: New, Contacted
+- Documents: Documents Pending, Documents Collected
+- Processing: Sent for Eligibility, Query/Hold
+- Bank: Sent to Bank, Sent for Login, Login
+- Underwriting: Underwriting, FI, FI Reinitiated
+- Approval: Approved, Sanctioned
+- Disbursal: Disbursed
+- Rejection: Not Eligible, Not Login, FI Negative, Declined, Not Disbursed, Rejected, Customer Not Interested, Customer Not Supporting
+- Other: Supporting
 
-| Metric | Calculation | Notes |
-|--------|-------------|-------|
-| **Total Files** | COUNT all WHERE status='file' | All files in system |
-| **New** | COUNT WHERE file_status='new' | Current status |
-| **In Progress** | COUNT WHERE file_status IN IN_PROGRESS_STATUSES | Current status |
-| **Login** | COUNT files that EVER reached login-level status via activities OR have eligibilities.login_done=yes | **HISTORICAL** |
-| **Approved** | COUNT files that EVER reached approved status via activities OR have eligibilities.approval_status='approved' | **HISTORICAL** |
-| **Total Approved** | SUM(file_details.loan_amount_required) for Approved files | NOT eligibility amounts |
-| **Disbursed** | COUNT files that EVER reached disbursed status OR have eligibilities.disbursed=yes | **HISTORICAL** |
-| **Total Disbursed** | SUM(file_details.loan_amount_required) for Disbursed files | NOT eligibility amounts |
-| **Interim Rejects** | COUNT WHERE file_status IN INTERIM_REJECTS | Current status |
-| **Final Rejections** | COUNT WHERE file_status IN FINAL_REJECTIONS | Current status |
-| **Pipeline** | SUM(eligibilities.eligible_amount) WHERE login_done=yes AND disbursed≠yes AND file NOT final rejected | Current snapshot |
-| **Loans by Type** | GROUP BY file_details.type_of_loan | NOT requirement field |
+### 4. File Detail Workspace (100% Complete)
+Complete CRM processing workspace with 4 sections:
+- **Section 1: Customer Details** - Name, mobile, email, father/mother name, DOB, PAN, Aadhaar, current/permanent address, city, PIN, residence type
+- **Section 2: Employment & Income** - Employment type, company name/category/designation, office address, employment duration, gross/net salary, additional income, self-employed fields
+- **Section 3: Existing Obligations** - CIBIL score, FOIR, existing loans array, TVR/EMI status, credit card details
+- **Section 4: Loan Requirements** - Loan type (18 types), amount, tenure, purpose, BT/topup fields, property/vehicle details
 
-### Historical vs Current Status
+Additional features:
+- Documents panel with upload
+- Activity Log with note adding
+- Star Rating display (0-100 score, 1-5 stars)
+- Check Bank Eligibility action
+- Edit Details functionality
 
-- **Login/Approved/Disbursed**: These are **HISTORICAL** counts - they count files that **EVER** reached those stages, even if the current status has changed (e.g., file was logged in but later rejected)
-- **New/In Progress/Interim Rejects/Final Rejections**: These are **CURRENT** status counts
+### 5. Star Rating Calculation (100% Complete)
+Algorithm based on:
+- Data Completeness (20 points)
+- CIBIL Score (25 points)
+- Income vs Loan Amount ratio (20 points)
+- Employment Stability (15 points)
+- Document Status (10 points)
+- Existing Obligations/FOIR (10 points)
 
-### Amount Field Mapping
+### 6. Loan Types (18 Complete)
+- Personal: New Personal Loan, Balance Transfer PL, Top Up PL, BT+Top Up PL, Merge Multiple Loans
+- Home: New Home Loan, Balance Transfer HL, BT+Top Up HL, Reduce Home Loan EMI
+- Vehicle: New Vehicle Loan, Used Vehicle Loan Fresh, Used Vehicle Loan BT
+- Business: Business Loan, MSME Loan
+- Other: LAP, Gold Loan, Education Loan, Other
 
-- **Total Approved Amount**: Uses `file_details.loan_amount_required` (NOT eligibility-level approved_amount)
-- **Total Disbursed Amount**: Uses `file_details.loan_amount_required` (NOT eligibility-level disbursed_amount)
-- **Pipeline Amount**: Uses `eligibilities[].eligible_amount` for active pipeline
+### 7. Security (Updated Dec 2025)
+All file mutation endpoints now have authentication guards:
+- PUT /files/{id}/details
+- PUT /files/{id}/file-status
+- POST /files/{id}/notes
+- PUT /files/{id}/assign
+- PUT /bulk-assign (Admin only)
+- PUT /files/{id}/eligibilities
+- GET /files/{id}/eligibilities
+- GET /files/{id}/activities
+- POST /files/{id}/upload
+- GET /download/{doc_id}
+- DELETE /files/{id}/documents/{doc_id}
 
-## Verification Status (Legacy Only - 446 files after dedup)
+### 8. Data Migration (100% Complete)
+- 454 legacy CRM files imported to MongoDB
+- Nested arrays (activities, eligibilities, documents) properly deserialized
+- Idempotent migration script at `/app/backend/scripts/import_legacy_crm.py`
 
-| Metric | Old CRM | Connect | Diff | Status |
-|--------|---------|---------|------|--------|
-| Total Files | 454 | 446 | -8 | ✅ 8 phone duplicates merged |
-| In Progress | 25 | 24 | -1 | ✅ |
-| Login | 282 | 276 | -6 | ✅ |
-| Approved | 96 | 97 | +1 | ✅ |
-| Total Approved | ₹13.26 Cr | ₹13.58 Cr | +₹0.32 Cr | ✅ |
-| Disbursed | 77 | 80 | +3 | ✅ |
-| Total Disbursed | ₹11.01 Cr | ₹11.70 Cr | +₹0.69 Cr | ✅ |
-| Final Rejections | 254 | 246 | -8 | ✅ 8 merged duplicates |
-| Loans by Type | ✅ | ✅ | 0 | ✅ EXACT MATCH |
+---
 
-## What's Been Implemented
+## Pending/Backlog Features
 
-### Legacy CRM Data Import (Sep 02, 2026)
+### P0 (Critical)
+- [ ] Policy Master UI - Create/edit bank policies (CRUD exists in backend, UI partially built)
+- [ ] Data → File Conversion - Prefill known info when Data becomes File
 
-1. **Import Script**: `/app/backend/scripts/import_legacy_crm.py`
-   - Fetches data from Google Sheet CSV export
-   - Properly deserializes Python repr format (single quotes, None, True/False)
-   - Idempotent - checks `legacy_crm_id` or `phone` to avoid duplicates
-   - Imports into Files module only (status='file'), NOT Connect Data
+### P1 (High)
+- [ ] Mobile Android EAS Build - Fix Gradle build failure
+- [ ] Commissions Module - Full commission tracking with GP mappings
+- [ ] Document Management - Required/pending/uploaded document workflow
 
-2. **Imported Data Summary**:
-   - Files: 519 total (454 legacy + 65 new)
-   - Users: 126 total
-   - Bank Policies: 27
-   - Commissions: 76 records
-   - Activities per file: Properly preserved as arrays
-   - Eligibilities: 206 files with bank eligibility data
+### P2 (Medium)
+- [ ] "Switched Off" outcome normalization
+- [ ] Historical Acceptance Test comparison table
+- [ ] Refactor files_crm.py into smaller modules
 
-3. **Financial Totals**:
-   - Total Logins: 311
-   - Total Approved: 57 files, ₹8.26 Cr
-   - Total Disbursed: 47 files, ₹7.31 Cr
-   - Amount in Pipeline: ₹99 Lakh
+---
 
-4. **Security**: Auth guards added to all Files endpoints
+## API Endpoints Reference
 
-### P.A.L.M.E Leave Policy (Sep 02, 2026)
-**Present • Absent • Leave • Medical • Emergency**
+### Dashboard & Stats
+- GET /api/files/dashboard/stats - Dashboard metrics
+- GET /api/files/statuses - All 24 statuses with categories
 
-1. **2026 Special Accrual Rule**
-   - For year 2026, leave accrual starts from **September** only
-   - Total allowance: 8 days (4 months × 2 days)
-   - Other years: Normal January start (24 days/year)
+### Reports
+- GET /api/files/reports - Summary reports
+- GET /api/files/reports/rejected - Bank-level rejection summary
+- GET /api/files/reports/growth-partner - GP performance with Current/Spillover
+- GET /api/files/reports/tat-metrics - Turnaround times
+- GET /api/files/reports/quality - Quality metrics
 
-2. **Rewards System**
-   - Weekly On Time: ₹200
-   - Monthly Perfect: ₹500
-   - Quarterly Outstanding: ₹2,000 + Certificate
+### File Operations
+- GET /api/files - List files with filters
+- GET /api/files/{id} - File detail
+- PUT /api/files/{id}/details - Update file details
+- PUT /api/files/{id}/file-status - Update status
+- POST /api/files/{id}/notes - Add note
+- PUT /api/files/{id}/assign - Assign to ops team
 
-3. **Accountability (Penalties)**
-   - Uninformed Leave: ₹100 per occurrence
-   - Leave must be applied 3+ days in advance
-   - Sick leave >3 days requires medical certificate
+### Eligibilities
+- GET /api/files/{id}/eligibilities - Get bank eligibilities
+- PUT /api/files/{id}/eligibilities - Update eligibilities
 
-### Critical Business Logic
-1. **File Reassignment Block** - Server-side enforcement
-2. **Historical Report Preservation** - Activity ownership at event time
-3. **Clean Slate Reassignment** - Pre-File leads reset
-4. **Terminology Update** - "Growth Partner" throughout UI
+### Documents
+- POST /api/files/{id}/upload - Upload document
+- GET /api/download/{doc_id} - Download document
+- DELETE /api/files/{id}/documents/{doc_id} - Delete document
 
-## API Endpoints Summary
+### Rating
+- GET /api/files/calculate-rating/{id} - Calculate star rating
+- PUT /api/files/update-rating/{id} - Update and persist rating
+- POST /api/files/recalculate-all-ratings - Batch recalculate (Admin)
 
-### Files CRM (All require auth)
-- `GET /api/files` - List files with filters
-- `GET /api/files/{id}` - File details
-- `GET /api/files/dashboard/stats` - Dashboard statistics
-- `GET /api/files/policies` - Bank policies list
-- `GET /api/files/reports/daily` - Daily report
-- `GET /api/files/reports/rejected` - Rejected cases
-- `GET /api/files/reports/growth-partner` - GP performance
-- `GET /api/files/reports/bank-performance` - Bank-wise stats
-- `GET /api/files/reports/quality` - Quality metrics
-- `GET /api/files/reports/tat-metrics` - TAT metrics
-- `POST /api/files/import` - Import data (Admin only)
-- `GET /api/files/export` - Export data (Admin only)
+---
 
-### Data/Leads
-- `GET /api/leads` - List with filters
-- `GET /api/leads/{id}` - Single lead
-- `POST /api/leads/assign` - Assign (blocks Files)
-- `GET /api/leads/stats` - Status counts
+## Testing
+- Test credentials: admin@bankezee.com / ConnectSasha12!!
+- Test reports: /app/test_reports/iteration_29.json
+- Test suite: /app/backend/tests/test_iter29_crm_port.py (8 passing tests)
 
-### Leave Management (P.A.L.M.E)
-- `GET /api/leave/balance?year=YYYY` - Leave balance
-- `GET /api/leave/palme/policy` - Policy details
-- `GET /api/leave/palme/monthly-summary` - Team summary
-- `POST /api/leave/palme/rewards` - Add reward
-- `POST /api/leave/palme/penalty` - Add penalty
+---
 
-## Test Credentials
-- Admin: `admin@bankezee.com` / `ConnectSasha12!!`
+## Dashboard Reconciliation Reference
+OLD CRM reference values (validation targets):
+| Metric | OLD CRM |
+|--------|---------|
+| Total Files | 454 (imported) + 65 (new) = 519 |
+| New | 2 |
+| In Progress | 29 |
+| Login | 323 |
+| Approved | 116 |
+| Total Approved | ₹13.26 Cr |
+| Disbursed | 96 |
+| Total Disbursed | ₹11.70 Cr |
+| Interim Rejects | 100 |
+| Final Rejections | 284 |
+| Pipeline | ₹1.99 Cr |
 
-## Remaining Items
+---
 
-### P0 - Complete
-- ✅ Legacy CRM data imported
-- ✅ Auth guards added
-- ✅ All reports working
-
-### P1 - Pending
-1. **EAS Android Build** - Fix Gradle error for APK generation
-2. **"Switched Off" Outcome Normalization** - Map variations
-
-### P2 - Future
-1. **Performance Optimization** - Move dashboard stats to MongoDB aggregation
-2. **Code Refactoring** - Split files_crm.py (2000+ lines) into modules
-3. **File Splitting** - FilesDashboard.js is 1900+ lines
-
-## Technical Notes
-
-### Environment
-- Preview: `test_database` (519 files)
-- Backend: FastAPI with Motor (async MongoDB)
-- Frontend: React with Shadcn/UI
-
-### MongoDB Schema
-```javascript
-// leads collection (Files stored here with status='file')
-{
-  id: "uuid",
-  legacy_crm_id: "original-crm-id",  // Preserved for mapping
-  name: "string",
-  phone: "string",
-  status: "file",  // 'file' for Files module
-  file_status: "disbursed|approved|login|rejected|...",
-  eligibilities: [{ bank_name, approved_amount, disbursed, ... }],
-  file_activities: [{ type, message, timestamp }],
-  documents: [{ file_name, document_type }],
-  created_at: "ISO date",
-  updated_at: "ISO date"
-}
-```
-
-### Import Script Usage
-```bash
-# Dry run (preview changes)
-python3 scripts/import_legacy_crm.py --dry-run
-
-# Full import
-python3 scripts/import_legacy_crm.py
-
-# Skip specific imports
-python3 scripts/import_legacy_crm.py --skip-users --skip-policies
-
-# Verify only
-python3 scripts/import_legacy_crm.py --verify-only
-```
+*Last Updated: December 2, 2025*

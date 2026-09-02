@@ -87,30 +87,92 @@ const FileDetailsPage = () => {
       setFileData(data);
       setNewStatus(data.file_status || 'new');
       setSelectedAssignee(data.file_assigned_to || '');
-      setRating(data.rating || 0);
-      setScore(data.score || 0);
+      setRating(data.rating || data.star_rating || 0);
+      setScore(data.score || data.star_score || 0);
       
-      // Initialize edited details
-      const fileDetails = data.file_details || {};
+      // Initialize edited details with ALL OLD CRM fields
+      const fileDetails = data.file_details || data.additional_data || {};
       setEditedDetails({
+        // Customer Details
         full_name: data.name || '',
         mobile: data.phone || '',
         email: data.email || '',
-        city: data.city || '',
-        employment_type: data.employment_type || fileDetails.employment_type || '',
+        father_name: fileDetails.father_name || '',
         mother_name: fileDetails.mother_name || '',
+        date_of_birth: fileDetails.date_of_birth || '',
+        pan_number: fileDetails.pan_number || '',
+        aadhaar_number: fileDetails.aadhaar_number || '',
         current_address: fileDetails.current_address || '',
+        city: data.city || fileDetails.city || '',
+        permanent_address: fileDetails.permanent_address || '',
+        pin_code: fileDetails.pin_code || '',
+        residence_type: fileDetails.residence_type || '',
+        years_at_current_address: fileDetails.years_at_current_address || '',
+        
+        // Employment Details
+        employment_type: data.employment_type || fileDetails.employment_type || '',
         company_name: fileDetails.company_name || '',
-        net_salary: fileDetails.net_salary || '',
+        company_type: fileDetails.company_type || '',
+        designation: fileDetails.designation || '',
         office_address: fileDetails.office_address || '',
+        office_city: fileDetails.office_city || '',
+        office_pincode: fileDetails.office_pincode || '',
+        present_employment_months: fileDetails.present_employment_months || '',
+        total_employment_months: fileDetails.total_employment_months || '',
+        gross_salary: fileDetails.gross_salary || '',
+        net_salary: fileDetails.net_salary || '',
+        salary_bank_name: fileDetails.salary_bank_name || '',
+        salary_account_number: fileDetails.salary_account_number || '',
+        additional_income: fileDetails.additional_income || '',
+        additional_income_source: fileDetails.additional_income_source || '',
+        // Self-employed fields
+        business_name: fileDetails.business_name || '',
+        business_vintage: fileDetails.business_vintage || '',
+        annual_turnover: fileDetails.annual_turnover || '',
+        itr_filed_amount: fileDetails.itr_filed_amount || '',
+        
+        // Existing Obligations
+        cibil_score: fileDetails.cibil_score || '',
+        cibil_issues: fileDetails.cibil_issues || '',
         obligations_emi: fileDetails.obligations_emi || '',
+        foir: fileDetails.foir || '',
+        tvr_done: fileDetails.tvr_done || '',
+        tvr_not_done_reason: fileDetails.tvr_not_done_reason || '',
+        emi_ok: fileDetails.emi_ok || '',
+        emi_not_ok_reason: fileDetails.emi_not_ok_reason || '',
+        existing_loans: fileDetails.existing_loans || [],
         existing_loan_1: fileDetails.existing_loan_1 || '',
         existing_loan_2: fileDetails.existing_loan_2 || '',
         existing_loan_3: fileDetails.existing_loan_3 || '',
+        credit_card_count: fileDetails.credit_card_count || '',
+        total_cc_limit: fileDetails.total_cc_limit || '',
+        cc_outstanding: fileDetails.cc_outstanding || '',
+        cc_utilization: fileDetails.cc_utilization || '',
+        
+        // Loan Requirements
         type_of_loan: fileDetails.type_of_loan || data.requirement || '',
-        cibil_score: fileDetails.cibil_score || '',
         loan_amount_required: fileDetails.loan_amount_required || '',
-        tenure_required: fileDetails.tenure_required || ''
+        tenure_required: fileDetails.tenure_required || '',
+        loan_purpose: fileDetails.loan_purpose || '',
+        expected_roi: fileDetails.expected_roi || '',
+        expected_emi: fileDetails.expected_emi || '',
+        bt_amount: fileDetails.bt_amount || '',
+        current_roi: fileDetails.current_roi || '',
+        topup_amount: fileDetails.topup_amount || '',
+        property_value: fileDetails.property_value || '',
+        property_type: fileDetails.property_type || '',
+        property_location: fileDetails.property_location || '',
+        vehicle_type: fileDetails.vehicle_type || '',
+        vehicle_model: fileDetails.vehicle_model || '',
+        vehicle_year: fileDetails.vehicle_year || '',
+        requirement_notes: fileDetails.requirement_notes || '',
+        
+        // OLD CRM additional fields
+        pending_documents: data.pending_documents || fileDetails.pending_documents || '',
+        query_hold_reason: data.query_hold_reason || fileDetails.query_hold_reason || '',
+        documents_note: fileDetails.documents_note || '',
+        has_password_files: fileDetails.has_password_files || '',
+        file_passwords: fileDetails.file_passwords || ''
       });
       
       // Convert eligibilities to form format
@@ -155,27 +217,90 @@ const FileDetailsPage = () => {
   const handleSaveDetails = async () => {
     setSavingDetails(true);
     try {
+      // Build comprehensive additional_data object with all OLD CRM fields
+      const additionalData = {
+        // Personal Details
+        father_name: editedDetails.father_name,
+        mother_name: editedDetails.mother_name,
+        date_of_birth: editedDetails.date_of_birth,
+        pan_number: editedDetails.pan_number,
+        aadhaar_number: editedDetails.aadhaar_number,
+        current_address: editedDetails.current_address,
+        permanent_address: editedDetails.permanent_address,
+        pin_code: editedDetails.pin_code,
+        residence_type: editedDetails.residence_type,
+        years_at_current_address: editedDetails.years_at_current_address,
+        
+        // Employment Details
+        company_name: editedDetails.company_name,
+        company_type: editedDetails.company_type,
+        designation: editedDetails.designation,
+        office_address: editedDetails.office_address,
+        office_city: editedDetails.office_city,
+        office_pincode: editedDetails.office_pincode,
+        present_employment_months: editedDetails.present_employment_months,
+        total_employment_months: editedDetails.total_employment_months,
+        gross_salary: editedDetails.gross_salary,
+        net_salary: editedDetails.net_salary,
+        salary_bank_name: editedDetails.salary_bank_name,
+        salary_account_number: editedDetails.salary_account_number,
+        additional_income: editedDetails.additional_income,
+        additional_income_source: editedDetails.additional_income_source,
+        business_name: editedDetails.business_name,
+        business_vintage: editedDetails.business_vintage,
+        annual_turnover: editedDetails.annual_turnover,
+        itr_filed_amount: editedDetails.itr_filed_amount,
+        
+        // Existing Obligations
+        cibil_score: editedDetails.cibil_score,
+        cibil_issues: editedDetails.cibil_issues,
+        obligations_emi: editedDetails.obligations_emi,
+        foir: editedDetails.foir,
+        tvr_done: editedDetails.tvr_done,
+        tvr_not_done_reason: editedDetails.tvr_not_done_reason,
+        emi_ok: editedDetails.emi_ok,
+        emi_not_ok_reason: editedDetails.emi_not_ok_reason,
+        existing_loans: editedDetails.existing_loans,
+        existing_loan_1: editedDetails.existing_loan_1,
+        existing_loan_2: editedDetails.existing_loan_2,
+        existing_loan_3: editedDetails.existing_loan_3,
+        credit_card_count: editedDetails.credit_card_count,
+        total_cc_limit: editedDetails.total_cc_limit,
+        cc_outstanding: editedDetails.cc_outstanding,
+        cc_utilization: editedDetails.cc_utilization,
+        
+        // Loan Requirements
+        type_of_loan: editedDetails.type_of_loan,
+        loan_amount_required: editedDetails.loan_amount_required,
+        tenure_required: editedDetails.tenure_required,
+        loan_purpose: editedDetails.loan_purpose,
+        expected_roi: editedDetails.expected_roi,
+        expected_emi: editedDetails.expected_emi,
+        bt_amount: editedDetails.bt_amount,
+        current_roi: editedDetails.current_roi,
+        topup_amount: editedDetails.topup_amount,
+        property_value: editedDetails.property_value,
+        property_type: editedDetails.property_type,
+        property_location: editedDetails.property_location,
+        vehicle_type: editedDetails.vehicle_type,
+        vehicle_model: editedDetails.vehicle_model,
+        vehicle_year: editedDetails.vehicle_year,
+        requirement_notes: editedDetails.requirement_notes,
+        
+        // OLD CRM additional fields
+        pending_documents: editedDetails.pending_documents,
+        documents_note: editedDetails.documents_note,
+        has_password_files: editedDetails.has_password_files,
+        file_passwords: editedDetails.file_passwords
+      };
+      
       await api.put(`/files/${fileId}/details`, {
         full_name: editedDetails.full_name,
         mobile: editedDetails.mobile,
         email: editedDetails.email,
         city: editedDetails.city,
         employment_type: editedDetails.employment_type,
-        additional_data: {
-          mother_name: editedDetails.mother_name,
-          current_address: editedDetails.current_address,
-          company_name: editedDetails.company_name,
-          net_salary: editedDetails.net_salary,
-          office_address: editedDetails.office_address,
-          obligations_emi: editedDetails.obligations_emi,
-          existing_loan_1: editedDetails.existing_loan_1,
-          existing_loan_2: editedDetails.existing_loan_2,
-          existing_loan_3: editedDetails.existing_loan_3,
-          type_of_loan: editedDetails.type_of_loan,
-          cibil_score: editedDetails.cibil_score,
-          loan_amount_required: editedDetails.loan_amount_required,
-          tenure_required: editedDetails.tenure_required
-        }
+        additional_data: additionalData
       });
       toast.success('Details saved successfully');
       setIsEditingDetails(false);
