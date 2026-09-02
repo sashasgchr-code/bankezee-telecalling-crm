@@ -93,6 +93,12 @@ const FilesDashboard = () => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [pendingUsers, setPendingUsers] = useState([]);
+  
+  // Connect ID Mapping Modal State
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [mappingUser, setMappingUser] = useState(null);
+  const [connectIdInput, setConnectIdInput] = useState('');
+  const [isMapping, setIsMapping] = useState(false);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
@@ -284,6 +290,33 @@ const FilesDashboard = () => {
       fetchPendingUsers();
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to reject user');
+    }
+  };
+
+  const openMapModal = (userToMap) => {
+    setMappingUser(userToMap);
+    setConnectIdInput('');
+    setShowMapModal(true);
+  };
+
+  const handleMapConnectId = async () => {
+    if (!connectIdInput.trim()) {
+      toast.error('Please enter a Connect ID');
+      return;
+    }
+    
+    setIsMapping(true);
+    try {
+      await api.put(`/users/${mappingUser.id}/map-connect?connect_id=${connectIdInput.trim()}`);
+      toast.success(`${mappingUser.name} mapped to Connect ID successfully`);
+      setShowMapModal(false);
+      setMappingUser(null);
+      setConnectIdInput('');
+      fetchAllUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to map Connect ID');
+    } finally {
+      setIsMapping(false);
     }
   };
 
@@ -1391,9 +1424,12 @@ const FilesDashboard = () => {
                             ✓ Mapped
                           </span>
                         ) : (
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-700">
-                            Not Mapped
-                          </span>
+                          <button
+                            onClick={() => openMapModal(mapUser)}
+                            className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 cursor-pointer transition-colors"
+                          >
+                            Not Mapped ➔
+                          </button>
                         )}
                       </td>
                       <td className="px-4 py-3 text-center">
@@ -1420,6 +1456,74 @@ const FilesDashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Connect ID Mapping Modal */}
+      {showMapModal && mappingUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900">Map Connect ID</h3>
+                <button 
+                  onClick={() => setShowMapModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <XCircle size={24} />
+                </button>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <span className="font-medium">User:</span> {mappingUser.name}
+                </p>
+                <p className="text-sm text-blue-700">{mappingUser.email}</p>
+                <p className="text-xs text-blue-600 mt-1">Role: {mappingUser.role}</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Connect ID (UUID)
+                </label>
+                <input
+                  type="text"
+                  value={connectIdInput}
+                  onChange={(e) => setConnectIdInput(e.target.value)}
+                  placeholder="e.g., 698c182cb2efa8083454f81f"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                  autoFocus
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Enter the Connect app user ID to link accounts
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowMapModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleMapConnectId}
+                  disabled={isMapping || !connectIdInput.trim()}
+                  className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isMapping ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      Mapping...
+                    </>
+                  ) : (
+                    'Map Connect ID'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
