@@ -9,6 +9,16 @@ import {
 import api from '../../services/api';
 import { toast } from 'sonner';
 import { FILE_STATUS_OPTIONS } from '../../components/file-detail/FileStatusCard';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 
 // Status colors matching old CRM
 const FILE_STATUS_COLORS = {
@@ -112,9 +122,65 @@ const FilesDashboard = () => {
   const [mappingUser, setMappingUser] = useState(null);
   const [connectIdInput, setConnectIdInput] = useState('');
   const [isMapping, setIsMapping] = useState(false);
+  
+  // Delete confirmation state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [fileToDelete, setFileToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
+  
+  // Delete file handler
+  const handleDeleteFile = async () => {
+    if (!fileToDelete) return;
+    
+    setIsDeleting(true);
+    try {
+      await api.delete(`/api/files/${fileToDelete.id}`);
+      toast.success(`File "${fileToDelete.name}" deleted successfully`);
+      setDeleteConfirmOpen(false);
+      setFileToDelete(null);
+      // Refresh the files list
+      fetchFiles();
+      fetchStats();
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to delete file');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+  
+  // Bulk delete handler
+  const handleBulkDelete = async () => {
+    if (selectedFiles.length === 0) return;
+    
+    setIsDeleting(true);
+    try {
+      const response = await api.post('/api/files/bulk-delete', {
+        file_ids: selectedFiles
+      });
+      toast.success(`${response.data.deleted_count} files deleted successfully`);
+      setBulkDeleteConfirmOpen(false);
+      setSelectedFiles([]);
+      // Refresh the files list
+      fetchFiles();
+      fetchStats();
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      toast.error(error.response?.data?.detail || 'Failed to delete files');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+  
+  // Open delete confirmation
+  const openDeleteConfirm = (file) => {
+    setFileToDelete(file);
+    setDeleteConfirmOpen(true);
+  };
   
   // Calculate date range based on filter
   const getDateRange = () => {
@@ -1886,11 +1952,15 @@ const FilesDashboard = () => {
                         >
                           <Eye size={18} />
                         </button>
-                        <button 
-                          className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                          title="Delete"
-                        >
-                          <Trash2 size={18} />
+                        {isAdmin && (
+                          <button 
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                            onClick={() => openDeleteConfirm(file)}
+                            title="Delete File"
+                          >
+                            <Trash2 size={18} />
+                          </button>
+                        )}
                         </button>
                       </div>
                     </div>
@@ -2137,6 +2207,52 @@ const FilesDashboard = () => {
           </div>
         </div>
       )}
+      
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete File?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{fileToDelete?.name}"? 
+              This action cannot be undone. All related records (activities, documents, commissions) will also be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteFile}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={bulkDeleteConfirmOpen} onOpenChange={setBulkDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedFiles.length} Files?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedFiles.length} selected files? 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleBulkDelete}
+              disabled={isDeleting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isDeleting ? 'Deleting...' : `Delete ${selectedFiles.length} Files`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

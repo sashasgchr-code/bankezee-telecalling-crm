@@ -759,6 +759,259 @@ async def admin_get_monthly_attendance(
         "user_stats": list(user_stats.values())
     }
 
+
+@router.get("/admin/monthly-matrix")
+async def admin_get_monthly_matrix(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Get monthly attendance matrix for all employees (Admin only).
+    Returns a day-by-day breakdown for each employee.
+    
+    Codes:
+    P = Present
+    L = Late (with login time, e.g., "L 10:24")
+    W = Work From Home
+    A = Approved Leave
+    U = Uninformed Leave/Absence
+    - = Weekend/Non-working day
+    (empty) = Future date
+    """
+    import calendar
+    
+    ist_now = get_ist_now()
+    target_month = month or ist_now.month
+    target_year = year or ist_now.year
+    
+    days_in_month = calendar.monthrange(target_year, target_month)[1]
+    today = ist_now.date()
+    
+    month_start = datetime(target_year, target_month, 1, tzinfo=IST)
+    if target_month == 12:
+        month_end = datetime(target_year + 1, 1, 1, tzinfo=IST)
+    else:
+        month_end = datetime(target_year, target_month + 1, 1, tzinfo=IST)
+    
+    month_start_utc = month_start.astimezone(timezone.utc)
+    month_end_utc = month_end.astimezone(timezone.utc)
+    
+    query = {"attendance_date": {"$gte": month_start_utc, "$lt": month_end_utc}}
+    records = await db.attendance.find(query).to_list(length=5000)
+    
+    users = await db.users.find(
+        {"status": "active", "role": {"$in": ["sales_agent", "telecaller", "operations", "ops"]}},
+        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}
+    ).to_list(length=500)
+    
+    leave_records = await db.leave_requests.find({
+        "status": "approved",
+        "$or": [
+            {"start_date": {"$gte": month_start_utc, "$lt": month_end_utc}},
+            {"end_date": {"$gte": month_start_utc, "$lt": month_end_utc}}
+        ]
+    }).to_list(length=500)
+    
+    leave_by_user_date = {}
+    for leave in leave_records:
+        uid = leave.get("user_id")
+        start = leave.get("start_date")
+        end = leave.get("end_date")
+        if uid and start and end:
+            if isinstance(start, str):
+                start = datetime.fromisoformat(start.replace('Z', '+00:00'))
+            if isinstance(end, str):
+                end = datetime.fromisoformat(end.replace('Z', '+00:00'))
+            current = start
+            while current <= end:
+                date_str = current.strftime("%Y-%m-%d")
+                if uid not in leave_by_user_date:
+                    leave_by_user_date[uid] = {}
+                leave_by_user_date[uid][date_str] = leave.get("leave_type", "leave")
+                current += timedelta(days=1)
+    
+    attendance_by_user_date = {}
+    for rec in records:
+        uid = rec.get("user_id")
+        att_date = rec.get("attendance_date")
+        if uid and att_date:
+            if isinstance(att_date, datetime):
+                date_str = att_date.astimezone(IST).strftime("%Y-%m-%d")
+            else:
+                date_str = str(att_date)[:10]
+            if uid not in attendance_by_user_date:
+                attendance_by_user_date[uid] = {}
+            attendance_by_user_date[uid][date_str] = rec
+    
+    matrix_data = []
+    
+    for user in users:
+        uid = user.get("id")
+        user_name = user.get("full_name") or user.get("name") or user.get("email", "Unknown")
+        
+        days = {}
+        summary = {"present": 0, "late": 0, "wfh": 0, "leave": 0, "absent": 0, "working_days": 0}
+        
+        for day in range(1, days_in_month + 1):
+            current_date = date(target_year, target_month, day)
+            date_str = current_date.strftime("%Y-%m-%d")
+            day_of_week = current_date.weekday()
+            
+            is_weekend = day_of_week in [5, 6]
+            is_future = current_date > today
+            
+            if is_future:
+                days[day] = {"code": "", "detail": "Future"}
+            elif is_weekend:
+                days[day] = {"code": "-", "detail": "Weekend"}
+            else:
+                summary["working_days"] += 1
+                
+                if uid in attendance_by_user_date and date_str in attendance_by_user_date[uid]:
+                    rec = attendance_by_user_date[uid][date_str]
+                    status = rec.get("attendance_status", "")
+                    work_mode = rec.get("work_mode", "")
+                    check_in = rec.get("check_in_time")
+                    
+                    if work_mode == "WORK_FROM_HOME":
+                        days[day] = {"code": "W", "detail": "Work From Home"}
+                        summary["wfh"] += 1
+                        summary["present"] += 1
+                    elif status == "LATE":
+                        time_str = ""
+                        if check_in:
+                            check_in_ist = utc_to_ist(check_in)
+                            time_str = check_in_ist.strftime("%H:%M") if check_in_ist else ""
+                        days[day] = {"code": f"L {time_str}".strip(), "detail": f"Late ({time_str})"}
+                        summary["late"] += 1
+                        summary["present"] += 1
+                    elif status in ["PRESENT", "HALF_DAY"]:
+                        days[day] = {"code": "P", "detail": "Present"}
+                        summary["present"] += 1
+                    elif status == "ON_LEAVE":
+                        days[day] = {"code": "A", "detail": "Approved Leave"}
+                        summary["leave"] += 1
+                    else:
+                        days[day] = {"code": "P", "detail": "Present"}
+                        summary["present"] += 1
+                elif uid in leave_by_user_date and date_str in leave_by_user_date[uid]:
+                    days[day] = {"code": "A", "detail": "Approved Leave"}
+                    summary["leave"] += 1
+                else:
+                    days[day] = {"code": "U", "detail": "Uninformed Absence"}
+                    summary["absent"] += 1
+        
+        if summary["working_days"] > 0:
+            summary["attendance_percentage"] = round((summary["present"] / summary["working_days"]) * 100, 1)
+        else:
+            summary["attendance_percentage"] = 0
+        
+        matrix_data.append({"user_id": uid, "user_name": user_name, "days": days, "summary": summary})
+    
+    return {"month": target_month, "year": target_year, "days_in_month": days_in_month, "matrix": matrix_data}
+
+
+@router.get("/my/monthly-matrix")
+async def get_my_monthly_matrix(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get monthly attendance matrix for the current user (Growth Partner view)."""
+    import calendar
+    
+    ist_now = get_ist_now()
+    target_month = month or ist_now.month
+    target_year = year or ist_now.year
+    uid = current_user.get("id")
+    
+    days_in_month = calendar.monthrange(target_year, target_month)[1]
+    today = ist_now.date()
+    
+    month_start = datetime(target_year, target_month, 1, tzinfo=IST)
+    if target_month == 12:
+        month_end = datetime(target_year + 1, 1, 1, tzinfo=IST)
+    else:
+        month_end = datetime(target_year, target_month + 1, 1, tzinfo=IST)
+    
+    month_start_utc = month_start.astimezone(timezone.utc)
+    month_end_utc = month_end.astimezone(timezone.utc)
+    
+    records = await db.attendance.find({
+        "user_id": uid,
+        "attendance_date": {"$gte": month_start_utc, "$lt": month_end_utc}
+    }).to_list(length=50)
+    
+    leave_records = await db.leave_requests.find({
+        "user_id": uid, "status": "approved",
+        "$or": [
+            {"start_date": {"$gte": month_start_utc, "$lt": month_end_utc}},
+            {"end_date": {"$gte": month_start_utc, "$lt": month_end_utc}}
+        ]
+    }).to_list(length=50)
+    
+    attendance_by_date = {}
+    for rec in records:
+        att_date = rec.get("attendance_date")
+        if att_date:
+            date_str = att_date.astimezone(IST).strftime("%Y-%m-%d") if isinstance(att_date, datetime) else str(att_date)[:10]
+            attendance_by_date[date_str] = rec
+    
+    leave_by_date = {}
+    for leave in leave_records:
+        start, end = leave.get("start_date"), leave.get("end_date")
+        if start and end:
+            if isinstance(start, str): start = datetime.fromisoformat(start.replace('Z', '+00:00'))
+            if isinstance(end, str): end = datetime.fromisoformat(end.replace('Z', '+00:00'))
+            current = start
+            while current <= end:
+                leave_by_date[current.strftime("%Y-%m-%d")] = leave.get("leave_type", "leave")
+                current += timedelta(days=1)
+    
+    days = {}
+    summary = {"present": 0, "late": 0, "wfh": 0, "leave": 0, "absent": 0, "working_days": 0}
+    
+    for day in range(1, days_in_month + 1):
+        current_date = date(target_year, target_month, day)
+        date_str = current_date.strftime("%Y-%m-%d")
+        is_weekend = current_date.weekday() in [5, 6]
+        is_future = current_date > today
+        
+        if is_future:
+            days[day] = {"code": "", "detail": "Future"}
+        elif is_weekend:
+            days[day] = {"code": "-", "detail": "Weekend"}
+        else:
+            summary["working_days"] += 1
+            if date_str in attendance_by_date:
+                rec = attendance_by_date[date_str]
+                status, work_mode, check_in = rec.get("attendance_status", ""), rec.get("work_mode", ""), rec.get("check_in_time")
+                if work_mode == "WORK_FROM_HOME":
+                    days[day] = {"code": "W", "detail": "Work From Home"}
+                    summary["wfh"] += 1; summary["present"] += 1
+                elif status == "LATE":
+                    time_str = utc_to_ist(check_in).strftime("%H:%M") if check_in else ""
+                    days[day] = {"code": f"L {time_str}".strip(), "detail": f"Late ({time_str})"}
+                    summary["late"] += 1; summary["present"] += 1
+                elif status in ["PRESENT", "HALF_DAY"]:
+                    days[day] = {"code": "P", "detail": "Present"}; summary["present"] += 1
+                elif status == "ON_LEAVE":
+                    days[day] = {"code": "A", "detail": "Approved Leave"}; summary["leave"] += 1
+                else:
+                    days[day] = {"code": "P", "detail": "Present"}; summary["present"] += 1
+            elif date_str in leave_by_date:
+                days[day] = {"code": "A", "detail": "Approved Leave"}; summary["leave"] += 1
+            else:
+                days[day] = {"code": "U", "detail": "Uninformed Absence"}; summary["absent"] += 1
+    
+    summary["attendance_percentage"] = round((summary["present"] / summary["working_days"]) * 100, 1) if summary["working_days"] > 0 else 0
+    
+    return {"month": target_month, "year": target_year, "days_in_month": days_in_month, 
+            "user_name": current_user.get("full_name", current_user.get("name", "Unknown")), "days": days, "summary": summary}
+
+
+
 @router.patch("/admin/record/{attendance_id}")
 async def admin_correct_attendance(
     attendance_id: str,

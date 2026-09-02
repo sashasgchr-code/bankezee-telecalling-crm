@@ -1534,6 +1534,101 @@ async def delete_commission(commission_id: str, current_user: dict = Depends(req
     return {"message": "Commission deleted"}
 
 
+# ============ FILE DELETE - ADMIN ONLY ============
+
+@router.delete("/{file_id}")
+async def delete_file(file_id: str, current_user: dict = Depends(require_admin)):
+    """
+    Delete a file/lead record - Admin only.
+    Also cleans up related records (activities, documents, commissions).
+    """
+    # Verify file exists
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    if not file_doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Delete the file
+    result = await db.leads.delete_one({"id": file_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="File not found or already deleted")
+    
+    # Clean up related records
+    # Delete related commissions
+    await db.commissions.delete_many({"lead_id": file_id})
+    
+    # Delete related activity logs
+    await db.activity_logs.delete_many({"lead_id": file_id})
+    
+    # Log the deletion
+    await db.activity_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "file_deleted",
+        "message": f"File '{file_doc.get('name', 'Unknown')}' deleted by {current_user.get('full_name', current_user.get('email', 'Admin'))}",
+        "deleted_file_id": file_id,
+        "deleted_file_name": file_doc.get('name'),
+        "user_id": current_user.get('id'),
+        "user_name": current_user.get('full_name', current_user.get('email')),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {
+        "success": True,
+        "message": f"File '{file_doc.get('name', 'Unknown')}' deleted successfully",
+        "deleted_id": file_id
+    }
+
+
+# ============ BULK FILE DELETE - ADMIN ONLY ============
+
+class BulkDeleteRequest(BaseModel):
+    file_ids: List[str]
+
+@router.post("/bulk-delete")
+async def bulk_delete_files(request: BulkDeleteRequest, current_user: dict = Depends(require_admin)):
+    """
+    Bulk delete multiple files - Admin only.
+    """
+    if not request.file_ids:
+        raise HTTPException(status_code=400, detail="No file IDs provided")
+    
+    if len(request.file_ids) > 100:
+        raise HTTPException(status_code=400, detail="Maximum 100 files can be deleted at once")
+    
+    deleted_count = 0
+    errors = []
+    
+    for file_id in request.file_ids:
+        try:
+            result = await db.leads.delete_one({"id": file_id})
+            if result.deleted_count > 0:
+                deleted_count += 1
+                # Clean up related records
+                await db.commissions.delete_many({"lead_id": file_id})
+                await db.activity_logs.delete_many({"lead_id": file_id})
+        except Exception as e:
+            errors.append(f"{file_id}: {str(e)}")
+    
+    # Log bulk deletion
+    await db.activity_logs.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "bulk_file_deleted",
+        "message": f"{deleted_count} files deleted by {current_user.get('full_name', current_user.get('email', 'Admin'))}",
+        "deleted_count": deleted_count,
+        "user_id": current_user.get('id'),
+        "user_name": current_user.get('full_name', current_user.get('email')),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {
+        "success": True,
+        "deleted_count": deleted_count,
+        "errors": errors if errors else None
+    }
+
+
 # ============ FILE BY ID ROUTES ============
 # These must be after literal routes like /reports, /import, /export, /policies
 
