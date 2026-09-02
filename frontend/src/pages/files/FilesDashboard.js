@@ -87,6 +87,9 @@ const FilesDashboard = () => {
   const [rejectedBankSummary, setRejectedBankSummary] = useState([]);
   const [rejectedTotals, setRejectedTotals] = useState({});
   const [qualityData, setQualityData] = useState(null);
+  const [showCommissionReport, setShowCommissionReport] = useState(false);
+  const [commissionData, setCommissionData] = useState(null);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -374,6 +377,54 @@ const FilesDashboard = () => {
       console.error('Failed to fetch quality report:', error);
     }
   };
+
+  // Fetch Commission Report
+  const fetchCommissionReport = async () => {
+    try {
+      const response = await api.get('/files/commissions');
+      setCommissionData(response.data);
+    } catch (error) {
+      console.error('Failed to fetch commission report:', error);
+      toast.error('Failed to load commission report');
+    }
+  };
+
+  // Export handlers
+  const handleExportDashboard = async () => {
+    try {
+      window.open(`${process.env.REACT_APP_BACKEND_URL}/api/files/export/dashboard`, '_blank');
+      toast.success('Dashboard export started');
+    } catch (error) {
+      toast.error('Export failed');
+    }
+  };
+
+  const handleExportRejected = async () => {
+    try {
+      window.open(`${process.env.REACT_APP_BACKEND_URL}/api/files/export/rejected`, '_blank');
+      toast.success('Rejected cases export started');
+    } catch (error) {
+      toast.error('Export failed');
+    }
+  };
+
+  const handleExportGrowthPartner = async () => {
+    try {
+      window.open(`${process.env.REACT_APP_BACKEND_URL}/api/files/export/growth-partner`, '_blank');
+      toast.success('Growth Partner export started');
+    } catch (error) {
+      toast.error('Export failed');
+    }
+  };
+
+  const handleExportCommissions = async () => {
+    try {
+      window.open(`${process.env.REACT_APP_BACKEND_URL}/api/files/export/commissions`, '_blank');
+      toast.success('Commission export started');
+    } catch (error) {
+      toast.error('Export failed');
+    }
+  };
   
   const fetchAllUsers = async () => {
     try {
@@ -540,45 +591,6 @@ const FilesDashboard = () => {
     toast.success('TAT Metrics report exported');
   };
 
-  // Export Growth Partner Report to CSV
-  const handleExportGrowthPartner = () => {
-    if (!growthPartner?.agents?.length) {
-      toast.error('No data to export');
-      return;
-    }
-    const headers = ['Partner Name', 'Files Generated', 'Logins', 'Approvals', 'Approved Amount', 'Disbursals', 'Disbursed Amount'];
-    const rows = growthPartner.agents.map(a => [
-      a.agent_name || '',
-      a.files_generated || 0,
-      a.logins || 0,
-      a.approvals || 0,
-      a.approved_amount || 0,
-      a.disbursals || 0,
-      a.disbursed_amount || 0
-    ]);
-    // Add totals row
-    if (growthPartner.totals) {
-      rows.push([
-        'TOTAL',
-        growthPartner.totals.files_generated || 0,
-        growthPartner.totals.logins || 0,
-        growthPartner.totals.approvals || 0,
-        growthPartner.totals.approved_amount || 0,
-        growthPartner.totals.disbursals || 0,
-        growthPartner.totals.disbursed_amount || 0
-      ]);
-    }
-    
-    const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `growth_partner_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    toast.success('Growth Partner report exported');
-  };
-
   const toggleFileSelection = (fileId) => {
     setSelectedFiles(prev => 
       prev.includes(fileId) ? prev.filter(id => id !== fileId) : [...prev, fileId]
@@ -727,10 +739,42 @@ const FilesDashboard = () => {
             </button>
             {isAdmin && (
               <>
-                <button onClick={handleExportCSV} className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap">
-                  <Download size={14} />
-                  <span className="hidden sm:inline">Export</span>
+                <button 
+                  onClick={() => setShowCommissionReport(!showCommissionReport)}
+                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showCommissionReport ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100'}`}
+                >
+                  <DollarSign size={14} />
+                  <span className="hidden sm:inline">Commission</span>
                 </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"
+                  >
+                    <Download size={14} />
+                    <span className="hidden sm:inline">Export</span>
+                    <ChevronDown size={12} />
+                  </button>
+                  {showExportMenu && (
+                    <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[180px]">
+                      <button onClick={() => { handleExportCSV(); setShowExportMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                        <FileText size={14} /> All Files (CSV)
+                      </button>
+                      <button onClick={() => { handleExportDashboard(); setShowExportMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                        <BarChart3 size={14} /> Dashboard Export
+                      </button>
+                      <button onClick={() => { handleExportRejected(); setShowExportMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                        <XCircle size={14} /> Rejected Cases
+                      </button>
+                      <button onClick={() => { handleExportGrowthPartner(); setShowExportMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                        <Users size={14} /> Growth Partner
+                      </button>
+                      <button onClick={() => { handleExportCommissions(); setShowExportMenu(false); }} className="w-full px-4 py-2 text-left text-sm hover:bg-gray-50 flex items-center gap-2">
+                        <DollarSign size={14} /> Commissions
+                      </button>
+                    </div>
+                  )}
+                </div>
                 <button 
                   onClick={() => navigate('/admin/files/migrate')}
                   className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-orange-50 text-orange-600 border border-orange-200 rounded-lg hover:bg-orange-100 flex items-center gap-1 whitespace-nowrap"
@@ -1386,6 +1430,119 @@ const FilesDashboard = () => {
                 </div>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Commission Report Panel */}
+        {showCommissionReport && (
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden" data-testid="commission-report-panel">
+            <div className="px-4 py-3 border-b border-gray-200 bg-emerald-50">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <DollarSign size={18} className="text-emerald-600" />
+                  <h3 className="font-semibold text-gray-900">Commission Report</h3>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleExportCommissions}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 bg-white"
+                  >
+                    <Download size={14} />
+                    Export
+                  </button>
+                  <button onClick={() => setShowCommissionReport(false)} className="text-gray-400 hover:text-gray-600">
+                    <XCircle size={18} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {!commissionData ? (
+              <div className="p-8 flex items-center justify-center">
+                <button 
+                  onClick={fetchCommissionReport}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
+                >
+                  Load Commission Data
+                </button>
+              </div>
+            ) : (
+              <div className="p-4">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                  <div className="bg-emerald-50 rounded-lg p-4 text-center">
+                    <p className="text-2xl font-bold text-emerald-600">₹{(commissionData.total_amount / 100000).toFixed(1)}L</p>
+                    <p className="text-sm text-gray-600">Total Commission</p>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-4 text-center">
+                    <p className="text-2xl font-bold text-blue-600">{commissionData.total}</p>
+                    <p className="text-sm text-gray-600">Records</p>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-4 text-center">
+                    <p className="text-2xl font-bold text-purple-600">{commissionData.by_growth_partner?.length || 0}</p>
+                    <p className="text-sm text-gray-600">Growth Partners</p>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-4 text-center">
+                    <p className="text-2xl font-bold text-orange-600">{commissionData.by_bank?.length || 0}</p>
+                    <p className="text-sm text-gray-600">Banks</p>
+                  </div>
+                </div>
+
+                {/* By Growth Partner Table */}
+                <div className="mb-6">
+                  <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                    <Users size={16} /> Commission by Growth Partner
+                  </h4>
+                  <div className="overflow-x-auto max-h-60">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-gray-700">Growth Partner</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-700">Amount</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-700">Count</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(commissionData.by_growth_partner || []).slice(0, 10).map((gp, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 font-medium text-gray-900">{gp.source_name}</td>
+                            <td className="px-4 py-2 text-right text-emerald-600 font-medium">₹{gp.total_amount.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{gp.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                {/* By Bank Table */}
+                <div>
+                  <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
+                    <Building2 size={16} /> Commission by Bank
+                  </h4>
+                  <div className="overflow-x-auto max-h-48">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="px-4 py-2 text-left font-medium text-gray-700">Bank</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-700">Amount</th>
+                          <th className="px-4 py-2 text-right font-medium text-gray-700">Count</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {(commissionData.by_bank || []).slice(0, 10).map((bank, idx) => (
+                          <tr key={idx} className="hover:bg-gray-50">
+                            <td className="px-4 py-2 font-medium text-gray-900">{bank.bank_name}</td>
+                            <td className="px-4 py-2 text-right text-emerald-600 font-medium">₹{bank.total_amount.toLocaleString()}</td>
+                            <td className="px-4 py-2 text-right text-gray-600">{bank.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

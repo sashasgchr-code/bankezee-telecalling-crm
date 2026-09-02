@@ -1308,6 +1308,232 @@ async def check_eligibility(lead_data: dict, current_user: dict = Depends(get_cu
     }
 
 
+# ============ COMMISSION MODULE - OLD CRM PORT ============
+
+class CommissionCreate(BaseModel):
+    lead_id: str
+    source_id: str  # Growth Partner ID
+    source_type: str = "agent"
+    amount: float
+    commission_type: Optional[str] = None  # login, approval, disbursal
+    bank_name: Optional[str] = None
+    disbursal_amount: Optional[float] = None
+    commission_percentage: Optional[float] = None
+    notes: Optional[str] = None
+
+class CommissionUpdate(BaseModel):
+    amount: Optional[float] = None
+    commission_type: Optional[str] = None
+    bank_name: Optional[str] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None  # pending, approved, paid
+
+
+@router.get("/commissions")
+async def get_commissions(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    source_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get commission records with filters - Admin/Ops reporting
+    
+    Returns:
+    - Individual commission records
+    - Aggregated totals by Growth Partner
+    - Aggregated totals by Bank
+    """
+    from datetime import datetime, timezone
+    
+    # Build filter
+    query = {}
+    
+    if source_id:
+        query["source_id"] = source_id
+    
+    if status:
+        query["status"] = status
+    
+    # Date filter
+    if start_date or end_date:
+        date_filter = {}
+        if start_date:
+            try:
+                date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                date_filter["$gte"] = date_start.isoformat()
+            except (ValueError, TypeError):
+                pass
+        if end_date:
+            try:
+                date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                date_filter["$lte"] = date_end.isoformat()
+            except (ValueError, TypeError):
+                pass
+        if date_filter:
+            query["created_at"] = date_filter
+    
+    # Get commission records
+    commissions = await db.commissions.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    
+    # Get user names for source_id mapping
+    users = await db.users.find({}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}).to_list(1000)
+    user_map = {u.get('id'): u.get('full_name') or u.get('name') or u.get('email', '').split('@')[0] for u in users}
+    
+    # Aggregate by Growth Partner
+    gp_totals = {}
+    bank_totals = {}
+    
+    for c in commissions:
+        # By Growth Partner
+        gp_id = c.get('source_id')
+        if gp_id:
+            if gp_id not in gp_totals:
+                # Prefer persisted source_name, fallback to user lookup, then ID
+                persisted_name = c.get('source_name')
+                gp_totals[gp_id] = {
+                    'source_id': gp_id,
+                    'source_name': persisted_name or user_map.get(gp_id, gp_id),
+                    'total_amount': 0,
+                    'count': 0
+                }
+            gp_totals[gp_id]['total_amount'] += c.get('amount', 0)
+            gp_totals[gp_id]['count'] += 1
+        
+        # By Bank
+        bank = c.get('bank_name', 'Unknown')
+        if bank not in bank_totals:
+            bank_totals[bank] = {
+                'bank_name': bank,
+                'total_amount': 0,
+                'count': 0
+            }
+        bank_totals[bank]['total_amount'] += c.get('amount', 0)
+        bank_totals[bank]['count'] += 1
+    
+    # Add source names to commission records
+    # Prefer persisted source_name, fallback to dynamic lookup
+    for c in commissions:
+        if not c.get('source_name'):
+            c['source_name'] = user_map.get(c.get('source_id'), c.get('source_id'))
+    
+    return {
+        "commissions": commissions,
+        "total": len(commissions),
+        "total_amount": sum(c.get('amount', 0) for c in commissions),
+        "by_growth_partner": sorted(gp_totals.values(), key=lambda x: -x['total_amount']),
+        "by_bank": sorted(bank_totals.values(), key=lambda x: -x['total_amount']),
+        "date_range": {
+            "start_date": start_date,
+            "end_date": end_date
+        }
+    }
+
+
+@router.get("/commissions/summary")
+async def get_commission_summary(current_user: dict = Depends(get_current_user)):
+    """Get commission summary for dashboard"""
+    
+    # Get all commissions
+    commissions = await db.commissions.find({}, {"_id": 0}).to_list(10000)
+    
+    total_amount = sum(c.get('amount', 0) for c in commissions)
+    total_count = len(commissions)
+    
+    # Get pending commissions (from eligibilities where disbursed but commission not recorded)
+    pipeline = [
+        {"$match": {"status": "file", "eligibilities.disbursed": True}},
+        {"$unwind": "$eligibilities"},
+        {"$match": {"eligibilities.disbursed": True}},
+        {"$group": {
+            "_id": None,
+            "pending_count": {"$sum": 1},
+            "pending_amount": {"$sum": {"$ifNull": ["$eligibilities.disbursed_amount", 0]}}
+        }}
+    ]
+    
+    pending_result = await db.leads.aggregate(pipeline).to_list(1)
+    pending_data = pending_result[0] if pending_result else {"pending_count": 0, "pending_amount": 0}
+    
+    return {
+        "total_paid": total_amount,
+        "total_count": total_count,
+        "pending_count": pending_data.get("pending_count", 0),
+        "pending_estimated": pending_data.get("pending_amount", 0) * 0.02  # Estimate 2% commission
+    }
+
+
+@router.post("/commissions")
+async def create_commission(commission: CommissionCreate, current_user: dict = Depends(require_admin)):
+    """Create a new commission record - Admin only"""
+    
+    # Snapshot source_name at creation time to persist even if user is deleted later
+    source_name = None
+    if commission.source_id:
+        user = await db.users.find_one({"id": commission.source_id}, {"_id": 0, "full_name": 1, "name": 1, "email": 1})
+        if user:
+            source_name = user.get('full_name') or user.get('name') or user.get('email', '').split('@')[0]
+        else:
+            source_name = commission.source_id  # Fallback to ID if user not found
+    
+    commission_doc = {
+        "id": str(uuid.uuid4()),
+        **commission.dict(),
+        "source_name": source_name,  # Persisted snapshot
+        "status": "pending",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": current_user["id"]
+    }
+    
+    await db.commissions.insert_one(commission_doc)
+    
+    # Also update the eligibility record if lead_id and bank_name provided
+    if commission.lead_id and commission.bank_name:
+        await db.leads.update_one(
+            {"id": commission.lead_id, "eligibilities.bank_name": commission.bank_name},
+            {
+                "$set": {
+                    "eligibilities.$.commission_amount": commission.amount,
+                    "eligibilities.$.commission_percentage": commission.commission_percentage
+                }
+            }
+        )
+    
+    return {"message": "Commission created", "id": commission_doc["id"]}
+
+
+@router.put("/commissions/{commission_id}")
+async def update_commission(commission_id: str, update: CommissionUpdate, current_user: dict = Depends(require_admin)):
+    """Update commission record - Admin only"""
+    
+    update_data = {k: v for k, v in update.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = current_user["id"]
+    
+    result = await db.commissions.update_one(
+        {"id": commission_id},
+        {"$set": update_data}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Commission not found")
+    
+    return {"message": "Commission updated"}
+
+
+@router.delete("/commissions/{commission_id}")
+async def delete_commission(commission_id: str, current_user: dict = Depends(require_admin)):
+    """Delete commission record - Admin only"""
+    
+    result = await db.commissions.delete_one({"id": commission_id})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Commission not found")
+    
+    return {"message": "Commission deleted"}
+
+
 # ============ FILE BY ID ROUTES ============
 # These must be after literal routes like /reports, /import, /export, /policies
 
@@ -2505,3 +2731,617 @@ async def get_growth_partner_report(
         }
     }
 
+
+
+
+# ============ ELIGIBILITY CALCULATION - POLICY MASTER INTEGRATION ============
+
+@router.post("/{file_id}/check-eligibility")
+async def check_bank_eligibility(file_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Automatically check eligibility against all bank policies
+    Uses Policy Master rules to calculate eligibility per bank
+    """
+    
+    # Get file details
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    if not file_doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    file_details = file_doc.get("file_details") or file_doc.get("additional_data") or {}
+    
+    # Get all active policies
+    policies = await db.bank_policies.find({"is_active": True}, {"_id": 0}).to_list(100)
+    
+    # Extract customer data
+    cibil = None
+    try:
+        cibil = int(file_details.get("cibil_score") or 0)
+    except (ValueError, TypeError):
+        pass
+    
+    net_salary = None
+    try:
+        net_salary = float(file_details.get("net_salary") or 0)
+    except (ValueError, TypeError):
+        pass
+    
+    loan_amount = None
+    try:
+        loan_amount = float(file_details.get("loan_amount_required") or 0)
+    except (ValueError, TypeError):
+        pass
+    
+    foir = None
+    try:
+        foir = float(file_details.get("foir") or 0)
+    except (ValueError, TypeError):
+        pass
+    
+    employment_type = file_details.get("employment_type") or file_doc.get("employment_type") or "salaried"
+    age = None
+    try:
+        dob = file_details.get("date_of_birth")
+        if dob:
+            from datetime import date
+            birth_date = datetime.strptime(dob, "%Y-%m-%d").date()
+            today = date.today()
+            age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+    except (ValueError, TypeError, AttributeError):
+        pass
+    
+    present_emp_months = None
+    try:
+        present_emp_months = int(file_details.get("present_employment_months") or 0)
+    except (ValueError, TypeError):
+        pass
+    
+    total_emp_months = None
+    try:
+        total_emp_months = int(file_details.get("total_employment_months") or 0)
+    except (ValueError, TypeError):
+        pass
+    
+    loan_type = file_details.get("type_of_loan") or file_doc.get("requirement")
+    
+    # Check eligibility against each policy
+    eligibility_results = []
+    
+    for policy in policies:
+        bank_name = policy.get("bank_name")
+        is_eligible = True
+        reasons = []
+        eligible_amount = loan_amount
+        
+        # Check applicable profiles
+        applicable = policy.get("applicable_profiles", "salaried")
+        if applicable == "salaried" and employment_type != "salaried":
+            is_eligible = False
+            reasons.append("Only salaried profiles accepted")
+        elif applicable == "self_employed" and employment_type not in ["self_employed", "business"]:
+            is_eligible = False
+            reasons.append("Only self-employed profiles accepted")
+        
+        # Check CIBIL
+        min_cibil = policy.get("min_cibil")
+        if min_cibil and cibil:
+            if cibil < min_cibil:
+                is_eligible = False
+                reasons.append(f"CIBIL {cibil} below minimum {min_cibil}")
+        
+        # Check Salary
+        min_salary = policy.get("min_salary")
+        if min_salary and net_salary:
+            if net_salary < min_salary:
+                is_eligible = False
+                reasons.append(f"Salary ₹{net_salary} below minimum ₹{min_salary}")
+        
+        # Check FOIR
+        max_foir = policy.get("max_foir")
+        if max_foir and foir:
+            if foir > max_foir:
+                is_eligible = False
+                reasons.append(f"FOIR {foir}% exceeds maximum {max_foir}%")
+        
+        # Check Age
+        min_age = policy.get("min_age")
+        max_age = policy.get("max_age")
+        if age:
+            if min_age and age < min_age:
+                is_eligible = False
+                reasons.append(f"Age {age} below minimum {min_age}")
+            if max_age and age > max_age:
+                is_eligible = False
+                reasons.append(f"Age {age} exceeds maximum {max_age}")
+        
+        # Check Employment Duration
+        min_present = policy.get("min_present_employment_months")
+        min_total = policy.get("min_total_employment_months")
+        if min_present and present_emp_months:
+            if present_emp_months < min_present:
+                is_eligible = False
+                reasons.append(f"Present employment {present_emp_months} months below minimum {min_present}")
+        if min_total and total_emp_months:
+            if total_emp_months < min_total:
+                is_eligible = False
+                reasons.append(f"Total employment {total_emp_months} months below minimum {min_total}")
+        
+        # Check Loan Type
+        policy_loan_types = policy.get("loan_types", [])
+        if policy_loan_types and loan_type:
+            if loan_type not in policy_loan_types:
+                is_eligible = False
+                reasons.append(f"Loan type {loan_type} not offered by this bank")
+        
+        # Check Loan Amount Range
+        min_loan = policy.get("min_loan_amount")
+        max_loan = policy.get("max_loan_amount")
+        if loan_amount:
+            if min_loan and loan_amount < min_loan:
+                is_eligible = False
+                reasons.append(f"Loan amount ₹{loan_amount} below minimum ₹{min_loan}")
+            if max_loan and loan_amount > max_loan:
+                eligible_amount = max_loan
+                if is_eligible:
+                    reasons.append(f"Capped at max ₹{max_loan}")
+        
+        # Calculate estimated eligible amount based on salary and FOIR
+        if is_eligible and net_salary and net_salary > 0:
+            available_foir = (max_foir or 50) - (foir or 0)
+            if available_foir > 0:
+                monthly_emi_capacity = (net_salary * available_foir / 100)
+                # Rough estimate: 5 year tenure, 12% ROI
+                estimated_amount = monthly_emi_capacity * 45  # Approximate multiplier
+                if estimated_amount < eligible_amount:
+                    eligible_amount = estimated_amount
+        
+        eligibility_results.append({
+            "bank_name": bank_name,
+            "is_eligible": is_eligible,
+            "eligible_amount": round(eligible_amount) if eligible_amount else None,
+            "not_eligible_reason": "; ".join(reasons) if reasons else None,
+            "policy_notes": policy.get("special_notes"),
+            "roi_range": policy.get("roi_text") or (f"{policy.get('roi_min')}-{policy.get('roi_max')}%" if policy.get("roi_min") else None)
+        })
+    
+    # Sort: eligible first, then by eligible amount
+    eligibility_results.sort(key=lambda x: (not x["is_eligible"], -(x.get("eligible_amount") or 0)))
+    
+    # Update file with eligibility results
+    existing_eligibilities = file_doc.get("eligibilities") or []
+    existing_banks = {e.get("bank_name") for e in existing_eligibilities}
+    
+    for result in eligibility_results:
+        if result["bank_name"] not in existing_banks:
+            existing_eligibilities.append({
+                "bank_name": result["bank_name"],
+                "is_eligible": result["is_eligible"],
+                "eligible_amount": result["eligible_amount"],
+                "not_eligible_reason": result["not_eligible_reason"],
+                "login_done": False,
+                "approval_status": None,
+                "disbursed": False,
+                "checked_at": datetime.now(timezone.utc).isoformat()
+            })
+    
+    await db.leads.update_one(
+        {"id": file_id},
+        {
+            "$set": {
+                "eligibilities": existing_eligibilities,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            "$push": {
+                "file_activities": {
+                    "type": "eligibility_check",
+                    "message": f"Eligibility checked against {len(policies)} banks. {sum(1 for r in eligibility_results if r['is_eligible'])} eligible.",
+                    "by": current_user["id"],
+                    "by_name": current_user.get("name", "Unknown"),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "details": {
+                        "eligible_count": sum(1 for r in eligibility_results if r["is_eligible"]),
+                        "not_eligible_count": sum(1 for r in eligibility_results if not r["is_eligible"])
+                    }
+                }
+            }
+        }
+    )
+    
+    return {
+        "results": eligibility_results,
+        "eligible_count": sum(1 for r in eligibility_results if r["is_eligible"]),
+        "not_eligible_count": sum(1 for r in eligibility_results if not r["is_eligible"]),
+        "customer_data": {
+            "cibil": cibil,
+            "net_salary": net_salary,
+            "loan_amount": loan_amount,
+            "foir": foir,
+            "employment_type": employment_type,
+            "age": age
+        }
+    }
+
+
+# ============ EXPORT REPORTS - PDF/CSV ============
+
+@router.get("/export/dashboard")
+async def export_dashboard_csv(current_user: dict = Depends(get_current_user)):
+    """Export dashboard data as CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    import csv
+    
+    # Get all files
+    files = await db.leads.find(
+        {"status": "file"},
+        {"_id": 0, "id": 1, "name": 1, "phone": 1, "email": 1, "city": 1, "file_status": 1, 
+         "source_id": 1, "created_at": 1, "file_details": 1, "eligibilities": 1}
+    ).to_list(10000)
+    
+    # Create CSV
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "File ID", "Name", "Phone", "Email", "City", "Status", "Loan Type", 
+        "Loan Amount", "CIBIL", "Created Date", "Banks Applied", "Approved Amount", "Disbursed Amount"
+    ])
+    
+    for f in files:
+        fd = f.get("file_details") or {}
+        eligibilities = f.get("eligibilities") or []
+        banks = [e.get("bank_name") for e in eligibilities if e.get("bank_name")]
+        approved_amt = sum(float(e.get("approved_amount") or 0) for e in eligibilities if e.get("approval_status") == "approved")
+        disbursed_amt = sum(float(e.get("disbursed_amount") or 0) for e in eligibilities if e.get("disbursed") == True)
+        
+        writer.writerow([
+            f.get("id", ""),
+            f.get("name", ""),
+            f.get("phone", ""),
+            f.get("email", ""),
+            f.get("city", ""),
+            f.get("file_status", ""),
+            fd.get("type_of_loan", ""),
+            fd.get("loan_amount_required", ""),
+            fd.get("cibil_score", ""),
+            str(f.get("created_at", ""))[:10] if f.get("created_at") else "",
+            "; ".join(banks),
+            approved_amt if approved_amt else "",
+            disbursed_amt if disbursed_amt else ""
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=files_export_{datetime.now().strftime('%Y%m%d')}.csv"}
+    )
+
+
+@router.get("/export/rejected")
+async def export_rejected_csv(current_user: dict = Depends(get_current_user)):
+    """Export rejected cases report as CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    import csv
+    
+    # Get rejected report data
+    report = await get_rejected_files(current_user)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Bank summary section
+    writer.writerow(["=== BANK-LEVEL REJECTION SUMMARY ==="])
+    writer.writerow(["Bank", "Total Cases", "Eligible", "Not Eligible", "Login", "Not Login", "FI Negative", "Declined", "Disbursed", "Not Disbursed"])
+    
+    for bank in report.get("bank_summary", []):
+        writer.writerow([
+            bank.get("bank_name", ""),
+            bank.get("total_cases", 0),
+            bank.get("eligible", 0),
+            bank.get("not_eligible", 0),
+            bank.get("login", 0),
+            bank.get("not_login", 0),
+            bank.get("fi_negative", 0),
+            bank.get("declined", 0),
+            bank.get("disbursed", 0),
+            bank.get("not_disbursed", 0)
+        ])
+    
+    writer.writerow([])
+    writer.writerow(["=== REJECTED FILES DETAIL ==="])
+    writer.writerow(["Name", "Phone", "Status", "Bank", "Reason", "Updated"])
+    
+    for f in report.get("files", []):
+        writer.writerow([
+            f.get("name", ""),
+            f.get("phone", ""),
+            f.get("file_status", ""),
+            f.get("bank_name", ""),
+            f.get("rejection_reason") or f.get("remarks", ""),
+            str(f.get("updated_at", ""))[:10] if f.get("updated_at") else ""
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=rejected_cases_{datetime.now().strftime('%Y%m%d')}.csv"}
+    )
+
+
+@router.get("/export/growth-partner")
+async def export_growth_partner_csv(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export Growth Partner performance report as CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    import csv
+    
+    # Get GP report data
+    report = await get_growth_partner_report(start_date, end_date, None, current_user)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "Growth Partner", "Manager", "Files Generated", "Files (Current)", "Files (Spillover)",
+        "In Progress", "Logins", "Logins (Current)", "Logins (Spillover)",
+        "Approvals", "Approvals (Current)", "Approvals (Spillover)", "Approved Amount",
+        "Disbursals", "Disbursals (Current)", "Disbursals (Spillover)", "Disbursed Amount"
+    ])
+    
+    for agent in report.get("agents", []):
+        writer.writerow([
+            agent.get("agent_name", ""),
+            agent.get("manager_name", ""),
+            agent.get("files_generated", 0),
+            agent.get("files_generated_current", 0),
+            agent.get("files_generated_spillover", 0),
+            agent.get("in_progress", 0),
+            agent.get("logins", 0),
+            agent.get("logins_current", 0),
+            agent.get("logins_spillover", 0),
+            agent.get("approvals", 0),
+            agent.get("approvals_current", 0),
+            agent.get("approvals_spillover", 0),
+            agent.get("approved_amount", 0),
+            agent.get("disbursals", 0),
+            agent.get("disbursals_current", 0),
+            agent.get("disbursals_spillover", 0),
+            agent.get("disbursed_amount", 0)
+        ])
+    
+    # Totals row
+    totals = report.get("totals", {})
+    writer.writerow([
+        "TOTAL", "",
+        totals.get("files_generated", 0),
+        totals.get("files_generated_current", 0),
+        totals.get("files_generated_spillover", 0),
+        totals.get("in_progress", 0),
+        totals.get("logins", 0),
+        totals.get("logins_current", 0),
+        totals.get("logins_spillover", 0),
+        totals.get("approvals", 0),
+        totals.get("approvals_current", 0),
+        totals.get("approvals_spillover", 0),
+        totals.get("approved_amount", 0),
+        totals.get("disbursals", 0),
+        totals.get("disbursals_current", 0),
+        totals.get("disbursals_spillover", 0),
+        totals.get("disbursed_amount", 0)
+    ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=growth_partner_report_{datetime.now().strftime('%Y%m%d')}.csv"}
+    )
+
+
+@router.get("/export/commissions")
+async def export_commissions_csv(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export commissions report as CSV"""
+    from fastapi.responses import StreamingResponse
+    import io
+    import csv
+    
+    # Get commissions data
+    report = await get_commissions(start_date, end_date, None, None, current_user)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Summary section
+    writer.writerow(["=== COMMISSION SUMMARY ==="])
+    writer.writerow(["Total Amount", "Total Records"])
+    writer.writerow([report.get("total_amount", 0), report.get("total", 0)])
+    
+    writer.writerow([])
+    writer.writerow(["=== BY GROWTH PARTNER ==="])
+    writer.writerow(["Growth Partner", "Total Amount", "Count"])
+    for gp in report.get("by_growth_partner", []):
+        writer.writerow([gp.get("source_name", ""), gp.get("total_amount", 0), gp.get("count", 0)])
+    
+    writer.writerow([])
+    writer.writerow(["=== BY BANK ==="])
+    writer.writerow(["Bank", "Total Amount", "Count"])
+    for bank in report.get("by_bank", []):
+        writer.writerow([bank.get("bank_name", ""), bank.get("total_amount", 0), bank.get("count", 0)])
+    
+    writer.writerow([])
+    writer.writerow(["=== DETAILED RECORDS ==="])
+    writer.writerow(["Lead ID", "Growth Partner", "Amount", "Type", "Bank", "Status", "Created"])
+    for c in report.get("commissions", []):
+        writer.writerow([
+            c.get("lead_id", ""),
+            c.get("source_name", ""),
+            c.get("amount", 0),
+            c.get("commission_type") or c.get("type", ""),
+            c.get("bank_name", ""),
+            c.get("status", ""),
+            str(c.get("created_at", ""))[:10] if c.get("created_at") else ""
+        ])
+    
+    output.seek(0)
+    
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename=commissions_{datetime.now().strftime('%Y%m%d')}.csv"}
+    )
+
+
+# ============ ENHANCED ACTIVITY LOG ============
+
+@router.post("/{file_id}/activities/eligibility")
+async def add_eligibility_activity(
+    file_id: str,
+    bank_name: str,
+    action: str,  # checked, login, approved, declined, disbursed, rejected
+    amount: Optional[float] = None,
+    reason: Optional[str] = None,
+    notes: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Add eligibility-related activity with bank details
+    Tracks: eligibility check, login, approval, decline, disbursal
+    """
+    
+    action_messages = {
+        "checked": f"Eligibility checked for {bank_name}",
+        "eligible": f"Marked eligible for {bank_name}" + (f" - ₹{amount:,.0f}" if amount else ""),
+        "not_eligible": f"Marked not eligible for {bank_name}" + (f" - {reason}" if reason else ""),
+        "login": f"Login done at {bank_name}" + (f" - ₹{amount:,.0f}" if amount else ""),
+        "login_rejected": f"Login rejected at {bank_name}" + (f" - {reason}" if reason else ""),
+        "approved": f"Approved by {bank_name}" + (f" - ₹{amount:,.0f}" if amount else ""),
+        "declined": f"Declined by {bank_name}" + (f" - {reason}" if reason else ""),
+        "disbursed": f"Disbursed by {bank_name}" + (f" - ₹{amount:,.0f}" if amount else ""),
+        "not_disbursed": f"Not disbursed by {bank_name}" + (f" - {reason}" if reason else "")
+    }
+    
+    message = action_messages.get(action, f"{action} for {bank_name}")
+    if notes:
+        message += f". Notes: {notes}"
+    
+    activity = {
+        "type": f"bank_{action}",
+        "message": message,
+        "by": current_user["id"],
+        "by_name": current_user.get("name", "Unknown"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "details": {
+            "bank_name": bank_name,
+            "action": action,
+            "amount": amount,
+            "reason": reason
+        }
+    }
+    
+    result = await db.leads.update_one(
+        {"id": file_id},
+        {
+            "$push": {"file_activities": activity},
+            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+        }
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    return {"message": "Activity added", "activity": activity}
+
+
+@router.get("/{file_id}/activities/timeline")
+async def get_file_timeline(file_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    Get complete file timeline with all activities, eligibility changes, and milestones
+    """
+    
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    if not file_doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    timeline = []
+    
+    # Add file creation
+    if file_doc.get("created_at"):
+        timeline.append({
+            "type": "created",
+            "message": "File created",
+            "timestamp": file_doc["created_at"],
+            "category": "milestone"
+        })
+    
+    # Add all activities
+    for act in (file_doc.get("file_activities") or []):
+        timeline.append({
+            **act,
+            "category": "activity"
+        })
+    
+    # Add eligibility milestones from eligibilities array
+    for elig in (file_doc.get("eligibilities") or []):
+        bank = elig.get("bank_name", "Unknown")
+        
+        if elig.get("login_done"):
+            timeline.append({
+                "type": "login",
+                "message": f"Login completed at {bank}",
+                "timestamp": elig.get("login_done_at") or file_doc.get("updated_at"),
+                "category": "bank_milestone",
+                "bank_name": bank
+            })
+        
+        if elig.get("approval_status") == "approved":
+            timeline.append({
+                "type": "approved",
+                "message": f"Approved by {bank} - ₹{elig.get('approved_amount', 0):,.0f}",
+                "timestamp": elig.get("approved_at") or file_doc.get("updated_at"),
+                "category": "bank_milestone",
+                "bank_name": bank,
+                "amount": elig.get("approved_amount")
+            })
+        elif elig.get("approval_status") == "declined":
+            timeline.append({
+                "type": "declined",
+                "message": f"Declined by {bank}" + (f" - {elig.get('declined_reason')}" if elig.get("declined_reason") else ""),
+                "timestamp": elig.get("declined_at") or file_doc.get("updated_at"),
+                "category": "bank_milestone",
+                "bank_name": bank
+            })
+        
+        if elig.get("disbursed") == True:
+            timeline.append({
+                "type": "disbursed",
+                "message": f"Disbursed by {bank} - ₹{elig.get('disbursed_amount', 0):,.0f}",
+                "timestamp": elig.get("disbursed_at") or file_doc.get("updated_at"),
+                "category": "bank_milestone",
+                "bank_name": bank,
+                "amount": elig.get("disbursed_amount")
+            })
+    
+    # Sort by timestamp
+    timeline.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+    
+    return {
+        "file_id": file_id,
+        "timeline": timeline,
+        "total_events": len(timeline)
+    }

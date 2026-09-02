@@ -1,0 +1,43 @@
+{
+  "summary": "Iter31 verifies OLD CRM port additions (Commission module, Eligibility check, Export CSVs, Activity log). Backend pytest: 11/11 pass. Frontend: all 4 features verified end-to-end. (1) COMMISSION MODULE — GET /api/files/commissions returns 76 records, total_amount ₹873,638.25, by_growth_partner (26 entries, top: krishna sai ₹105,108.84 / 8 records; sorted desc), by_bank (1 entry: Unknown ₹873,638.25 / 76). GET /commissions/summary returns total_paid/total_count/pending_count/pending_estimated. UI panel data-testid='commission-report-panel' opens via top-bar Commission button, 'Load Commission Data' fetches & renders 4 KPI cards (₹8.7L / 76 / 26 / 1) + by_growth_partner table (top 10 rows) + by_bank table + Export button. (2) ELIGIBILITY CHECK — POST /api/files/{id}/check-eligibility runs against 27 policies, returns results[]/eligible_count/not_eligible_count/customer_data; persists eligibilities to lead doc and pushes file_activities entry. Verified on file 0d8133f3: 0 eligible / 27 not eligible (salary ₹34503 < min ₹35000). UI 'Check Bank Eligibility' green button in FileDetailsPage header triggers the API and populates 'Bank Eligibilities (27/7)' section with each bank card showing Bank Name, Eligible? select, Not Eligible Reason. (3) EXPORT REPORTS — /api/files/export/dashboard, /export/rejected, /export/growth-partner, /export/commissions all return 200 with content-type text/csv, correct Content-Disposition attachment, and expected column headers. Dashboard export has File ID/Name/Phone/Email/City/Status/Loan Type/CIBIL/etc. Rejected export has 'BANK-LEVEL REJECTION SUMMARY' + 'REJECTED FILES DETAIL' sections. GP export has Files (Current)/Files (Spillover)/Approved Amount/Disbursed Amount columns. UI Export dropdown in FilesDashboard shows all 4 options (Dashboard Export, Rejected Cases, Growth Partner, Commissions). (4) ACTIVITY LOG — After eligibility check, Activity Log panel on file detail shows new event 'Eligibility checked against 27 banks. 0 eligible. — Admin User • Just now' with clock icon; older 'File details updated' events also visible with colored borders. (5) AUTH GUARDS verified: /commissions and /export/dashboard return 401/403 without token.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/files/commissions", "issue": "by_bank aggregation groups ALL 76 commission records under 'Unknown' bucket because commission docs don't have bank_name set. Either backfill bank_name on commission records or add a UI note that bank breakdown is only available once bank_name is populated on commissions."},
+      {"endpoint": "GET /api/files/commissions", "issue": "by_growth_partner shows raw UUID as source_name for 3 entries (95e19457-…, 638ece9e-…, 731d9a4f-…) — those source_ids reference deleted users, so user_map lookup falls back to the id itself. Consider joining against a soft-deleted users collection or storing source_name snapshot on the commission record at creation time."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "FilesDashboard", "issues": ["Persistent (from iter30): React hydration warnings — <span data-ve-dynamic> shim wraps <option>/<tr>/<tbody> inside <select>/<table> causing 'In HTML, span cannot be a child of select/tbody' warnings. Not functional but pollutes console."]},
+      {"screen": "FilesDashboard Export menu", "issues": ["Menu text renders as 'Growth PartnerPartners' in one place — appears to be text overlap between existing 'Growth Partner' shortcut header button label and the export menu item. Verify no duplicate rendering."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter31_crm_addons.py",
+    "/app/test_reports/pytest/iter31.xml"
+  ],
+  "action_items": [
+    "(Optional) Backfill bank_name on existing commission records so /commissions by_bank breakdown is meaningful (currently everything under 'Unknown').",
+    "(Optional) Store source_name snapshot on commission records at creation so deleted-user commissions don't show raw UUIDs.",
+    "(Optional carryover from iter30) Add auth (Depends(get_current_user)) to the still-open file mutation endpoints in files_crm.py — noted in iter27-30."
+  ],
+  "critical_code_review_comments": [
+    "commissions/summary uses 2% flat estimator for pending commission — hardcoded magic number; expose as env var or per-bank rate.",
+    "Multiple export endpoints re-implement CSV writing via io.StringIO + csv.writer — extract a common helper.",
+    "check_bank_eligibility mutates leads.eligibilities in place but does NOT deduplicate against pre-existing manually-edited entries beyond bank_name match — running the check twice with new policies could leave stale entries.",
+    "files_crm.py still 3334 lines (was 2508 in iter30) — growing further; extract commissions/exports/eligibility into separate modules."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter31_crm_addons.py (new)"
+  ],
+  "success_rate": {"backend": "100% (11/11)", "frontend": "100% (Commission panel + eligibility button + export menu + activity log all functional)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!",
+  "seed_data_creation": "None. Eligibility check was run on existing file 0d8133f3-2f35-40ae-8d08-71c0766b3170 (TEST_Iter29 Customer) which persisted 27 bank eligibility entries — pre-existing test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter31 features all working. Commission panel accessed via top-bar 'Commission' button on /admin/files (green button, top right). data-testid='commission-report-panel'. Check Bank Eligibility button lives in FileDetailsPage header (green). Export menu in FilesDashboard has 5 items (All Files/Dashboard Export/Rejected Cases/Growth Partner/Commissions). Known data gaps: commission records missing bank_name (all group as 'Unknown') and 3 GP source_ids reference deleted users.",
+  "rca of the issue": "N/A — all features work as designed. Minor data-quality observations: (a) by_bank grouping shows 'Unknown' because commission_type / bank_name fields are optional on CommissionCreate and were never populated when seeding the 76 records; (b) UUID display in by_growth_partner arises when user_map lookup fails for deleted user IDs — fix by snapshotting source_name at commission creation time (files_crm.py L1466 CommissionCreate)."
+}
