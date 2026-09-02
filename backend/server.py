@@ -175,40 +175,50 @@ async def migrate_crm_data(request: Request):
     try:
         body = await request.json()
         
-        files = body.get("files", [])
-        users = body.get("users", [])
-        policies = body.get("policies", [])
-        commissions = body.get("commissions", [])
-        user_mappings = body.get("user_mappings", [])
-        
         results = {
             "files_imported": 0,
+            "all_leads_imported": 0,
             "users_imported": 0,
-            "policies_imported": 0,
+            "bank_policies_imported": 0,
             "commissions_imported": 0,
             "mappings_imported": 0,
+            "activity_logs_imported": 0,
+            "attendance_imported": 0,
+            "leave_requests_imported": 0,
+            "leave_balances_imported": 0,
+            "app_settings_imported": 0,
             "errors": []
         }
         
-        # Import files (upsert by id)
-        for f in files:
+        # Import all leads (including both Data and Files)
+        all_leads = body.get("all_leads", [])
+        for lead in all_leads:
             try:
-                file_id = f.get("id")
-                if file_id:
+                lead_id = lead.get("id")
+                if lead_id:
                     await db.leads.update_one(
-                        {"id": file_id},
-                        {"$set": f},
+                        {"id": lead_id},
+                        {"$set": lead},
                         upsert=True
                     )
-                    results["files_imported"] += 1
+                    results["all_leads_imported"] += 1
             except Exception as e:
-                results["errors"].append(f"File {f.get('id')}: {str(e)}")
+                results["errors"].append(f"Lead {lead.get('id')}: {str(e)}")
         
-        # Import users (upsert by email)
+        # Import users (upsert by id or email)
+        users = body.get("users", [])
         for u in users:
             try:
+                user_id = u.get("id")
                 email = u.get("email")
-                if email:
+                if user_id:
+                    await db.users.update_one(
+                        {"id": user_id},
+                        {"$set": u},
+                        upsert=True
+                    )
+                    results["users_imported"] += 1
+                elif email:
                     await db.users.update_one(
                         {"email": email},
                         {"$set": u},
@@ -218,21 +228,23 @@ async def migrate_crm_data(request: Request):
             except Exception as e:
                 results["errors"].append(f"User {u.get('email')}: {str(e)}")
         
-        # Import policies (upsert by id)
-        for p in policies:
+        # Import bank policies (upsert by bank_name)
+        bank_policies = body.get("bank_policies", [])
+        for p in bank_policies:
             try:
-                policy_id = p.get("id")
-                if policy_id:
-                    await db.policies.update_one(
-                        {"id": policy_id},
+                bank_name = p.get("bank_name")
+                if bank_name:
+                    await db.bank_policies.update_one(
+                        {"bank_name": bank_name},
                         {"$set": p},
                         upsert=True
                     )
-                    results["policies_imported"] += 1
+                    results["bank_policies_imported"] += 1
             except Exception as e:
-                results["errors"].append(f"Policy {p.get('id')}: {str(e)}")
+                results["errors"].append(f"Policy {p.get('bank_name')}: {str(e)}")
         
         # Import commissions (upsert by id)
+        commissions = body.get("commissions", [])
         for c in commissions:
             try:
                 comm_id = c.get("id")
@@ -247,6 +259,7 @@ async def migrate_crm_data(request: Request):
                 results["errors"].append(f"Commission {c.get('id')}: {str(e)}")
         
         # Import user mappings (upsert by legacy_user_id)
+        user_mappings = body.get("user_mappings", [])
         for m in user_mappings:
             try:
                 legacy_id = m.get("legacy_user_id")
@@ -259,6 +272,82 @@ async def migrate_crm_data(request: Request):
                     results["mappings_imported"] += 1
             except Exception as e:
                 results["errors"].append(f"Mapping {m.get('legacy_user_id')}: {str(e)}")
+        
+        # Import activity logs (upsert by id)
+        activity_logs = body.get("activity_logs", [])
+        for a in activity_logs:
+            try:
+                log_id = a.get("id")
+                if log_id:
+                    await db.activity_logs.update_one(
+                        {"id": log_id},
+                        {"$set": a},
+                        upsert=True
+                    )
+                    results["activity_logs_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"Activity {a.get('id')}: {str(e)}")
+        
+        # Import attendance (upsert by user_id + date)
+        attendance = body.get("attendance", [])
+        for att in attendance:
+            try:
+                user_id = att.get("user_id")
+                date = att.get("date")
+                if user_id and date:
+                    await db.attendance.update_one(
+                        {"user_id": user_id, "date": date},
+                        {"$set": att},
+                        upsert=True
+                    )
+                    results["attendance_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"Attendance: {str(e)}")
+        
+        # Import leave requests (upsert by id)
+        leave_requests = body.get("leave_requests", [])
+        for lr in leave_requests:
+            try:
+                lr_id = lr.get("id")
+                if lr_id:
+                    await db.leave_requests.update_one(
+                        {"id": lr_id},
+                        {"$set": lr},
+                        upsert=True
+                    )
+                    results["leave_requests_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"Leave request: {str(e)}")
+        
+        # Import leave balances (upsert by user_id + year)
+        leave_balances = body.get("leave_balances", [])
+        for lb in leave_balances:
+            try:
+                user_id = lb.get("user_id")
+                year = lb.get("year")
+                if user_id:
+                    await db.leave_balances.update_one(
+                        {"user_id": user_id, "year": year} if year else {"user_id": user_id},
+                        {"$set": lb},
+                        upsert=True
+                    )
+                    results["leave_balances_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"Leave balance: {str(e)}")
+        
+        # Import app settings
+        app_settings = body.get("app_settings", [])
+        for setting in app_settings:
+            try:
+                setting_id = setting.get("id") or setting.get("key") or "default"
+                await db.app_settings.update_one(
+                    {"id": setting_id} if setting.get("id") else {},
+                    {"$set": setting},
+                    upsert=True
+                )
+                results["app_settings_imported"] += 1
+            except Exception as e:
+                results["errors"].append(f"App setting: {str(e)}")
         
         return {
             "status": "success",
