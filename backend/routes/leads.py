@@ -825,6 +825,175 @@ async def ensure_file_for_lead(lead_id: str, lead: dict, current_user: dict):
     # No separate file collection needed - this maintains single source of truth
     return lead
 
+
+# ===================== CANONICAL DATA → FILE CONVERSION =====================
+
+@router.post("/leads/{lead_id}/convert-to-file")
+async def convert_lead_to_file(lead_id: str, current_user: dict = Depends(get_current_user)):
+    """
+    CANONICAL Data → File Conversion Endpoint
+    
+    This is the SINGLE point of truth for converting a Data lead to a File.
+    Both post-call modal and manual status edit MUST use this endpoint.
+    
+    IDEMPOTENT: If File already exists for this lead, returns the existing File.
+    
+    Steps:
+    1. Check if lead already has status='file' → return existing file_id
+    2. If not a File yet → convert lead to File with prefilled data
+    3. Preserve connect_customer_id, source_id (originating GP)
+    4. Create activity history
+    5. Return file_id for frontend redirect
+    
+    Returns:
+    - file_id: ID of the File record
+    - is_new: True if newly converted, False if already existed
+    - redirect_url: Frontend URL to redirect to
+    """
+    # Find lead by UUID or ObjectId
+    lead = None
+    try:
+        lead = await db.leads.find_one({"id": lead_id})
+    except Exception:
+        pass
+    
+    if not lead:
+        try:
+            if len(lead_id) == 24:
+                lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+        except Exception:
+            pass
+    
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    # RBAC: GP can only convert leads assigned to them
+    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    # Get the canonical ID
+    file_id = lead.get("id") or str(lead["_id"])
+    
+    # IDEMPOTENT CHECK: If already a File, return it immediately
+    if lead.get("status") == "file":
+        return {
+            "file_id": file_id,
+            "is_new": False,
+            "redirect_url": f"/files/{file_id}",
+            "message": "File already exists"
+        }
+    
+    # ============ DATA → FILE PREFILL - OLD CRM PORT ============
+    custom_fields = lead.get("custom_fields") or {}
+    existing_file_details = lead.get("file_details") or lead.get("additional_data") or {}
+    
+    # Prefill all known information
+    prefilled_details = {
+        # Customer Details - from Connect Data
+        "full_name": lead.get("name") or existing_file_details.get("full_name"),
+        "mobile": lead.get("phone") or existing_file_details.get("mobile"),
+        "email": lead.get("email") or existing_file_details.get("email"),
+        "city": lead.get("city") or existing_file_details.get("city"),
+        "source": lead.get("source") or existing_file_details.get("source"),
+        
+        # Loan Requirement
+        "type_of_loan": lead.get("requirement") or custom_fields.get("requirement") or existing_file_details.get("type_of_loan"),
+        "loan_amount_required": existing_file_details.get("loan_amount_required"),
+        
+        # Employment
+        "employment_type": lead.get("employment_type") or custom_fields.get("employment_type") or existing_file_details.get("employment_type"),
+        "company_name": existing_file_details.get("company_name"),
+        "net_salary": existing_file_details.get("net_salary"),
+        "gross_salary": existing_file_details.get("gross_salary"),
+        
+        # Credit Info
+        "cibil_score": existing_file_details.get("cibil_score"),
+        
+        # Preserve any other existing file_details
+        **{k: v for k, v in existing_file_details.items() if v is not None}
+    }
+    
+    # Filter out None values
+    prefilled_details = {k: v for k, v in prefilled_details.items() if v is not None}
+    
+    # Determine source GP (the GP who originally worked this lead)
+    source_id = lead.get("assigned_to") or lead.get("source_id") or current_user["id"]
+    
+    # Get source GP name
+    source_name = lead.get("telecaller_name") or lead.get("source_name")
+    if not source_name and source_id:
+        try:
+            source_user = await db.users.find_one({"id": source_id}, {"_id": 0, "name": 1, "full_name": 1})
+            if source_user:
+                source_name = source_user.get("full_name") or source_user.get("name", "Unknown")
+            else:
+                source_name = current_user.get("name", "Unknown")
+        except Exception:
+            source_name = current_user.get("name", "Unknown")
+    
+    # Build update payload
+    update_data = {
+        "status": "file",
+        "file_status": "new",
+        "file_assigned_to": source_id,  # Initially assigned to the GP who converted
+        "eligibilities": lead.get("eligibilities") or [],
+        "file_details": prefilled_details,
+        "connect_customer_id": file_id,  # Link back to this record
+        "source_id": source_id,  # Originating GP
+        "source_name": source_name,
+        "source_system": "connect",  # New files from Connect
+        "file_activities": [{
+            "type": "file_created",
+            "message": f"Lead converted to File by {current_user.get('name', 'Unknown')}",
+            "by": current_user["id"],
+            "by_name": current_user.get("name", "Unknown"),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "prefilled_fields": list(prefilled_details.keys())
+        }],
+        "updated_at": datetime.now(timezone.utc)
+    }
+    
+    # Merge with existing activities if any
+    existing_activities = lead.get("file_activities") or []
+    if existing_activities:
+        update_data["file_activities"] = existing_activities + update_data["file_activities"]
+    
+    # Perform the conversion
+    await db.leads.update_one(
+        {"_id": lead["_id"]},
+        {"$set": update_data}
+    )
+    
+    # Create activity log entry
+    activity = {
+        "lead_id": file_id,
+        "type": "status_change",
+        "from_status": lead.get("status"),
+        "to_status": "file",
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("name", "Unknown"),
+        "timestamp": datetime.now(timezone.utc),
+        "notes": f"Customer converted to File. Prefilled: {', '.join(prefilled_details.keys())}"
+    }
+    await db.activities.insert_one(activity)
+    
+    # Track GP's conversion count
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    await db.daily_sessions.update_one(
+        {"user_id": current_user["id"], "date": today},
+        {"$inc": {"files_created": 1}},
+        upsert=True
+    )
+    
+    return {
+        "file_id": file_id,
+        "is_new": True,
+        "redirect_url": f"/files/{file_id}",
+        "message": "Lead converted to File successfully",
+        "prefilled_fields": list(prefilled_details.keys())
+    }
+
+
 @router.delete("/leads/{lead_id}")
 async def delete_lead(lead_id: str, current_user: dict = Depends(require_admin)):
     result = await db.leads.delete_one({"_id": ObjectId(lead_id)})

@@ -9,6 +9,11 @@
 | manager@bankezee.com | mgr@bzc12 | Manager |
 | manager2@bankezee.com | mgr12@bzc!! | Manager 2 |
 
+## Growth Partner (GP) Test Accounts
+| Email | Password | Role | Notes |
+|-------|----------|------|-------|
+| yarragondaanusha@gmail.com | AnushaGP123! | sales_agent | Has 14 mapped files. Use for GP RBAC acceptance testing |
+
 ## Telecaller Test Account
 | Email | Password | Name |
 |-------|----------|------|

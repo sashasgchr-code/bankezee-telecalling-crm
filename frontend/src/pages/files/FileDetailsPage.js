@@ -67,9 +67,19 @@ const FileDetailsPage = () => {
   
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
-  const canEdit = ['admin', 'telecaller'].includes(user.role);
-  // GP cannot edit eligibilities - Admin/Ops only for bank processing
-  const canEditEligibilities = isAdmin;
+  const isOps = user.role === 'ops' || user.role === 'operations';
+  // Growth Partner roles: telecaller, sales_agent, team_leader, partner, manager
+  const isGP = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'manager'].includes(user.role);
+  
+  // Section 1 (Customer/Application Info): GP, Ops, Admin can all edit
+  const canEditCustomerDetails = isAdmin || isOps || isGP;
+  
+  // Section 2 (Bank Processing): ONLY Ops and Admin can edit
+  // GPs can VIEW bank processing status but CANNOT modify
+  const canEditBankProcessing = isAdmin || isOps;
+  
+  // Overall edit permission (for general actions like notes, status)
+  const canEdit = isAdmin || isOps || isGP;
 
   useEffect(() => {
     fetchFileData();
@@ -536,8 +546,11 @@ const FileDetailsPage = () => {
             {/* Complete File Information */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-testid="file-info-card">
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Complete File Information</h3>
-                {canEdit && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Section 1: Customer & Application Information</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Editable by Growth Partner, Ops, and Admin</p>
+                </div>
+                {canEditCustomerDetails && (
                   <div className="flex gap-2">
                     {isEditingDetails ? (
                       <>
@@ -560,6 +573,7 @@ const FileDetailsPage = () => {
                       <button 
                         onClick={() => setIsEditingDetails(true)} 
                         className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+                        data-testid="edit-details-btn"
                       >
                         <Edit2 size={14} />
                         Edit Details
@@ -592,22 +606,35 @@ const FileDetailsPage = () => {
               </div>
             </div>
 
-            {/* Eligibility Tracker - Admin/Ops Only for Edit */}
-            <EligibilityTracker
-              eligibilities={eligibilities}
-              canEdit={canEditEligibilities}
-              onUpdate={updateEligibility}
-              onAdd={addEligibility}
-              onRemove={removeEligibility}
-              onSave={saveEligibilities}
-              isSaving={savingEligibilities}
-            />
-            {!canEditEligibilities && canEdit && eligibilities.length === 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
-                <p className="font-medium">Bank Eligibility Processing</p>
-                <p>Contact Admin/Ops team to add bank eligibilities for this file.</p>
+            {/* Section 2: Bank Processing - Admin/Ops Only for Edit */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-testid="bank-processing-section">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Section 2: Bank Processing & Eligibility</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {canEditBankProcessing 
+                        ? 'Editable by Ops and Admin only' 
+                        : 'View only - Contact Ops/Admin to update bank processing'}
+                    </p>
+                  </div>
+                  {!canEditBankProcessing && isGP && (
+                    <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">View Only</span>
+                  )}
+                </div>
               </div>
-            )}
+              <div className="p-6">
+                <EligibilityTracker
+                  eligibilities={eligibilities}
+                  canEdit={canEditBankProcessing}
+                  onUpdate={updateEligibility}
+                  onAdd={addEligibility}
+                  onRemove={removeEligibility}
+                  onSave={saveEligibilities}
+                  isSaving={savingEligibilities}
+                />
+              </div>
+            </div>
 
             {/* Status Update */}
             {canEdit && (

@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2, PhoneOff } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { StatusColors, StatusLabels } from '../constants/colors';
 
 const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuration }) => {
+  const navigate = useNavigate();
   const [outcome, setOutcome] = useState('connected');
   const [notes, setNotes] = useState('');
   const [newStatus, setNewStatus] = useState(lead?.status || 'not_interested');
@@ -74,11 +76,23 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
       // Update lead status based on call outcome
       if (lead) {
         let statusToUpdate = null;
+        let fileConversionResponse = null;
         
         if (outcome === 'connected') {
           // For connected calls, use the selected status
           if (newStatus !== lead.status) {
             statusToUpdate = newStatus;
+          }
+          
+          // ============ FILE CONVERSION - USE CANONICAL ENDPOINT ============
+          // If status is 'file', call the canonical conversion endpoint
+          if (newStatus === 'file') {
+            try {
+              fileConversionResponse = await api.post(`/leads/${lead.id}/convert-to-file`);
+            } catch (convErr) {
+              console.error('File conversion failed:', convErr);
+              // If conversion fails, still continue with regular update
+            }
           }
         } else {
           // For non-connected outcomes, update status to 'contacted' if currently 'new'
@@ -89,20 +103,36 @@ const CallModal = ({ isOpen, onClose, lead, activeCall, onCallEnded, callDuratio
         }
         
         // Always update last_call_outcome so it shows on the card
-        await api.put(`/leads/${lead.id}`, {
-          ...(statusToUpdate && { status: statusToUpdate }),
-          last_call_outcome: outcome,
-          notes: notes || lead.notes,
-        });
-      }
+        // Skip status update if we just did file conversion (it already set status='file')
+        if (!fileConversionResponse?.data?.is_new || statusToUpdate !== 'file') {
+          await api.put(`/leads/${lead.id}`, {
+            ...(statusToUpdate && statusToUpdate !== 'file' && { status: statusToUpdate }),
+            last_call_outcome: outcome,
+            notes: notes || lead.notes,
+          });
+        }
+        
+        // Create follow-up if scheduled (only for connected calls)
+        if (outcome === 'connected' && scheduleFollowUp && lead && followUpDate) {
+          await api.post('/follow-ups', {
+            lead_id: lead.id,
+            scheduled_at: new Date(followUpDate).toISOString(),
+            notes: notes,
+          });
+        }
 
-      // Create follow-up if scheduled (only for connected calls)
-      if (outcome === 'connected' && scheduleFollowUp && lead && followUpDate) {
-        await api.post('/follow-ups', {
-          lead_id: lead.id,
-          scheduled_at: new Date(followUpDate).toISOString(),
-          notes: notes,
-        });
+        onCallEnded && onCallEnded();
+        onClose();
+        
+        // ============ FILE REDIRECT ============
+        // If file was converted, navigate to File Detail page
+        if (fileConversionResponse?.data?.file_id) {
+          // Get the user's role-appropriate base route
+          const user = JSON.parse(localStorage.getItem('user') || '{}');
+          const baseRoute = user.role === 'admin' ? '/admin' : '/agent';
+          navigate(`${baseRoute}/files/${fileConversionResponse.data.file_id}`);
+        }
+        return;
       }
 
       onCallEnded && onCallEnded();

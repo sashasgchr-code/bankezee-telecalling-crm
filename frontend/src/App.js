@@ -26,6 +26,18 @@ import TelecallerLayout from "./layouts/TelecallerLayout";
 import LoadingScreen from "./components/LoadingScreen";
 import "./App.css";
 
+// Role-neutral File redirect component
+const RoleNeutralFileRedirect = () => {
+  const { user } = useAuthStore();
+  const baseRoute = user?.role === 'admin' ? '/admin' : '/agent';
+  // Get the file ID from URL
+  const fileId = window.location.pathname.split('/files/')[1];
+  return <Navigate to={`${baseRoute}/files/${fileId}`} replace />;
+};
+
+// Growth Partner roles
+const GP_ROLES = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'manager'];
+
 const ProtectedRoute = ({ children, requiredRole }) => {
   const { isAuthenticated, user, isLoading } = useAuthStore();
 
@@ -37,8 +49,14 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && user?.role !== requiredRole) {
+  // If requiredRole is 'telecaller', allow all GP roles
+  if (requiredRole === 'telecaller' && !GP_ROLES.includes(user?.role)) {
     return <Navigate to={user?.role === 'admin' ? '/admin' : '/agent'} replace />;
+  }
+  
+  // For admin role, strict check
+  if (requiredRole === 'admin' && user?.role !== 'admin') {
+    return <Navigate to="/agent" replace />;
   }
 
   return children;
@@ -117,6 +135,13 @@ function App() {
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="profile" element={<TelecallerProfile />} />
         </Route>
+
+        {/* Role-neutral File route - redirects to correct role-based route */}
+        <Route path="/files/:fileId" element={
+          <ProtectedRoute>
+            <RoleNeutralFileRedirect />
+          </ProtectedRoute>
+        } />
 
         {/* Default redirect */}
         <Route path="*" element={

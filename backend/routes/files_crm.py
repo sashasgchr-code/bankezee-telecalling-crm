@@ -25,6 +25,20 @@ db = client[os.environ.get('DB_NAME', 'bankezee_connect')]
 
 router = APIRouter(prefix="/api/files", tags=["Files CRM"])
 
+# Growth Partner roles - these roles can edit customer info but NOT bank processing
+GP_ROLES = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'manager']
+
+# Ops roles - these can edit bank processing
+OPS_ROLES = ['operations', 'ops']
+
+# Helper function to check if user is GP
+def is_gp(role: str) -> bool:
+    return role in GP_ROLES
+
+# Helper function to check if user can edit bank processing
+def can_edit_bank_processing(role: str) -> bool:
+    return role == 'admin' or role in OPS_ROLES
+
 # File storage - using MongoDB GridFS for persistence across deployments
 
 ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.png', '.gif', '.doc', '.docx', '.xls', '.xlsx'}
@@ -161,11 +175,11 @@ async def get_file_statuses():
 @router.get("/operations-team")
 async def get_operations_team():
     """Get list of operations team members for assignment"""
-    # In Connect, we'll use telecallers or a specific role
+    # Include all GP roles plus admin and operations
     ops_team = await db.users.find(
-        {"role": {"$in": ["telecaller", "admin"]}},
-        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}
-    ).to_list(100)
+        {"role": {"$in": GP_ROLES + ["admin"] + OPS_ROLES}},
+        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1, "role": 1}
+    ).to_list(200)
     # Normalize name field
     for member in ops_team:
         if not member.get('full_name') and member.get('name'):
@@ -200,12 +214,14 @@ async def get_all_files(
     
     query = {"status": "file"}
     
-    # GP role restriction - GPs only see their own files
-    if current_user.get('role') == 'telecaller':
+    # GP role restriction - GPs only see their own files (by source_id)
+    user_role = current_user.get('role')
+    if is_gp(user_role):
         gp_id = current_user.get('id')
         query["$or"] = [
             {"assigned_to": gp_id},
-            {"file_assigned_to": gp_id}
+            {"file_assigned_to": gp_id},
+            {"source_id": gp_id}  # Also match by source_id for historical files
         ]
     elif assigned_to:
         # Admin/Ops can filter by assigned_to
@@ -1918,7 +1934,8 @@ async def bulk_assign_files(assignment: BulkFileAssignment, current_user: dict =
 async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpdate, current_user: dict = Depends(get_current_user)):
     """Update file bank eligibilities (up to 7 banks) - Admin/Ops only, GPs cannot modify"""
     # GP role restriction - GPs cannot update eligibilities (bank processing is Admin/Ops only)
-    if current_user.get('role') == 'telecaller':
+    user_role = current_user.get('role')
+    if is_gp(user_role) and not can_edit_bank_processing(user_role):
         raise HTTPException(status_code=403, detail="Growth Partners cannot modify bank eligibilities. Contact Admin/Ops for bank processing.")
     
     if len(eligibility_update.eligibilities) > 7:
@@ -2218,11 +2235,13 @@ async def get_files_dashboard_stats(
     query = {"status": "file"}
     
     # GP role restriction - GPs only see their own files
-    if current_user.get('role') == 'telecaller':
+    user_role = current_user.get('role')
+    if is_gp(user_role):
         gp_id = current_user.get('id')
         query["$or"] = [
             {"assigned_to": gp_id},
-            {"file_assigned_to": gp_id}
+            {"file_assigned_to": gp_id},
+            {"source_id": gp_id}  # Also match by source_id for historical files
         ]
     elif assigned_to:
         # Admin/Ops can filter by assigned_to

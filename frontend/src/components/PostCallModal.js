@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Phone, CheckCircle, XCircle, Clock, AlertCircle, Mic, Calendar, Loader2, PhoneOff, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import { StatusColors, StatusLabels, OutcomeColors } from '../constants/colors';
 import { queueCallLog, isOnline } from '../services/offlineQueue';
@@ -9,6 +10,7 @@ import { queueCallLog, isOnline } from '../services/offlineQueue';
  * Supports both outgoing and incoming calls for feature parity with mobile
  */
 const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoing', detectedDuration = 0 }) => {
+  const navigate = useNavigate();
   const [outcome, setOutcome] = useState(null);
   const [notes, setNotes] = useState('');
   const [newStatus, setNewStatus] = useState(null);
@@ -102,11 +104,16 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
       call_type: callType, // 'outgoing' or 'incoming'
     };
     
-    const statusUpdateData = newStatus && newStatus !== lead.status 
+    // Determine if this is a file conversion
+    const isFileConversion = newStatus === 'file' && newStatus !== lead.status;
+    
+    const statusUpdateData = newStatus && newStatus !== lead.status && newStatus !== 'file'
       ? { status: newStatus, last_call_outcome: outcome, notes: notes || lead.notes }
       : { last_call_outcome: outcome };
 
     try {
+      let fileConversionResponse = null;
+      
       if (isOffline) {
         // Queue for later sync
         await queueCallLog(callLogData, statusUpdateData, lead.id);
@@ -115,8 +122,23 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
         // Log the call outcome
         await api.post('/call-logs', callLogData);
 
-        // Update lead status if changed
-        await api.put(`/leads/${lead.id}`, statusUpdateData);
+        // ============ FILE CONVERSION - USE CANONICAL ENDPOINT ============
+        // If status changed to 'file', call the canonical conversion endpoint
+        if (isFileConversion) {
+          try {
+            fileConversionResponse = await api.post(`/leads/${lead.id}/convert-to-file`);
+          } catch (convErr) {
+            console.error('File conversion failed:', convErr);
+            // If conversion fails, still update with regular status
+            await api.put(`/leads/${lead.id}`, { 
+              status: 'file', // Try regular update as fallback
+              last_call_outcome: outcome 
+            });
+          }
+        } else {
+          // Update lead status if changed (for non-file statuses)
+          await api.put(`/leads/${lead.id}`, statusUpdateData);
+        }
 
         // Create follow-up if scheduled
         if (scheduleFollowUp && followUpDate && outcome === 'connected') {
@@ -130,6 +152,14 @@ const PostCallModal = ({ isOpen, onClose, lead, onCallLogged, callType = 'outgoi
 
       onCallLogged && onCallLogged();
       onClose();
+      
+      // ============ FILE REDIRECT ============
+      // If file was converted, navigate to File Detail page
+      if (fileConversionResponse?.data?.file_id) {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const baseRoute = user.role === 'admin' ? '/admin' : '/agent';
+        navigate(`${baseRoute}/files/${fileConversionResponse.data.file_id}`);
+      }
     } catch (error) {
       console.error('Error logging call:', error);
       

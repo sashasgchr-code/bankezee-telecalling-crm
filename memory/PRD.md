@@ -110,8 +110,46 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 
 ---
 
+## September 2026 Update - DATA → FILE WORKFLOW & RBAC
+
+### Completed (September 2, 2026)
+
+**1. Canonical Data → File Conversion**
+- New endpoint: `POST /api/leads/{id}/convert-to-file`
+- Idempotent: Returns existing File if already converted
+- Prefills customer info from Data record
+- Preserves originating GP (source_id)
+- Creates activity log entry
+- Used by both CallModal (post-call) and manual status edit
+
+**2. File Detail Section Split & RBAC**
+- **Section 1**: Customer & Application Information
+  - Editable by: GP, Ops, Admin
+  - Includes: customer details, employment, income, obligations, loan requirements
+- **Section 2**: Bank Processing & Eligibility
+  - Editable by: Ops and Admin ONLY
+  - GPs see "View Only" badge
+  - GPs cannot add/edit bank eligibilities (403 error)
+
+**3. Progressive Bank Eligibility UI**
+- Conditional field reveal: Bank → Eligible? → Login? → Approved? → Disbursed?
+- Historical files display all existing data
+
+**4. GP Role Expansion**
+- Roles now recognized as GP: telecaller, sales_agent, team_leader, partner, manager
+- Route protection updated in frontend and backend
+
+**5. Anusha Acceptance Test: PASSED**
+- 15 files visible (14 migrated + 1 converted)
+- Can edit Section 1 (Customer Info)
+- Cannot edit Section 2 (Bank Processing)
+- View Only badge correctly displayed
+
+---
+
 ## Authentication
 - Admin: admin@bankezee.com / ConnectSasha12!!
+- GP Test: yarragondaanusha@gmail.com / AnushaGP123!
 - Operations: ops@bankezee.com
 
 ## Technical Stack
@@ -135,5 +173,5 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 
 ---
 
-*Last Updated: December 2, 2025*
+*Last Updated: September 2, 2026*
 *Status: PRODUCTION LIVE*

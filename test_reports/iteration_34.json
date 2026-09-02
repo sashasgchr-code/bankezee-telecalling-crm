@@ -1,0 +1,41 @@
+{
+  "summary": "Iter34 - DATA -> FILE workflow + GP vs Admin RBAC acceptance testing. Backend: 9/9 pytest pass. Anusha GP login OK (role=sales_agent). GET /api/files returns EXACTLY 14 files for Anusha (matches spec via source_id filter). GET /api/files/{anusha_file_id} works for both Anusha and Admin - returns file_details + eligibilities. POST /api/leads/{file_id}/convert-to-file is idempotent (is_new=false, redirect_url=/files/{id}) when lead is already status=file. RBAC verified: PUT /api/files/{id}/eligibilities returns 403 for Anusha (GP/sales_agent), 200 for Admin - persisted TEST_BANK_ITER34 and cleaned up. PUT /api/files/{id}/details allowed for GP (Section 1 edit). Frontend (Desktop 1920): GP Anusha at /files/{id} - Section 1 heading + Section 2 heading + 'Edit Details' button all present, 'View Only' badge shown, ZERO 'Add Bank' buttons. Admin at same URL - Section 1/2 present, 'Edit Details' visible, 1 'Add Bank' button visible, no 'View Only' badge. All 8 spec bullets satisfied.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "FileDetailsPage (both GP and Admin views)",
+        "issues": [
+          "Pre-existing hydration errors from Emergent Visual Editor injecting <span data-ve-dynamic='true'> as children of <select>, <optgroup>, <option>, <table>, <tbody>, <tfoot>, <tr>. Carryover from iter30-33, non-functional but pollutes console.",
+          "FileAssignmentCard: 'Each child in a list should have a unique key prop' warning. Also 'Cannot infer the option value of complex children' - some <option> tags likely missing explicit value prop when wrapped by ve-dynamic spans."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter34_data_to_file.py",
+    "/app/test_reports/pytest/iter34.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "convert-to-file endpoint (routes/leads.py:831) is well-designed and idempotent, but RBAC check only guards 'telecaller' role - other GP roles (sales_agent, partner, team_leader, manager) can convert ANY lead. Consider extending: if is_gp(role) and lead.assigned_to != user.id -> 403.",
+    "files_crm.py is 3500+ lines - well past 700-line guideline. Split into files_crm/router.py, files_crm/eligibility.py, files_crm/reports.py, files_crm/rating.py, files_crm/import_export.py.",
+    "GP_ROLES in files_crm.py includes 'manager' - verify this is intended, as managers often need bank processing edit rights too. Currently manager can view but not edit Section 2 - confirm business intent.",
+    "PUT /api/files/{id}/details allows GP to edit Section 1 - but there's no ownership check that the GP is assigned to this file. A GP could edit any file if they know the ID. Add: if is_gp(user.role) and file.source_id != user.id and file.assigned_to != user.id -> 403.",
+    "FileStatusCard renders <optgroup>/<option> that break under Emergent Visual Editor's <span data-ve-dynamic> injection - consider adding suppressHydrationWarning or restructuring so VE wrappers land on div containers, not inside select."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter34_data_to_file.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (RBAC acceptance criteria all met)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! ; yarragondaanusha@gmail.com / AnushaGP123!",
+  "seed_data_creation": "None. Test bank eligibility TEST_BANK_ITER34 added then reverted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter34 validated Data->File RBAC. Backend endpoints: POST /api/leads/{id}/convert-to-file (idempotent), PUT /api/files/{id}/eligibilities (admin/ops only, GP=403), PUT /api/files/{id}/details (GP+admin+ops). Anusha has exactly 14 files. Test file: /app/backend/tests/test_iter34_data_to_file.py. Two ownership-check hardening items (see critical_code_review_comments) flagged but not blocking spec acceptance."
+}

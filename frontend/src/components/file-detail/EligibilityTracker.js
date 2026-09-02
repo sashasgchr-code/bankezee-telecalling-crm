@@ -12,50 +12,63 @@ const EligibilityTracker = ({
   isSaving
 }) => {
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-testid="eligibility-card">
-      <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+    <div data-testid="eligibility-tracker">
+      {/* Header with Add Bank button */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2 text-gray-700">
           <Building2 size={20} className="text-green-600" />
-          Bank Eligibilities ({eligibilities.length}/7)
-        </h3>
+          <span className="font-medium">Bank Eligibilities ({eligibilities.length}/7 maximum)</span>
+        </div>
         {canEdit && (
           <button 
             onClick={onAdd} 
             disabled={eligibilities.length >= 7}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            data-testid="add-bank-btn"
           >
             <Plus size={16} /> Add Bank
           </button>
         )}
       </div>
-      <div className="p-6">
-        {eligibilities.length === 0 ? (
-          <p className="text-center text-gray-500 py-8">No eligibility records yet. Click "Add Bank" to start tracking.</p>
-        ) : (
-          <div className="space-y-6">
-            {eligibilities.map((elig, index) => (
-              <BankEligibilityCard
-                key={index}
-                eligibility={elig}
-                index={index}
-                canEdit={canEdit}
-                onUpdate={onUpdate}
-                onRemove={onRemove}
-              />
-            ))}
-          </div>
-        )}
-        {canEdit && eligibilities.length > 0 && (
-          <button 
-            onClick={onSave} 
-            disabled={isSaving}
-            className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isSaving && <Loader2 size={16} className="animate-spin" />}
-            {isSaving ? 'Saving...' : 'Save All Eligibilities'}
-          </button>
-        )}
-      </div>
+      
+      {/* Empty State */}
+      {eligibilities.length === 0 ? (
+        <div className="text-center py-8 bg-gray-50 rounded-lg border border-dashed border-gray-200">
+          <Building2 size={32} className="mx-auto text-gray-400 mb-2" />
+          <p className="text-gray-500">
+            {canEdit 
+              ? 'No bank eligibilities yet. Click "Add Bank" to start tracking.' 
+              : 'No bank eligibilities have been added to this file yet.'}
+          </p>
+        </div>
+      ) : (
+        /* Eligibility Cards - Progressive Workflow */
+        <div className="space-y-4">
+          {eligibilities.map((elig, index) => (
+            <BankEligibilityCard
+              key={index}
+              eligibility={elig}
+              index={index}
+              canEdit={canEdit}
+              onUpdate={onUpdate}
+              onRemove={onRemove}
+            />
+          ))}
+        </div>
+      )}
+      
+      {/* Save Button */}
+      {canEdit && eligibilities.length > 0 && (
+        <button 
+          onClick={onSave} 
+          disabled={isSaving}
+          className="w-full mt-4 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 disabled:opacity-50 flex items-center justify-center gap-2"
+          data-testid="save-eligibilities-btn"
+        >
+          {isSaving && <Loader2 size={16} className="animate-spin" />}
+          {isSaving ? 'Saving...' : 'Save All Eligibilities'}
+        </button>
+      )}
     </div>
   );
 };

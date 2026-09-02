@@ -132,6 +132,23 @@ www.BankEzee.com`;
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      // ============ FILE CONVERSION - USE CANONICAL ENDPOINT ============
+      // If status is changing to 'file', use the canonical conversion endpoint
+      if (editData.status === 'file' && lead.status !== 'file') {
+        try {
+          const conversionResponse = await api.post(`/leads/${id}/convert-to-file`);
+          
+          // Redirect to File Details page
+          const basePath = user?.role === 'admin' ? '/admin' : '/agent';
+          navigate(`${basePath}/files/${conversionResponse.data.file_id}`);
+          return;
+        } catch (convErr) {
+          console.error('File conversion failed:', convErr);
+          // Fall through to regular update as fallback
+        }
+      }
+      
+      // Regular update for non-file status changes
       await api.put(`/leads/${id}`, {
         name: editData.name,
         phone: editData.phone,
@@ -144,7 +161,7 @@ www.BankEzee.com`;
       setLead(editData);
       setIsEditing(false);
       
-      // If status changed to 'file', redirect to File Details page
+      // If status changed to 'file' (fallback case), redirect to File Details page
       if (editData.status === 'file') {
         const basePath = user?.role === 'admin' ? '/admin' : '/agent';
         navigate(`${basePath}/files/${id}`);
