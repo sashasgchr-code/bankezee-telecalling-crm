@@ -15,6 +15,100 @@ from utils.helpers import serialize_doc
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
+
+def generate_partner_code(name: str) -> str:
+    """Generate a unique partner code like AGTA81DAB9D"""
+    import uuid
+    prefix = ''.join(c for c in name[:4].upper() if c.isalpha())
+    if len(prefix) < 4:
+        prefix = prefix + 'X' * (4 - len(prefix))
+    suffix = uuid.uuid4().hex[:8].upper()
+    return f"{prefix}{suffix}"
+
+
+@router.post("/register-gp")
+async def register_growth_partner(data: dict):
+    """
+    Comprehensive Growth Partner registration with all details.
+    Requires admin approval before activation.
+    """
+    # Validate required fields
+    required_fields = ['name', 'email', 'phone', 'city', 'password', 'pan_number', 
+                       'bank_name', 'account_holder', 'account_number', 'ifsc_code']
+    for field in required_fields:
+        if not data.get(field):
+            raise HTTPException(status_code=400, detail=f"{field.replace('_', ' ').title()} is required")
+    
+    # Check if email already exists
+    existing = await db.users.find_one({"email": data['email'].lower()})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Check if phone already exists
+    existing_phone = await db.users.find_one({"phone": data['phone']})
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="Phone number already registered")
+    
+    # Generate unique partner code
+    partner_code = generate_partner_code(data['name'])
+    
+    # Create user document with all details
+    user_doc = {
+        "email": data['email'].lower(),
+        "password": get_password_hash(data['password']),
+        "plain_password": data['password'],  # Store for admin visibility
+        "name": data['name'].strip(),
+        "phone": data['phone'].strip(),
+        "city": data['city'],
+        "partner_code": partner_code,
+        "role": "telecaller",
+        
+        # KYC Details
+        "pan_number": data['pan_number'].upper(),
+        "kyc_status": "pending",  # pending, verified, rejected
+        
+        # Bank Details
+        "bank_details": {
+            "bank_name": data['bank_name'],
+            "account_holder": data['account_holder'].strip(),
+            "account_number": data['account_number'],
+            "ifsc_code": data['ifsc_code'].upper()
+        },
+        
+        # Approval Status
+        "is_active": False,
+        "is_approved": False,
+        "approval_status": "pending",  # pending, approved, rejected
+        "approval_date": None,
+        "approved_by": None,
+        "rejection_reason": None,
+        
+        # Metadata
+        "created_at": datetime.now(timezone.utc),
+        "registered_at": datetime.now(timezone.utc),
+        "last_login": None,
+        "last_activity": None,
+        "manager_id": None,
+        "manager_name": "Unassigned"
+    }
+    
+    result = await db.users.insert_one(user_doc)
+    user_doc["_id"] = result.inserted_id
+    user_doc["id"] = str(result.inserted_id)
+    
+    # Update with ID
+    await db.users.update_one(
+        {"_id": result.inserted_id},
+        {"$set": {"id": str(result.inserted_id)}}
+    )
+    
+    return {
+        "message": "Registration submitted successfully. Please wait for admin approval.",
+        "status": "pending_approval",
+        "partner_code": partner_code
+    }
+
+
 @router.post("/register")
 async def register(user: UserRegister):
     existing = await db.users.find_one({"email": user.email.lower()})
