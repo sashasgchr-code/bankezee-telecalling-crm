@@ -489,7 +489,7 @@ const AdminReports = () => {
 
       const getHourData = (tc, hour) => {
         const hb = tc.hourly_breakdown?.find(h => h.hour === hour);
-        return hb || { calls: 0, leads: 0, file: 0 };
+        return hb || { calls: 0, connected: 0, leads: 0, file: 0 };
       };
 
       if (sortedHours.length > 0 && hourlyReports.telecallers?.length > 0) {
@@ -497,17 +497,20 @@ const AdminReports = () => {
         const headerRow = ['Growth Partner'];
         sortedHours.forEach(hour => {
           headerRow.push(`${hour.toString().padStart(2, '0')}:00`);
+          headerRow.push(''); // Span for CO
           headerRow.push(''); // Span for L
           headerRow.push(''); // Span for F
         });
         headerRow.push('TOTAL');
         headerRow.push('');
         headerRow.push('');
+        headerRow.push('');
 
-        // Build sub-header row with C L F
+        // Build sub-header row with C CO L F
         const subHeaderRow = [''];
         for (let i = 0; i <= sortedHours.length; i++) {
           subHeaderRow.push('C');
+          subHeaderRow.push('CO');
           subHeaderRow.push('L');
           subHeaderRow.push('F');
         }
@@ -520,11 +523,13 @@ const AdminReports = () => {
           sortedHours.forEach(hour => {
             const data = getHourData(tc, hour);
             row.push(data.calls > 0 ? data.calls : '-');
+            row.push(data.connected > 0 ? data.connected : '-');
             row.push(data.leads > 0 ? data.leads : '-');
             row.push(data.file > 0 ? data.file : '-');
           });
           // TOTAL column
           row.push(tc.total_calls || 0);
+          row.push(tc.total_connected || 0);
           row.push(tc.total_leads || 0);
           row.push(tc.total_file || 0);
           bodyData.push(row);
@@ -537,27 +542,31 @@ const AdminReports = () => {
             const data = getHourData(tc, hour);
             return {
               c: acc.c + (data.calls || 0),
+              co: acc.co + (data.connected || 0),
               l: acc.l + (data.leads || 0),
               f: acc.f + (data.file || 0)
             };
-          }, { c: 0, l: 0, f: 0 });
+          }, { c: 0, co: 0, l: 0, f: 0 });
           totalRow.push(totals.c || '-');
+          totalRow.push(totals.co || '-');
           totalRow.push(totals.l || '-');
           totalRow.push(totals.f || '-');
         });
         // Grand totals
         const grandTotals = {
           c: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_calls || 0), 0),
+          co: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_connected || 0), 0),
           l: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_leads || 0), 0),
           f: hourlyReports.telecallers.reduce((sum, tc) => sum + (tc.total_file || 0), 0)
         };
         totalRow.push(grandTotals.c);
+        totalRow.push(grandTotals.co);
         totalRow.push(grandTotals.l);
         totalRow.push(grandTotals.f);
         bodyData.push(totalRow);
 
         // Calculate column widths
-        const totalDataCols = (sortedHours.length + 1) * 3; // Each hour has 3 columns (C,L,F)
+        const totalDataCols = (sortedHours.length + 1) * 4; // Each hour has 4 columns (C,CO,L,F)
         const telecallerColWidth = 40;
         const availableWidth = landPageWidth - telecallerColWidth - 16;
         const dataColWidth = Math.max(8, availableWidth / totalDataCols);

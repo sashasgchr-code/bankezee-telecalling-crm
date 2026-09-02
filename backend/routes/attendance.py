@@ -1371,3 +1371,222 @@ async def admin_get_monthly_attendance_summary(
             "total_office_days": sum(e["days_office"] for e in employees_list)
         }
     }
+
+
+
+# ===================== MONTHLY ATTENDANCE SUMMARY =====================
+
+@router.get("/monthly-summary")
+async def get_monthly_attendance_summary(
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get monthly attendance summary for current user.
+    Shows: Working Days, Present, WFH, Leave, Absent, Attendance %
+    Plus day-wise breakdown with login/logout times.
+    """
+    from calendar import monthrange
+    
+    now = get_ist_now()
+    target_year = year or now.year
+    target_month = month or now.month
+    
+    # Get month range
+    _, days_in_month = monthrange(target_year, target_month)
+    month_start = datetime(target_year, target_month, 1, 0, 0, 0, tzinfo=IST)
+    month_end = datetime(target_year, target_month, days_in_month, 23, 59, 59, tzinfo=IST)
+    
+    user_id = current_user["id"]
+    
+    # Get attendance records for the month
+    records = await db.attendance.find({
+        "user_id": user_id,
+        "attendance_date": {"$gte": month_start, "$lte": month_end}
+    }).sort("attendance_date", 1).to_list(31)
+    
+    # Calculate summary
+    summary = {
+        "working_days": 0,
+        "present": 0,
+        "wfh": 0,
+        "approved_leave": 0,
+        "absent": 0,
+        "half_day": 0,
+        "late": 0,
+        "total_hours_worked": 0.0
+    }
+    
+    day_wise = []
+    
+    # Calculate working days (exclude weekends)
+    current_date = month_start
+    while current_date <= month_end and current_date <= now:
+        if current_date.weekday() < 5:  # Monday-Friday
+            summary["working_days"] += 1
+        current_date += timedelta(days=1)
+    
+    for rec in records:
+        status = rec.get("attendance_status", "")
+        work_mode = rec.get("work_mode", "")
+        
+        # Count by status
+        if status in ["PRESENT", "LATE"]:
+            summary["present"] += 1
+            if status == "LATE":
+                summary["late"] += 1
+        elif status == "ON_LEAVE":
+            summary["approved_leave"] += 1
+        elif status == "HALF_DAY":
+            summary["half_day"] += 1
+            summary["present"] += 0.5
+        elif status == "ABSENT":
+            summary["absent"] += 1
+        
+        # Count WFH
+        if work_mode == "WORK_FROM_HOME":
+            summary["wfh"] += 1
+        
+        # Calculate hours
+        check_in = rec.get("check_in_time")
+        check_out = rec.get("check_out_time")
+        hours_worked = 0.0
+        if check_in and check_out:
+            duration = (check_out - check_in).total_seconds() / 3600
+            hours_worked = round(duration, 2)
+            summary["total_hours_worked"] += hours_worked
+        
+        # Day-wise entry
+        day_wise.append({
+            "date": rec.get("attendance_date").strftime("%Y-%m-%d") if rec.get("attendance_date") else "",
+            "day": rec.get("attendance_date").strftime("%A") if rec.get("attendance_date") else "",
+            "login_time": utc_to_ist(check_in).strftime("%H:%M") if check_in else "-",
+            "logout_time": utc_to_ist(check_out).strftime("%H:%M") if check_out else "-",
+            "work_mode": work_mode or "-",
+            "status": status or "-",
+            "hours_worked": hours_worked
+        })
+    
+    # Calculate attendance percentage
+    attendance_percentage = 0.0
+    if summary["working_days"] > 0:
+        attendance_percentage = round((summary["present"] / summary["working_days"]) * 100, 1)
+    
+    return {
+        "month": target_month,
+        "year": target_year,
+        "month_name": month_start.strftime("%B"),
+        "user_id": user_id,
+        "user_name": current_user.get("name", ""),
+        "summary": {
+            **summary,
+            "attendance_percentage": attendance_percentage
+        },
+        "day_wise": day_wise
+    }
+
+
+@router.get("/monthly-summary/{user_id}")
+async def get_user_monthly_attendance_summary(
+    user_id: str,
+    month: Optional[int] = None,
+    year: Optional[int] = None,
+    current_user: dict = Depends(require_admin)
+):
+    """Admin: Get monthly attendance summary for a specific user."""
+    from calendar import monthrange
+    
+    now = get_ist_now()
+    target_year = year or now.year
+    target_month = month or now.month
+    
+    # Get user info
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get month range
+    _, days_in_month = monthrange(target_year, target_month)
+    month_start = datetime(target_year, target_month, 1, 0, 0, 0, tzinfo=IST)
+    month_end = datetime(target_year, target_month, days_in_month, 23, 59, 59, tzinfo=IST)
+    
+    # Get attendance records
+    records = await db.attendance.find({
+        "user_id": user_id,
+        "attendance_date": {"$gte": month_start, "$lte": month_end}
+    }).sort("attendance_date", 1).to_list(31)
+    
+    # Calculate summary (same logic as above)
+    summary = {
+        "working_days": 0,
+        "present": 0,
+        "wfh": 0,
+        "approved_leave": 0,
+        "absent": 0,
+        "half_day": 0,
+        "late": 0,
+        "total_hours_worked": 0.0
+    }
+    
+    day_wise = []
+    
+    current_date = month_start
+    while current_date <= month_end and current_date <= now:
+        if current_date.weekday() < 5:
+            summary["working_days"] += 1
+        current_date += timedelta(days=1)
+    
+    for rec in records:
+        status = rec.get("attendance_status", "")
+        work_mode = rec.get("work_mode", "")
+        
+        if status in ["PRESENT", "LATE"]:
+            summary["present"] += 1
+            if status == "LATE":
+                summary["late"] += 1
+        elif status == "ON_LEAVE":
+            summary["approved_leave"] += 1
+        elif status == "HALF_DAY":
+            summary["half_day"] += 1
+            summary["present"] += 0.5
+        elif status == "ABSENT":
+            summary["absent"] += 1
+        
+        if work_mode == "WORK_FROM_HOME":
+            summary["wfh"] += 1
+        
+        check_in = rec.get("check_in_time")
+        check_out = rec.get("check_out_time")
+        hours_worked = 0.0
+        if check_in and check_out:
+            duration = (check_out - check_in).total_seconds() / 3600
+            hours_worked = round(duration, 2)
+            summary["total_hours_worked"] += hours_worked
+        
+        day_wise.append({
+            "date": rec.get("attendance_date").strftime("%Y-%m-%d") if rec.get("attendance_date") else "",
+            "day": rec.get("attendance_date").strftime("%A") if rec.get("attendance_date") else "",
+            "login_time": utc_to_ist(check_in).strftime("%H:%M") if check_in else "-",
+            "logout_time": utc_to_ist(check_out).strftime("%H:%M") if check_out else "-",
+            "work_mode": work_mode or "-",
+            "status": status or "-",
+            "hours_worked": hours_worked
+        })
+    
+    attendance_percentage = 0.0
+    if summary["working_days"] > 0:
+        attendance_percentage = round((summary["present"] / summary["working_days"]) * 100, 1)
+    
+    return {
+        "month": target_month,
+        "year": target_year,
+        "month_name": month_start.strftime("%B"),
+        "user_id": user_id,
+        "user_name": user.get("name", ""),
+        "summary": {
+            **summary,
+            "attendance_percentage": attendance_percentage
+        },
+        "day_wise": day_wise
+    }

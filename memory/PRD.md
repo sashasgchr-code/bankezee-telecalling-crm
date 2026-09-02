@@ -23,9 +23,41 @@
 | Quality Report | ✅ PASS | Data quality scores |
 | Terminology (GP) | ✅ PASS | "Growth Partner" throughout UI |
 | Attendance | ✅ PASS | Navigation working |
-| Leave | ✅ PASS | Navigation working |
+| Leave (P.A.L.M.E) | ✅ PASS | Full P.A.L.M.E policy implemented |
 
 ## What's Been Implemented
+
+### P.A.L.M.E Leave Policy (NEW - Sep 02, 2026)
+**Present • Absent • Leave • Medical • Emergency**
+
+1. **2026 Special Accrual Rule**
+   - For year 2026, leave accrual starts from **September** only
+   - Total allowance: 8 days (4 months × 2 days)
+   - Other years: Normal January start (24 days/year)
+
+2. **Rewards System**
+   - Weekly On Time: ₹200 (present on time all 5/6 working days)
+   - Monthly Perfect: ₹500 (perfect punctuality entire month)
+   - Quarterly Outstanding: ₹2,000 + Certificate (3 consecutive months)
+
+3. **Accountability (Penalties)**
+   - Uninformed Leave: ₹100 per occurrence
+   - Leave must be applied 3+ days in advance
+   - Sick leave >3 consecutive days requires medical certificate
+
+4. **Admin Features**
+   - Monthly Summary with team attendance breakdown
+   - All Employees view with P.A.L.M.E metrics
+   - Add Reward / Add Penalty functionality
+   - Medical certificate tracking for sick leaves
+
+5. **API Endpoints**
+   - `GET /api/leave/balance?year=2026` - Shows September accrual
+   - `GET /api/leave/palme/policy` - Returns policy details
+   - `GET /api/leave/palme/monthly-summary` - Team summary
+   - `GET /api/leave/palme/all-employees` - All employee data
+   - `POST /api/leave/palme/rewards` - Add reward
+   - `POST /api/leave/palme/penalty` - Add penalty
 
 ### Critical Business Logic
 1. **File Reassignment Block** - Server-side enforcement
@@ -82,6 +114,7 @@
 ### P1 - Post-Production
 1. Monitor for any edge cases in UUID handling
 2. Consider splitting FilesDashboard.js for maintainability
+3. Consider splitting leave_management.py (1400+ lines) into modules
 
 ## API Endpoints Summary
 
@@ -91,6 +124,15 @@
 - `POST /api/leads/assign` - Assign (blocks Files)
 - `POST /api/leads/auto-distribute` - Auto-distribute (excludes Files)
 - `POST /api/leads/check-reassignment` - Check eligibility
+
+### Leave Management (P.A.L.M.E)
+- `GET /api/leave/balance?year=YYYY` - Leave balance with accrual
+- `GET /api/leave/palme/policy` - P.A.L.M.E policy details
+- `GET /api/leave/palme/monthly-summary` - Team monthly summary
+- `GET /api/leave/palme/all-employees` - All employee summaries
+- `POST /api/leave/palme/rewards` - Add reward
+- `POST /api/leave/palme/penalty` - Add penalty
+- `PATCH /api/leave/requests/{id}/mark-uninformed` - Mark as uninformed
 
 ### Files Reports (Auth Required)
 - `GET /api/files/reports/daily`

@@ -18,6 +18,64 @@ from utils.helpers import serialize_doc, serialize_docs
 
 router = APIRouter(prefix="/api", tags=["Leads"])
 
+# Call outcome normalization map - maps variants to standard values
+CALL_OUTCOME_NORMALIZATION = {
+    # Connected variants
+    "connected": "connected",
+    "connect": "connected",
+    "answered": "connected",
+    "call_connected": "connected",
+    # No Answer variants
+    "no_answer": "no_answer",
+    "noanswer": "no_answer",
+    "not_answering": "no_answer",
+    "not answering": "no_answer",
+    "no answer": "no_answer",
+    "unanswered": "no_answer",
+    "ring_no_answer": "no_answer",
+    "rna": "no_answer",
+    # Switched Off variants
+    "switched_off": "switched_off",
+    "switchedoff": "switched_off",
+    "switched off": "switched_off",
+    "switch off": "switched_off",
+    "switch_off": "switched_off",
+    "phone switched off": "switched_off",
+    "phone off": "switched_off",
+    "unreachable": "switched_off",
+    "not reachable": "switched_off",
+    "not_reachable": "switched_off",
+    # Busy variants
+    "busy": "busy",
+    "line_busy": "busy",
+    "user_busy": "busy",
+    "engaged": "busy",
+    # Not Connecting variants
+    "not_connecting": "not_connecting",
+    "not connecting": "not_connecting",
+    "network_error": "not_connecting",
+    "call_failed": "not_connecting",
+    "failed": "not_connecting",
+    # Wrong Number variants
+    "wrong_number": "wrong_number",
+    "wrong number": "wrong_number",
+    "invalid_number": "wrong_number",
+    "invalid": "wrong_number",
+    "not_in_service": "wrong_number",
+    # Voicemail variants
+    "voicemail": "voicemail",
+    "voice_mail": "voicemail",
+    "mailbox": "voicemail",
+    "vm": "voicemail",
+}
+
+def normalize_call_outcome(outcome: str) -> str:
+    """Normalize call outcome to standard value"""
+    if not outcome:
+        return None
+    normalized = outcome.lower().strip()
+    return CALL_OUTCOME_NORMALIZATION.get(normalized, outcome)
+
 # Phone number normalization helper
 def normalize_phone(phone: str) -> str:
     """Normalize phone number to last 10 digits for Indian numbers"""
@@ -391,14 +449,24 @@ async def get_leads_count(
     return {"count": count}
 
 @router.get("/leads/stats")
-async def get_leads_stats(current_user: dict = Depends(get_current_user)):
-    """Get lead statistics for dashboard"""
-    base_query = {}
-    if current_user["role"] == "telecaller":
-        base_query["assigned_to"] = current_user["id"]
-    
-    # Exclude archived and invalid
-    base_query["$or"] = [{"archived": {"$exists": False}}, {"archived": False}]
+async def get_leads_stats(
+    assigned_to: Optional[str] = None,
+    search: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get lead statistics for dashboard.
+    Uses the SAME query logic as the leads list to ensure count consistency.
+    Counts shown in badges MUST match the records returned when that filter is applied.
+    """
+    # Build base query using the same function as list endpoint
+    base_query = build_leads_query(
+        current_user=current_user,
+        assigned_to=assigned_to,
+        search=search,
+        archived=False,
+        is_invalid=False
+    )
     
     pipeline = [
         {"$match": base_query},
@@ -407,7 +475,6 @@ async def get_leads_stats(current_user: dict = Depends(get_current_user)):
                 {"$group": {"_id": "$status", "count": {"$sum": 1}}}
             ],
             "by_outcome": [
-                {"$match": {"last_call_outcome": {"$exists": True}}},
                 {"$group": {"_id": "$last_call_outcome", "count": {"$sum": 1}}}
             ],
             "totals": [
@@ -445,11 +512,77 @@ async def get_leads_stats(current_user: dict = Depends(get_current_user)):
     if no_status_count > 0:
         by_status["no_status"] = no_status_count
     
+    # Process by_outcome - include null/empty as "never_called" if leads have no outcome
+    by_outcome = {}
+    never_called_count = 0
+    for item in data.get("by_outcome", []):
+        outcome_val = item["_id"]
+        count = item["count"]
+        if outcome_val is None or outcome_val == "" or outcome_val == "null":
+            never_called_count += count
+        else:
+            by_outcome[outcome_val] = count
+    
+    # Add never_called to outcome counts
+    if never_called_count > 0:
+        by_outcome["never_called"] = never_called_count
+    
     return {
         "by_status": by_status,
-        "by_outcome": {item["_id"]: item["count"] for item in data.get("by_outcome", []) if item["_id"]},
+        "by_outcome": by_outcome,
         "totals": data.get("totals", [{}])[0] if data.get("totals") else {}
     }
+
+
+@router.get("/leads/outcomes/distinct")
+async def get_distinct_outcomes(current_user: dict = Depends(require_admin)):
+    """
+    Get all distinct raw call outcome values in the database.
+    Useful for debugging and verifying outcome normalization.
+    """
+    # Get raw outcomes from leads
+    lead_outcomes = await db.leads.distinct("last_call_outcome")
+    
+    # Get raw outcomes from call_logs
+    log_outcomes = await db.call_logs.distinct("call_outcome")
+    
+    # Combine and count
+    all_outcomes = set()
+    if lead_outcomes:
+        all_outcomes.update([o for o in lead_outcomes if o])
+    if log_outcomes:
+        all_outcomes.update([o for o in log_outcomes if o])
+    
+    # Build result with counts and normalized values
+    result = []
+    for outcome in sorted(all_outcomes):
+        lead_count = await db.leads.count_documents({"last_call_outcome": outcome})
+        log_count = await db.call_logs.count_documents({"call_outcome": outcome})
+        normalized = normalize_call_outcome(outcome)
+        result.append({
+            "raw_value": outcome,
+            "normalized": normalized,
+            "lead_count": lead_count,
+            "call_log_count": log_count,
+            "is_mapped": normalized != outcome
+        })
+    
+    # Also get count of null/empty outcomes
+    null_leads = await db.leads.count_documents({
+        "$or": [
+            {"last_call_outcome": None},
+            {"last_call_outcome": ""},
+            {"last_call_outcome": {"$exists": False}}
+        ]
+    })
+    
+    return {
+        "outcomes": result,
+        "null_or_empty_leads": null_leads,
+        "total_distinct_raw": len(result),
+        "normalization_map": CALL_OUTCOME_NORMALIZATION
+    }
+
 
 @router.get("/leads/unassigned")
 async def list_unassigned_leads(current_user: dict = Depends(require_admin)):

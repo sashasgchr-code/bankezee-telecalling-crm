@@ -814,6 +814,102 @@ async def get_hourly_report(
         "overall_hourly": overall_hourly
     }
 
+@router.get("/reports/my-hourly")
+async def get_my_hourly_report(
+    date: str = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Growth Partner's own hourly report.
+    Shows C (Calls), CO (Connected), L (Leads), F (Files) by hour.
+    Only shows the current user's data.
+    """
+    now = datetime.now(timezone.utc)
+    
+    if date:
+        target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+    else:
+        target_date = now
+    
+    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    
+    user_id = current_user["id"]
+    user_name = current_user.get("name", current_user.get("email", "Unknown"))
+    
+    # Aggregation for calls by hour
+    call_pipeline = [
+        {"$match": {"user_id": user_id, "created_at": {"$gte": start_of_day, "$lt": end_of_day}}},
+        {"$addFields": {
+            "hour": {"$hour": {"$add": ["$created_at", 19800000]}}  # IST offset
+        }},
+        {"$group": {
+            "_id": "$hour",
+            "calls": {"$sum": 1},
+            "connected": {"$sum": {"$cond": [{"$eq": ["$outcome", "connected"]}, 1, 0]}}
+        }}
+    ]
+    
+    # Aggregation for lead status updates by hour
+    lead_pipeline = [
+        {"$match": {"assigned_to": user_id, "updated_at": {"$gte": start_of_day, "$lt": end_of_day}}},
+        {"$addFields": {
+            "hour": {"$hour": {"$add": ["$updated_at", 19800000]}}
+        }},
+        {"$group": {
+            "_id": {"hour": "$hour", "status": "$status"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    
+    call_stats, lead_stats = await asyncio.gather(
+        db.call_logs.aggregate(call_pipeline).to_list(24),
+        db.leads.aggregate(lead_pipeline).to_list(100)
+    )
+    
+    # Build hourly data
+    hours = {h: {"calls": 0, "connected": 0, "leads": 0, "file": 0} for h in range(24)}
+    
+    for cs in call_stats:
+        hour = cs["_id"]
+        hours[hour]["calls"] = cs["calls"]
+        hours[hour]["connected"] = cs["connected"]
+    
+    for ls in lead_stats:
+        hour = ls["_id"]["hour"]
+        status = ls["_id"]["status"]
+        if status in ["leads", "converted"]:
+            hours[hour]["leads"] += ls["count"]
+        elif status == "file":
+            hours[hour]["file"] = ls["count"]
+    
+    # Build hourly breakdown (only non-empty hours)
+    hourly_breakdown = []
+    for hour in range(24):
+        h = hours[hour]
+        if h["calls"] > 0 or h["leads"] > 0 or h["file"] > 0:
+            hourly_breakdown.append({
+                "hour": hour,
+                "hour_label": f"{hour:02d}:00",
+                **h
+            })
+    
+    # Calculate totals
+    totals = {
+        "total_calls": sum(h["calls"] for h in hours.values()),
+        "total_connected": sum(h["connected"] for h in hours.values()),
+        "total_leads": sum(h["leads"] for h in hours.values()),
+        "total_file": sum(h["file"] for h in hours.values())
+    }
+    
+    return {
+        "date": target_date.strftime("%Y-%m-%d"),
+        "user_id": user_id,
+        "user_name": user_name,
+        "hourly_breakdown": hourly_breakdown,
+        **totals
+    }
+
 @router.get("/reports/daily-summary")
 async def get_daily_summary(
     date: Optional[str] = None,

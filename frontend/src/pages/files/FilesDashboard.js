@@ -732,10 +732,10 @@ const FilesDashboard = () => {
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs - Approvals only visible for Admin */}
       <div className="bg-white border-b border-gray-200 px-4">
         <div className="flex gap-1">
-          {['Dashboard', 'Approvals', ...(isAdmin ? ['Users'] : [])].map(tab => (
+          {['Dashboard', ...(isAdmin ? ['Approvals', 'Users'] : [])].map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab.toLowerCase())}
@@ -1007,48 +1007,52 @@ const FilesDashboard = () => {
             </div>
           </div>
 
-          {/* Monthly Performance (Line Chart placeholder) */}
+          {/* Monthly Performance (Line Chart) - Real Data */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 mb-2">Monthly Performance</h3>
-            <p className="text-xs text-gray-400 mb-4">Sample visualization</p>
-            <div className="h-48 flex items-end justify-around gap-2">
-              {[65, 72, 80, 75, 85, 78, 90, 82, 88, 76, 92, 85].map((val, idx) => (
-                <div key={`month-${idx}`} className="flex-1 flex flex-col items-center">
-                  <div 
-                    className="w-full bg-green-500 rounded-t"
-                    style={{ height: `${val}%` }}
-                  ></div>
-                  <span className="text-xs text-gray-500 mt-1">{idx + 1}</span>
-                </div>
-              ))}
-            </div>
+            {reports?.monthly_stats ? (
+              <div className="h-48 flex items-end justify-around gap-2">
+                {reports.monthly_stats.map((month, idx) => (
+                  <div key={`month-${idx}`} className="flex-1 flex flex-col items-center">
+                    <div 
+                      className="w-full bg-green-500 rounded-t"
+                      style={{ height: `${Math.min(month.percentage || 0, 100)}%` }}
+                      title={`Files: ${month.count || 0}`}
+                    ></div>
+                    <span className="text-xs text-gray-500 mt-1">{month.month || idx + 1}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-400 py-8">No monthly data available</p>
+            )}
           </div>
 
-          {/* Loans by Type (Bar Chart placeholder) */}
+          {/* Loans by Type (Bar Chart) - Real Data */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 mb-2">Loans by Type</h3>
-            <p className="text-xs text-gray-400 mb-4">Sample visualization</p>
-            <div className="space-y-3">
-              {[
-                { type: 'New Personal Loan', count: 143 },
-                { type: 'Balance Transfer', count: 125 },
-                { type: 'Topup PL', count: 54 },
-                { type: 'Used Vehicle', count: 41 },
-                { type: 'Loan BT', count: 35 },
-                { type: 'Merge Loans', count: 28 },
-              ].map((item) => (
-                <div key={item.type} className="flex items-center gap-2">
-                  <span className="text-xs text-gray-600 w-28 truncate">{item.type}</span>
-                  <div className="flex-1 bg-gray-100 rounded-full h-4 overflow-hidden">
-                    <div 
-                      className="h-full bg-green-500 rounded-full"
-                      style={{ width: `${(item.count / 143) * 100}%` }}
-                    ></div>
+            {reports?.loan_type_stats && reports.loan_type_stats.length > 0 ? (
+              <div className="space-y-3">
+                {reports.loan_type_stats.map((item) => (
+                  <div key={item.type || item._id} className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="text-gray-700">{item.type || item._id || 'Unknown'}</span>
+                        <span className="text-gray-500">{item.count}</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-blue-500 rounded-full"
+                          style={{ width: `${Math.min((item.count / (reports.loan_type_stats[0]?.count || 1)) * 100, 100)}%` }}
+                        ></div>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-xs font-medium text-gray-700 w-8">{item.count}</span>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-center text-gray-400 py-8">No loan type data available</p>
+            )}
           </div>
         </div>
 

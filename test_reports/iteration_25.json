@@ -1,0 +1,54 @@
+{
+  "summary": "Iter 25 — Verified BankEzee Connect production repair (Leave 2-days/month, Monthly Attendance Summary, My Hourly Report, Distinct call outcomes, Stats filter consistency, Never-Called consistency, Switched-Off filter). All 13 backend tests pass (100%). Frontend Leave Management page renders perfectly at /admin/leave with year selector (2024-2027), all 4 required cards (Leave Accrued=18, Leave Used=0, Leave Available=18, Full Year Allowance=24) showing correct 2-days/month accrual for September 2026 (9 months × 2 = 18). CRITICAL BLOCKER: Files Dashboard (/admin/files, /agent/files) is completely broken — throws ReferenceError: reportData is not defined and shows Uncaught runtime error overlay. Component never mounts, so Approvals tab visibility for GP cannot be verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/leads/stats vs /api/leads/count", "issue": "by_outcome.never_called is derived from last_call_outcome being null while totals.never_called uses last_call_at existence — two different semantics under the same name. Currently consistent because both are null on freshly-imported leads, but could drift when a lead has last_call_at set but last_call_outcome null."},
+      {"endpoint": "GET /api/leave/balance", "issue": "For future years (e.g. year=2027) accrued still returns 0 which is correct, but for the SPECIFIC scenario in the test spec (year=2026 should show accrued=18 for September), the endpoint returns accrued = current_IST_month * 2. In Jan 2026 accrued=2, not 18. The 'accrued=18 for September' assumption in the request only holds when server clock is in September; in the live env (currently 02-Sep-2026 IST) it correctly returns 18 as verified in UI. Backend logic is correct — just noting the spec's month-dependency."},
+      {"endpoint": "GET /api/leave/balance/{user_id}", "issue": "Line 183 calls ObjectId(user_id) unconditionally — will 500 on UUID user ids (same defensive-cast anti-pattern flagged in iter24 for /api/leads/{id})."},
+      {"endpoint": "/api/files/reports/*", "issue": "(carried from iter 23) Still no auth guard on report endpoints — anonymous callers can fetch daily/rejected/quality/growth-partner/bank-performance/tat-metrics."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FilesDashboard", "issue": "ReferenceError: reportData is not defined — used at lines 1013, 1015, 1034, 1036, 1046 of /app/frontend/src/pages/files/FilesDashboard.js but never declared as state. The declared state is `reports` (line 62). Entire FilesDashboard crashes with 'Uncaught runtime error' overlay; NO content renders (no tabs, no filters, no table). This is a P0 production blocker.", "selector": "route /admin/files and /agent/files", "priority": "CRITICAL"}
+    ],
+    "integration_issues": [
+      {"flow": "Files Dashboard → Approvals tab visibility for GP role", "issue": "Cannot verify — FilesDashboard component crashes before rendering any UI due to reportData ReferenceError. Approvals tab hide-for-GP behavior is unverifiable until the runtime error is fixed. Code inspection shows correct logic at line 738 (['Dashboard', ...(isAdmin ? ['Approvals','Users'] : [])]), so once the crash is fixed the tab should be correctly hidden for GP.", "affected_selectors": ["files-dashboard-tabs", "files-approvals-tab"]}
+    ],
+    "design_issues": [
+      {"screen": "Leave Management (/admin/leave)", "issues": ["Pending leave row displays '0' days for 05-06 Sept 2026 selection — technically correct because both are weekend days per calculate_leave_days (weekday()<5 rule), but confusing UX: user submitted a request that consumes 0 days. Consider warning at submission if computed leave_days == 0."]},
+      {"screen": "Global (carried)", "issues": ["React hydration warnings originate from ve-dynamic preview-tooling wrappers on Dashboard.js, VerifiedCallStats.js — non-blocking, only appear in dev preview builds."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter25_prod_repair.py",
+    "/app/test_reports/pytest/iter25.xml"
+  ],
+  "action_items": [
+    "CRITICAL — Fix /app/frontend/src/pages/files/FilesDashboard.js: replace all 5 occurrences of `reportData` (lines 1013, 1015, 1034, 1036, 1046) with the correctly-declared state variable `reports`, OR add `const [reportData, setReportData] = useState(null);` plus a fetch. Without this fix, entire Files Dashboard is unusable — cannot verify GP Approvals tab hide, cannot view files, cannot use any report buttons.",
+    "MEDIUM — Fix /app/backend/routes/leave_management.py:183 — apply defensive ObjectId cast to `user_id` in get_user_leave_balance (mirror the pattern from list_leads in leads.py:275-288).",
+    "LOW — Align stats.by_outcome.never_called and totals.never_called semantics in /app/backend/routes/leads.py:486-528 (use consistent field — recommend last_call_at only).",
+    "(Carried from iter 23) Add auth guard to /api/files/reports/* endpoints."
+  ],
+  "critical_code_review_comments": [
+    "FilesDashboard.js: undefined variable `reportData` — likely leftover after mock-data removal refactor. The state variable was correctly renamed to `reports` (line 62 + line 219 setter) but 5 usages were missed. This is exactly the kind of bug a lint pass would catch (no-undef rule). Recommend adding ESLint no-undef to CI.",
+    "leave_management.py:183 ObjectId(user_id) — same anti-pattern flagged in iter24 for leads.py:471. Grep repo for `ObjectId(` on user-supplied strings and add central helper.",
+    "FilesDashboard.js is ~1904 lines — should be split into FilesDashboardTabs, FilesReports, FilesApprovals, FilesUsers sub-components.",
+    "leads.py stats endpoint uses TWO different 'never_called' definitions (last_call_outcome absence vs last_call_at absence) — pick one and document."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter25_prod_repair.py",
+    "/app/test_reports/iteration_25.json"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 iter25 pytest passed)",
+    "frontend": "Leave Management fully verified. Files Dashboard blocked by reportData ReferenceError."
+  },
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (from /app/memory/test_credentials.md). Login returns key 'token'.",
+  "seed_data_creation": "None (read-only tests).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend for iteration 25 (Leave 2-days/month + Monthly Attendance Summary + My Hourly Report + Distinct outcomes + Stats/count consistency) is verified GREEN via test_iter25_prod_repair.py — re-run with `pytest /app/backend/tests/test_iter25_prod_repair.py -v`. ONLY blocker is FilesDashboard.js:1013 `reportData is not defined` — fix that, then retest Files/Approvals tab for GP role by logging in as a growth-partner user and confirming Approvals tab is absent. Leave Management route is /admin/leave (NOT /admin/leave-management). Year selector data-testid is 'year-selector'.",
+  "rca of the issue": "Bug: FilesDashboard component throws ReferenceError: reportData is not defined on mount. Reproduction: 1) Login as admin@bankezee.com/ConnectSasha12!! 2) Navigate to /admin/files → immediate Uncaught runtime error overlay. Root cause: /app/frontend/src/pages/files/FilesDashboard.js references `reportData?.monthly_stats` (line 1013), `reportData.monthly_stats.map` (1015), `reportData?.loan_type_stats` (1034), `reportData.loan_type_stats.map` (1036), and `reportData.loan_type_stats[0]?.count` (1046). No `reportData` variable is declared anywhere in the component. The actual declared state is `reports` (line 62, setter line 219). This is a leftover from the mock-data removal refactor where a state rename didn't propagate. Mitigation: search-replace `reportData` → `reports` across the file (5 sites, all in the Reports panel). If backend `/files/reports` response doesn't yet expose `monthly_stats`/`loan_type_stats`, wrap in nullish checks so the empty-state UI ('No monthly data available' / 'No loan type data available') renders instead of crashing. Impact of NOT fixing: /admin/files and /agent/files are 100% broken — no files browsable, no reports viewable, no approvals workflow — a P0 production regression."
+}
