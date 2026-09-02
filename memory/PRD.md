@@ -164,4 +164,42 @@ All file mutation endpoints have authentication guards
 
 ---
 
+## File Reconciliation (December 2, 2025)
+
+### Investigation Results
+| Category | Count |
+|----------|-------|
+| Legacy CRM (Google Sheet Import) | 445 |
+| Legacy CRM (CSV Import - unique) | 62 |
+| Test/Development Files | 0 (removed) |
+| Duplicate Files | 0 (removed) |
+| Connect-originated Files | 0 |
+| **TOTAL** | **507** |
+
+### Cleanup Performed
+- Removed 3 test/development records (TEST_Iter29, Test Prefill User, Test Prefill Fixed)
+- Removed 11 duplicate records (same phone number across imports)
+- Total records removed: 14
+
+### Data → File Workflow Verification
+All 16 acceptance tests PASS:
+- Data → File creates exactly one File ✅
+- Duplicate File protection (idempotent) ✅
+- File counted on Files dashboard ✅
+- Growth Partner attribution ✅
+- Existing Data prefilled ✅
+- Growth Partner application entry ✅
+- Growth Partner document upload ✅
+- Admin/Ops File access ✅
+- Admin/Ops customer info edit ✅
+- Multiple-bank eligibility editing ✅
+- Status/Login/Application ID ✅
+- Approval/Decline ✅
+- Disbursal/Rejection ✅
+- Activities/audit history ✅
+- Dashboard calculations update ✅
+- Reports update ✅
+
+---
+
 *Last Updated: December 2, 2025*
