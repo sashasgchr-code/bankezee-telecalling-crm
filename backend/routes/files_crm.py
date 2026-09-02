@@ -199,6 +199,7 @@ async def get_all_files(
     end_date: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
+    team_view: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Get all leads with status='file' (Files Dashboard)
@@ -208,15 +209,40 @@ async def get_all_files(
     - assigned_to: Filter by assigned Growth Partner
     - search: Search by name, mobile, or email
     - start_date/end_date: Date range filter on created_at
+    - team_view: If 'true' and user is TL, shows team's files (read-only)
     - Role-based filtering: GPs only see their own files
     """
     from datetime import datetime as dt, timezone as tz
     
     query = {"status": "file"}
     
+    # Check if team_view is requested and user is a TL
+    is_team_view = team_view == 'true' and current_user.get("is_tl", False)
+    
     # GP role restriction - GPs only see their own files (by source_id)
     user_role = current_user.get('role')
-    if is_gp(user_role):
+    
+    if is_team_view and is_gp(user_role):
+        # TL viewing team's files - get team member IDs
+        team_members = await db.users.find(
+            {"tl_id": current_user.get('id'), "is_active": True},
+            {"_id": 0, "id": 1}
+        ).to_list(100)
+        team_ids = [m["id"] for m in team_members if m.get("id")]
+        
+        if team_ids:
+            query["$or"] = [
+                {"assigned_to": {"$in": team_ids}},
+                {"file_assigned_to": {"$in": team_ids}},
+                {"source_id": {"$in": team_ids}}
+            ]
+        else:
+            # No team members, return empty
+            return {
+                "files": [],
+                "pagination": {"page": page, "limit": limit, "total": 0, "pages": 0}
+            }
+    elif is_gp(user_role):
         gp_id = current_user.get('id')
         query["$or"] = [
             {"assigned_to": gp_id},

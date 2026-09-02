@@ -16,6 +16,7 @@ import TelecallerLeads from "./pages/telecaller/Leads";
 import TelecallerFollowUps from "./pages/telecaller/FollowUps";
 import TelecallerProfile from "./pages/telecaller/Profile";
 import TelecallerAttendance from "./pages/telecaller/Attendance";
+import { TeamMembers, TeamData, TeamFiles, TeamCalls } from "./pages/telecaller/team";
 import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
 import DataMigration from "./pages/files/DataMigration";
@@ -152,6 +153,11 @@ function App() {
           <Route path="attendance" element={<TelecallerAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="profile" element={<TelecallerProfile />} />
+          {/* Team Lead Routes - Only visible/accessible for TLs */}
+          <Route path="team" element={<TeamMembers />} />
+          <Route path="team/data" element={<TeamData />} />
+          <Route path="team/files" element={<TeamFiles />} />
+          <Route path="team/calls" element={<TeamCalls />} />
         </Route>
 
         {/* Role-neutral File route - redirects to correct role-based route */}

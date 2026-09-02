@@ -27,6 +27,11 @@
 |-------|----------|------|-------|
 | yarragondaanusha@gmail.com | AnushaGP123! | growth_partner | Has 14 mapped files. Can be set as TL for testing |
 
+## Team Lead (TL) Test Account
+| Email | Password | Role | Notes |
+|-------|----------|------|-------|
+| anusha@bankezee.com | TLAnusha123! | team_leader (is_tl=true) | Has 1 team member: Yarragonda Anusha |
+
 ## Application URLs
 - **Preview URL**: https://responsive-crm-app-1.preview.emergentagent.com
 - **Production URL**: connect.bankezee.com

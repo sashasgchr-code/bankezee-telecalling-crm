@@ -319,6 +319,93 @@ async def get_call_outcomes(current_user: dict = Depends(get_current_user)):
         {"id": "voicemail", "name": "Voicemail", "color": "#9C27B0"}
     ]
 
+
+@router.get("/call-logs/team")
+async def get_team_call_logs(
+    page: int = 1,
+    limit: int = 20,
+    search: Optional[str] = None,
+    team_view: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get call logs for TL's team members.
+    Only accessible by users with is_tl=True.
+    Returns read-only view of team's call activity.
+    """
+    from utils.auth import normalize_role, is_gp_role
+    
+    user_id = current_user.get("id")
+    is_tl = current_user.get("is_tl", False)
+    role = normalize_role(current_user.get("role", ""))
+    
+    # Only TLs can access team view
+    if not is_tl or not is_gp_role(role):
+        raise HTTPException(status_code=403, detail="Only Team Leads can access team call logs")
+    
+    # Get team member IDs
+    team_members = await db.users.find(
+        {"tl_id": user_id, "is_active": True},
+        {"_id": 0, "id": 1, "name": 1}
+    ).to_list(100)
+    
+    team_ids = [m["id"] for m in team_members if m.get("id")]
+    team_names = {m["id"]: m.get("name", "Unknown") for m in team_members if m.get("id")}
+    
+    if not team_ids:
+        return {
+            "calls": [],
+            "pagination": {"total": 0, "pages": 0, "page": page, "limit": limit},
+            "stats": {"total_calls": 0, "connected": 0, "not_connected": 0}
+        }
+    
+    # Build query for team's calls
+    query = {"user_id": {"$in": team_ids}}
+    
+    # Search filter
+    if search:
+        query["$or"] = [
+            {"lead_name": {"$regex": search, "$options": "i"}},
+            {"lead_phone": {"$regex": search, "$options": "i"}}
+        ]
+    
+    # Get total count for pagination
+    total = await db.call_logs.count_documents(query)
+    total_pages = (total + limit - 1) // limit
+    skip = (page - 1) * limit
+    
+    # Fetch call logs
+    calls = await db.call_logs.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    
+    # Enrich with user names
+    enriched_calls = []
+    for call in calls:
+        call_data = serialize_doc(call)
+        call_data["user_name"] = team_names.get(call.get("user_id"), "Unknown")
+        enriched_calls.append(call_data)
+    
+    # Get stats
+    connected_count = await db.call_logs.count_documents({
+        "user_id": {"$in": team_ids},
+        "outcome": {"$in": ["connected", "answered", "Connected", "Answered"]}
+    })
+    
+    return {
+        "calls": enriched_calls,
+        "pagination": {
+            "total": total,
+            "pages": total_pages,
+            "page": page,
+            "limit": limit
+        },
+        "stats": {
+            "total_calls": total,
+            "connected": connected_count,
+            "not_connected": total - connected_count
+        }
+    }
+
+
 # ===================== MOBILE APP CALL LOG SYNC =====================
 
 @router.post("/call-logs/sync")

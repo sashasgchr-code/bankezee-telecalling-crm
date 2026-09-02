@@ -220,10 +220,39 @@ Seeded Accounts:
 ## Deferred Items
 - Android EAS/Gradle build fix
 - Mobile app APK generation
-- RBAC Phase 2: Server-side endpoint enforcement (Manager/TL scoped queries)
-- RBAC Phase 3: TL Team tabs (My Team, Team Data, Team Files, Team Calls)
 - RBAC Phase 4: Role-adaptive navigation (hide menus based on role)
 - HR-specific views: Attendance/Leave only, no CRM access
+
+---
+
+## Recently Completed (September 2, 2026)
+
+### RBAC Phase 3: TL Team Tabs ✅
+Team Lead users (GPs with `is_tl=true`) now have a dedicated "Team Lead View" section in the More menu:
+
+**New Pages:**
+1. **My Team** (`/agent/team`) - List of GPs assigned to this TL with stats (data, files, calls)
+2. **Team Data** (`/agent/team/data`) - View-only access to team's leads
+3. **Team Files** (`/agent/team/files`) - View-only access to team's loan files
+4. **Team Calls** (`/agent/team/calls`) - View-only access to team's call logs
+
+**Features:**
+- All team views show "View Only Mode" badge
+- Team members determined by `tl_id` field matching TL's user ID
+- Stats for each team member: total data, files, calls
+- Search functionality on Team Data/Files/Calls
+- Pagination for large datasets
+- Backend endpoints enforce TL-only access (403 for non-TLs)
+
+**New Backend Endpoints:**
+- `GET /api/users/my-team` - Returns team members with stats (TL only)
+- `GET /api/leads?team_view=true` - Returns team's leads (TL only)
+- `GET /api/files?team_view=true` - Returns team's files (TL only)
+- `GET /api/call-logs/team` - Returns team's call logs (TL only)
+
+**Test Accounts:**
+- TL: anusha@bankezee.com / TLAnusha123! (is_tl=true, 1 team member)
+- GP: yarragondaanusha@gmail.com / AnushaGP123! (assigned to TL above)
 
 ---
 

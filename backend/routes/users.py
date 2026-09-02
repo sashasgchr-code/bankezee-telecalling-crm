@@ -198,6 +198,78 @@ async def get_team_leads(
     return result
 
 
+@router.get("/users/my-team")
+async def get_my_team(current_user: dict = Depends(get_current_user)):
+    """
+    Get team members for the current user (TL only endpoint).
+    Returns the list of GPs assigned to this TL with their stats.
+    """
+    user_id = current_user.get("id")
+    is_tl = current_user.get("is_tl", False)
+    role = normalize_role(current_user.get("role", ""))
+    
+    # Only TLs can access this endpoint
+    if not is_tl or not is_gp_role(role):
+        raise HTTPException(status_code=403, detail="Only Team Leads can access this endpoint")
+    
+    # Get GPs where tl_id = this user's id
+    team_query = {"tl_id": user_id, "is_active": True}
+    team_members = await db.users.find(team_query).to_list(100)
+    
+    # Get today's date for active today calculation
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    active_today = 0
+    
+    # Enrich with stats
+    enriched_members = []
+    for member in team_members:
+        member_id = member.get("id") or str(member.get("_id"))
+        
+        # Count data (leads) assigned to this GP
+        total_data = await db.leads.count_documents({
+            "assigned_to": member_id,
+            "status": {"$ne": "file"}
+        })
+        
+        # Count files assigned to this GP
+        total_files = await db.leads.count_documents({
+            "$or": [
+                {"assigned_to": member_id},
+                {"source_id": member_id}
+            ],
+            "status": "file"
+        })
+        
+        # Count calls made by this GP
+        total_calls = await db.call_logs.count_documents({
+            "user_id": member_id
+        })
+        
+        # Check if active today (has activity today)
+        today_activity = await db.daily_sessions.find_one({
+            "user_id": member_id,
+            "date": {"$gte": today}
+        })
+        if today_activity:
+            active_today += 1
+        
+        member_data = serialize_doc(member)
+        member_data["stats"] = {
+            "total_data": total_data,
+            "total_files": total_files,
+            "total_calls": total_calls
+        }
+        enriched_members.append(member_data)
+    
+    return {
+        "members": enriched_members,
+        "stats": {
+            "total": len(enriched_members),
+            "active_today": active_today
+        }
+    }
+
+
 @router.get("/users/by-role")
 async def get_users_by_role(
     roles: str = Query(..., description="Comma-separated roles"),

@@ -102,13 +102,19 @@ def build_leads_query(
     never_called: Optional[bool] = None,
     archived: Optional[bool] = None,
     is_invalid: Optional[bool] = None,
-    import_batch_id: Optional[str] = None
+    import_batch_id: Optional[str] = None,
+    team_view: Optional[bool] = None,
+    team_ids: Optional[list] = None
 ) -> dict:
     """Build MongoDB query from filter parameters - reusable across endpoints"""
     query = {}
     
     # Role-based access control
-    if current_user["role"] == "telecaller":
+    # If team_view is True and user is TL, show team's data instead of just own
+    if team_view and team_ids:
+        # Team Lead viewing their team's data
+        query["assigned_to"] = {"$in": team_ids}
+    elif current_user["role"] == "telecaller":
         query["assigned_to"] = current_user["id"]
     elif assigned_to:
         if assigned_to == "unassigned":
@@ -284,6 +290,8 @@ async def list_leads(
     archived: Optional[bool] = None,
     is_invalid: Optional[bool] = None,
     import_batch_id: Optional[str] = None,
+    # Team view for TLs
+    team_view: Optional[str] = None,
     # Sorting
     sort_by: str = Query("created_at", description="Field to sort by"),
     sort_order: str = Query("desc", description="asc or desc"),
@@ -292,7 +300,21 @@ async def list_leads(
     """
     List leads with server-side pagination and enhanced filtering.
     Returns paginated results with total count for "X matching leads" display.
+    
+    If team_view=true and user is a TL (is_tl=True), returns team's leads instead of own.
     """
+    # Check if team_view is requested and user is a TL
+    team_ids = None
+    is_team_view = team_view == 'true' and current_user.get("is_tl", False)
+    
+    if is_team_view:
+        # Get team member IDs for this TL
+        team_members = await db.users.find(
+            {"tl_id": current_user["id"], "is_active": True},
+            {"_id": 0, "id": 1}
+        ).to_list(100)
+        team_ids = [m["id"] for m in team_members if m.get("id")]
+    
     query = build_leads_query(
         current_user=current_user,
         status=status,
@@ -309,7 +331,9 @@ async def list_leads(
         never_called=never_called,
         archived=archived,
         is_invalid=is_invalid,
-        import_batch_id=import_batch_id
+        import_batch_id=import_batch_id,
+        team_view=is_team_view,
+        team_ids=team_ids
     )
     
     # Get total count for pagination info

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText, CalendarDays, MoreHorizontal, Clock } from 'lucide-react';
+import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText, CalendarDays, MoreHorizontal, Clock, Users, Database, PhoneCall } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import CallModal from '../components/CallModal';
@@ -218,6 +218,14 @@ const TelecallerLayout = () => {
     { path: '/agent/profile', icon: User, label: 'Profile' },
   ];
 
+  // Team menu items - only visible for Team Leads (is_tl = true)
+  const teamNavItems = user?.is_tl ? [
+    { path: '/agent/team', icon: Users, label: 'My Team' },
+    { path: '/agent/team/data', icon: Database, label: 'Team Data' },
+    { path: '/agent/team/files', icon: FileText, label: 'Team Files' },
+    { path: '/agent/team/calls', icon: PhoneCall, label: 'Team Calls' },
+  ] : [];
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -372,6 +380,38 @@ const TelecallerLayout = () => {
                   </NavLink>
                 ))}
               </div>
+
+              {/* Team Section - Only visible for Team Leads */}
+              {teamNavItems.length > 0 && (
+                <>
+                  <div className="border-t border-gray-200 pt-4 pb-2">
+                    <h3 className="text-sm font-semibold text-gray-500 px-2 mb-3 flex items-center gap-2">
+                      <Users size={16} />
+                      Team Lead View
+                    </h3>
+                    <div className="grid grid-cols-4 gap-2">
+                      {teamNavItems.map((item) => (
+                        <NavLink
+                          key={item.path}
+                          to={item.path}
+                          onClick={() => setMoreOpen(false)}
+                          className={({ isActive }) =>
+                            `flex flex-col items-center py-2.5 px-1 rounded-xl transition-colors ${
+                              isActive
+                                ? 'bg-blue-50 text-blue-600'
+                                : 'text-gray-600 hover:bg-gray-50'
+                            }`
+                          }
+                          data-testid={`team-nav-${item.label.toLowerCase().replace(' ', '-')}`}
+                        >
+                          <item.icon size={20} />
+                          <span className="text-[10px] mt-1 font-medium text-center leading-tight">{item.label}</span>
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
               
               {/* Break & Logout in More menu */}
               <div className="border-t border-gray-200 pt-4 space-y-2">
