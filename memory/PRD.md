@@ -910,19 +910,25 @@ Files are stored in the `leads` collection with `status = "file"`:
 - `rating`: Star rating (1-5)
 - `score`: Calculated score (0-100)
 
-### Bugs Fixed (September 1, 2026)
-1. Trailing slash redirect issue on `/api/files` - Added dual route decorators
-2. False 404 on `/activities`, `/documents`, `/eligibilities` endpoints - Fixed projection empty dict check
-3. Stats calculation rules - Completely rewrote to follow BankEzee CRM rules (created_at vs activity timestamp)
-4. Named Partners in Growth Report - Added connect_id mapping for user names
-5. Responsive buttons - Fixed report buttons extending off-screen on mobile
-6. **Files Dashboard Role-Based Views**: Admin sees all report buttons; Telecallers see only Policy button
-7. **Removed Manual Call Log Buttons**: "Log Outgoing" and "Log Incoming" buttons removed from LeadDetail.js - PostCallModal opens automatically after calls
-8. **Historical Lead Stats Preservation**: Reports now include leads that were reassigned, preserving the original user's status counts
-9. **"No Status" Filter**: Added ability to filter leads without a status (`status=unset`)
-10. **Dynamic User Name in Dashboard**: FilesDashboard now shows actual user name instead of hardcoded "Admin User"
-11. **Users Tab Hidden for Telecallers**: Telecallers no longer see the "Users" tab in Files Dashboard
-12. **CSV Export for Reports**: Added Export buttons to Bank Performance, TAT Metrics, and Growth Partner reports
+### Bugs Fixed (September 2, 2026)
+1. **No Status Filter**: Added proper handling for leads with null/empty status
+   - Backend: `get_leads_stats` now includes `no_status` count for leads without status
+   - Backend: `get_leads_count` and `get_leads` support `no_status` filter
+   - Frontend: Data page has "No Status" filter option
+   - Dashboard: Status Breakdown includes "No Status" row
+2. **File Conversion Logic**: Added `ensure_file_for_lead()` function
+   - Automatically triggered when lead status changes to "file"
+   - Creates activity log for file conversion
+   - Idempotent - won't create duplicate files
+3. **User Approval System**: New signups require admin approval
+   - Registration sets `is_approved: false`, `approval_status: pending`
+   - Login shows "pending admin approval" for unapproved users
+   - Admin can approve/reject users from Files > Approvals tab
+4. **Connect ID Mapping**: Users tab shows mapping status
+   - "✓ Mapped" or "Not Mapped ➔" badges
+   - Clicking "Not Mapped" opens inline mapping modal
+   - API: `/users/{id}/map-connect`, `/users/unmapped`, `/users/pending-approval`
+5. **Navigation Restored**: Admin nav includes Users, Attendance, Leave tabs
 
 ### Deployment Ready (September 1, 2026)
 - ✅ Web frontend: All environment variables configured

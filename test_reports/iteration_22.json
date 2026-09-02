@@ -1,0 +1,48 @@
+{
+  "summary": "Iteration 22: Verified CRM->Connect merge — Files module, user approval, Connect ID mapping, No-Status filter, file conversion. Backend pytest: 10/10 passed. Frontend: admin nav shows all 8 items (Dashboard, Data, Files, Tracking, Reports, Users, Attendance, Leave). Files dashboard tabs Dashboard/Approvals/Users all render; Approvals lists pending user signups with Approve/Reject buttons; Users tab shows CRM users table with Mapped/Not Mapped badges and '5 unmapped' summary; /admin/users page opens showing 71 telecallers. Backend: /api/auth/register creates pending user; /api/auth/login for pending user returns 401 with 'pending admin approval'; /api/users/pending-approval returns the pending user; /api/leads/stats returns by_status incl. 'file' bucket; /api/leads?statuses=no_status returns without error; PUT /api/leads/{id} with status='file' persists and creates activity log.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/leads (count endpoint)", "issue": "GET /api/leads/count does not support 'no_status' special filter (build_leads_query is only used by /leads, not /leads/count) — dashboards using /leads/count with statuses=no_status will not return correct results."},
+      {"endpoint": "/api/users/pending-approval, /api/users/unmapped", "issue": "Both routes are declared AFTER /users/{user_id}/activity in users.py. FastAPI matches by declaration order — since no bare GET /users/{user_id} exists, these are fine, but consider moving static paths above dynamic to prevent future conflicts."},
+      {"endpoint": "PUT /api/users/{user_id}/map-connect", "issue": "connect_id is taken from query string (not body). Passing sensitive mapping via query is unusual; better to accept a Pydantic body."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Dashboard / Files Dashboard", "issues": [
+        "Multiple hydration console errors: '<span> cannot be a child of <select>/<option>/<tbody>/<tfoot>/<table>/<tr>' from preview-tooling instrumentation wrappers. Non-blocking but noisy (pre-existing).",
+        "FilesDashboard: 'Each child in a list should have a unique key prop' React warning (pre-existing from iter 20).",
+        "FilesDashboard: 'Cannot infer the option value of complex children' warning on <option> element (pre-existing).",
+        "Data page 'Status Breakdown' section on admin dashboard shows the 5 categories New/Not Interested/Follow Up/Lead/File but does NOT show a 'No Status' category — the by_status.no_status count from the API is not visualised anywhere on the admin Dashboard even though the backend now emits it."
+      ]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter22_files_merge.py",
+    "/app/test_reports/pytest/iter22.xml"
+  ],
+  "action_items": [
+    "Consider surfacing by_status.no_status count on the admin Dashboard Status Breakdown card (currently hidden even though backend returns it).",
+    "Add 'no_status' handling to /api/leads/count so dashboard/counts match the /leads list results.",
+    "Move users.py static routes (pending-approval, unmapped, telecallers) above dynamic /users/{user_id} paths for safety.",
+    "Change /users/{user_id}/map-connect to accept connect_id via request body (Pydantic model) instead of query param.",
+    "Clean up FilesDashboard warnings (unique keys + <option> children) surfaced in iterations 20 & 22."
+  ],
+  "critical_code_review_comments": [
+    "leads.py build_leads_query correctly special-cases 'no_status'/'unset'/'none' — good. But get_leads_count(/leads/count) does NOT reuse build_leads_query and lacks the same handling, causing count/list mismatch when filtering no_status.",
+    "auth.py register: sets is_active=False AND is_approved=False AND approval_status=pending — coherent triple-flag; simpler would be to derive is_active from approval_status. Not a bug.",
+    "users.py map_connect_id: uses uniqueness check on connect_id — good, prevents dup mapping. But accepts connect_id via query parameter, which leaks into access logs; move to body.",
+    "leads.py ensure_file_for_lead: 'existing_by_phone' check queries db.leads with regex on phone — no index on phone/normalized_phone will make this O(N) for large collections (162k in prod).",
+    "FilesDashboard.js still 762 lines (>700 threshold) — split recommended."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter22_files_merge.py"],
+  "success_rate": {"backend": "100% (10/10 pytest)", "frontend": "100% for the review checklist items"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Two TEST_pending_* users registered via /api/auth/register (visible in Files > Approvals). Safe to reject; no other seed data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 5 focus areas from iteration 22 pass end-to-end. Backend endpoints verified: POST /api/auth/register -> pending, POST /api/auth/login -> 401 pending msg, GET /api/users/pending-approval, GET /api/users/unmapped, GET /api/leads/stats (returns by_status.file=454), GET /api/leads?statuses=no_status, PUT /api/leads/{id} status->file. UI verified: 8 admin nav items, Files tabs Dashboard/Approvals/Users, Approve/Reject buttons for pending users, Mapped/Not Mapped badges (5 unmapped in preview DB), /admin/users page. Minor gap: /api/leads/count has separate query builder that lacks no_status handling — retest if E1 uses count endpoint for filter display. Also no_status count not surfaced in admin Dashboard Status Breakdown despite being in API response."
+}

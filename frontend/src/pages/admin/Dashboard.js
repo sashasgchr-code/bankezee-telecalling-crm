@@ -91,6 +91,7 @@ const AdminDashboard = () => {
     { key: 'follow_up', label: 'Follow Up', color: '#9C27B0' },
     { key: 'leads', label: 'Lead', color: '#00C853' },
     { key: 'file', label: 'File', color: '#FF9800' },
+    { key: 'no_status', label: 'No Status', color: '#607D8B' },
   ];
 
   return (

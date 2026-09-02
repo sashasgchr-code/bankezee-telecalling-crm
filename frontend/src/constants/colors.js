@@ -25,6 +25,7 @@ export const StatusColors = {
   leads: '#00C853',
   file: '#FF9800',
   unset: '#607D8B',  // Blue-gray for unset/no status
+  no_status: '#607D8B',  // Blue-gray for no status
 };
 
 export const StatusLabels = {
@@ -35,6 +36,7 @@ export const StatusLabels = {
   leads: 'Lead',
   file: 'File',
   unset: 'No Status',
+  no_status: 'No Status',
 };
 
 // Call Outcome colors

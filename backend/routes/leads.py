@@ -65,9 +65,9 @@ def build_leads_query(
         status_list = [s.strip() for s in statuses.split(",") if s.strip()]
         if status_list:
             # Handle special filter for leads without status
-            if "unset" in status_list or "none" in status_list:
+            if "unset" in status_list or "none" in status_list or "no_status" in status_list:
                 # Include leads with null/empty status
-                status_list = [s for s in status_list if s not in ("unset", "none")]
+                status_list = [s for s in status_list if s not in ("unset", "none", "no_status")]
                 status_condition = None
                 if status_list:
                     status_condition = {"$or": [
@@ -89,7 +89,7 @@ def build_leads_query(
             else:
                 query["status"] = {"$in": status_list}
     elif status:
-        if status in ("unset", "none"):
+        if status in ("unset", "none", "no_status"):
             status_condition = {"$or": [
                 {"status": {"$exists": False}},
                 {"status": None},
@@ -328,9 +328,34 @@ async def get_leads_count(
             query["assigned_to"] = assigned_to
     
     if statuses:
-        query["status"] = {"$in": [s.strip() for s in statuses.split(",") if s.strip()]}
+        status_list = [s.strip() for s in statuses.split(",") if s.strip()]
+        # Handle special filter for leads without status
+        if "unset" in status_list or "none" in status_list or "no_status" in status_list:
+            status_list = [s for s in status_list if s not in ("unset", "none", "no_status")]
+            if status_list:
+                query["$or"] = [
+                    {"status": {"$in": status_list}},
+                    {"status": {"$exists": False}},
+                    {"status": None},
+                    {"status": ""}
+                ]
+            else:
+                query["$or"] = [
+                    {"status": {"$exists": False}},
+                    {"status": None},
+                    {"status": ""}
+                ]
+        else:
+            query["status"] = {"$in": status_list}
     elif status:
-        query["status"] = status
+        if status in ("unset", "none", "no_status"):
+            query["$or"] = [
+                {"status": {"$exists": False}},
+                {"status": None},
+                {"status": ""}
+            ]
+        else:
+            query["status"] = status
     
     if outcomes:
         query["last_call_outcome"] = {"$in": [o.strip() for o in outcomes.split(",") if o.strip()]}
@@ -404,8 +429,24 @@ async def get_leads_stats(current_user: dict = Depends(get_current_user)):
         return {"by_status": {}, "by_outcome": {}, "totals": {}}
     
     data = result[0]
+    
+    # Process by_status to include "no_status" for null/empty statuses
+    by_status = {}
+    no_status_count = 0
+    for item in data.get("by_status", []):
+        status_val = item["_id"]
+        count = item["count"]
+        if status_val is None or status_val == "" or status_val == "null":
+            no_status_count += count
+        else:
+            by_status[status_val] = count
+    
+    # Add no_status count if there are any
+    if no_status_count > 0:
+        by_status["no_status"] = no_status_count
+    
     return {
-        "by_status": {item["_id"]: item["count"] for item in data.get("by_status", []) if item["_id"]},
+        "by_status": by_status,
         "by_outcome": {item["_id"]: item["count"] for item in data.get("by_outcome", []) if item["_id"]},
         "totals": data.get("totals", [{}])[0] if data.get("totals") else {}
     }
@@ -463,6 +504,14 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
     update_data = {k: v for k, v in update.dict().items() if v is not None}
     update_data["updated_at"] = datetime.now(timezone.utc)
     
+    # Check if status is being changed to "file" - trigger File creation/linking
+    new_status = update_data.get("status")
+    if new_status == "file" and lead.get("status") != "file":
+        # Create or link File record for this customer
+        file_record = await ensure_file_for_lead(lead_id, lead, current_user)
+        if file_record:
+            update_data["file_id"] = str(file_record["_id"])
+    
     if current_user["role"] == "telecaller":
         today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         await db.daily_sessions.update_one(
@@ -477,6 +526,53 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
     
     lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
     return serialize_doc(lead)
+
+
+async def ensure_file_for_lead(lead_id: str, lead: dict, current_user: dict):
+    """
+    Create or link a File record when a lead's status becomes 'file'.
+    This is idempotent - if a File already exists for this lead, return it.
+    """
+    # Check if File already exists for this lead
+    existing_file = await db.leads.find_one({
+        "_id": ObjectId(lead_id),
+        "file_id": {"$exists": True, "$ne": None}
+    })
+    
+    if existing_file and existing_file.get("file_id"):
+        # Return existing File
+        file_record = await db.leads.find_one({"_id": ObjectId(existing_file["file_id"])})
+        if file_record:
+            return file_record
+    
+    # Also check if there's already a File record with this lead's phone number
+    phone = normalize_phone(lead.get("phone", ""))
+    if phone:
+        existing_by_phone = await db.leads.find_one({
+            "status": "file",
+            "phone": {"$regex": phone + "$"},
+            "_id": {"$ne": ObjectId(lead_id)}
+        })
+        if existing_by_phone:
+            # Link to existing file record
+            return existing_by_phone
+    
+    # Create activity log for file conversion
+    activity = {
+        "lead_id": lead_id,
+        "type": "status_change",
+        "from_status": lead.get("status"),
+        "to_status": "file",
+        "performed_by": current_user["id"],
+        "performed_by_name": current_user.get("name", "Unknown"),
+        "timestamp": datetime.now(timezone.utc),
+        "notes": "Customer converted to File"
+    }
+    await db.activities.insert_one(activity)
+    
+    # The lead itself becomes the File record (same collection, status='file')
+    # No separate file collection needed - this maintains single source of truth
+    return lead
 
 @router.delete("/leads/{lead_id}")
 async def delete_lead(lead_id: str, current_user: dict = Depends(require_admin)):
