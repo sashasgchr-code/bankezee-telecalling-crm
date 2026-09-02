@@ -1,0 +1,30 @@
+{
+  "summary": "Verified Legacy CRM data import & Files module. Files Dashboard shows exactly Total Files=519, Total Approved=₹8.26Cr (₹82,616,327), Total Disbursed=₹7.31Cr (₹73,149,198), Bank Policies=27, matching all expected values. Legacy imported file detail page renders Customer Details, Employment, Loan Requirements, Bank Eligibilities (with populated Bank #1 card), and Activity Log with deserialized activities (Status changed to disbursed/approved/login, Eligibilities updated with Commission ₹5000). All 5 report APIs (daily, rejected, growth-partner, bank-performance, quality) return 200 with valid data. Backend suite: 9/9 pytest cases passed. Frontend: dashboard + file detail (legacy record) rendered correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Dashboard", "issues": ["React hydration warnings persist (span not valid child of select/option/tr/tbody/tfoot/table) — these are from Emergent x-ve-dynamic tracing wrappers; noisy but non-blocking. Pre-existing from iteration 27."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter28_legacy_import.py",
+    "/app/test_reports/pytest/iter28.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "files_crm.py /api/files/policies, /api/files/{file_id}, /api/files/{file_id}/eligibilities, /api/files/{file_id}/activities, /api/files/import, /api/files/export, /api/files/check-eligibility, /api/files/dashboard/stats have NO auth guard (missing Depends(get_current_user)). Any unauthenticated request can list all customer PII (names, phones, emails, salaries, CIBIL, eligibilities, disbursed amounts, commissions). CRITICAL security gap — persists from iter27.",
+    "files_crm.py get_all_files loads all files with $status:'file' regardless of role — telecaller could see other agents' files unless UI filters. Confirm role-based scoping.",
+    "files_crm.py is a monolithic 1900+ line file — should be split into routers: files_crud.py, files_reports.py, files_policies.py, files_documents.py.",
+    "Dashboard stats endpoint scans all leads in memory (find(...).to_list(10000)) then filters in Python — will not scale beyond ~10k files. Move date-range/status filters into MongoDB aggregation."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter28_legacy_import.py (new)"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (Dashboard + legacy file detail visually verified)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!",
+  "seed_data_creation": "None — tests are read-only against imported legacy data",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Legacy CRM import verified: 519 files (454 legacy + 65 new), 27 bank_policies. Sample legacy file with 7 activities & 1 eligibility: id=34a7275e-0632-40ac-bfbc-84037d298cb4 (Domala naveen kumar). Files Dashboard URL: /admin/files. File detail URL: /admin/files/{id}. All 5 reports endpoints exist and return 200. Persistent HIGH-priority security gap: multiple /api/files/* endpoints (policies, dashboard/stats, {id}, {id}/eligibilities, {id}/activities, import, export, check-eligibility) lack auth dependency — flagged for main agent.",
+  "rca of the issue": "N/A — all requested features working correctly"
+}

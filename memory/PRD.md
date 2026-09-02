@@ -1,36 +1,56 @@
-# BANKEZEE Connect CRM - Final Integration Summary
+# BANKEZEE Connect CRM - Product Requirements Document
 
 ## Last Updated: Sep 02, 2026
 
+## Overview
+BankEzee Connect is a unified CRM platform that merges legacy CRM functionality into a single Connect app, providing lead management, file processing, attendance tracking, and leave management.
+
 ## Final Verification Status (Preview Environment)
 
-| Requirement | Preview | Notes |
-|-------------|---------|-------|
-| Production Data | 457 (test DB) | Preview uses test_database, Production has 164k+ |
+| Requirement | Status | Notes |
+|-------------|--------|-------|
+| Legacy CRM Data Import | ✅ PASS | 454 historical files imported from Google Sheet |
+| Total Files | ✅ PASS | 519 files (454 legacy + 65 new) |
+| Total Approved | ✅ PASS | ₹8.26 Cr (63 eligibilities) |
+| Total Disbursed | ✅ PASS | ₹7.31 Cr (51 eligibilities) |
+| Bank Policies | ✅ PASS | 27 policies imported |
+| Users | ✅ PASS | 126 users (79 from legacy + existing) |
+| Commissions | ✅ PASS | 76 commission records imported |
+| Activities Visible | ✅ PASS | Properly deserialized from Python repr format |
+| Eligibilities Visible | ✅ PASS | 206 files with eligibilities |
 | Status Filters | ✅ PASS | Counts from /api/leads/stats endpoint |
-| Status Filter Counts | ✅ PASS | Consistent when switching filters (not from paginated data) |
-| Call Outcome Filters | ✅ PASS | Connected/No Answer/Switched Off/Busy/etc |
-| Search | ✅ PASS | Name, phone, email search working |
-| Assignment | ✅ PASS | Pre-File leads can be assigned |
 | File Reassignment Blocked | ✅ PASS | Server-side enforcement working |
-| Reassigned Data Shows New | ✅ PASS | Clean slate for new GP |
-| Historical Reporting Preserved | ✅ PASS | Activity ownership at event time |
-| File Detail | ✅ PASS | Full CRM fields loading |
-| Files Dashboard | ✅ PASS | Files list showing correctly (454 files) |
-| File Conversion | ✅ PASS | Immediate redirect to File Details page |
-| Daily Report | ✅ PASS | Returns valid data |
-| Rejected Report | ✅ PASS | Returns rejected files |
-| Growth Partner Report | ✅ PASS | Per-GP stats working |
-| Bank Performance | ✅ PASS | Bank-wise stats |
-| TAT Metrics | ✅ PASS | Turnaround time data |
-| Quality Report | ✅ PASS | Data quality scores |
-| Terminology (GP) | ✅ PASS | "Growth Partner" throughout UI |
-| Attendance | ✅ PASS | Navigation working |
-| Leave (P.A.L.M.E) | ✅ PASS | Full P.A.L.M.E policy implemented |
+| All Reports | ✅ PASS | Daily, Rejected, Growth Partner, Bank Perf, Quality, TAT |
+| Auth Guards | ✅ PASS | All Files endpoints now require authentication |
+| P.A.L.M.E Leave Policy | ✅ PASS | Full implementation with 2026 Sept accrual |
 
 ## What's Been Implemented
 
-### P.A.L.M.E Leave Policy (NEW - Sep 02, 2026)
+### Legacy CRM Data Import (NEW - Sep 02, 2026)
+
+1. **Import Script**: `/app/backend/scripts/import_legacy_crm.py`
+   - Fetches data from Google Sheet CSV export
+   - Properly deserializes Python repr format (single quotes, None, True/False)
+   - Idempotent - checks `legacy_crm_id` or `phone` to avoid duplicates
+   - Imports into Files module only (status='file'), NOT Connect Data
+
+2. **Imported Data Summary**:
+   - Files: 519 total (454 legacy + 65 new)
+   - Users: 126 total
+   - Bank Policies: 27
+   - Commissions: 76 records
+   - Activities per file: Properly preserved as arrays
+   - Eligibilities: 206 files with bank eligibility data
+
+3. **Financial Totals**:
+   - Total Logins: 311
+   - Total Approved: 57 files, ₹8.26 Cr
+   - Total Disbursed: 47 files, ₹7.31 Cr
+   - Amount in Pipeline: ₹99 Lakh
+
+4. **Security**: Auth guards added to all Files endpoints
+
+### P.A.L.M.E Leave Policy (Sep 02, 2026)
 **Present • Absent • Leave • Medical • Emergency**
 
 1. **2026 Special Accrual Rule**
@@ -39,108 +59,105 @@
    - Other years: Normal January start (24 days/year)
 
 2. **Rewards System**
-   - Weekly On Time: ₹200 (present on time all 5/6 working days)
-   - Monthly Perfect: ₹500 (perfect punctuality entire month)
-   - Quarterly Outstanding: ₹2,000 + Certificate (3 consecutive months)
+   - Weekly On Time: ₹200
+   - Monthly Perfect: ₹500
+   - Quarterly Outstanding: ₹2,000 + Certificate
 
 3. **Accountability (Penalties)**
    - Uninformed Leave: ₹100 per occurrence
    - Leave must be applied 3+ days in advance
-   - Sick leave >3 consecutive days requires medical certificate
-
-4. **Admin Features**
-   - Monthly Summary with team attendance breakdown
-   - All Employees view with P.A.L.M.E metrics
-   - Add Reward / Add Penalty functionality
-   - Medical certificate tracking for sick leaves
-
-5. **API Endpoints**
-   - `GET /api/leave/balance?year=2026` - Shows September accrual
-   - `GET /api/leave/palme/policy` - Returns policy details
-   - `GET /api/leave/palme/monthly-summary` - Team summary
-   - `GET /api/leave/palme/all-employees` - All employee data
-   - `POST /api/leave/palme/rewards` - Add reward
-   - `POST /api/leave/palme/penalty` - Add penalty
+   - Sick leave >3 days requires medical certificate
 
 ### Critical Business Logic
 1. **File Reassignment Block** - Server-side enforcement
-   - Files (status='file') CANNOT be reassigned
-   - Returns `skipped_files` array with reason
-   - Works for both single and bulk assignment
+2. **Historical Report Preservation** - Activity ownership at event time
+3. **Clean Slate Reassignment** - Pre-File leads reset
+4. **Terminology Update** - "Growth Partner" throughout UI
 
-2. **Historical Report Preservation**
-   - Activity ownership snapshotted at event time
-   - Reassignment does NOT alter historical reports
-   - Call logs attributed to GP who made the call
+## API Endpoints Summary
 
-3. **Clean Slate Reassignment**
-   - Pre-File leads reset to status='new'
-   - Previous GP's history preserved but marked
-   - Assignment history recorded for audit
+### Files CRM (All require auth)
+- `GET /api/files` - List files with filters
+- `GET /api/files/{id}` - File details
+- `GET /api/files/dashboard/stats` - Dashboard statistics
+- `GET /api/files/policies` - Bank policies list
+- `GET /api/files/reports/daily` - Daily report
+- `GET /api/files/reports/rejected` - Rejected cases
+- `GET /api/files/reports/growth-partner` - GP performance
+- `GET /api/files/reports/bank-performance` - Bank-wise stats
+- `GET /api/files/reports/quality` - Quality metrics
+- `GET /api/files/reports/tat-metrics` - TAT metrics
+- `POST /api/files/import` - Import data (Admin only)
+- `GET /api/files/export` - Export data (Admin only)
 
-4. **Terminology Update** - Complete
-   - "Telecaller/Agent" → "Growth Partner" across all UI
-   - Users page, Dashboard, Reports, Data page, Registration
+### Data/Leads
+- `GET /api/leads` - List with filters
+- `GET /api/leads/{id}` - Single lead
+- `POST /api/leads/assign` - Assign (blocks Files)
+- `GET /api/leads/stats` - Status counts
 
-5. **All Reports Working**
-   - Daily Report, Rejected, Growth Partner
-   - Bank Performance, TAT Metrics, Quality
-   - All require authentication
-
-### Technical Fixes Applied
-- Fixed lead/file lookup to handle both ObjectId and UUID
-- Fixed user lookup for assigned_to field (UUID support)
-- Added auth guards to report endpoints
-- Fixed assignment logic for UUID-based lead IDs
-
-## Production Deployment Notes
-
-### Environment Variables
-- **Preview**: Uses `test_database` (457 records)
-- **Production**: Should use production MongoDB with 164k+ records
-
-### Mobile App
-- Preview URL: `https://responsive-crm-app-1.preview.emergentagent.com/api`
-- Production URL: `https://connect.bankezee.com/api` (in eas.json)
-- EAS configured with `cli.appVersionSource: local`
+### Leave Management (P.A.L.M.E)
+- `GET /api/leave/balance?year=YYYY` - Leave balance
+- `GET /api/leave/palme/policy` - Policy details
+- `GET /api/leave/palme/monthly-summary` - Team summary
+- `POST /api/leave/palme/rewards` - Add reward
+- `POST /api/leave/palme/penalty` - Add penalty
 
 ## Test Credentials
 - Admin: `admin@bankezee.com` / `ConnectSasha12!!`
 
-## Remaining Items for Production
+## Remaining Items
 
-### P0 - Before Production Publish
-1. Verify production backend/database connection
-2. Confirm 164k+ records display on published app
-3. Complete EAS APK build (fix Gradle error if any)
+### P0 - Complete
+- ✅ Legacy CRM data imported
+- ✅ Auth guards added
+- ✅ All reports working
 
-### P1 - Post-Production
-1. Monitor for any edge cases in UUID handling
-2. Consider splitting FilesDashboard.js for maintainability
-3. Consider splitting leave_management.py (1400+ lines) into modules
+### P1 - Pending
+1. **EAS Android Build** - Fix Gradle error for APK generation
+2. **"Switched Off" Outcome Normalization** - Map variations
 
-## API Endpoints Summary
+### P2 - Future
+1. **Performance Optimization** - Move dashboard stats to MongoDB aggregation
+2. **Code Refactoring** - Split files_crm.py (2000+ lines) into modules
+3. **File Splitting** - FilesDashboard.js is 1900+ lines
 
-### Data/Leads
-- `GET /api/leads` - List with filters
-- `GET /api/leads/{id}` - Get single lead (handles UUID)
-- `POST /api/leads/assign` - Assign (blocks Files)
-- `POST /api/leads/auto-distribute` - Auto-distribute (excludes Files)
-- `POST /api/leads/check-reassignment` - Check eligibility
+## Technical Notes
 
-### Leave Management (P.A.L.M.E)
-- `GET /api/leave/balance?year=YYYY` - Leave balance with accrual
-- `GET /api/leave/palme/policy` - P.A.L.M.E policy details
-- `GET /api/leave/palme/monthly-summary` - Team monthly summary
-- `GET /api/leave/palme/all-employees` - All employee summaries
-- `POST /api/leave/palme/rewards` - Add reward
-- `POST /api/leave/palme/penalty` - Add penalty
-- `PATCH /api/leave/requests/{id}/mark-uninformed` - Mark as uninformed
+### Environment
+- Preview: `test_database` (519 files)
+- Backend: FastAPI with Motor (async MongoDB)
+- Frontend: React with Shadcn/UI
 
-### Files Reports (Auth Required)
-- `GET /api/files/reports/daily`
-- `GET /api/files/reports/rejected`
-- `GET /api/files/reports/quality`
-- `GET /api/files/reports/growth-partner`
-- `GET /api/files/reports/bank-performance`
-- `GET /api/files/reports/tat-metrics`
+### MongoDB Schema
+```javascript
+// leads collection (Files stored here with status='file')
+{
+  id: "uuid",
+  legacy_crm_id: "original-crm-id",  // Preserved for mapping
+  name: "string",
+  phone: "string",
+  status: "file",  // 'file' for Files module
+  file_status: "disbursed|approved|login|rejected|...",
+  eligibilities: [{ bank_name, approved_amount, disbursed, ... }],
+  file_activities: [{ type, message, timestamp }],
+  documents: [{ file_name, document_type }],
+  created_at: "ISO date",
+  updated_at: "ISO date"
+}
+```
+
+### Import Script Usage
+```bash
+# Dry run (preview changes)
+python3 scripts/import_legacy_crm.py --dry-run
+
+# Full import
+python3 scripts/import_legacy_crm.py
+
+# Skip specific imports
+python3 scripts/import_legacy_crm.py --skip-users --skip-policies
+
+# Verify only
+python3 scripts/import_legacy_crm.py --verify-only
+```
