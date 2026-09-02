@@ -9,3 +9,4 @@ export { default as DocumentsPanel, DOCUMENT_TYPES } from './DocumentsPanel';
 export { default as ActivityLog } from './ActivityLog';
 export { default as FileStatusCard, FILE_STATUS_OPTIONS, STATUS_CATEGORIES } from './FileStatusCard';
 export { default as FileAssignmentCard } from './FileAssignmentCard';
+export { default as CollapsibleSection } from './CollapsibleSection';

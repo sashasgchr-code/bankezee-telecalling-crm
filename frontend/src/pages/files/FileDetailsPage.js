@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Edit2, Loader2, Star, Building2, Download, FileArchive } from 'lucide-react';
+import { ArrowLeft, Save, Edit2, Loader2, Star, Building2, Download, FileArchive, User, Briefcase, CreditCard, FileText } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 
@@ -13,7 +13,8 @@ import {
   DocumentsPanel,
   ActivityLog,
   FileStatusCard,
-  FileAssignmentCard
+  FileAssignmentCard,
+  CollapsibleSection
 } from '../../components/file-detail';
 
 const EMPTY_ELIGIBILITY = {
@@ -542,15 +543,16 @@ const FileDetailsPage = () => {
       <div className="px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
           {/* Main Content - Left 2 columns */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Complete File Information */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-testid="file-info-card">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Section 1: Customer & Application Information</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">Editable by Growth Partner, Ops, and Admin</p>
-                </div>
-                {canEditCustomerDetails && (
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+            {/* Section 1: Customer & Application Information - Collapsible on Mobile */}
+            <CollapsibleSection
+              title="Customer & Application"
+              subtitle="Editable by Growth Partner, Ops, and Admin"
+              icon={User}
+              defaultExpanded={true}
+              testId="file-info-card"
+              rightContent={
+                canEditCustomerDetails && (
                   <div className="flex gap-2">
                     {isEditingDetails ? (
                       <>
@@ -576,65 +578,96 @@ const FileDetailsPage = () => {
                         data-testid="edit-details-btn"
                       >
                         <Edit2 size={14} />
-                        Edit Details
+                        Edit
                       </button>
                     )}
                   </div>
-                )}
+                )
+              }
+            >
+              {/* Sub-sections within Customer & Application */}
+              <div className="space-y-4">
+                {/* Customer Details - Collapsible subsection */}
+                <CollapsibleSection
+                  title="Customer Details"
+                  icon={User}
+                  defaultExpanded={true}
+                  className="border-gray-50"
+                >
+                  <CustomerDetailsSection
+                    details={editedDetails}
+                    isEditing={isEditingDetails}
+                    onDetailChange={handleDetailChange}
+                  />
+                </CollapsibleSection>
+                
+                {/* Employment Details */}
+                <CollapsibleSection
+                  title="Employment & Income"
+                  icon={Briefcase}
+                  defaultExpanded={false}
+                  className="border-gray-50"
+                >
+                  <EmploymentDetailsSection
+                    details={editedDetails}
+                    isEditing={isEditingDetails}
+                    onDetailChange={handleDetailChange}
+                  />
+                </CollapsibleSection>
+                
+                {/* Existing Loans */}
+                <CollapsibleSection
+                  title="Existing Obligations"
+                  icon={CreditCard}
+                  defaultExpanded={false}
+                  className="border-gray-50"
+                >
+                  <ExistingLoansSection
+                    details={editedDetails}
+                    isEditing={isEditingDetails}
+                    onDetailChange={handleDetailChange}
+                  />
+                </CollapsibleSection>
+                
+                {/* Loan Requirements */}
+                <CollapsibleSection
+                  title="Loan Requirements"
+                  icon={FileText}
+                  defaultExpanded={false}
+                  className="border-gray-50"
+                >
+                  <LoanRequirementsSection
+                    details={editedDetails}
+                    isEditing={isEditingDetails}
+                    onDetailChange={handleDetailChange}
+                  />
+                </CollapsibleSection>
               </div>
-              <div className="p-6 space-y-6">
-                <CustomerDetailsSection
-                  details={editedDetails}
-                  isEditing={isEditingDetails}
-                  onDetailChange={handleDetailChange}
-                />
-                <EmploymentDetailsSection
-                  details={editedDetails}
-                  isEditing={isEditingDetails}
-                  onDetailChange={handleDetailChange}
-                />
-                <ExistingLoansSection
-                  details={editedDetails}
-                  isEditing={isEditingDetails}
-                  onDetailChange={handleDetailChange}
-                />
-                <LoanRequirementsSection
-                  details={editedDetails}
-                  isEditing={isEditingDetails}
-                  onDetailChange={handleDetailChange}
-                />
-              </div>
-            </div>
+            </CollapsibleSection>
 
-            {/* Section 2: Bank Processing - Admin/Ops Only for Edit */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-testid="bank-processing-section">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Section 2: Bank Processing & Eligibility</h3>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {canEditBankProcessing 
-                        ? 'Editable by Ops and Admin only' 
-                        : 'View only - Contact Ops/Admin to update bank processing'}
-                    </p>
-                  </div>
-                  {!canEditBankProcessing && isGP && (
-                    <span className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded">View Only</span>
-                  )}
-                </div>
-              </div>
-              <div className="p-6">
-                <EligibilityTracker
-                  eligibilities={eligibilities}
-                  canEdit={canEditBankProcessing}
-                  onUpdate={updateEligibility}
-                  onAdd={addEligibility}
-                  onRemove={removeEligibility}
-                  onSave={saveEligibilities}
-                  isSaving={savingEligibilities}
-                />
-              </div>
-            </div>
+            {/* Section 2: Bank Processing - Collapsible on Mobile */}
+            <CollapsibleSection
+              title="Bank Processing & Eligibility"
+              subtitle={canEditBankProcessing 
+                ? 'Editable by Ops and Admin only' 
+                : 'View only - Contact Ops/Admin to update'}
+              icon={Building2}
+              defaultExpanded={true}
+              testId="bank-processing-section"
+              badge={!canEditBankProcessing && isGP && (
+                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">View Only</span>
+              )}
+            >
+              <EligibilityTracker
+                eligibilities={eligibilities}
+                canEdit={canEditBankProcessing}
+                onUpdate={updateEligibility}
+                onAdd={addEligibility}
+                onRemove={removeEligibility}
+                onSave={saveEligibilities}
+                isSaving={savingEligibilities}
+              />
+            </CollapsibleSection>
 
             {/* Status Update */}
             {canEdit && (
@@ -659,51 +692,58 @@ const FileDetailsPage = () => {
           </div>
 
           {/* Sidebar - Right column */}
-          <div className="space-y-6">
-            {/* Documents Panel with Password */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden" data-testid="documents-card">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <FileArchive size={20} className="text-green-600" />
-                  Documents ({(fileData.file_documents || fileData.documents || []).length})
-                </h3>
+          <div className="space-y-4 sm:space-y-6">
+            {/* Documents Panel - Collapsible on Mobile */}
+            <CollapsibleSection
+              title={`Documents (${(fileData.file_documents || fileData.documents || []).length})`}
+              icon={FileArchive}
+              defaultExpanded={false}
+              testId="documents-card"
+              rightContent={
                 <button 
                   onClick={handleDownloadAllZip}
                   className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
                 >
                   <Download size={14} />
-                  Download All ZIP
+                  <span className="hidden sm:inline">Download ZIP</span>
                 </button>
-              </div>
-              
+              }
+            >
               {/* Password Protected Files Notice */}
               {(fileData.file_documents || fileData.documents || []).length > 0 && (
-                <div className="mx-4 mt-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-600 font-medium">
-                    Password Protected Files: {filePassword}
+                    Password: {filePassword}
                   </p>
                 </div>
               )}
               
-              <div className="p-4">
-                <DocumentsPanel
-                  documents={fileData.file_documents || fileData.documents || []}
-                  pendingDocuments={fileData.pending_documents || []}
-                  requiredDocuments={fileData.required_documents || []}
-                  fileId={fileId}
-                  canEdit={canEdit}
-                  onDocumentsChange={() => fetchFileData()}
-                />
-              </div>
-            </div>
+              <DocumentsPanel
+                documents={fileData.file_documents || fileData.documents || []}
+                pendingDocuments={fileData.pending_documents || []}
+                requiredDocuments={fileData.required_documents || []}
+                fileId={fileId}
+                canEdit={canEdit}
+                onDocumentsChange={() => fetchFileData()}
+              />
+            </CollapsibleSection>
             
-            <ActivityLog
-              activities={fileData.file_activities || []}
-              note={note}
-              onNoteChange={setNote}
-              onAddNote={handleAddNote}
-              canEdit={canEdit}
-            />
+            {/* Activity Log - Collapsible on Mobile */}
+            <CollapsibleSection
+              title="Activity Log"
+              subtitle={`${(fileData.file_activities || []).length} events`}
+              defaultExpanded={false}
+              testId="activity-log-card"
+            >
+              <ActivityLog
+                activities={fileData.file_activities || []}
+                note={note}
+                onNoteChange={setNote}
+                onAddNote={handleAddNote}
+                canEdit={canEdit}
+                compact={true}
+              />
+            </CollapsibleSection>
           </div>
         </div>
       </div>
