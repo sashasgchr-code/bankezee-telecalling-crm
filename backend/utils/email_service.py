@@ -198,3 +198,117 @@ async def send_leave_approval_notification(
     """
     
     return await send_email(employee_email, subject, html)
+
+
+async def send_registration_approval_notification(
+    employee_email: str,
+    employee_name: str,
+    partner_code: str,
+    manager_name: Optional[str] = None
+):
+    """Send notification to GP when their registration is approved"""
+    if not employee_email:
+        logger.warning(f"No email for {employee_name}, skipping approval notification")
+        return False
+    
+    subject = "Welcome to BankEzee Connect - Registration Approved!"
+    
+    manager_section = ""
+    if manager_name:
+        manager_section = f"""
+        <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Your Manager:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{manager_name}</td>
+        </tr>
+        """
+    
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: #10b981; color: white; padding: 20px; text-align: center;">
+            <h1 style="margin: 0;">BankEzee Connect</h1>
+        </div>
+        <div style="padding: 20px; background-color: #f9fafb;">
+            <div style="padding: 15px; background-color: #10b981; color: white; border-radius: 8px; text-align: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">🎉 Registration Approved!</h2>
+            </div>
+            <p>Dear {employee_name},</p>
+            <p>Congratulations! Your registration as a Growth Partner has been <strong>approved</strong>.</p>
+            <p>You can now login to BankEzee Connect and start working on leads.</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Partner Code:</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-family: monospace; font-weight: bold; color: #10b981;">{partner_code}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Email (Login):</td>
+                    <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{employee_email}</td>
+                </tr>
+                {manager_section}
+            </table>
+            <div style="margin-top: 20px; padding: 15px; background-color: #dbeafe; border-radius: 8px;">
+                <p style="margin: 0; color: #1e40af;">
+                    <strong>Next Steps:</strong><br>
+                    1. Login to BankEzee Connect<br>
+                    2. Complete your profile setup<br>
+                    3. Start making calls and converting leads!
+                </p>
+            </div>
+        </div>
+        <div style="padding: 15px; background-color: #1f2937; color: #9ca3af; text-align: center; font-size: 12px;">
+            <p style="margin: 0;">Welcome to the BankEzee family!</p>
+        </div>
+    </div>
+    """
+    
+    return await send_email(employee_email, subject, html)
+
+
+async def send_registration_rejection_notification(
+    employee_email: str,
+    employee_name: str,
+    rejection_reason: Optional[str] = None
+):
+    """Send notification to applicant when their registration is rejected"""
+    if not employee_email:
+        logger.warning(f"No email for {employee_name}, skipping rejection notification")
+        return False
+    
+    subject = "BankEzee Connect - Registration Update"
+    
+    reason_section = ""
+    if rejection_reason:
+        reason_section = f"""
+        <tr>
+            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb; font-weight: bold;">Reason:</td>
+            <td style="padding: 10px; border-bottom: 1px solid #e5e7eb;">{rejection_reason}</td>
+        </tr>
+        """
+    
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: #10b981; color: white; padding: 20px; text-align: center;">
+            <h1 style="margin: 0;">BankEzee Connect</h1>
+        </div>
+        <div style="padding: 20px; background-color: #f9fafb;">
+            <div style="padding: 15px; background-color: #ef4444; color: white; border-radius: 8px; text-align: center; margin-bottom: 20px;">
+                <h2 style="margin: 0;">Registration Not Approved</h2>
+            </div>
+            <p>Dear {employee_name},</p>
+            <p>Thank you for your interest in joining BankEzee Connect as a Growth Partner.</p>
+            <p>Unfortunately, we are unable to approve your registration at this time.</p>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                {reason_section}
+            </table>
+            <div style="margin-top: 20px; padding: 15px; background-color: #fef3c7; border-radius: 8px;">
+                <p style="margin: 0; color: #92400e;">
+                    If you believe this is an error or would like more information, please contact our support team.
+                </p>
+            </div>
+        </div>
+        <div style="padding: 15px; background-color: #1f2937; color: #9ca3af; text-align: center; font-size: 12px;">
+            <p style="margin: 0;">BankEzee Connect</p>
+        </div>
+    </div>
+    """
+    
+    return await send_email(employee_email, subject, html)

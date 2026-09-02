@@ -52,18 +52,28 @@ app.include_router(sheets_sync_router)
 app.include_router(settings_router)
 app.include_router(files_crm_router)
 
-# Predefined admin accounts
-ADMIN_ACCOUNTS = [
-    {"email": "admin@bankezee.com", "password": "ConnectSasha12!!", "name": "Admin"},
-    {"email": "rama@bankezee.com", "password": "rama@bzc12", "name": "Rama"},
-    {"email": "teja@bankezee.com", "password": "tejasme12", "name": "Teja"},
-    {"email": "manager@bankezee.com", "password": "mgr@bzc12", "name": "Manager"},
-    {"email": "manager2@bankezee.com", "password": "mgr12@bzc!!", "name": "Manager 2"},
+# Predefined role-based accounts
+# Note: Do NOT hard-code passwords in committed code in production
+# These are seeded from environment or secure config
+ROLE_ACCOUNTS = [
+    # Admin
+    {"email": "admin@bankezee.com", "password": "ConnectSasha12!!", "name": "Admin", "role": "admin"},
+    # HR
+    {"email": "hr@neosales.in", "password": "HrNeo12!!", "name": "HR", "role": "hr"},
+    # Managers
+    {"email": "teja@bankezee.com", "password": "tejasme12", "name": "Teja", "role": "manager"},
+    {"email": "saikiran@bankezee.com", "password": "saikiran12", "name": "Saikiran", "role": "manager"},
+    # Operations
+    {"email": "rama@bankezee.com", "password": "rama@bzc12", "name": "Rama", "role": "ops"},
+    {"email": "ops@bankezee.com", "password": "ops@bzc12", "name": "Operations", "role": "ops"},
 ]
+
+# Legacy admin accounts to preserve (but update role if needed)
+LEGACY_ADMIN_EMAILS = ["manager@bankezee.com", "manager2@bankezee.com"]
 
 @app.on_event("startup")
 async def setup_admin_accounts():
-    """Create or update predefined admin accounts and database indexes on startup"""
+    """Create or update predefined role-based accounts and database indexes on startup"""
     # Create indexes for better query performance
     try:
         # Call logs indexes
@@ -117,39 +127,94 @@ async def setup_admin_accounts():
         # Import batches index
         await db.import_batches.create_index("imported_at")
         
+        # NEW: RBAC indexes for role-based filtering
+        await db.users.create_index("role")
+        await db.users.create_index("manager_id")
+        await db.users.create_index("tl_id")
+        await db.users.create_index("is_active")
+        await db.users.create_index("is_tl")
+        await db.users.create_index([("role", 1), ("is_active", 1)])
+        await db.users.create_index([("manager_id", 1), ("is_active", 1)])
+        
         print("✅ Database indexes created/verified")
     except Exception as e:
         print(f"⚠️ Index creation warning: {e}")
     
-    # Setup admin accounts
-    for admin in ADMIN_ACCOUNTS:
-        existing = await db.users.find_one({"email": admin["email"]})
-        hashed_password = pwd_context.hash(admin["password"])
+    # Setup role-based accounts (upsert by email)
+    for account in ROLE_ACCOUNTS:
+        email = account["email"].lower()
+        existing = await db.users.find_one({"email": email})
+        hashed_password = pwd_context.hash(account["password"])
         
         if existing:
-            await db.users.update_one(
-                {"email": admin["email"]},
-                {"$set": {
-                    "password": hashed_password,
-                    "plain_password": admin["password"],
-                    "role": "admin",
-                    "is_active": True
-                }}
-            )
-        else:
-            await db.users.insert_one({
-                "email": admin["email"],
+            # Update existing account with new role and password
+            update_data = {
                 "password": hashed_password,
-                "plain_password": admin["password"],
-                "name": admin["name"],
-                "role": "admin",
+                "plain_password": account["password"],
+                "role": account["role"],
+                "is_active": True,
+                "is_approved": True,
+                "approval_status": "approved"
+            }
+            # Don't overwrite is_tl if it exists
+            if "is_tl" not in existing:
+                update_data["is_tl"] = False
+            
+            await db.users.update_one(
+                {"email": email},
+                {"$set": update_data}
+            )
+            print(f"  ✓ Updated: {email} ({account['role']})")
+        else:
+            # Create new account
+            user_doc = {
+                "email": email,
+                "password": hashed_password,
+                "plain_password": account["password"],
+                "name": account["name"],
+                "role": account["role"],
                 "phone": None,
                 "is_active": True,
+                "is_approved": True,
+                "approval_status": "approved",
+                "is_tl": False,
+                "manager_id": None,
+                "tl_id": None,
                 "created_at": datetime.now(timezone.utc),
                 "last_login": None,
                 "last_activity": None
-            })
-    print(f"✅ Admin accounts initialized: {len(ADMIN_ACCOUNTS)} accounts")
+            }
+            result = await db.users.insert_one(user_doc)
+            # Update with ID
+            await db.users.update_one(
+                {"_id": result.inserted_id},
+                {"$set": {"id": str(result.inserted_id)}}
+            )
+            print(f"  + Created: {email} ({account['role']})")
+    
+    # Migrate existing Growth Partners - add new fields if missing
+    gp_roles = ["telecaller", "sales_agent", "team_leader", "partner", "growth_partner"]
+    await db.users.update_many(
+        {
+            "role": {"$in": gp_roles},
+            "is_tl": {"$exists": False}
+        },
+        {"$set": {"is_tl": False}}
+    )
+    await db.users.update_many(
+        {
+            "manager_id": {"$exists": False}
+        },
+        {"$set": {"manager_id": None}}
+    )
+    await db.users.update_many(
+        {
+            "tl_id": {"$exists": False}
+        },
+        {"$set": {"tl_id": None}}
+    )
+    
+    print(f"✅ Role-based accounts initialized: {len(ROLE_ACCOUNTS)} accounts")
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

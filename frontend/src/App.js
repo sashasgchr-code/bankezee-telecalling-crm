@@ -35,8 +35,14 @@ const RoleNeutralFileRedirect = () => {
   return <Navigate to={`${baseRoute}/files/${fileId}`} replace />;
 };
 
-// Growth Partner roles
-const GP_ROLES = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'manager'];
+// Growth Partner roles (includes legacy role names)
+const GP_ROLES = ['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'];
+
+// Roles with CRM operational access
+const CRM_ACCESS_ROLES = ['admin', 'ops', 'manager', ...GP_ROLES];
+
+// HR role - limited to attendance/leave
+const HR_ROLE = 'hr';
 
 const ProtectedRoute = ({ children, requiredRole }) => {
   const { isAuthenticated, user, isLoading } = useAuthStore();
@@ -49,13 +55,25 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // If requiredRole is 'telecaller', allow all GP roles
-  if (requiredRole === 'telecaller' && !GP_ROLES.includes(user?.role)) {
-    return <Navigate to={user?.role === 'admin' ? '/admin' : '/agent'} replace />;
+  const userRole = user?.role;
+  
+  // HR users go to a limited view
+  if (userRole === HR_ROLE) {
+    // HR can only access attendance/leave routes
+    return <Navigate to="/agent/attendance" replace />;
+  }
+
+  // If requiredRole is 'telecaller' or 'gp', allow all GP roles, ops, and manager
+  if (requiredRole === 'telecaller' && !CRM_ACCESS_ROLES.includes(userRole)) {
+    return <Navigate to={userRole === 'admin' ? '/admin' : '/agent'} replace />;
   }
   
   // For admin role, strict check
-  if (requiredRole === 'admin' && user?.role !== 'admin') {
+  if (requiredRole === 'admin' && userRole !== 'admin') {
+    // Ops and Manager can access admin routes for CRM operations
+    if (userRole === 'ops' || userRole === 'manager') {
+      return children; // Allow ops/manager to access admin CRM routes
+    }
     return <Navigate to="/agent" replace />;
   }
 

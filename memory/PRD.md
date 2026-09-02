@@ -145,12 +145,62 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 - Cannot edit Section 2 (Bank Processing)
 - View Only badge correctly displayed
 
+**6. RBAC Phase 1: User Roles & Hierarchy (September 2, 2026)**
+
+New Role System Implemented:
+| Role | Label | Description |
+|------|-------|-------------|
+| admin | Admin | Full system access - all features |
+| hr | HR | Attendance, Leave, HR reports only - NO CRM data |
+| manager | Manager | Team management, sees only their team's records |
+| ops | Operations | Cross-team CRM operational access |
+| growth_partner | Growth Partner | Own records only (can have TL capability) |
+
+Team Lead (TL) Capability:
+- NOT a separate role - it's a GP with `is_tl=true`
+- TL sees their own records + GPs assigned to them
+- Manager → TL → GP hierarchy
+
+Backend Changes:
+- New user fields: `role`, `is_tl`, `manager_id`, `tl_id`, `is_active`
+- Database indexes for performance: role, manager_id, tl_id, is_active
+- New endpoints:
+  - `GET /api/users/hierarchy-stats` - Role counts and GP statistics
+  - `GET /api/users/managers` - List of manager users
+  - `GET /api/users/team-leads?manager_id=x` - TLs filtered by manager
+  - `PUT /api/users/{id}/role-hierarchy` - Update role and hierarchy
+- Helper function `find_user_by_id()` handles both ObjectId and custom ID lookup
+- Role-based account seeding on startup (admin, hr, manager×2, ops×2)
+
+Frontend Changes:
+- Users page with new columns: Role | TL? | Manager | Team Lead | Status
+- User Hierarchy Overview dashboard with role counts
+- Edit Role & Hierarchy modal:
+  - Role selection (Admin, HR, Manager, Ops, Growth Partner)
+  - TL capability toggle (for GPs only)
+  - Manager dropdown
+  - Team Lead dropdown (filtered by selected manager)
+- Status column handles legacy users (is_active vs status field)
+- Smart payload building - only sends changed fields
+
+Seeded Accounts:
+- admin@bankezee.com (admin)
+- hr@neosales.in (hr)
+- teja@bankezee.com (manager)
+- saikiran@bankezee.com (manager)
+- rama@bankezee.com (ops)
+- ops@bankezee.com (ops)
+
 ---
 
 ## Authentication
 - Admin: admin@bankezee.com / ConnectSasha12!!
+- HR: hr@neosales.in / HrNeo12!!
+- Manager: teja@bankezee.com / tejasme12
+- Manager: saikiran@bankezee.com / saikiran12
+- Ops: rama@bankezee.com / rama@bzc12
+- Ops: ops@bankezee.com / ops@bzc12
 - GP Test: yarragondaanusha@gmail.com / AnushaGP123!
-- Operations: ops@bankezee.com
 
 ## Technical Stack
 - Frontend: React with Shadcn/UI
@@ -170,6 +220,10 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 ## Deferred Items
 - Android EAS/Gradle build fix
 - Mobile app APK generation
+- RBAC Phase 2: Server-side endpoint enforcement (Manager/TL scoped queries)
+- RBAC Phase 3: TL Team tabs (My Team, Team Data, Team Files, Team Calls)
+- RBAC Phase 4: Role-adaptive navigation (hide menus based on role)
+- HR-specific views: Attendance/Leave only, no CRM access
 
 ---
 

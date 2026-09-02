@@ -170,6 +170,20 @@ class FollowUpUpdate(BaseModel):
 class BulkDeleteUsersRequest(BaseModel):
     user_ids: List[str]
 
+class UserRoleUpdate(BaseModel):
+    """Update user role and hierarchy"""
+    role: Optional[str] = None  # admin, hr, manager, ops, growth_partner
+    is_tl: Optional[bool] = None  # Team Lead capability
+    manager_id: Optional[str] = None  # Assigned manager user ID
+    tl_id: Optional[str] = None  # Assigned Team Lead user ID
+    is_active: Optional[bool] = None
+
+class BulkUserApproval(BaseModel):
+    """Bulk approve users with manager/TL assignment"""
+    user_ids: List[str]
+    manager_id: Optional[str] = None
+    tl_id: Optional[str] = None
+
 # ===================== LEAVE & WFH REQUEST SCHEMAS =====================
 
 class LeaveRequest(BaseModel):
