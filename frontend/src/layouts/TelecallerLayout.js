@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText, CalendarDays } from 'lucide-react';
+import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText, CalendarDays, MoreHorizontal, Clock } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import CallModal from '../components/CallModal';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
 const TelecallerLayout = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [moreOpen, setMoreOpen] = useState(false);
   
   // Active call state
   const [activeCall, setActiveCall] = useState(null);
@@ -201,11 +203,17 @@ const TelecallerLayout = () => {
     }
   };
 
-  const navItems = [
+  // Primary nav items - 5 items max for mobile: Dashboard, Data, Files, Follow-ups, More
+  const primaryNavItems = [
     { path: '/agent', icon: Phone, label: 'Data', exact: true },
     { path: '/agent/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/agent/files', icon: FileText, label: 'Files' },
     { path: '/agent/followups', icon: Calendar, label: 'Follow-ups' },
+  ];
+  
+  // More menu items - overflow
+  const moreNavItems = [
+    { path: '/agent/attendance', icon: Clock, label: 'Attendance' },
     { path: '/agent/leave', icon: CalendarDays, label: 'Leave' },
     { path: '/agent/profile', icon: User, label: 'Profile' },
   ];
@@ -305,27 +313,92 @@ const TelecallerLayout = () => {
         <Outlet context={{ startCall, activeCall }} />
       </main>
 
-      {/* Bottom Navigation */}
+      {/* Bottom Navigation - 5 items: Data, Dashboard, Files, Follow-ups, More */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-40">
         <div className="flex items-center justify-around py-2">
-          {navItems.map((item) => (
+          {primaryNavItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
               end={item.exact}
               className={({ isActive }) =>
-                `flex flex-col items-center py-1 px-4 rounded-lg transition-colors ${
+                `flex flex-col items-center py-1 px-2 rounded-lg transition-colors ${
                   isActive
                     ? 'text-green-600'
                     : 'text-gray-500 hover:text-gray-700'
                 }`
               }
-              data-testid={`nav-${item.label.toLowerCase()}`}
+              data-testid={`nav-${item.label.toLowerCase().replace('-', '')}`}
             >
               <item.icon size={22} />
               <span className="text-xs mt-0.5 font-medium">{item.label}</span>
             </NavLink>
           ))}
+          
+          {/* More Menu Drawer */}
+          <Sheet open={moreOpen} onOpenChange={setMoreOpen}>
+            <SheetTrigger asChild>
+              <button
+                className={`flex flex-col items-center py-1 px-2 rounded-lg transition-colors ${
+                  moreOpen ? 'text-green-600' : 'text-gray-500 hover:text-gray-700'
+                }`}
+                data-testid="nav-more"
+              >
+                <MoreHorizontal size={22} />
+                <span className="text-xs mt-0.5 font-medium">More</span>
+              </button>
+            </SheetTrigger>
+            <SheetContent side="bottom" className="h-auto max-h-[70vh] rounded-t-2xl">
+              <SheetHeader className="pb-4">
+                <SheetTitle className="text-left">More Options</SheetTitle>
+              </SheetHeader>
+              <div className="grid grid-cols-3 gap-4 pb-6">
+                {moreNavItems.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMoreOpen(false)}
+                    className={({ isActive }) =>
+                      `flex flex-col items-center py-3 px-2 rounded-xl transition-colors ${
+                        isActive
+                          ? 'bg-green-50 text-green-600'
+                          : 'text-gray-600 hover:bg-gray-50'
+                      }`
+                    }
+                    data-testid={`more-${item.label.toLowerCase()}`}
+                  >
+                    <item.icon size={24} />
+                    <span className="text-xs mt-1.5 font-medium">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+              
+              {/* Break & Logout in More menu */}
+              <div className="border-t border-gray-200 pt-4 space-y-2">
+                <button
+                  onClick={() => { setMoreOpen(false); handleBreakToggle(); }}
+                  disabled={activeCall}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-colors ${
+                    onBreak
+                      ? 'bg-orange-100 text-orange-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  } ${activeCall ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  data-testid="more-break"
+                >
+                  <Coffee size={20} />
+                  <span className="font-medium">{onBreak ? 'End Break' : 'Take a Break'}</span>
+                </button>
+                <button
+                  onClick={() => { setMoreOpen(false); handleLogout(); }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                  data-testid="more-logout"
+                >
+                  <LogOut size={20} />
+                  <span className="font-medium">Logout</span>
+                </button>
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </nav>
 

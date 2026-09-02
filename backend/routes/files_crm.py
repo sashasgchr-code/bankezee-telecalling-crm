@@ -180,17 +180,91 @@ async def get_operations_team():
 async def get_all_files(
     file_status: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all leads with status='file' (Files Dashboard)"""
+    """Get all leads with status='file' (Files Dashboard)
+    
+    Supports:
+    - file_status: Filter by file processing status
+    - assigned_to: Filter by assigned Growth Partner
+    - search: Search by name, mobile, or email
+    - start_date/end_date: Date range filter on created_at
+    - Role-based filtering: GPs only see their own files
+    """
+    from datetime import datetime as dt, timezone as tz
+    
     query = {"status": "file"}
+    
+    # GP role restriction - GPs only see their own files
+    if current_user.get('role') == 'telecaller':
+        gp_id = current_user.get('id')
+        query["$or"] = [
+            {"assigned_to": gp_id},
+            {"file_assigned_to": gp_id}
+        ]
+    elif assigned_to:
+        # Admin/Ops can filter by assigned_to
+        query["$or"] = [
+            {"assigned_to": assigned_to},
+            {"file_assigned_to": assigned_to}
+        ]
     
     if file_status:
         query["file_status"] = file_status
-    if assigned_to:
-        query["file_assigned_to"] = assigned_to
+    
+    # Search filter (name, mobile, email)
+    if search:
+        search_regex = {"$regex": search, "$options": "i"}
+        search_query = {
+            "$or": [
+                {"full_name": search_regex},
+                {"mobile": search_regex},
+                {"email": search_regex},
+                {"file_details.full_name": search_regex},
+                {"file_details.mobile": search_regex}
+            ]
+        }
+        if "$or" in query:
+            # Combine existing $or (from role/assigned_to) with search $or using $and
+            query = {"$and": [
+                {"status": "file"},
+                {"$or": query["$or"]},
+                search_query
+            ]}
+            if file_status:
+                query["$and"].append({"file_status": file_status})
+        else:
+            query.update(search_query)
+    
+    # Date range filter
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            try:
+                date_start = dt.fromisoformat(start_date.replace('Z', '+00:00'))
+                if date_start.tzinfo is None:
+                    date_start = date_start.replace(tzinfo=tz.utc)
+                date_query["$gte"] = date_start
+            except ValueError:
+                pass
+        if end_date:
+            try:
+                date_end = dt.fromisoformat(end_date.replace('Z', '+00:00'))
+                if date_end.tzinfo is None:
+                    date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=tz.utc)
+                date_query["$lte"] = date_end
+            except ValueError:
+                pass
+        if date_query:
+            if isinstance(query, dict) and "$and" in query:
+                query["$and"].append({"created_at": date_query})
+            else:
+                query["created_at"] = date_query
     
     skip = (page - 1) * limit
     
@@ -1812,7 +1886,11 @@ async def bulk_assign_files(assignment: BulkFileAssignment, current_user: dict =
 
 @router.put("/{file_id}/eligibilities")
 async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpdate, current_user: dict = Depends(get_current_user)):
-    """Update file bank eligibilities (up to 7 banks)"""
+    """Update file bank eligibilities (up to 7 banks) - Admin/Ops only, GPs cannot modify"""
+    # GP role restriction - GPs cannot update eligibilities (bank processing is Admin/Ops only)
+    if current_user.get('role') == 'telecaller':
+        raise HTTPException(status_code=403, detail="Growth Partners cannot modify bank eligibilities. Contact Admin/Ops for bank processing.")
+    
     if len(eligibility_update.eligibilities) > 7:
         raise HTTPException(status_code=400, detail="Maximum 7 eligibilities allowed")
     
@@ -2029,11 +2107,18 @@ async def get_files_dashboard_stats(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    search: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
     Get dashboard statistics for files following the OLD CRM exact calculation logic.
     This calculation applies to ALL files - both legacy CRM imports and new Connect files.
+    
+    Supports:
+    - start_date/end_date: Date range filter on created_at
+    - assigned_to: Filter by GP
+    - search: Text search on name/mobile/email
+    - Role-based filtering: GPs only see their own files
     
     KEY RULES (traced from legacy CRM):
     - Total Files: COUNT all files with status='file'
@@ -2099,14 +2184,69 @@ async def get_files_dashboard_stats(
         disbursed = elig.get('disbursed')
         return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
     
-    # Get all files (filter by assigned_to if provided for telecaller view)
-    # Only get legacy CRM files if filtering for exact match
+    # Build query for filtering
     query = {"status": "file"}
-    if assigned_to:
+    
+    # GP role restriction - GPs only see their own files
+    if current_user.get('role') == 'telecaller':
+        gp_id = current_user.get('id')
+        query["$or"] = [
+            {"assigned_to": gp_id},
+            {"file_assigned_to": gp_id}
+        ]
+    elif assigned_to:
+        # Admin/Ops can filter by assigned_to
         query["$or"] = [
             {"assigned_to": assigned_to},
             {"file_assigned_to": assigned_to}
         ]
+    
+    # Search filter
+    if search:
+        search_regex = {"$regex": search, "$options": "i"}
+        search_query = {
+            "$or": [
+                {"full_name": search_regex},
+                {"mobile": search_regex},
+                {"email": search_regex},
+                {"file_details.full_name": search_regex},
+                {"file_details.mobile": search_regex}
+            ]
+        }
+        if "$or" in query:
+            query = {"$and": [
+                {"status": "file"},
+                {"$or": query["$or"]},
+                search_query
+            ]}
+        else:
+            query.update(search_query)
+    
+    # Date range filter
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            try:
+                date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                if date_start.tzinfo is None:
+                    date_start = date_start.replace(tzinfo=timezone.utc)
+                date_query["$gte"] = date_start
+            except ValueError:
+                pass
+        if end_date:
+            try:
+                date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if date_end.tzinfo is None:
+                    date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                date_query["$lte"] = date_end
+            except ValueError:
+                pass
+        if date_query:
+            if isinstance(query, dict) and "$and" in query:
+                query["$and"].append({"created_at": date_query})
+            else:
+                query["created_at"] = date_query
+    
     all_files = await db.leads.find(query).to_list(10000)
     
     # Initialize metrics
@@ -3439,4 +3579,55 @@ async def get_file_timeline(file_id: str, current_user: dict = Depends(get_curre
         "file_id": file_id,
         "timeline": timeline,
         "total_events": len(timeline)
+    }
+
+
+
+# ============ GP FILE MAPPING AUDIT ============
+
+@router.get("/audit/gp-file-mapping")
+async def get_gp_file_mapping_audit(current_user: dict = Depends(require_admin)):
+    """
+    Get GP vs File Count audit matrix.
+    Shows all Growth Partners with their mapped file counts.
+    Useful for verifying data migration and GP-file associations.
+    """
+    # Get all files
+    all_files = await db.leads.find({"status": "file"}, {"_id": 0, "id": 1, "assigned_to": 1, "file_assigned_to": 1, "source_id": 1}).to_list(10000)
+    
+    # Get all users (potential GPs)
+    all_users = await db.users.find({"role": {"$in": ["telecaller", "admin"]}}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1, "connect_id": 1}).to_list(500)
+    
+    # Create a mapping of user IDs to names
+    user_map = {}
+    for u in all_users:
+        uid = u.get('id') or u.get('connect_id')
+        if uid:
+            user_map[uid] = u.get('full_name') or u.get('name') or u.get('email', '').split('@')[0]
+    
+    # Count files by GP
+    gp_file_counts = {}
+    unassigned_count = 0
+    
+    for f in all_files:
+        assigned = f.get('assigned_to') or f.get('file_assigned_to') or f.get('source_id')
+        if assigned:
+            if assigned not in gp_file_counts:
+                gp_file_counts[assigned] = {
+                    "gp_id": assigned,
+                    "gp_name": user_map.get(assigned, f"Unknown ({assigned})"),
+                    "file_count": 0
+                }
+            gp_file_counts[assigned]["file_count"] += 1
+        else:
+            unassigned_count += 1
+    
+    # Sort by file count descending
+    gp_list = sorted(gp_file_counts.values(), key=lambda x: -x["file_count"])
+    
+    return {
+        "total_files": len(all_files),
+        "total_gps_with_files": len(gp_file_counts),
+        "unassigned_files": unassigned_count,
+        "gp_file_matrix": gp_list
     }

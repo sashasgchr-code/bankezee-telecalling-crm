@@ -66,7 +66,10 @@ const FileDetailsPage = () => {
   const [score, setScore] = useState(0);
   
   const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isAdmin = user.role === 'admin';
   const canEdit = ['admin', 'telecaller'].includes(user.role);
+  // GP cannot edit eligibilities - Admin/Ops only for bank processing
+  const canEditEligibilities = isAdmin;
 
   useEffect(() => {
     fetchFileData();
@@ -589,16 +592,22 @@ const FileDetailsPage = () => {
               </div>
             </div>
 
-            {/* Eligibility Tracker */}
+            {/* Eligibility Tracker - Admin/Ops Only for Edit */}
             <EligibilityTracker
               eligibilities={eligibilities}
-              canEdit={canEdit}
+              canEdit={canEditEligibilities}
               onUpdate={updateEligibility}
               onAdd={addEligibility}
               onRemove={removeEligibility}
               onSave={saveEligibilities}
               isSaving={savingEligibilities}
             />
+            {!canEditEligibilities && canEdit && eligibilities.length === 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-700">
+                <p className="font-medium">Bank Eligibility Processing</p>
+                <p>Contact Admin/Ops team to add bank eligibilities for this file.</p>
+              </div>
+            )}
 
             {/* Status Update */}
             {canEdit && (

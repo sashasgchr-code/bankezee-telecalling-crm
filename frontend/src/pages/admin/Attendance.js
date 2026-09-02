@@ -3,7 +3,7 @@ import {
   Users, Clock, MapPin, Calendar, Building2, Home, Palmtree, 
   AlertCircle, CheckCircle, XCircle, ChevronLeft, ChevronRight,
   Filter, Download, Edit2, History, Settings, Loader2, Search,
-  UserCheck, UserX, Coffee
+  UserCheck, UserX, Coffee, Grid3X3
 } from 'lucide-react';
 import api from '../../services/api';
 import { format, parseISO } from 'date-fns';
@@ -13,6 +13,11 @@ import { format, parseISO } from 'date-fns';
  */
 const AdminAttendanceDashboard = () => {
   const [activeTab, setActiveTab] = useState('today');
+  const [showMatrixView, setShowMatrixView] = useState(false);
+  const [matrixMonth, setMatrixMonth] = useState(new Date().getMonth() + 1);
+  const [matrixYear, setMatrixYear] = useState(new Date().getFullYear());
+  const [matrixData, setMatrixData] = useState(null);
+  const [matrixLoading, setMatrixLoading] = useState(false);
   const [summary, setSummary] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +64,27 @@ const AdminAttendanceDashboard = () => {
     fetchWFHRequests();
     fetchUsers();
   }, [selectedDate]);
+
+  // Fetch monthly matrix when matrix view is enabled
+  useEffect(() => {
+    if (showMatrixView) {
+      fetchMonthlyMatrix();
+    }
+  }, [showMatrixView, matrixMonth, matrixYear]);
+
+  const fetchMonthlyMatrix = async () => {
+    try {
+      setMatrixLoading(true);
+      const response = await api.get('/attendance/admin/monthly-matrix', {
+        params: { month: matrixMonth, year: matrixYear }
+      });
+      setMatrixData(response.data);
+    } catch (error) {
+      console.error('Error fetching monthly matrix:', error);
+    } finally {
+      setMatrixLoading(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -365,7 +391,131 @@ const AdminAttendanceDashboard = () => {
           <Palmtree size={18} />
           Assign Leave
         </button>
+        <button
+          onClick={() => setShowMatrixView(!showMatrixView)}
+          className={`btn-secondary flex items-center gap-2 ${showMatrixView ? 'bg-green-100 text-green-700' : ''}`}
+          data-testid="toggle-matrix-view"
+        >
+          <Grid3X3 size={18} />
+          {showMatrixView ? 'Hide' : 'Show'} Monthly Matrix
+        </button>
       </div>
+
+      {/* Monthly Matrix View */}
+      {showMatrixView && (
+        <div className="card p-4" data-testid="monthly-matrix-view">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Grid3X3 size={18} className="text-green-600" />
+              Monthly Attendance Matrix
+            </h3>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => {
+                  if (matrixMonth === 1) {
+                    setMatrixMonth(12);
+                    setMatrixYear(matrixYear - 1);
+                  } else {
+                    setMatrixMonth(matrixMonth - 1);
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <span className="font-medium px-3">
+                {new Date(matrixYear, matrixMonth - 1).toLocaleString('default', { month: 'long' })} {matrixYear}
+              </span>
+              <button 
+                onClick={() => {
+                  const now = new Date();
+                  if (matrixYear < now.getFullYear() || (matrixYear === now.getFullYear() && matrixMonth < now.getMonth() + 1)) {
+                    if (matrixMonth === 12) {
+                      setMatrixMonth(1);
+                      setMatrixYear(matrixYear + 1);
+                    } else {
+                      setMatrixMonth(matrixMonth + 1);
+                    }
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <ChevronRight size={18} />
+              </button>
+            </div>
+          </div>
+
+          {matrixLoading ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-green-600" />
+            </div>
+          ) : matrixData ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-2 py-2 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[120px]">Growth Partner</th>
+                    {Array.from({ length: matrixData.days_in_month }, (_, i) => (
+                      <th key={i + 1} className="px-1 py-2 text-center font-medium text-gray-600 w-8">{i + 1}</th>
+                    ))}
+                    <th className="px-2 py-2 text-center font-semibold text-green-700 bg-green-50">P</th>
+                    <th className="px-2 py-2 text-center font-semibold text-orange-700 bg-orange-50">L</th>
+                    <th className="px-2 py-2 text-center font-semibold text-blue-700 bg-blue-50">W</th>
+                    <th className="px-2 py-2 text-center font-semibold text-amber-700 bg-amber-50">A</th>
+                    <th className="px-2 py-2 text-center font-semibold text-red-700 bg-red-50">U</th>
+                    <th className="px-2 py-2 text-center font-semibold text-gray-700 bg-gray-100">%</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {matrixData.matrix?.map((row, idx) => (
+                    <tr key={row.user_id || idx} className="hover:bg-gray-50">
+                      <td className="px-2 py-2 font-medium text-gray-800 sticky left-0 bg-white">{row.user_name}</td>
+                      {Array.from({ length: matrixData.days_in_month }, (_, i) => {
+                        const day = i + 1;
+                        const dayData = row.days?.[day];
+                        const code = dayData?.code || '-';
+                        const displayCode = code.startsWith('L') ? 'L' : code;
+                        
+                        const bgColor = {
+                          'P': 'bg-green-100 text-green-700',
+                          'W': 'bg-blue-100 text-blue-700',
+                          'L': 'bg-orange-100 text-orange-700',
+                          'A': 'bg-amber-100 text-amber-700',
+                          'U': 'bg-red-100 text-red-700',
+                          '-': 'text-gray-300'
+                        }[displayCode] || 'text-gray-400';
+                        
+                        return (
+                          <td key={day} className={`px-1 py-2 text-center ${bgColor}`} title={dayData?.detail || ''}>
+                            {displayCode}
+                          </td>
+                        );
+                      })}
+                      <td className="px-2 py-2 text-center font-semibold bg-green-50 text-green-700">{row.summary?.present || 0}</td>
+                      <td className="px-2 py-2 text-center font-semibold bg-orange-50 text-orange-700">{row.summary?.late || 0}</td>
+                      <td className="px-2 py-2 text-center font-semibold bg-blue-50 text-blue-700">{row.summary?.wfh || 0}</td>
+                      <td className="px-2 py-2 text-center font-semibold bg-amber-50 text-amber-700">{row.summary?.leave || 0}</td>
+                      <td className="px-2 py-2 text-center font-semibold bg-red-50 text-red-700">{row.summary?.absent || 0}</td>
+                      <td className="px-2 py-2 text-center font-bold bg-gray-100">{row.summary?.attendance_percentage || 0}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-gray-500 text-center py-4">No matrix data available</p>
+          )}
+          
+          {/* Legend */}
+          <div className="flex flex-wrap gap-3 mt-4 pt-4 border-t border-gray-100 text-xs">
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-green-100 border border-green-200"></span> P = Present</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-orange-100 border border-orange-200"></span> L = Late</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-blue-100 border border-blue-200"></span> W = WFH</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-amber-100 border border-amber-200"></span> A = Leave</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-red-100 border border-red-200"></span> U = Absent/Unmarked</span>
+          </div>
+        </div>
+      )}
 
       {/* WFH Requests */}
       {wfhRequests.length > 0 && (

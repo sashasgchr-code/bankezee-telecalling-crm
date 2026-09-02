@@ -1,0 +1,37 @@
+{
+  "summary": "Iter32 verifies FINAL CONNECT + OLD CRM PARITY (20-point) features. Backend: 9/9 pytest pass. Dashboard stats (/api/files/dashboard/stats) returns exact OLD CRM figures: Total Files: 514, New: 5, In Progress: 28, Login: 317, Approved: 116, Total Approved: ₹16.25Cr, Disbursed: 96, Total Disbursed: ₹13.84Cr, Interim Rejects: 97, Final Rejections: 280. Files list (/api/files) returns 514 total for admin. Search filter 'reddy' works on complete dataset via regex against full_name/mobile/email/file_details.full_name/file_details.mobile (returns 13 matches). GP File Mapping Audit (/api/files/audit/gp-file-mapping) returns matrix keyed by user id with counts; requires admin (telecaller → 403). Delete file endpoint (/api/files/{id}) requires admin — telecaller receives 403 and unauth 401/403. Telecaller list request enforces role restriction (query narrowed to assigned_to = self). Frontend (Desktop 1920): FilesDashboard renders exact OLD CRM cards — Total Files 514, New 5, In Progress 28, Login 317 (C: 317 S: 0), Approved 116 (₹16.25Cr), Disbursed 96 (₹13.84Cr), Interim 97, Final 280, Pipeline ₹1.84Cr, Loans by Type chart populated (New Personal Loan 158, BT Topup PL 135, Used Vehicle BT 61, Merge 49, BT PL 46, …); typing 'reddy' in search box updates cards to Total 13/Disbursed 4/Approved 5 and file list header 'Files (13)'. Mobile (390x844): Bottom nav renders exactly 5 items — nav-dashboard, nav-data, nav-files, nav-followups, nav-more (all data-testids present). Tapping More opens Sheet drawer with 4-column grid (more-reports, more-users, more-attendance, more-leave) plus more-logout. All flows integrated end-to-end.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "FilesDashboard (Admin)", "issues": ["Persistent hydration warnings from previous iterations: <span data-ve-dynamic> wrapper inserted as child of <select> and <option>, plus 'Each child in a list should have a unique key prop' warning in FilesDashboard render, and 'Cannot infer the option value of complex children'. Non-functional but pollutes console — carryover from iter30/31."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter32_old_crm_parity.py",
+    "/app/test_reports/pytest/iter32.xml"
+  ],
+  "action_items": [
+    "(Optional carry-over) Fix hydration warnings caused by <span data-ve-dynamic> wrappers inside <select>/<option>/<tbody> — appears to be dev-only instrumentation wrapper from Emergent Visual Editor. Consider suppressing in production build or unwrapping when parent is select/table."
+  ],
+  "critical_code_review_comments": [
+    "files_crm.py is 3634 lines — should be split into modules (dashboard_stats.py, commissions.py, exports.py, eligibility.py, audit.py). Growing every iteration.",
+    "GET /api/files and /dashboard/stats duplicate the query-building logic (role restriction + search + date filters). Extract into a shared build_files_query() helper to prevent divergence.",
+    "get_files_dashboard_stats loads full result set into memory (to_list(10000)) and iterates in Python — should push more aggregations to MongoDB pipeline; will slow down beyond ~5k files.",
+    "Delete endpoint hard-deletes leads + commissions + activity_logs. Consider soft-delete (deleted_at) for auditability, given files carry commission/disbursal financial data."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter32_old_crm_parity.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (search filter + OLD CRM stat cards + 5-item mobile nav + More bottom sheet all verified)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! ; agent@test.com / agent123",
+  "seed_data_creation": "None — used existing 514 legacy-migrated files.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter32 all pass. Verified numbers: Total 514, Login 317, Approved 116 (₹16.25Cr), Disbursed 96 (₹13.84Cr), Interim 97, Final 280. Mobile nav data-testids: nav-dashboard, nav-data, nav-files, nav-followups, nav-more; drawer children: more-reports, more-users, more-attendance, more-leave, more-logout. Backend tests at /app/backend/tests/test_iter32_old_crm_parity.py.",
+  "rca of the issue": "N/A — no bugs found."
+}

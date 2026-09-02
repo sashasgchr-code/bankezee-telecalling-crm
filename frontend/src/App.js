@@ -15,6 +15,7 @@ import TelecallerDashboard from "./pages/telecaller/Dashboard";
 import TelecallerLeads from "./pages/telecaller/Leads";
 import TelecallerFollowUps from "./pages/telecaller/FollowUps";
 import TelecallerProfile from "./pages/telecaller/Profile";
+import TelecallerAttendance from "./pages/telecaller/Attendance";
 import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
 import DataMigration from "./pages/files/DataMigration";
@@ -107,6 +108,7 @@ function App() {
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="followups" element={<TelecallerFollowUps />} />
+          <Route path="attendance" element={<TelecallerAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="profile" element={<TelecallerProfile />} />
         </Route>

@@ -224,6 +224,17 @@ const FilesDashboard = () => {
     fetchAll();
   }, [page, statusFilter, managerFilter, dateFilter, customStartDate, customEndDate]);
 
+  // Debounced search effect
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchTerm !== undefined) {
+        fetchFiles();
+        fetchStats();
+      }
+    }, 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm]);
+
   const fetchAll = async () => {
     setLoading(true);
     try {
@@ -250,11 +261,15 @@ const FilesDashboard = () => {
       params.append('limit', 50);
       if (statusFilter) params.append('file_status', statusFilter);
       if (managerFilter) params.append('assigned_to', managerFilter);
+      if (searchTerm) params.append('search', searchTerm);
       
-      // Telecaller sees only their assigned files
-      if (!isAdmin && user?.id) {
-        params.append('assigned_to', user.id);
-      }
+      // Add date range filters
+      const { startDate, endDate } = getDateRange();
+      if (startDate) params.append('start_date', startDate);
+      if (endDate) params.append('end_date', endDate);
+      
+      // Note: Backend handles GP role restriction via get_current_user
+      // For Admin viewing specific GP's files, use managerFilter
 
       const response = await api.get(`/files?${params.toString()}`);
       setFiles(response.data.files || []);
@@ -271,11 +286,10 @@ const FilesDashboard = () => {
       const params = new URLSearchParams();
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
+      if (searchTerm) params.append('search', searchTerm);
+      if (managerFilter) params.append('assigned_to', managerFilter);
       
-      // Telecaller sees stats for their files only
-      if (!isAdmin && user?.id) {
-        params.append('assigned_to', user.id);
-      }
+      // Note: Backend handles GP role restriction via get_current_user
       
       const response = await api.get(`/files/dashboard/stats?${params.toString()}`);
       setStats(response.data);
@@ -739,10 +753,14 @@ const FilesDashboard = () => {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{isAdmin ? 'Admin' : 'Files'}</h1>
-              <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
+              {/* GP sees "My Files", Admin sees "Admin Dashboard" */}
+              <h1 className="text-xl font-bold text-gray-900">{isAdmin ? 'Admin' : 'My Files'}</h1>
+              <h2 className="text-2xl font-bold text-gray-900">{isAdmin ? 'Dashboard' : 'Dashboard'}</h2>
             </div>
             <span className="text-sm text-gray-500 hidden md:inline">Welcome, {user.full_name || user.name || 'User'}</span>
+            {!isAdmin && (
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Growth Partner</span>
+            )}
           </div>
           
           {/* Report Buttons - Responsive wrap */}
@@ -1842,8 +1860,10 @@ const FilesDashboard = () => {
           {/* List Header */}
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h3 className="font-semibold text-gray-900">Files ({totalFiles})</h3>
-              <span className="text-sm text-gray-500">All files in the system</span>
+              <h3 className="font-semibold text-gray-900">{isAdmin ? 'Files' : 'My Files'} ({totalFiles})</h3>
+              <span className="text-sm text-gray-500">
+                {isAdmin ? 'All files in the system' : 'Files assigned to you'}
+              </span>
             </div>
             <button 
               onClick={handleExportCSV}
@@ -1890,7 +1910,7 @@ const FilesDashboard = () => {
                     key={file.id}
                     className="px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
                     data-testid={`file-row-${file.id}`}
-                    onClick={() => navigate(`/admin/files/${file.id}`)}
+                    onClick={() => navigate(isAdmin ? `/admin/files/${file.id}` : `/agent/files/${file.id}`)}
                   >
                     <div className="flex items-center gap-4">
                       {/* Checkbox */}
@@ -1946,7 +1966,7 @@ const FilesDashboard = () => {
                       {/* Actions */}
                       <div className="flex items-center gap-1">
                         <button 
-                          onClick={() => navigate(`/admin/files/${file.id}`)}
+                          onClick={(e) => { e.stopPropagation(); navigate(isAdmin ? `/admin/files/${file.id}` : `/agent/files/${file.id}`); }}
                           className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
                           title="View Details"
                         >
@@ -1955,13 +1975,12 @@ const FilesDashboard = () => {
                         {isAdmin && (
                           <button 
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
-                            onClick={() => openDeleteConfirm(file)}
+                            onClick={(e) => { e.stopPropagation(); openDeleteConfirm(file); }}
                             title="Delete File"
                           >
                             <Trash2 size={18} />
                           </button>
                         )}
-                        </button>
                       </div>
                     </div>
                   </div>
