@@ -1,0 +1,32 @@
+{
+  "summary": "Verified all 3 iteration-27 fixes: (1) Files Dashboard now shows files in list — header 'Files (454)' with 50 rows visible matching total. (2) Admin Leads status filter counts come from /api/leads/stats and remain stable when clicking File filter: All Status (457) | New (2) | File (454) | No Status (1). (3) Backend PUT /api/leads/{id} with status='file' properly initializes file_status='new' and file_assigned_to. 7/7 pytest backend cases passed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Dashboard, Leads, Files", "issues": ["React hydration warnings (span cannot be child of select/tr/tbody/tfoot/table) from Emergent x-ve-dynamic tracing wrapper spans. Non-blocking but noisy in console.", "'Each child in a list should have a unique key prop' warning in FilesDashboard render", "'Cannot infer the option value of complex children' warning in FilesDashboard select"]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter27_file_status.py",
+    "/app/test_reports/pytest/iter27.xml"
+  ],
+  "action_items": [
+    "(Optional) Add unique key prop to mapped list children in FilesDashboard.js around line 837 (FILE_STATUS_OPTIONS map)",
+    "(Optional) Rework option children in FilesDashboard select to be plain strings — currently rendering nested spans causing 'Cannot infer option value' warning"
+  ],
+  "critical_code_review_comments": [
+    "leads.py update_lead does NOT enforce required file fields — a client sending status='file' with no eligibilities gets file_status='new' but eligibilities defaults to []; consider server-side validation of minimum file initialization data",
+    "files_crm.py get_all_files (line 144) has NO auth dependency (missing Depends(get_current_user)) — anyone can list files without token. HIGH priority security gap.",
+    "leads.py get_leads_count and get_leads_stats duplicate query-building logic instead of using build_leads_query consistently — count endpoint deviates from stats/list, risk of divergence"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter27_file_status.py (new)"],
+  "success_rate": {"backend": "100% (7/7)", "frontend": "100% (visually verified 3 fixes)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!",
+  "seed_data_creation": "Test lead created and cleaned up in test_convert_lead_to_file",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "DB currently has 457 leads: File=454, New=2, no_status=1. /api/files (list endpoint) is missing auth guard — flagged for main agent. Preview URL: https://responsive-crm-app-1.preview.emergentagent.com. Test file: backend/tests/test_iter27_file_status.py",
+  "rca of the issue": "N/A - fixes verified working"
+}

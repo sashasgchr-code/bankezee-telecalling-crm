@@ -474,20 +474,51 @@ www.BankEzee.com`;
               {statuses.map((status) => (
                 <button
                   key={status}
-                  onClick={() => setEditData({ ...editData, status })}
+                  onClick={async () => {
+                    // If clicking "file" status, save immediately and redirect
+                    if (status === 'file' && editData.status !== 'file') {
+                      setIsSaving(true);
+                      try {
+                        await api.put(`/leads/${id}`, {
+                          name: editData.name,
+                          phone: editData.phone,
+                          email: editData.email,
+                          city: editData.city,
+                          source: editData.source,
+                          status: 'file',
+                          notes: editData.notes,
+                        });
+                        // Redirect to File Details page immediately
+                        const basePath = user?.role === 'admin' ? '/admin' : '/agent';
+                        navigate(`${basePath}/files/${id}`);
+                      } catch (error) {
+                        alert(error.response?.data?.detail || 'Failed to convert to File');
+                        setIsSaving(false);
+                      }
+                    } else {
+                      setEditData({ ...editData, status });
+                    }
+                  }}
+                  disabled={isSaving}
                   className={`px-3 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
                     editData.status === status
                       ? 'text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                  } ${isSaving ? 'opacity-50 cursor-not-allowed' : ''}`}
                   style={{
                     backgroundColor: editData.status === status ? StatusColors[status] : undefined
                   }}
+                  data-testid={`status-btn-${status}`}
                 >
-                  {StatusLabels[status] || status.replace('_', ' ')}
+                  {isSaving && status === 'file' ? 'Converting...' : (StatusLabels[status] || status.replace('_', ' '))}
                 </button>
               ))}
             </div>
+            {editData.status === 'file' && (
+              <p className="mt-2 text-sm text-green-600 font-medium">
+                ✓ Click to save and open the File details page
+              </p>
+            )}
           </div>
         )}
 
@@ -554,7 +585,7 @@ www.BankEzee.com`;
                         <p className="text-sm text-gray-600 mt-1">{log.notes}</p>
                       )}
                       <p className="text-xs text-gray-400 mt-1">
-                        {format(parseISO(log.created_at), 'MMM d, yyyy h:mm a')}
+                        {log.created_at ? format(parseISO(log.created_at), 'MMM d, yyyy h:mm a') : '-'}
                       </p>
                     </div>
                   </div>

@@ -18,6 +18,10 @@ const AdminLeads = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   
+  // Stats from backend (for accurate filter counts)
+  const [statusCounts, setStatusCounts] = useState({});
+  const [outcomeCounts, setOutcomeCounts] = useState({});
+  
   // Call outcome filters
   const callOutcomes = [
     { id: 'connected', label: 'Connected', color: '#4CAF50' },
@@ -53,6 +57,22 @@ const AdminLeads = () => {
   const [isExporting, setIsExporting] = useState(false);
 
   const statuses = ['new', 'not_interested', 'follow_up', 'leads', 'file', 'no_status'];
+
+  // Fetch stats from dedicated endpoint for accurate counts (unfiltered)
+  const fetchStats = async () => {
+    try {
+      const params = {};
+      if (searchQuery) params.search = searchQuery;
+      if (assignedFilter) params.assigned_to = assignedFilter;
+      // Don't filter by status/outcome - we want total counts for each category
+      
+      const response = await api.get('/leads/stats', { params });
+      setStatusCounts(response.data.by_status || {});
+      setOutcomeCounts(response.data.by_outcome || {});
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
 
   const fetchData = async (page = currentPage) => {
     try {
@@ -95,7 +115,12 @@ const AdminLeads = () => {
   useEffect(() => {
     setCurrentPage(1); // Reset to page 1 when filters change
     fetchData(1);
+    fetchStats(); // Also fetch stats when filters change (respects search/assigned filters)
   }, [searchQuery, statusFilter, outcomeFilter, assignedFilter]);
+
+  // Get count from stats endpoint
+  const getStatusCount = (status) => statusCounts[status] || 0;
+  const getOutcomeCount = (outcomeId) => outcomeCounts[outcomeId] || 0;
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages) {
@@ -108,6 +133,7 @@ const AdminLeads = () => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchData();
+    fetchStats();
   };
 
   const handleLeadPress = (lead) => {
@@ -433,20 +459,23 @@ const AdminLeads = () => {
                   !statusFilter ? 'bg-green-600 text-white' : 'bg-gray-100 text-gray-700'
                 }`}
               >
-                All Status
+                All Status ({Object.values(statusCounts).reduce((a, b) => a + b, 0) || totalCount})
               </button>
-              {statuses.map((status) => (
-                <button
-                  key={status}
-                  onClick={() => setStatusFilter(status)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize ${
-                    statusFilter === status ? 'text-white' : 'bg-gray-100 text-gray-700'
-                  }`}
-                  style={{ backgroundColor: statusFilter === status ? StatusColors[status] : undefined }}
-                >
-                  {StatusLabels[status] || status.replace('_', ' ')}
-                </button>
-              ))}
+              {statuses.map((status) => {
+                const count = getStatusCount(status);
+                return (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize ${
+                      statusFilter === status ? 'text-white' : 'bg-gray-100 text-gray-700'
+                    }`}
+                    style={{ backgroundColor: statusFilter === status ? StatusColors[status] : undefined }}
+                  >
+                    {StatusLabels[status] || status.replace('_', ' ')} {count > 0 && `(${count})`}
+                  </button>
+                );
+              })}
             </div>
             
             {/* Call Outcome Filters */}
@@ -460,18 +489,21 @@ const AdminLeads = () => {
               >
                 All Outcomes
               </button>
-              {callOutcomes.map((outcome) => (
-                <button
-                  key={outcome.id}
-                  onClick={() => setOutcomeFilter(outcome.id)}
-                  className={`px-3 py-1.5 rounded-full text-sm font-medium ${
-                    outcomeFilter === outcome.id ? 'text-white' : 'bg-gray-100 text-gray-700'
-                  }`}
-                  style={{ backgroundColor: outcomeFilter === outcome.id ? outcome.color : undefined }}
-                >
-                  {outcome.label}
-                </button>
-              ))}
+              {callOutcomes.map((outcome) => {
+                const count = getOutcomeCount(outcome.id);
+                return (
+                  <button
+                    key={outcome.id}
+                    onClick={() => setOutcomeFilter(outcome.id)}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium ${
+                      outcomeFilter === outcome.id ? 'text-white' : 'bg-gray-100 text-gray-700'
+                    }`}
+                    style={{ backgroundColor: outcomeFilter === outcome.id ? outcome.color : undefined }}
+                  >
+                    {outcome.label} {count > 0 && `(${count})`}
+                  </button>
+                );
+              })}
             </div>
             <select
               value={assignedFilter}

@@ -11,6 +11,7 @@ const TelecallerLeads = () => {
   const { startCall, activeCall } = useOutletContext();
   const [leads, setLeads] = useState([]);
   const [statusCounts, setStatusCounts] = useState({});
+  const [outcomeCounts, setOutcomeCounts] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(true); // Default open
@@ -51,14 +52,19 @@ const TelecallerLeads = () => {
     setSearchParams(newParams);
   };
 
-  // Calculate status counts
-  const calculateStatusCounts = (leadsData) => {
-    const counts = {};
-    leadsData.forEach(lead => {
-      const status = lead.status || 'new';
-      counts[status] = (counts[status] || 0) + 1;
-    });
-    setStatusCounts(counts);
+  // Fetch stats from dedicated endpoint for accurate counts
+  const fetchStats = async () => {
+    try {
+      const params = {};
+      if (searchQuery) params.search = searchQuery;
+      // Note: Don't filter stats by status/outcome - we want total counts per status
+      
+      const response = await api.get('/leads/stats', { params });
+      setStatusCounts(response.data.by_status || {});
+      setOutcomeCounts(response.data.by_outcome || {});
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
   };
 
   const fetchLeads = async (page = currentPage) => {
@@ -80,9 +86,6 @@ const TelecallerLeads = () => {
       setTotalCount(leadsData.pagination?.total_count || 0);
       setTotalPages(leadsData.pagination?.total_pages || 1);
       setCurrentPage(leadsData.pagination?.page || 1);
-      
-      // Calculate status counts from current data
-      calculateStatusCounts(leadsData.leads || []);
     } catch (error) {
       console.error('Error fetching leads:', error);
     } finally {
@@ -94,6 +97,7 @@ const TelecallerLeads = () => {
   useEffect(() => {
     setCurrentPage(1); // Reset to page 1 when filters change
     fetchLeads(1);
+    fetchStats(); // Also fetch stats when filters change (for search)
   }, [searchQuery, statusFilter, outcomeFilter]);
 
   const handlePageChange = (newPage) => {
@@ -107,6 +111,7 @@ const TelecallerLeads = () => {
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchLeads();
+    fetchStats();
   };
 
   const handleCall = useCallback((lead) => {
@@ -118,8 +123,14 @@ const TelecallerLeads = () => {
     navigate(`/agent/leads/${lead.id}?${searchParams.toString()}`);
   };
 
+  // Get count from stats endpoint (not filtered data)
   const getStatusCount = (status) => {
     return statusCounts[status] || 0;
+  };
+  
+  // Get outcome count from stats
+  const getOutcomeCount = (outcomeId) => {
+    return outcomeCounts[outcomeId] || 0;
   };
 
   const newCount = statusCounts['new'] || 0;

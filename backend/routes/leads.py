@@ -656,7 +656,20 @@ async def create_lead(lead: LeadCreate, current_user: dict = Depends(require_adm
 
 @router.put("/leads/{lead_id}")
 async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Depends(get_current_user)):
-    lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+    # Try to find by UUID first, then ObjectId
+    lead = None
+    try:
+        lead = await db.leads.find_one({"id": lead_id})
+    except Exception:
+        pass
+    
+    if not lead:
+        try:
+            if len(lead_id) == 24:
+                lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+        except Exception:
+            pass
+    
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
@@ -669,10 +682,30 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
     # Check if status is being changed to "file" - trigger File creation/linking
     new_status = update_data.get("status")
     if new_status == "file" and lead.get("status") != "file":
-        # Create or link File record for this customer
-        file_record = await ensure_file_for_lead(lead_id, lead, current_user)
-        if file_record:
-            update_data["file_id"] = str(file_record["_id"])
+        # Initialize file-specific fields
+        update_data["file_status"] = "new"  # Initial file status
+        update_data["file_assigned_to"] = lead.get("assigned_to") or current_user["id"]
+        update_data["eligibilities"] = lead.get("eligibilities") or []
+        update_data["file_activities"] = [{
+            "type": "file_created",
+            "message": "Lead converted to File",
+            "by": current_user["id"],
+            "by_name": current_user.get("name", "Unknown"),
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }]
+        
+        # Create activity log
+        activity = {
+            "lead_id": lead_id,
+            "type": "status_change",
+            "from_status": lead.get("status"),
+            "to_status": "file",
+            "performed_by": current_user["id"],
+            "performed_by_name": current_user.get("name", "Unknown"),
+            "timestamp": datetime.now(timezone.utc),
+            "notes": "Customer converted to File"
+        }
+        await db.activities.insert_one(activity)
     
     if current_user["role"] == "telecaller":
         today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -681,12 +714,15 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
             {"$inc": {"leads_updated": 1}}
         )
     
+    # Use the correct filter based on what we found
+    filter_query = {"_id": lead["_id"]}
+    
     await db.leads.update_one(
-        {"_id": ObjectId(lead_id)},
+        filter_query,
         {"$set": update_data}
     )
     
-    lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+    lead = await db.leads.find_one(filter_query)
     return serialize_doc(lead)
 
 

@@ -7,7 +7,8 @@
 | Requirement | Preview | Notes |
 |-------------|---------|-------|
 | Production Data | 457 (test DB) | Preview uses test_database, Production has 164k+ |
-| Status Filters | ✅ PASS | All/New/Not Interested/Follow Up/Lead/File/No Status |
+| Status Filters | ✅ PASS | Counts from /api/leads/stats endpoint |
+| Status Filter Counts | ✅ PASS | Consistent when switching filters (not from paginated data) |
 | Call Outcome Filters | ✅ PASS | Connected/No Answer/Switched Off/Busy/etc |
 | Search | ✅ PASS | Name, phone, email search working |
 | Assignment | ✅ PASS | Pre-File leads can be assigned |
@@ -15,6 +16,8 @@
 | Reassigned Data Shows New | ✅ PASS | Clean slate for new GP |
 | Historical Reporting Preserved | ✅ PASS | Activity ownership at event time |
 | File Detail | ✅ PASS | Full CRM fields loading |
+| Files Dashboard | ✅ PASS | Files list showing correctly (454 files) |
+| File Conversion | ✅ PASS | Immediate redirect to File Details page |
 | Daily Report | ✅ PASS | Returns valid data |
 | Rejected Report | ✅ PASS | Returns rejected files |
 | Growth Partner Report | ✅ PASS | Per-GP stats working |

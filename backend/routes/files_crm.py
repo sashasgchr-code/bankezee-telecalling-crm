@@ -147,7 +147,8 @@ async def get_all_files(
     file_status: Optional[str] = None,
     assigned_to: Optional[str] = None,
     page: int = 1,
-    limit: int = 50
+    limit: int = 50,
+    current_user: dict = Depends(get_current_user)
 ):
     """Get all leads with status='file' (Files Dashboard)"""
     query = {"status": "file"}
