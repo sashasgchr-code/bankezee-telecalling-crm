@@ -701,7 +701,7 @@ const AdminLeads = () => {
                 <p className="font-medium mb-2">Required columns:</p>
                 <p>• name, phone</p>
                 <p className="font-medium mt-2 mb-1">Optional columns:</p>
-                <p>• email, source, city, status, notes, telecaller</p>
+                <p>• email, source, city, status, notes, growth_partner</p>
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
                 <p className="font-medium mb-1">📱 Phone Deduplication Active</p>
@@ -748,7 +748,7 @@ const AdminLeads = () => {
 
               {importResult.unassigned_telecallers?.length > 0 && (
                 <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
-                  <p className="font-medium text-orange-800 mb-1">⚠️ Unmatched Telecallers:</p>
+                  <p className="font-medium text-orange-800 mb-1">⚠️ Unmatched Growth Partners:</p>
                   <p className="text-orange-700">{importResult.unassigned_telecallers.join(', ')}</p>
                 </div>
               )}
@@ -765,7 +765,7 @@ const AdminLeads = () => {
       </Modal>
 
       {/* Assign Modal */}
-      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign Leads">
+      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign to Growth Partner">
         <div className="p-4">
           <p className="text-gray-600 mb-4">
             Assign <span className="font-semibold">{selectedLeads.length}</span> leads to:
@@ -788,7 +788,7 @@ const AdminLeads = () => {
             disabled={isSubmitting || telecallers.length === 0}
             className="w-full btn-secondary flex items-center justify-center gap-2"
           >
-            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Auto Distribute Equally'}
+            {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Auto Distribute to Growth Partners'}
           </button>
         </div>
       </Modal>

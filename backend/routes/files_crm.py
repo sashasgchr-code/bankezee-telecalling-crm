@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
 import logging
+from utils.auth import get_current_user, require_admin
 
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,10 +34,10 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 async def get_gridfs_bucket():
     return AsyncIOMotorGridFSBucket(db, bucket_name="file_documents")
 
-# Helper to get current user from JWT
-async def get_current_user_from_token(token: str):
-    from routes.auth import get_current_user
-    return await get_current_user(token)
+# Helper to get current user from JWT (legacy - prefer utils.auth.get_current_user)
+async def get_current_user_from_token_legacy(token: str):
+    from routes.auth import get_current_user as auth_get_current_user
+    return await auth_get_current_user(token)
 
 
 class FileDetailsUpdate(BaseModel):
@@ -179,7 +180,8 @@ async def get_all_files(
 async def get_files_reports(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    assigned_to: Optional[str] = None
+    assigned_to: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """Get files reports with disbursement analytics"""
     query = {"status": "file"}
@@ -289,6 +291,209 @@ async def get_files_reports(
         },
         "bank_stats": bank_stats,
         "team_stats": team_stats
+    }
+
+
+# ============ DAILY REPORT ============
+
+@router.get("/reports/daily")
+async def get_daily_report(
+    report_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Daily Report - Summary of today's/selected date's activities.
+    
+    Shows:
+    - Total Files
+    - Files Updated Today
+    - New Files Today
+    - Logins Today
+    - Approvals Today
+    - Disbursals Today
+    - Rejections Today
+    """
+    from datetime import datetime, timezone, timedelta
+    
+    # Use today if no date specified
+    if report_date:
+        try:
+            target_date = datetime.strptime(report_date, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+        except ValueError:
+            target_date = datetime.now(timezone.utc)
+    else:
+        target_date = datetime.now(timezone.utc)
+    
+    # Start and end of the target day
+    day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+    
+    def parse_timestamp(ts):
+        if not ts:
+            return None
+        if isinstance(ts, datetime):
+            if ts.tzinfo is None:
+                return ts.replace(tzinfo=timezone.utc)
+            return ts
+        try:
+            dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
+        except (ValueError, TypeError, AttributeError):
+            return None
+    
+    def is_in_day(ts):
+        dt = parse_timestamp(ts)
+        if not dt:
+            return False
+        return day_start <= dt <= day_end
+    
+    # Get all files
+    total_files = await db.leads.count_documents({"status": "file"})
+    
+    # New files created today
+    new_files_today = 0
+    files_updated_today = 0
+    logins_today = 0
+    approvals_today = 0
+    disbursals_today = 0
+    rejections_today = 0
+    
+    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    
+    for f in all_files:
+        created_at = f.get('created_at')
+        updated_at = f.get('updated_at')
+        file_status = f.get('file_status', 'new')
+        
+        if is_in_day(created_at):
+            new_files_today += 1
+        
+        if is_in_day(updated_at):
+            files_updated_today += 1
+        
+        # Check eligibilities for activities today
+        for elig in (f.get('eligibilities') or []):
+            if is_in_day(elig.get('login_done_at')):
+                logins_today += 1
+            if is_in_day(elig.get('approved_at')):
+                approvals_today += 1
+            if is_in_day(elig.get('disbursed_at')):
+                disbursals_today += 1
+        
+        # Check activities for status changes today
+        for act in (f.get('file_activities') or f.get('activities') or []):
+            ts = act.get('timestamp')
+            if is_in_day(ts):
+                msg = str(act.get('message', '')).lower()
+                if 'reject' in msg or 'declined' in msg or 'not eligible' in msg:
+                    rejections_today += 1
+                    break
+    
+    return {
+        "report_date": target_date.strftime('%Y-%m-%d'),
+        "total_files": total_files,
+        "new_files_today": new_files_today,
+        "files_updated_today": files_updated_today,
+        "logins_today": logins_today,
+        "approvals_today": approvals_today,
+        "disbursals_today": disbursals_today,
+        "rejections_today": rejections_today
+    }
+
+
+# ============ REJECTED FILES REPORT ============
+
+@router.get("/reports/rejected")
+async def get_rejected_files(current_user: dict = Depends(get_current_user)):
+    """
+    Get all rejected/declined/not-eligible files.
+    """
+    rejected_statuses = ['rejected', 'declined', 'not_eligible', 'not_login', 'not_disbursed', 'fi_negative']
+    
+    files = await db.leads.find(
+        {"status": "file", "file_status": {"$in": rejected_statuses}},
+        {"_id": 0}
+    ).sort("updated_at", -1).to_list(1000)
+    
+    return {
+        "files": files,
+        "total": len(files)
+    }
+
+
+# ============ QUALITY REPORT ============
+
+@router.get("/reports/quality")
+async def get_quality_report(current_user: dict = Depends(get_current_user)):
+    """
+    Quality Report - File quality metrics.
+    
+    Measures:
+    - Data completeness
+    - Document completion rate
+    - Conversion rate
+    - Processing efficiency
+    """
+    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    
+    total_files = len(all_files)
+    if total_files == 0:
+        return {
+            "total_files": 0,
+            "data_quality_score": 0,
+            "document_completion_rate": 0,
+            "conversion_rate": 0,
+            "processing_efficiency": 0
+        }
+    
+    # Data Quality: Files with complete basic info
+    complete_data_count = 0
+    docs_complete_count = 0
+    conversion_count = 0
+    processed_count = 0
+    
+    for f in all_files:
+        # Data completeness check
+        has_name = bool(f.get('name'))
+        has_phone = bool(f.get('phone'))
+        has_email = bool(f.get('email'))
+        has_city = bool(f.get('city'))
+        has_requirement = bool(f.get('requirement'))
+        
+        completeness = sum([has_name, has_phone, has_email, has_city, has_requirement])
+        if completeness >= 4:
+            complete_data_count += 1
+        
+        # Document completion
+        file_status = f.get('file_status', 'new')
+        if file_status not in ['new', 'contacted']:
+            docs_complete_count += 1
+        
+        # Conversion (disbursed)
+        if file_status == 'disbursed':
+            conversion_count += 1
+        
+        # Processing efficiency (moved beyond new/contacted)
+        if file_status not in ['new', 'contacted', 'query', 'hold']:
+            processed_count += 1
+    
+    data_quality_score = round((complete_data_count / total_files) * 100, 1)
+    document_completion_rate = round((docs_complete_count / total_files) * 100, 1)
+    conversion_rate = round((conversion_count / total_files) * 100, 1)
+    processing_efficiency = round((processed_count / total_files) * 100, 1)
+    
+    return {
+        "total_files": total_files,
+        "data_quality_score": data_quality_score,
+        "document_completion_rate": document_completion_rate,
+        "conversion_rate": conversion_rate,
+        "processing_efficiency": processing_efficiency,
+        "complete_data_count": complete_data_count,
+        "docs_complete_count": docs_complete_count,
+        "conversion_count": conversion_count,
+        "processed_count": processed_count
     }
 
 
@@ -1419,7 +1624,8 @@ async def get_files_dashboard_stats(
 @router.get("/reports/bank-performance")
 async def get_bank_performance(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Get bank-wise performance breakdown from eligibilities.
@@ -1551,7 +1757,8 @@ async def get_bank_performance(
 @router.get("/reports/tat-metrics")
 async def get_tat_metrics(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Calculate Turnaround Time metrics:
@@ -1680,7 +1887,8 @@ async def get_tat_metrics(
 @router.get("/reports/growth-partner")
 async def get_growth_partner_report(
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Per-agent/partner stats filtered by source_id.

@@ -463,7 +463,7 @@ const DailyTrackingSheet = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              <User size={14} className="inline mr-1" />Select Agent
+              <User size={14} className="inline mr-1" />Select Growth Partner
             </label>
             <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="input-field w-full">
               <option value="">All Agents</option>

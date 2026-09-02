@@ -768,10 +768,12 @@ async def import_leads(
 async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(require_admin)):
     """
     Assign leads to a user with CLEAN SLATE logic:
-    - Resets status to 'new' for the new assignee
-    - Preserves old agent's call history and reports (call logs stay intact)
-    - Marks call_logs as 'previous_agent' so new agent sees clean slate
+    - CRITICAL: Files (status='file') CANNOT be reassigned - server-side enforcement
+    - Pre-File leads reset to 'new' for the new assignee (clean slate)
+    - Preserves old Growth Partner's call history and reports (call logs stay intact)
+    - Marks call_logs as 'previous_agent' so new Growth Partner sees clean slate
     - Records assignment history for audit trail
+    - Historical reports remain immutable - activity ownership is preserved
     """
     user = await db.users.find_one({"_id": ObjectId(assignment.user_id)})
     if not user:
@@ -784,24 +786,41 @@ async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(requ
     leads = await db.leads.find({"_id": {"$in": lead_object_ids}}).to_list(len(lead_object_ids))
     
     reassignment_count = 0
+    skipped_files = []  # Track Files that cannot be reassigned
+    assigned_leads = []  # Track successfully assigned leads
+    
     for lead in leads:
-        old_assignee = lead.get("assigned_to")
         lead_id = str(lead["_id"])
-        previous_status = lead.get("status", "new")
+        current_status = lead.get("status", "new")
+        
+        # CRITICAL: FILE REASSIGNMENT BLOCK
+        # Files (status='file') CANNOT be reassigned to another Growth Partner
+        if current_status == "file":
+            skipped_files.append({
+                "id": lead_id,
+                "name": lead.get("name", "Unknown"),
+                "reason": "Files cannot be reassigned. File ownership is locked to the Growth Partner who converted the customer."
+            })
+            continue
+        
+        old_assignee = lead.get("assigned_to")
+        previous_status = current_status
         previous_outcome = lead.get("last_call_outcome")
         
-        # If lead was previously assigned to someone else, mark their call logs
+        # If lead was previously assigned to someone else, preserve history
         if old_assignee and old_assignee != assignment.user_id:
             reassignment_count += 1
             
             # Mark existing call logs as 'previous_agent_history' for this lead
-            # This preserves the old agent's reports but hides from new agent
+            # This preserves the old Growth Partner's reports but hides from new Growth Partner
+            # IMPORTANT: This does NOT delete history - it just marks it for filtering
             await db.call_logs.update_many(
                 {"lead_id": lead_id, "user_id": old_assignee},
                 {"$set": {"is_previous_agent_history": True}}
             )
             
-            # Record reassignment in history
+            # Record reassignment in history for audit trail
+            # This ensures historical reports can always be reconstructed
             await db.lead_assignment_history.insert_one({
                 "lead_id": lead_id,
                 "from_user_id": old_assignee,
@@ -811,67 +830,139 @@ async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(requ
                 "previous_status": previous_status,
                 "previous_outcome": previous_outcome,
                 "reassigned_by": current_user["id"],
+                "reassigned_by_name": current_user.get("name", "Admin"),
                 "reassigned_at": now,
                 "reason": "Admin reassignment"
             })
         
-        # Update the lead with CLEAN SLATE
+        # CLEAN SLATE: New Growth Partner sees this as NEW data
+        # Previous Growth Partner's activities/history remain intact in database
+        # Only the working state is reset for the new Growth Partner
         await db.leads.update_one(
             {"_id": lead["_id"]},
             {
                 "$set": {
                     "assigned_to": assignment.user_id,
                     "telecaller_name": user["name"],
-                    "status": "new",  # CLEAN SLATE: Reset to new
-                    "last_call_outcome": None,  # CLEAN SLATE: Clear outcome
+                    "status": "new",  # CLEAN SLATE: Reset to new for new GP
+                    "last_call_outcome": None,  # CLEAN SLATE: Clear outcome for new GP
                     "reassigned_at": now,
-                    "reassigned_from_status": previous_status,  # Store actual previous status
+                    "reassigned_from_status": previous_status,  # Store actual previous status for reference
+                    "reassigned_from_user": old_assignee,  # Store previous GP for audit
                     "updated_at": now
                 }
             }
         )
+        assigned_leads.append(lead_id)
     
-    message = f"Assigned {len(leads)} leads to {user['name']}"
-    if reassignment_count > 0:
-        message += f" ({reassignment_count} reassigned with clean slate)"
+    # Build response message
+    message_parts = []
+    if assigned_leads:
+        message_parts.append(f"Assigned {len(assigned_leads)} leads to {user['name']}")
+        if reassignment_count > 0:
+            message_parts.append(f"({reassignment_count} reassigned with clean slate)")
+    
+    if skipped_files:
+        message_parts.append(f"Skipped {len(skipped_files)} Files (Files cannot be reassigned)")
+    
+    message = " ".join(message_parts) if message_parts else "No leads were assigned"
     
     return {
         "message": message,
-        "assigned_count": len(leads),
-        "reassigned_count": reassignment_count
+        "assigned_count": len(assigned_leads),
+        "reassigned_count": reassignment_count,
+        "skipped_files": skipped_files,
+        "skipped_count": len(skipped_files)
     }
 
 @router.post("/leads/auto-distribute")
 async def auto_distribute_leads(data: AutoDistribute, current_user: dict = Depends(require_admin)):
+    """
+    Auto-distribute leads equally among active Growth Partners.
+    CRITICAL: Files (status='file') are excluded from distribution - they cannot be reassigned.
+    """
     telecallers = await db.users.find({
         "role": "telecaller",
         "is_active": True
     }).to_list(100)
     
     if not telecallers:
-        raise HTTPException(status_code=400, detail="No active telecallers found")
+        raise HTTPException(status_code=400, detail="No active Growth Partners found")
     
     lead_ids = data.lead_ids
     num_telecallers = len(telecallers)
     
+    # Fetch all leads to check their status
+    lead_object_ids = [ObjectId(lid) for lid in lead_ids]
+    leads = await db.leads.find({"_id": {"$in": lead_object_ids}}).to_list(len(lead_ids))
+    
     assigned_count = 0
-    for i, lead_id in enumerate(lead_ids):
+    skipped_files = []
+    now = datetime.now(timezone.utc)
+    
+    # Filter out Files and distribute only eligible leads
+    eligible_leads = []
+    for lead in leads:
+        if lead.get("status") == "file":
+            skipped_files.append({
+                "id": str(lead["_id"]),
+                "name": lead.get("name", "Unknown"),
+                "reason": "Files cannot be reassigned"
+            })
+        else:
+            eligible_leads.append(lead)
+    
+    for i, lead in enumerate(eligible_leads):
         telecaller_index = i % num_telecallers
         telecaller = telecallers[telecaller_index]
         
+        old_assignee = lead.get("assigned_to")
+        
+        # Record assignment history if being reassigned
+        if old_assignee and old_assignee != str(telecaller["_id"]):
+            await db.lead_assignment_history.insert_one({
+                "lead_id": str(lead["_id"]),
+                "from_user_id": old_assignee,
+                "to_user_id": str(telecaller["_id"]),
+                "from_user_name": lead.get("telecaller_name", "Unknown"),
+                "to_user_name": telecaller["name"],
+                "previous_status": lead.get("status", "new"),
+                "reassigned_by": current_user["id"],
+                "reassigned_at": now,
+                "reason": "Auto distribution"
+            })
+            
+            # Mark previous call logs
+            await db.call_logs.update_many(
+                {"lead_id": str(lead["_id"]), "user_id": old_assignee},
+                {"$set": {"is_previous_agent_history": True}}
+            )
+        
+        # CLEAN SLATE for new Growth Partner
         await db.leads.update_one(
-            {"_id": ObjectId(lead_id)},
+            {"_id": lead["_id"]},
             {
                 "$set": {
                     "assigned_to": str(telecaller["_id"]),
                     "telecaller_name": telecaller["name"],
-                    "updated_at": datetime.now(timezone.utc)
+                    "status": "new" if old_assignee else lead.get("status", "new"),  # Reset only if reassigning
+                    "last_call_outcome": None if old_assignee else lead.get("last_call_outcome"),
+                    "updated_at": now
                 }
             }
         )
         assigned_count += 1
     
-    return {"message": f"Distributed {assigned_count} leads among {num_telecallers} telecallers"}
+    message = f"Distributed {assigned_count} leads among {num_telecallers} Growth Partners"
+    if skipped_files:
+        message += f". Skipped {len(skipped_files)} Files (cannot be reassigned)"
+    
+    return {
+        "message": message,
+        "assigned_count": assigned_count,
+        "skipped_files": skipped_files,
+        "skipped_count": len(skipped_files)
+    }
 
 
 # ===================== STAGE 2: BULK SELECT ALL =====================
@@ -1254,3 +1345,96 @@ async def export_leads(
 
 # ===================== UPDATED IMPORT WITH SUPPRESSION CHECK =====================
 
+
+
+
+# ===================== FILE REASSIGNMENT CHECK =====================
+
+@router.post("/leads/check-reassignment")
+async def check_reassignment_eligibility(
+    lead_ids: List[str],
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Check which leads can be reassigned.
+    CRITICAL BUSINESS RULE: Files (status='file') CANNOT be reassigned.
+    
+    Returns:
+    - eligible: List of leads that can be reassigned
+    - blocked: List of Files that cannot be reassigned
+    """
+    lead_object_ids = [ObjectId(lid) for lid in lead_ids]
+    leads = await db.leads.find({"_id": {"$in": lead_object_ids}}).to_list(len(lead_ids))
+    
+    eligible = []
+    blocked = []
+    
+    for lead in leads:
+        lead_id = str(lead["_id"])
+        lead_info = {
+            "id": lead_id,
+            "name": lead.get("name", "Unknown"),
+            "phone": lead.get("phone", ""),
+            "status": lead.get("status", "new"),
+            "assigned_to": lead.get("assigned_to"),
+            "telecaller_name": lead.get("telecaller_name", "")
+        }
+        
+        if lead.get("status") == "file":
+            lead_info["block_reason"] = "Files cannot be reassigned. File ownership is locked to the Growth Partner who converted the customer."
+            blocked.append(lead_info)
+        else:
+            eligible.append(lead_info)
+    
+    return {
+        "eligible_count": len(eligible),
+        "blocked_count": len(blocked),
+        "eligible": eligible,
+        "blocked": blocked,
+        "message": f"{len(eligible)} leads can be reassigned. {len(blocked)} Files are locked." if blocked else f"All {len(eligible)} leads can be reassigned."
+    }
+
+
+@router.get("/leads/{lead_id}/assignment-history")
+async def get_lead_assignment_history(
+    lead_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Get the complete assignment history for a lead.
+    Shows all reassignments with timestamps and previous status.
+    IMPORTANT: This preserves the audit trail for historical reports.
+    """
+    history = await db.lead_assignment_history.find(
+        {"lead_id": lead_id}
+    ).sort("reassigned_at", -1).to_list(100)
+    
+    # Also get current assignment
+    lead = await db.leads.find_one({"_id": ObjectId(lead_id)}, {"_id": 0, "assigned_to": 1, "telecaller_name": 1, "status": 1, "created_at": 1})
+    
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    
+    return {
+        "current_assignment": {
+            "assigned_to": lead.get("assigned_to"),
+            "telecaller_name": lead.get("telecaller_name"),
+            "status": lead.get("status"),
+            "is_file": lead.get("status") == "file"
+        },
+        "history": [
+            {
+                "from_user_id": h.get("from_user_id"),
+                "from_user_name": h.get("from_user_name"),
+                "to_user_id": h.get("to_user_id"),
+                "to_user_name": h.get("to_user_name"),
+                "previous_status": h.get("previous_status"),
+                "previous_outcome": h.get("previous_outcome"),
+                "reassigned_at": h.get("reassigned_at").isoformat() if h.get("reassigned_at") else None,
+                "reassigned_by": h.get("reassigned_by"),
+                "reason": h.get("reason")
+            }
+            for h in history
+        ],
+        "total_reassignments": len(history)
+    }

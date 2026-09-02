@@ -50,7 +50,7 @@ const Register = () => {
 
         {/* Form */}
         <div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Telecaller Registration</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Growth Partner Registration</h2>
           <p className="text-gray-500 mb-6">Sign up to get started</p>
 
           {error && (

@@ -55,7 +55,7 @@ const VerifiedCallStats = () => {
     if (!stats || stats.length === 0) return;
 
     const headers = [
-      'Telecaller',
+      'Growth Partner',
       'Verification Score',
       'Sync Status',
       'Last Sync',
@@ -207,7 +207,7 @@ const VerifiedCallStats = () => {
             <div>
               <p className="font-medium text-amber-800">No Call Activity Today</p>
               <p className="text-sm text-amber-700 mt-1">
-                Telecallers need to use the <strong>BANKEZEE Connect Mobile App</strong> to sync their call logs.
+                Growth Partners need to use the <strong>BANKEZEE Connect Mobile App</strong> to sync their call logs.
                 Once they sync, actual call durations and verification scores will appear here.
               </p>
             </div>
@@ -271,7 +271,7 @@ const VerifiedCallStats = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
-                  <th className="text-left py-2 px-3 font-semibold text-gray-700">Telecaller</th>
+                  <th className="text-left py-2 px-3 font-semibold text-gray-700">Growth Partner</th>
                   <th className="text-center py-2 px-2 font-semibold text-gray-700 bg-indigo-50">
                     <div className="flex items-center justify-center gap-1">
                       <Smartphone size={14} className="text-indigo-600" />

@@ -494,7 +494,7 @@ const AdminReports = () => {
 
       if (sortedHours.length > 0 && hourlyReports.telecallers?.length > 0) {
         // Build header row with hours and TOTAL
-        const headerRow = ['Telecaller'];
+        const headerRow = ['Growth Partner'];
         sortedHours.forEach(hour => {
           headerRow.push(`${hour.toString().padStart(2, '0')}:00`);
           headerRow.push(''); // Span for L
@@ -692,7 +692,7 @@ const AdminReports = () => {
       };
 
       // Build dynamic headers matching UI exactly
-      const headers = ['Telecaller', 'Login'];
+      const headers = ['Growth Partner', 'Login'];
       for (let i = 0; i < maxBreaks; i++) {
         headers.push(`Break ${i + 1} From`);
         headers.push(`Break ${i + 1} To`);
@@ -1053,7 +1053,7 @@ const AdminReports = () => {
 
           {/* Telecaller Performance */}
           <div className="card p-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Telecaller Performance</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Growth Partner Performance</h3>
             <div className="space-y-2">
               {reports.telecallers.map((tc) => (
                 <div
@@ -1408,7 +1408,7 @@ const AdminReports = () => {
                   return (
                     <div className="card overflow-hidden">
                       <div className="bg-gradient-to-r from-purple-600 to-purple-700 px-4 py-3">
-                        <h3 className="text-lg font-semibold text-white">Telecaller Activity Log</h3>
+                        <h3 className="text-lg font-semibold text-white">Growth Partner Activity Log</h3>
                         <p className="text-purple-100 text-xs mt-1">Daily login, break, and logout times</p>
                       </div>
                       <div className="overflow-x-auto">
@@ -1573,13 +1573,13 @@ const AdminReports = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Telecaller</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Growth Partner</label>
                 <select
                   value={selectedTelecaller}
                   onChange={(e) => setSelectedTelecaller(e.target.value)}
                   className="input-field min-w-[180px]"
                 >
-                  <option value="all">All Telecallers</option>
+                  <option value="all">All Growth Partners</option>
                   {telecallers.map(tc => (
                     <option key={tc.id} value={tc.id}>{tc.name}</option>
                   ))}

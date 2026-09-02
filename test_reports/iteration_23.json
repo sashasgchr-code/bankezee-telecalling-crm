@@ -1,0 +1,54 @@
+{
+  "summary": "Iteration 23: End-to-end verified File Reassignment Block, Reassignment Clean Slate, and all 6 Files reports endpoints (daily, rejected, quality, growth-partner, bank-performance, tat-metrics). Backend pytest: 11/11 passed (test_iter23_reports_reassignment.py). Files Dashboard UI shows all 6 report buttons (Daily Report, Rejected, Growth Partner, Bank Perf., TAT, Quality) + Policy, Export, Import. Admin Users page shows 'Growth Partners' terminology. Admin Dashboard filter shows 'All Growth Partners' and 'Active Growth Partners' cards. Files count = 454 as expected. Login endpoint returns 'token' (not 'access_token'). Reassignment block correctly skips status='file' leads (skipped_files array), and pre-file leads reset to status='new' with cleared last_call_outcome on new GP.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/files/reports/*", "issue": "None of the files_crm.py report endpoints (daily, rejected, quality, growth-partner, bank-performance, tat-metrics) require authentication — they are open to anonymous callers. This exposes sensitive business KPIs and should be protected with Depends(get_current_user) or require_admin."},
+      {"endpoint": "/api/files/*", "issue": "files_crm.py creates its own MongoClient at module import instead of reusing utils.database.db — duplicate connection pool. Consider consolidating."},
+      {"endpoint": "/api/leads/count", "issue": "Pre-existing (iter 22): /leads/count does not reuse build_leads_query, so no_status/archive/is_invalid handling differs from /leads listing."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Dashboard (VerifiedCallStats card)", "issues": [
+        "Line 210 of VerifiedCallStats.js still reads 'Telecallers need to use the BANKEZEE Connect Mobile App to sync their call logs.' — Telecaller → Growth Partner terminology update missed here.",
+        "Line 58 CSV export header is still 'Telecaller' (should be 'Growth Partner')."
+      ]},
+      {"screen": "Admin Reports (Reports.js)", "issues": [
+        "Reports.js line 497 CSV header 'Telecaller', line 695 CSV header 'Telecaller', line 1582 dropdown 'All Telecallers' — Growth Partner terminology not applied to Reports page."
+      ]},
+      {"screen": "Admin Dashboard (pre-existing)", "issues": [
+        "Persistent React hydration console errors: <span> cannot be a child of <select>/<option>/<tbody>/<tfoot>/<table>/<tr> (from ve-dynamic preview-tooling wrappers). Non-blocking but noisy — same as iter 22.",
+        "FilesDashboard: 'Each child in a list should have a unique key prop' React warning (pre-existing).",
+        "FilesDashboard: 'Cannot infer the option value of complex children' warning on <option> element (pre-existing)."
+      ]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter23_reports_reassignment.py",
+    "/app/test_reports/pytest/iter23.xml"
+  ],
+  "action_items": [
+    "Add auth dependency (require_admin / get_current_user) to all /api/files/reports/* endpoints — currently open to anonymous requests.",
+    "Update remaining Telecaller → Growth Partner terminology in: VerifiedCallStats.js (line 58 CSV header, line 210 empty-state text), Reports.js (lines 497, 695 CSV headers, line 1582 dropdown label).",
+    "Backend: consolidate files_crm.py duplicate MongoClient into shared utils.database.db to avoid two connection pools.",
+    "Leftover from iter 22: align /api/leads/count query builder with build_leads_query for consistent filter semantics."
+  ],
+  "critical_code_review_comments": [
+    "SECURITY: files_crm.py report endpoints (/reports, /reports/daily, /reports/rejected, /reports/quality, /reports/growth-partner, /reports/bank-performance, /reports/tat-metrics) have NO auth guards. Anonymous curl to /api/files/reports/daily returns full metrics. Must add Depends(require_admin) or at minimum get_current_user.",
+    "leads.py assign_leads correctly implements File Reassignment Block + Clean Slate (status reset to 'new', last_call_outcome cleared, reassigned_from_status recorded, call_logs flagged is_previous_agent_history). Good.",
+    "auto_distribute_leads similarly excludes Files. Good.",
+    "files_crm.py creates its own AsyncIOMotorClient at module import (lines 21-23) — separate connection pool from utils.database.db. Cleanup recommended.",
+    "Telecaller terminology is inconsistently applied — data-testid, variable names, and API paths still use 'telecaller' (which is fine because they're internal), but user-facing strings in VerifiedCallStats.js and Reports.js still say 'Telecaller'. Missed by the terminology update pass.",
+    "files_crm.py is now ~1900 lines — recommend splitting into files_reports.py, files_documents.py, files_policies.py, files_migration.py for maintainability."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter23_reports_reassignment.py"],
+  "success_rate": {"backend": "100% (11/11 pytest)", "frontend": "100% for review checklist (all 6 report buttons visible; Growth Partner terminology present on Users/Dashboard/FilesDashboard)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (from /app/memory/test_credentials.md). Login returns { token, user }, NOT access_token — tests should use body.get('token').",
+  "seed_data_creation": "Test creates & deletes 4 TEST_* leads (TEST_FILE_reassign, TEST_PREFILE_reassign, TEST_CHK_file, TEST_CHK_new) with phones 9990001111-9990004444 during test run — all cleaned up in finally blocks. No lingering seed data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All 6 report endpoints work and return expected shapes. File Reassignment Block confirmed working end-to-end (POST /api/leads/assign returns skipped_files, DB state confirmed unchanged for file-status leads, pre-file leads reset to 'new'). Main open items for E1: (1) SECURITY — add auth to /api/files/reports/* endpoints (currently public), (2) Terminology cleanup in VerifiedCallStats.js and Reports.js (Telecaller strings still visible on Dashboard empty-state and Reports CSV/filter). Backend login uses 'token' key not 'access_token'. Report endpoints tested with GET, all return 200 and expected fields."
+}

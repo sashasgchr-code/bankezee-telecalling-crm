@@ -157,7 +157,7 @@ const AdminDashboard = () => {
         </div>
       )}
 
-      {/* Telecaller Filter */}
+      {/* Growth Partner Filter */}
       <div className="mb-6">
         <select
           value={selectedTelecaller}
@@ -165,7 +165,7 @@ const AdminDashboard = () => {
           className="w-full input-field"
           data-testid="telecaller-filter"
         >
-          <option value="all">All Telecallers</option>
+          <option value="all">All Growth Partners</option>
           {telecallers.map((tc) => (
             <option key={tc.id} value={tc.id}>{tc.name}</option>
           ))}
@@ -229,7 +229,7 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* Active Telecallers */}
+          {/* Active Growth Partners */}
           <div className="card p-4 mb-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -237,7 +237,7 @@ const AdminDashboard = () => {
                   <Users size={20} className="text-purple-600" />
                 </div>
                 <div>
-                  <p className="font-semibold text-gray-900">Active Telecallers</p>
+                  <p className="font-semibold text-gray-900">Active Growth Partners</p>
                   <p className="text-xs text-gray-500">Currently working</p>
                 </div>
               </div>
@@ -289,7 +289,7 @@ const AdminDashboard = () => {
           {/* Calls Per User */}
           {stats?.calls_per_user && Object.keys(stats.calls_per_user).length > 0 && (
             <div className="card p-4">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Calls by Telecaller</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Calls by Growth Partner</h3>
               <div className="space-y-3">
                 {Object.entries(stats.calls_per_user).map(([name, count]) => (
                   <div key={name} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">

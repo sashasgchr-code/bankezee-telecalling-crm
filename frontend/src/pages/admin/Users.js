@@ -110,10 +110,10 @@ const AdminUsers = () => {
         </div>
       ) : (
         <>
-          {/* Telecallers */}
+          {/* Growth Partners */}
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-3">
-              Telecallers ({telecallers.length})
+              Growth Partners ({telecallers.length})
             </h3>
             <div className="space-y-3">
               {telecallers.map((user) => (
@@ -162,7 +162,7 @@ const AdminUsers = () => {
                 </div>
               ))}
               {telecallers.length === 0 && (
-                <p className="text-center text-gray-500 py-4">No telecallers yet</p>
+                <p className="text-center text-gray-500 py-4">No Growth Partners yet</p>
               )}
             </div>
           </div>
@@ -231,7 +231,7 @@ const AdminUsers = () => {
                   : 'border-green-600 text-green-600'
               }`}
             >
-              Telecaller
+              Growth Partner
             </button>
             <button
               type="button"
