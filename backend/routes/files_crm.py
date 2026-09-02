@@ -552,224 +552,240 @@ async def get_daily_report(
 # ============ REJECTED FILES REPORT ============
 
 @router.get("/reports/rejected")
-async def get_rejected_files(current_user: dict = Depends(get_current_user)):
+async def get_rejected_files(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Rejected Cases Report - OLD CRM Bank-Level Report
+    Rejected Cases Report - OLD CRM Format
     
-    For each File with any rejection status, include bank-level breakdown:
-    - Total Cases
-    - Not Eligible (count per bank)
-    - Not Login
-    - FI Negative
-    - Declined
-    - Not Disbursed
-    
-    Bank detail includes:
-    Bank | Eligible | Eligible Amount | Login | Approval | Approved Amount | Disbursed | Disbursed Amount | Reason
+    Returns:
+    - summary: Total Cases, Not Eligible, Not Login, FI Negative, Declined, Not Disbursed
+    - cases: List of rejected files with bank-level breakdown
     """
+    from datetime import datetime, timezone
+    
     rejected_statuses = ['rejected', 'declined', 'not_eligible', 'not_login', 'not_disbursed', 
                          'fi_negative', 'customer_not_interested', 'customer_not_supporting']
     
-    # Get all files (not just rejected) to check bank-level rejections
-    all_files = await db.leads.find(
-        {"status": "file"},
-        {"_id": 0}
-    ).to_list(10000)
+    # Build query
+    query = {"status": "file", "file_status": {"$in": rejected_statuses}}
     
-    # Build bank-level rejection summary
-    bank_summary = {}
-    rejected_files = []
+    # Date filter
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            try:
+                ds = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                if ds.tzinfo is None:
+                    ds = ds.replace(tzinfo=timezone.utc)
+                date_query["$gte"] = ds
+            except (ValueError, TypeError):
+                pass
+        if end_date:
+            try:
+                de = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if de.tzinfo is None:
+                    de = de.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                date_query["$lte"] = de
+            except (ValueError, TypeError):
+                pass
+        if date_query:
+            query["created_at"] = date_query
     
-    for f in all_files:
-        file_status = f.get('file_status', 'new')
-        eligibilities = f.get('eligibilities') or []
-        
-        # Check if file itself is in rejected status
-        is_rejected_file = file_status in rejected_statuses
-        
-        # Process each bank eligibility
-        file_had_rejection = False
-        for elig in eligibilities:
-            bank_name = elig.get('bank_name', 'Unknown')
-            if not bank_name:
-                continue
-            
-            if bank_name not in bank_summary:
-                bank_summary[bank_name] = {
-                    'bank_name': bank_name,
-                    'total_cases': 0,
-                    'eligible': 0,
-                    'eligible_amount': 0,
-                    'not_eligible': 0,
-                    'login': 0,
-                    'not_login': 0,
-                    'fi_negative': 0,
-                    'approved': 0,
-                    'approved_amount': 0,
-                    'declined': 0,
-                    'disbursed': 0,
-                    'disbursed_amount': 0,
-                    'not_disbursed': 0,
-                    'reasons': []
-                }
-            
-            bank_summary[bank_name]['total_cases'] += 1
-            
-            # Check eligibility status
-            is_eligible = elig.get('is_eligible')
-            if is_eligible == True or is_eligible == 'yes' or is_eligible == 'Yes':
-                bank_summary[bank_name]['eligible'] += 1
-                try:
-                    bank_summary[bank_name]['eligible_amount'] += float(elig.get('eligible_amount') or 0)
-                except (ValueError, TypeError):
-                    pass
-            elif is_eligible == False or is_eligible == 'no' or is_eligible == 'No':
-                bank_summary[bank_name]['not_eligible'] += 1
-                reason = elig.get('not_eligible_reason')
-                if reason:
-                    bank_summary[bank_name]['reasons'].append(reason)
-                file_had_rejection = True
-            
-            # Login status
-            login_done = elig.get('login_done')
-            if login_done == True or login_done == 'yes' or login_done == 'Yes':
-                bank_summary[bank_name]['login'] += 1
-            elif login_done == False or login_done == 'no' or login_done == 'No':
-                reason = elig.get('login_rejection_reason')
-                if reason:
-                    bank_summary[bank_name]['not_login'] += 1
-                    bank_summary[bank_name]['reasons'].append(reason)
-                    file_had_rejection = True
-            
-            # Approval status
-            approval_status = elig.get('approval_status')
-            if approval_status == 'approved':
-                bank_summary[bank_name]['approved'] += 1
-                try:
-                    bank_summary[bank_name]['approved_amount'] += float(elig.get('approved_amount') or 0)
-                except (ValueError, TypeError):
-                    pass
-            elif approval_status == 'declined':
-                bank_summary[bank_name]['declined'] += 1
-                reason = elig.get('declined_reason')
-                if reason:
-                    bank_summary[bank_name]['reasons'].append(reason)
-                file_had_rejection = True
-            elif approval_status == 'fi_negative':
-                bank_summary[bank_name]['fi_negative'] += 1
-                file_had_rejection = True
-            
-            # Disbursement status
-            disbursed = elig.get('disbursed')
-            if disbursed == True or disbursed == 'yes' or disbursed == 'Yes':
-                bank_summary[bank_name]['disbursed'] += 1
-                try:
-                    bank_summary[bank_name]['disbursed_amount'] += float(elig.get('disbursed_amount') or 0)
-                except (ValueError, TypeError):
-                    pass
-            elif disbursed == False or disbursed == 'no' or disbursed == 'No':
-                reason = elig.get('disbursement_rejection_reason')
-                if reason:
-                    bank_summary[bank_name]['not_disbursed'] += 1
-                    bank_summary[bank_name]['reasons'].append(reason)
-                    file_had_rejection = True
-        
-        # Add to rejected files list
-        if is_rejected_file or file_had_rejection:
-            rejected_files.append(f)
+    # Assigned to filter
+    if assigned_to:
+        query["$or"] = [
+            {"assigned_to": assigned_to},
+            {"file_assigned_to": assigned_to},
+            {"source_id": assigned_to}
+        ]
     
-    # Sort bank summary by total cases
-    banks = sorted(bank_summary.values(), key=lambda x: x['total_cases'], reverse=True)
+    # Get all users for name lookup
+    users_list = await db.users.find({}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "connect_id": 1}).to_list(500)
+    user_map = {}
+    for u in users_list:
+        uid = u.get('id') or u.get('connect_id')
+        if uid:
+            user_map[uid] = u.get('full_name') or u.get('name', 'Unknown')
     
-    # Calculate totals
-    totals = {
-        'total_cases': sum(b['total_cases'] for b in banks),
-        'not_eligible': sum(b['not_eligible'] for b in banks),
-        'not_login': sum(b['not_login'] for b in banks),
-        'fi_negative': sum(b['fi_negative'] for b in banks),
-        'declined': sum(b['declined'] for b in banks),
-        'not_disbursed': sum(b['not_disbursed'] for b in banks)
+    # Get rejected files
+    rejected_files = await db.leads.find(query, {"_id": 0}).to_list(10000)
+    
+    # Build summary counts
+    summary = {
+        "total": len(rejected_files),
+        "not_eligible": 0,
+        "not_login": 0,
+        "fi_negative": 0,
+        "declined": 0,
+        "not_disbursed": 0
     }
     
+    cases = []
+    for f in rejected_files:
+        file_status = f.get('file_status', 'new')
+        
+        # Count by status
+        if file_status == 'not_eligible':
+            summary["not_eligible"] += 1
+        elif file_status == 'not_login':
+            summary["not_login"] += 1
+        elif file_status == 'fi_negative':
+            summary["fi_negative"] += 1
+        elif file_status == 'declined':
+            summary["declined"] += 1
+        elif file_status == 'not_disbursed':
+            summary["not_disbursed"] += 1
+        elif file_status == 'rejected':
+            summary["not_eligible"] += 1  # General rejection goes to not_eligible
+        
+        # Get agent name
+        agent_id = f.get('source_id') or f.get('assigned_to') or f.get('file_assigned_to')
+        agent_name = user_map.get(agent_id, 'Unknown') if agent_id else 'Unassigned'
+        
+        # Build case record
+        fd = f.get('file_details', {})
+        cases.append({
+            "id": f.get('id'),
+            "name": fd.get('full_name') or f.get('full_name') or f.get('name', 'Unknown'),
+            "mobile": fd.get('mobile') or f.get('mobile', ''),
+            "file_status": file_status,
+            "city": fd.get('city') or f.get('city', ''),
+            "employment_type": fd.get('employment_type') or f.get('employment_type', ''),
+            "source": f.get('source', ''),
+            "agent_name": agent_name,
+            "eligibilities": f.get('eligibilities', []),
+            "created_at": f.get('created_at')
+        })
+    
     return {
-        "files": rejected_files[:500],  # Limit for performance
-        "total": len(rejected_files),
-        "bank_summary": banks,
-        "totals": totals
+        "summary": summary,
+        "cases": cases[:500]  # Limit for performance
     }
 
 
 # ============ QUALITY REPORT ============
 
 @router.get("/reports/quality")
-async def get_quality_report(current_user: dict = Depends(get_current_user)):
+async def get_quality_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    loan_type: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
     """
-    Quality Report - File quality metrics.
+    Quality Report - File quality metrics with star distribution and GP breakdown.
+    Matches OLD CRM format.
+    """
+    from datetime import datetime, timezone
+    from collections import defaultdict
     
-    Measures:
-    - Data completeness
-    - Document completion rate
-    - Conversion rate
-    - Processing efficiency
-    """
-    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    # Build query
+    query = {"status": "file"}
+    
+    # Date filter
+    if start_date or end_date:
+        date_query = {}
+        if start_date:
+            try:
+                ds = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                if ds.tzinfo is None:
+                    ds = ds.replace(tzinfo=timezone.utc)
+                date_query["$gte"] = ds
+            except (ValueError, TypeError):
+                pass
+        if end_date:
+            try:
+                de = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if de.tzinfo is None:
+                    de = de.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+                date_query["$lte"] = de
+            except (ValueError, TypeError):
+                pass
+        if date_query:
+            query["created_at"] = date_query
+    
+    # Assigned to filter
+    if assigned_to:
+        query["$or"] = [
+            {"assigned_to": assigned_to},
+            {"file_assigned_to": assigned_to},
+            {"source_id": assigned_to}
+        ]
+    
+    # Loan type filter
+    if loan_type:
+        query["file_details.type_of_loan"] = loan_type
+    
+    # Get users for name lookup
+    users_list = await db.users.find({}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "connect_id": 1}).to_list(500)
+    user_map = {}
+    for u in users_list:
+        uid = u.get('id') or u.get('connect_id')
+        if uid:
+            user_map[uid] = u.get('full_name') or u.get('name', 'Unknown')
+    
+    all_files = await db.leads.find(query).to_list(10000)
     
     total_files = len(all_files)
     if total_files == 0:
         return {
             "total_files": 0,
-            "data_quality_score": 0,
-            "document_completion_rate": 0,
-            "conversion_rate": 0,
-            "processing_efficiency": 0
+            "star_distribution": {"5": 0, "4": 0, "3": 0, "2": 0, "1": 0},
+            "avg_score": 0,
+            "by_growth_partner": []
         }
     
-    # Data Quality: Files with complete basic info
-    complete_data_count = 0
-    docs_complete_count = 0
-    conversion_count = 0
-    processed_count = 0
+    # Star distribution and GP breakdown
+    star_distribution = {"5": 0, "4": 0, "3": 0, "2": 0, "1": 0}
+    gp_stats = defaultdict(lambda: {
+        "id": None, "name": "Unknown", "total_files": 0,
+        "star_5": 0, "star_4": 0, "star_3": 0, "star_2": 0, "star_1": 0,
+        "total_score": 0
+    })
+    
+    total_score = 0
     
     for f in all_files:
-        # Data completeness check
-        has_name = bool(f.get('name'))
-        has_phone = bool(f.get('phone'))
-        has_email = bool(f.get('email'))
-        has_city = bool(f.get('city'))
-        has_requirement = bool(f.get('requirement'))
+        # Calculate star rating
+        rating_result = calculate_star_rating(f)
+        stars = rating_result.get('stars', 1)
+        score = rating_result.get('score', 0)
         
-        completeness = sum([has_name, has_phone, has_email, has_city, has_requirement])
-        if completeness >= 4:
-            complete_data_count += 1
+        # Update distribution
+        star_distribution[str(stars)] += 1
+        total_score += score
         
-        # Document completion
-        file_status = f.get('file_status', 'new')
-        if file_status not in ['new', 'contacted']:
-            docs_complete_count += 1
-        
-        # Conversion (disbursed)
-        if file_status == 'disbursed':
-            conversion_count += 1
-        
-        # Processing efficiency (moved beyond new/contacted)
-        if file_status not in ['new', 'contacted', 'query', 'hold']:
-            processed_count += 1
+        # Update GP stats
+        gp_id = f.get('source_id') or f.get('assigned_to') or f.get('file_assigned_to')
+        if gp_id:
+            gp_stats[gp_id]["id"] = gp_id
+            gp_stats[gp_id]["name"] = user_map.get(gp_id, f"Unknown ({gp_id[:8]})")
+            gp_stats[gp_id]["total_files"] += 1
+            gp_stats[gp_id][f"star_{stars}"] += 1
+            gp_stats[gp_id]["total_score"] += score
     
-    data_quality_score = round((complete_data_count / total_files) * 100, 1)
-    document_completion_rate = round((docs_complete_count / total_files) * 100, 1)
-    conversion_rate = round((conversion_count / total_files) * 100, 1)
-    processing_efficiency = round((processed_count / total_files) * 100, 1)
+    # Calculate avg scores per GP
+    gp_list = []
+    for gp_id, stats in gp_stats.items():
+        if stats["total_files"] > 0:
+            stats["avg_score"] = stats["total_score"] / stats["total_files"]
+        else:
+            stats["avg_score"] = 0
+        gp_list.append(stats)
+    
+    # Sort by total files descending
+    gp_list = sorted(gp_list, key=lambda x: -x["total_files"])
     
     return {
         "total_files": total_files,
-        "data_quality_score": data_quality_score,
-        "document_completion_rate": document_completion_rate,
-        "conversion_rate": conversion_rate,
-        "processing_efficiency": processing_efficiency,
-        "complete_data_count": complete_data_count,
-        "docs_complete_count": docs_complete_count,
-        "conversion_count": conversion_count,
-        "processed_count": processed_count
+        "star_distribution": star_distribution,
+        "avg_score": total_score / total_files if total_files > 0 else 0,
+        "by_growth_partner": gp_list
     }
 
 
@@ -793,14 +809,29 @@ def calculate_star_rating(file_data: dict) -> dict:
     score = 0
     file_details = file_data.get('file_details') or file_data.get('additional_data') or {}
     
-    # 1. Data Completeness (20 points)
-    completeness_fields = ['name', 'phone', 'email', 'city']
+    # 1. Data Completeness (25 points) - be more lenient
+    # Check both top-level and file_details for fields
+    def has_field(f_name, fd_name=None):
+        if file_data.get(f_name):
+            return True
+        if fd_name and file_details.get(fd_name):
+            return True
+        if file_details.get(f_name):
+            return True
+        return False
+    
+    basic_fields = [
+        ('name', 'full_name'),
+        ('phone', 'mobile'),
+        ('email', 'email'),
+        ('city', 'city')
+    ]
     detail_fields = ['company_name', 'net_salary', 'cibil_score', 'loan_amount_required', 'type_of_loan']
     
-    basic_filled = sum(1 for f in completeness_fields if file_data.get(f))
+    basic_filled = sum(1 for f, fd in basic_fields if has_field(f, fd))
     detail_filled = sum(1 for f in detail_fields if file_details.get(f))
     
-    completeness_score = (basic_filled / 4) * 10 + (detail_filled / 5) * 10
+    completeness_score = (basic_filled / 4) * 12.5 + (detail_filled / 5) * 12.5
     score += completeness_score
     
     # 2. CIBIL Score (25 points)
@@ -820,10 +851,9 @@ def calculate_star_rating(file_data: dict) -> dict:
         pass
     
     # 3. Income vs Loan Amount Ratio (20 points)
-    # Good ratio: loan_amount <= net_salary * 60 (5 year affordability)
     try:
-        net_salary = float(file_details.get('net_salary') or 0)
-        loan_amount = float(file_details.get('loan_amount_required') or 0)
+        net_salary = float(str(file_details.get('net_salary', 0)).replace(',', ''))
+        loan_amount = float(str(file_details.get('loan_amount_required', 0)).replace(',', ''))
         if net_salary > 0 and loan_amount > 0:
             ratio = loan_amount / (net_salary * 60)
             if ratio <= 0.5:
@@ -834,6 +864,9 @@ def calculate_star_rating(file_data: dict) -> dict:
                 score += 10
             elif ratio <= 1.5:
                 score += 5
+        elif net_salary > 0:
+            # Has salary but no loan amount - give partial credit
+            score += 8
     except (ValueError, TypeError):
         pass
     
@@ -850,48 +883,43 @@ def calculate_star_rating(file_data: dict) -> dict:
             score += 8
         elif present_emp >= 3:
             score += 5
+        elif file_details.get('company_name'):
+            # Has company name - give partial credit
+            score += 5
     except (ValueError, TypeError):
-        pass
+        if file_details.get('company_name'):
+            score += 5
     
-    # 5. Document Status (10 points)
+    # 5. Document Status (10 points) - based on file_status progression
     file_status = file_data.get('file_status', 'new')
     if file_status in ['disbursed']:
         score += 10
     elif file_status in ['approved', 'sanctioned']:
-        score += 8
+        score += 9
     elif file_status in ['login', 'underwriting', 'fi']:
-        score += 6
+        score += 7
     elif file_status in ['sent_to_bank', 'sent_for_login']:
-        score += 4
+        score += 5
     elif file_status in ['documents_collected', 'sent_for_eligibility']:
-        score += 2
+        score += 3
+    elif file_status in ['documents_pending', 'contacted']:
+        score += 1
     
-    # 6. Existing Obligations / FOIR (10 points)
+    # 6. Existing Obligations / FOIR (5 points) - reduced weight
     try:
         foir = float(file_details.get('foir') or 0)
         if foir > 0:
             if foir <= 40:
-                score += 10
+                score += 5
             elif foir <= 50:
-                score += 7
-            elif foir <= 60:
                 score += 4
-            elif foir <= 70:
+            elif foir <= 60:
                 score += 2
         else:
-            # If FOIR not calculated, check EMI to salary ratio
-            obligations = float(file_details.get('obligations_emi') or 0)
-            net_salary = float(file_details.get('net_salary') or 0)
-            if net_salary > 0:
-                emi_ratio = (obligations / net_salary) * 100
-                if emi_ratio <= 40:
-                    score += 10
-                elif emi_ratio <= 50:
-                    score += 7
-                elif emi_ratio <= 60:
-                    score += 4
+            # If FOIR not available, give benefit of doubt
+            score += 2
     except (ValueError, TypeError):
-        pass
+        score += 2  # Give partial credit if FOIR not available
     
     # Calculate star rating
     score = min(100, max(0, round(score)))
@@ -908,7 +936,9 @@ def calculate_star_rating(file_data: dict) -> dict:
     
     return {
         'star_rating': stars,
-        'star_score': score
+        'star_score': score,
+        'stars': stars,  # Alias for compatibility
+        'score': score   # Alias for compatibility
     }
 
 
@@ -2952,17 +2982,46 @@ async def get_growth_partner_report(
     }
     
     return {
-        "agents": agents,
-        "totals": totals,
-        "total_agents": len(agents),
+        "gps": [
+            {
+                "id": a.get('agent_id'),
+                "name": a.get('agent_name'),
+                "files_generated": a.get('files_generated', 0),
+                "in_progress": a.get('in_progress', 0),
+                "login_current": a.get('logins_current', 0),
+                "login_spillover": a.get('logins_spillover', 0),
+                "approved": a.get('approvals', 0),
+                "disbursed_current": a.get('disbursals_current', 0),
+                "disbursed_spillover": a.get('disbursals_spillover', 0),
+                "interim_current": 0,  # Would need to calculate
+                "interim_spillover": 0,
+                "final_current": 0,
+                "final_spillover": 0,
+                "disbursed_amount": a.get('disbursed_amount', 0)
+            }
+            for a in agents
+        ],
+        "summary": {
+            "total_gps": len(agents),
+            "files_generated": totals.get('files_generated', 0),
+            "in_progress": totals.get('in_progress', 0),
+            "login": totals.get('logins', 0),
+            "login_current": totals.get('logins_current', 0),
+            "login_spillover": totals.get('logins_spillover', 0),
+            "approved": totals.get('approvals', 0),
+            "disbursed": totals.get('disbursals', 0),
+            "disbursed_current": totals.get('disbursals_current', 0),
+            "disbursed_spillover": totals.get('disbursals_spillover', 0),
+            "interim_current": 0,
+            "interim_spillover": 0,
+            "final_current": 0,
+            "final_spillover": 0,
+            "total_disbursed_amount": totals.get('disbursed_amount', 0)
+        },
         "date_range": {
             "start_date": start_date,
             "end_date": end_date,
             "is_all_time": is_all_time
-        },
-        "filter": {
-            "manager_id": manager_id,
-            "manager_name": user_map.get(manager_id) if manager_id else None
         }
     }
 
@@ -3630,4 +3689,227 @@ async def get_gp_file_mapping_audit(current_user: dict = Depends(require_admin))
         "total_gps_with_files": len(gp_file_counts),
         "unassigned_files": unassigned_count,
         "gp_file_matrix": gp_list
+    }
+
+
+
+# ============ SALES & OPS COMPREHENSIVE REPORT ============
+
+@router.get("/reports/sales-ops")
+async def get_sales_ops_report(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Comprehensive Sales & Operations Report matching OLD CRM format.
+    Includes: Business Volume, Team Productivity, Bank Performance, Rejection Analysis
+    """
+    from datetime import datetime, timezone, timedelta
+    from collections import defaultdict
+    
+    # Parse dates
+    date_filter = {}
+    if start_date:
+        try:
+            date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+            if date_start.tzinfo is None:
+                date_start = date_start.replace(tzinfo=timezone.utc)
+            date_filter["$gte"] = date_start
+        except ValueError:
+            pass
+    if end_date:
+        try:
+            date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+            if date_end.tzinfo is None:
+                date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
+            date_filter["$lte"] = date_end
+        except ValueError:
+            pass
+    
+    # Query all files (for spillover analysis)
+    query = {"status": "file"}
+    all_files = await db.leads.find(query).to_list(10000)
+    
+    # Filter files created in date range (current) vs before (spillover)
+    current_files = []
+    spillover_files = []
+    
+    for f in all_files:
+        created = f.get('created_at')
+        if created:
+            if isinstance(created, str):
+                try:
+                    created = datetime.fromisoformat(created.replace('Z', '+00:00'))
+                except (ValueError, TypeError):
+                    created = None
+            
+            if created and date_filter:
+                if date_filter.get('$gte') and created >= date_filter['$gte']:
+                    if not date_filter.get('$lte') or created <= date_filter['$lte']:
+                        current_files.append(f)
+                    else:
+                        spillover_files.append(f)
+                else:
+                    spillover_files.append(f)
+            else:
+                current_files.append(f)
+        else:
+            current_files.append(f)
+    
+    # Status definitions
+    IN_PROGRESS = ['documents_pending', 'sent_for_eligibility', 'sent_for_login', 'query_hold', 
+                   'contacted', 'documents_collected']
+    LOGIN_BEYOND = ['login', 'approved', 'disbursed', 'declined', 'not_disbursed', 'fi_negative', 
+                    'sanctioned', 'underwriting', 'fi']
+    APPROVED = ['approved', 'disbursed', 'not_disbursed', 'sanctioned']
+    INTERIM_REJECTS = ['fi_negative', 'declined', 'customer_not_interested', 'customer_not_supporting']
+    FINAL_REJECTS = ['rejected', 'not_eligible', 'not_login', 'not_disbursed']
+    
+    def count_by_status(files, statuses):
+        return sum(1 for f in files if f.get('file_status') in statuses)
+    
+    def sum_amount(files, field='loan_amount_required'):
+        total = 0
+        for f in files:
+            fd = f.get('file_details', {})
+            amt = fd.get(field) or f.get(field) or 0
+            try:
+                total += float(str(amt).replace(',', ''))
+            except (ValueError, TypeError):
+                pass
+        return total
+    
+    # 1. Business Volume Metrics
+    volume = {
+        "total_files": len(current_files),
+        "in_progress": count_by_status(current_files, IN_PROGRESS),
+        "login": count_by_status(all_files, LOGIN_BEYOND),
+        "login_current": count_by_status(current_files, LOGIN_BEYOND),
+        "login_spillover": count_by_status(spillover_files, LOGIN_BEYOND),
+        "approved": count_by_status(all_files, APPROVED),
+        "approved_current": count_by_status(current_files, APPROVED),
+        "approved_spillover": count_by_status(spillover_files, APPROVED),
+        "disbursed": count_by_status(all_files, ['disbursed']),
+        "disbursed_current": count_by_status(current_files, ['disbursed']),
+        "disbursed_spillover": count_by_status(spillover_files, ['disbursed']),
+        "disbursed_amount": sum_amount([f for f in all_files if f.get('file_status') == 'disbursed']),
+        "disbursed_amount_current": sum_amount([f for f in current_files if f.get('file_status') == 'disbursed']),
+        "disbursed_amount_spillover": sum_amount([f for f in spillover_files if f.get('file_status') == 'disbursed']),
+        "final_rejections": count_by_status(all_files, FINAL_REJECTS),
+        "final_rejections_current": count_by_status(current_files, FINAL_REJECTS),
+        "final_rejections_spillover": count_by_status(spillover_files, FINAL_REJECTS),
+        "interim_rejects": count_by_status(all_files, INTERIM_REJECTS),
+        "interim_rejects_current": count_by_status(current_files, INTERIM_REJECTS),
+        "interim_rejects_spillover": count_by_status(spillover_files, INTERIM_REJECTS),
+    }
+    
+    # Calculate pipeline amount
+    pipeline_amount = 0
+    for f in all_files:
+        if f.get('file_status') not in ['disbursed', 'rejected', 'not_eligible', 'declined']:
+            for elig in f.get('eligibilities', []):
+                if elig.get('login_done') in [True, 'yes', 'Yes'] and elig.get('disbursed') not in [True, 'yes', 'Yes']:
+                    try:
+                        pipeline_amount += float(str(elig.get('eligible_amount', 0)).replace(',', ''))
+                    except (ValueError, TypeError):
+                        pass
+    volume["pipeline_amount"] = pipeline_amount
+    
+    # Average loan value
+    disbursed_count = volume["disbursed"]
+    volume["avg_loan_value"] = volume["disbursed_amount"] / disbursed_count if disbursed_count > 0 else 0
+    
+    # 2. Team Productivity
+    gp_stats = defaultdict(lambda: {
+        "name": "", "files": 0, "logins": 0, "approvals": 0, "disbursals": 0, 
+        "disbursed_amount": 0, "conversion": 0
+    })
+    
+    # Get user names
+    all_users = await db.users.find({}, {"_id": 0, "id": 1, "full_name": 1, "name": 1, "connect_id": 1}).to_list(500)
+    user_map = {u.get('id') or u.get('connect_id'): u.get('full_name') or u.get('name', 'Unknown') for u in all_users}
+    
+    for f in all_files:
+        gp_id = f.get('source_id') or f.get('assigned_to') or f.get('file_assigned_to')
+        if gp_id:
+            gp_stats[gp_id]["name"] = user_map.get(gp_id, f"Unknown ({gp_id[:8]})")
+            gp_stats[gp_id]["files"] += 1
+            if f.get('file_status') in LOGIN_BEYOND:
+                gp_stats[gp_id]["logins"] += 1
+            if f.get('file_status') in APPROVED:
+                gp_stats[gp_id]["approvals"] += 1
+            if f.get('file_status') == 'disbursed':
+                gp_stats[gp_id]["disbursals"] += 1
+                fd = f.get('file_details', {})
+                try:
+                    gp_stats[gp_id]["disbursed_amount"] += float(str(fd.get('loan_amount_required', 0)).replace(',', ''))
+                except (ValueError, TypeError):
+                    pass
+    
+    # Calculate conversion
+    for gp_id, stats in gp_stats.items():
+        if stats["files"] > 0:
+            stats["conversion"] = (stats["disbursals"] / stats["files"]) * 100
+    
+    gp_list = sorted(gp_stats.values(), key=lambda x: -x["disbursals"])
+    active_gps = len([g for g in gp_list if g["files"] > 0])
+    
+    team = {
+        "active_gps": active_gps,
+        "files_per_gp": len(all_files) / active_gps if active_gps > 0 else 0,
+        "disbursals_per_gp": volume["disbursed"] / active_gps if active_gps > 0 else 0,
+        "gps": gp_list
+    }
+    
+    # 3. Bank Performance
+    bank_stats = defaultdict(lambda: {
+        "name": "", "logins": 0, "approvals": 0, "disbursals": 0, "disbursed_amount": 0
+    })
+    
+    for f in all_files:
+        for elig in f.get('eligibilities', []):
+            bank = elig.get('bank_name', 'Unknown')
+            if elig.get('login_done') in [True, 'yes', 'Yes']:
+                bank_stats[bank]["name"] = bank
+                bank_stats[bank]["logins"] += 1
+                if elig.get('approval_status') == 'approved':
+                    bank_stats[bank]["approvals"] += 1
+                if elig.get('disbursed') in [True, 'yes', 'Yes']:
+                    bank_stats[bank]["disbursals"] += 1
+                    try:
+                        bank_stats[bank]["disbursed_amount"] += float(str(elig.get('disbursed_amount', 0)).replace(',', ''))
+                    except (ValueError, TypeError):
+                        pass
+    
+    banks = sorted(bank_stats.values(), key=lambda x: -x["disbursals"])
+    
+    # 4. Rejection Analysis
+    rejection_reasons = defaultdict(int)
+    total_rejections = 0
+    login_approval_rejections = 0
+    
+    for f in all_files:
+        if f.get('file_status') in INTERIM_REJECTS + FINAL_REJECTS:
+            total_rejections += 1
+            for elig in f.get('eligibilities', []):
+                if elig.get('approval_status') == 'declined':
+                    login_approval_rejections += 1
+                    reason = elig.get('rejection_reason') or elig.get('remarks') or 'Unknown'
+                    rejection_reasons[reason] += 1
+    
+    top_reasons = sorted([{"reason": r, "count": c} for r, c in rejection_reasons.items()], key=lambda x: -x["count"])[:10]
+    
+    rejection = {
+        "total": total_rejections,
+        "login_approval_rate": (login_approval_rejections / volume["login"] * 100) if volume["login"] > 0 else 0,
+        "top_reasons": top_reasons
+    }
+    
+    return {
+        "volume": volume,
+        "team": team,
+        "banks": banks,
+        "rejection": rejection,
+        "spillover_count": len(spillover_files)
     }

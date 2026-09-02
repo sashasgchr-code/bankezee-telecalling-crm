@@ -763,51 +763,41 @@ const FilesDashboard = () => {
             )}
           </div>
           
-          {/* Report Buttons - Responsive wrap */}
+          {/* Report Buttons - Navigate to separate report pages */}
           <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-2 lg:pb-0">
             {isAdmin && (
               <>
                 <button 
-                  onClick={() => { setShowDailyReport(!showDailyReport); if (!showDailyReport) fetchDailyReport(); }}
-                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showDailyReport ? 'bg-gray-700 text-white border-gray-700' : 'border-gray-300 hover:bg-gray-50'}`}
+                  onClick={() => navigate('/admin/files/reports/sales-ops')}
+                  className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"
+                  data-testid="report-sales-ops"
                 >
-                  <FileText size={14} />
-                  <span className="hidden sm:inline">Daily Report</span>
-                  <span className="sm:hidden">Daily</span>
+                  <BarChart3 size={14} />
+                  <span className="hidden sm:inline">Sales & Ops</span>
+                  <span className="sm:hidden">S&O</span>
                 </button>
                 <button 
-                  onClick={() => { setShowRejectedReport(!showRejectedReport); if (!showRejectedReport) fetchRejectedFiles(); }}
-                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showRejectedReport ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 text-red-600 border-red-200 hover:bg-red-100'}`}
+                  onClick={() => navigate('/admin/files/reports/rejected')}
+                  className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 whitespace-nowrap"
+                  data-testid="report-rejected"
                 >
                   <XCircle size={14} />
-                  <span className="hidden sm:inline">Rejected</span>
+                  <span className="hidden sm:inline">Rejected Cases</span>
+                  <span className="sm:hidden">Rejected</span>
                 </button>
                 <button 
-                  onClick={() => setShowGrowthPartner(!showGrowthPartner)}
-                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showGrowthPartner ? 'bg-blue-600 text-white border-blue-600' : 'bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100'}`}
+                  onClick={() => navigate('/admin/files/reports/growth-partner')}
+                  className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center gap-1 whitespace-nowrap"
+                  data-testid="report-gp"
                 >
                   <Users size={14} />
-                  <span className="hidden sm:inline">Growth Partner</span>
-                  <span className="sm:hidden">Partners</span>
+                  <span className="hidden sm:inline">GP Performance</span>
+                  <span className="sm:hidden">GP</span>
                 </button>
                 <button 
-                  onClick={() => setShowBankTable(!showBankTable)}
-                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showBankTable ? 'bg-green-600 text-white border-green-600' : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}`}
-                >
-                  <Building2 size={14} />
-                  <span className="hidden sm:inline">Bank Perf.</span>
-                  <span className="sm:hidden">Banks</span>
-                </button>
-                <button 
-                  onClick={() => setShowTatMetrics(!showTatMetrics)}
-                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showTatMetrics ? 'bg-purple-600 text-white border-purple-600' : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'}`}
-                >
-                  <Timer size={14} />
-                  <span className="hidden sm:inline">TAT</span>
-                </button>
-                <button 
-                  onClick={() => { setShowQualityReport(!showQualityReport); if (!showQualityReport) fetchQualityReport(); }}
-                  className={`px-2 md:px-3 py-1.5 text-xs md:text-sm border rounded-lg flex items-center gap-1 whitespace-nowrap ${showQualityReport ? 'bg-amber-600 text-white border-amber-600' : 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100'}`}
+                  onClick={() => navigate('/admin/files/reports/quality')}
+                  className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1 whitespace-nowrap"
+                  data-testid="report-quality"
                 >
                   <Star size={14} />
                   <span className="hidden sm:inline">Quality</span>

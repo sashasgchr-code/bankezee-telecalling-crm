@@ -43,11 +43,38 @@ BankEzee Connect is a comprehensive CRM platform for loan processing, integratin
 7. **GP "My Files"** - Growth Partners only see their assigned files
 8. **Role-based Permissions** - GPs cannot modify eligibilities or delete files
 
-### Reports
-9. **Daily Report** - Today's activities summary
-10. **Rejected Cases Report** - Bank-level summary with reasons
-11. **GP Performance Report** - Current/Spillover logic (30-day)
-12. **Bank Performance Report** - Login → Disbursed funnel
+### Reports (September 2026 Update - OLD CRM Parity)
+All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM format:
+
+9. **Sales & Operations Report** (/admin/files/reports/sales-ops)
+   - Business Volume Metrics (Total Files, In Progress, Login C/S, Approved, Disbursed C/S)
+   - Financial Metrics (Disbursal Value, Avg Loan, Pipeline)
+   - Team Productivity (GPs, Files per GP, Disbursals per GP)
+   - Bank Performance Table
+   - Rejection Analysis with top reasons
+   - Export PDF / Print
+
+10. **Rejected Cases Report** (/admin/files/reports/rejected)
+    - Time Period + Manager filters
+    - Summary Cards: Total, Not Eligible, Not Login, FI Negative, Declined, Not Disbursed
+    - Expandable case list with bank-level details
+    - Export PDF / CSV
+
+11. **GP Performance Report** (/admin/files/reports/growth-partner)
+    - Date range + Manager filters
+    - Current (C) vs Spillover (S) breakdown
+    - Login, Approved, Disbursed, Interim/Final Rejections
+    - Disbursed Amount per GP
+    - Export PDF / Print
+
+12. **Quality Report** (/admin/files/reports/quality)
+    - Date range + Manager + Loan Type filters
+    - Star Distribution (5-1 stars)
+    - GP Quality Breakdown table
+    - Average Score calculation
+    - Export PDF / Print
+
+13. **Bank Performance Report** - Login → Disbursed funnel
 13. **TAT Report** - Turnaround time metrics
 14. **Quality Report** - Data quality scoring
 15. **GP File Mapping Audit** - Admin view of GP vs File count matrix

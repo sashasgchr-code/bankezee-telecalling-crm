@@ -1,0 +1,48 @@
+{
+  "summary": "Iter33 validates OLD CRM parity for 4 report pages. Backend: 9/9 pytest pass. GET /api/files/reports/rejected returns {summary:{total,not_eligible,not_login,fi_negative,declined,not_disbursed},cases:[]} — all keys present, ints, no MongoDB _id leak, date filters work. GET /api/files/reports/growth-partner returns {gps:[],summary:{total_gps,files_generated,login,approved,disbursed}} — row shape includes name/files_generated/login_current/login_spillover/approved/disbursed_current/disbursed_spillover. GET /api/files/reports/quality returns {star_distribution:{'1','2','3','4','5'},by_growth_partner:[]} — loan_type filter accepted. GET /api/files/reports/sales-ops returns {volume,team:{gps},banks:[],rejection} with volume containing total_files/in_progress/login/approved/disbursed/disbursed_amount/pipeline_amount. Unauth returns 401/403. Frontend (Desktop 1920): all 4 SEPARATE PAGES load at /admin/files/reports/{rejected,growth-partner,quality,sales-ops}, each with filter card (Time Period / From-To / Manager / Loan Type where applicable) + red/green/blue Generate Report button + Export PDF/CSV/Print buttons. After clicking Generate Report: Rejected shows 6 summary cards (Total Cases, Not Eligible, Not Login, FI Negative, Declined, Not Disbursed) — all rendered. Growth Partner shows 'BANKEZEE - GROWTH PARTNER PERFORMANCE' header with 66 GPs and full table (Login C/S, Approved, Disbursed C/S, Interim/Final Rej C/S). Quality shows 'BANKEZEE - QUALITY REPORT' with 5-star distribution grid and GP breakdown table. Sales & Ops shows real production data — 3 In Progress, 205 Logged (C:213/S:182), 114 Approvals, 94 Disbursals, ₹13.74Cr Disbursed, ₹1.66Cr Pipeline, 66 Active GPs, ₹14.61L Avg Loan, Bank Performance table (HDFC/ICICI/INDUSIND/IDFC/INCRED/AXIS/FINNABLE/PIRAMAL/HERO), conversion funnel percentages. All navigation Back buttons work.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Quality Report - Loan Type filter dropdown",
+        "issue": "QualityReport.fetchLoanTypes() throws TypeError: response.data.loans_by_type.map is not a function. Backend /api/files/dashboard/stats returns loans_by_type as an OBJECT (e.g. {new_personal_loan: 158, ...}) but frontend calls .map() expecting an array. Loan Type dropdown stays empty. Report still generates correctly with All Loan Types.",
+        "affected_selectors": ["QualityReport loan-type <select>"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "All 4 report pages",
+        "issues": [
+          "Pre-existing hydration warnings from Emergent Visual Editor: <span data-ve-dynamic> wrappers inserted as child of <select>, <option>, <tbody>, <tr>. Non-functional but pollutes console — carryover from iter30/31/32."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter33_reports.py",
+    "/app/test_reports/pytest/iter33.xml"
+  ],
+  "action_items": [
+    "Fix QualityReport.js fetchLoanTypes(): change `response.data?.loans_by_type?.map(l => l.type)` to `Object.keys(response.data?.loans_by_type || {})` since /files/dashboard/stats returns loans_by_type as {loan_key: count} object, not array."
+  ],
+  "critical_code_review_comments": [
+    "4 report page components have significant filter/date/manager fetch duplication — could extract useReportFilters() hook + <ReportFilterBar/> shared component (~150 LOC each).",
+    "QualityReport fetches loan types by piggy-backing on /files/dashboard/stats — heavy and returns wrong shape. Add dedicated /api/files/loan-types endpoint that returns unique strings.",
+    "GrowthPartner + SalesOps use `key={gp.id || idx}`—if some GPs lack id all fallback to idx causing collisions on re-render. Ensure GP entities carry stable id.",
+    "Emergent Visual Editor `<span data-ve-dynamic>` wrappers still inject into <select>/<tbody>/<option> chains — needs suppression in production build to eliminate hydration errors."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter33_reports.py (new)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (4/4 pages load, filters render, Generate Report populates)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!",
+  "seed_data_creation": "None — 514 legacy files.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter33 verified 4 report pages match OLD CRM. Routes: /admin/files/reports/{rejected,growth-partner,quality,sales-ops}. Backend endpoints under /api/files/reports/*. Only outstanding issue: QualityReport.fetchLoanTypes iterates object as array — silent fail, filter empty. Tests in /app/backend/tests/test_iter33_reports.py.",
+  "rca of the issue": "QualityReport loan_type dropdown bug: Frontend expected /api/files/dashboard/stats.loans_by_type to be array of {type, count} but backend returns dict of {loan_type_key: count}. Fix in QualityReport.js line 46: replace .map(l => l.type) with Object.keys(response.data?.loans_by_type || {})."
+}

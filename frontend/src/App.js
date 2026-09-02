@@ -20,6 +20,7 @@ import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
 import DataMigration from "./pages/files/DataMigration";
 import PolicyMaster from "./pages/files/PolicyMaster";
+import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
 import TelecallerLayout from "./layouts/TelecallerLayout";
 import LoadingScreen from "./components/LoadingScreen";
@@ -86,6 +87,10 @@ function App() {
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/migrate" element={<DataMigration />} />
           <Route path="files/policies" element={<PolicyMaster />} />
+          <Route path="files/reports/rejected" element={<RejectedCasesReport />} />
+          <Route path="files/reports/growth-partner" element={<GrowthPartnerReport />} />
+          <Route path="files/reports/quality" element={<QualityReport />} />
+          <Route path="files/reports/sales-ops" element={<SalesOpsReport />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="tracking" element={<DailyTrackingSheet />} />
