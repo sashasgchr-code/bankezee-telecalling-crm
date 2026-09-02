@@ -640,7 +640,9 @@ async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user))
 
 @router.post("/leads")
 async def create_lead(lead: LeadCreate, current_user: dict = Depends(require_admin)):
+    import uuid
     lead_doc = {
+        "id": str(uuid.uuid4()),  # Generate UUID for consistent referencing
         **lead.dict(),
         "assigned_to": None,
         "telecaller_name": None,
@@ -682,16 +684,67 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
     # Check if status is being changed to "file" - trigger File creation/linking
     new_status = update_data.get("status")
     if new_status == "file" and lead.get("status") != "file":
+        # ============ DATA → FILE PREFILL - OLD CRM PORT ============
+        # When Connect Data becomes File, prefill ALL known information
+        # This replaces the old separate Growth Partner Lead Application Form
+        
         # Initialize file-specific fields
         update_data["file_status"] = "new"  # Initial file status
         update_data["file_assigned_to"] = lead.get("assigned_to") or current_user["id"]
         update_data["eligibilities"] = lead.get("eligibilities") or []
+        
+        # Get custom_fields for fallback lookup
+        custom_fields = lead.get("custom_fields") or {}
+        
+        # Prefill file_details from ALL available Connect Data fields
+        existing_file_details = lead.get("file_details") or lead.get("additional_data") or {}
+        prefilled_details = {
+            # Customer Details - from Connect Data
+            "full_name": lead.get("name") or existing_file_details.get("full_name"),
+            "mobile": lead.get("phone") or existing_file_details.get("mobile"),
+            "email": lead.get("email") or existing_file_details.get("email"),
+            "city": lead.get("city") or existing_file_details.get("city"),
+            "source": lead.get("source") or existing_file_details.get("source"),
+            
+            # Loan Requirement - from Connect Data (with custom_fields fallback)
+            "type_of_loan": lead.get("requirement") or custom_fields.get("requirement") or existing_file_details.get("type_of_loan"),
+            "loan_amount_required": existing_file_details.get("loan_amount_required"),
+            
+            # Employment - from Connect Data (with custom_fields fallback)
+            "employment_type": lead.get("employment_type") or custom_fields.get("employment_type") or existing_file_details.get("employment_type"),
+            "company_name": existing_file_details.get("company_name"),
+            "net_salary": existing_file_details.get("net_salary"),
+            "gross_salary": existing_file_details.get("gross_salary"),
+            
+            # Credit Info - from Connect Data
+            "cibil_score": existing_file_details.get("cibil_score"),
+            
+            # Preserve any other existing file_details
+            **{k: v for k, v in existing_file_details.items() if v is not None}
+        }
+        
+        # Filter out None values
+        prefilled_details = {k: v for k, v in prefilled_details.items() if v is not None}
+        update_data["file_details"] = prefilled_details
+        
+        # Track source system for historical/new file identification
+        if not lead.get("source_system"):
+            update_data["source_system"] = "connect"  # New files from Connect
+        
+        # Preserve connect_customer_id for tracking
+        update_data["connect_customer_id"] = lead_id
+        
+        # Link to source Growth Partner
+        update_data["source_id"] = lead.get("assigned_to") or lead.get("source_id") or current_user["id"]
+        update_data["source_name"] = lead.get("telecaller_name") or lead.get("source_name") or current_user.get("name", "Unknown")
+        
         update_data["file_activities"] = [{
             "type": "file_created",
-            "message": "Lead converted to File",
+            "message": "Lead converted to File - Application form opened for completion",
             "by": current_user["id"],
             "by_name": current_user.get("name", "Unknown"),
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "prefilled_fields": list(prefilled_details.keys())
         }]
         
         # Create activity log
@@ -703,7 +756,7 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
             "performed_by": current_user["id"],
             "performed_by_name": current_user.get("name", "Unknown"),
             "timestamp": datetime.now(timezone.utc),
-            "notes": "Customer converted to File"
+            "notes": f"Customer converted to File. Prefilled: {', '.join(prefilled_details.keys())}"
         }
         await db.activities.insert_one(activity)
     

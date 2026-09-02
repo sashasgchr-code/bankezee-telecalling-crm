@@ -583,7 +583,7 @@ const FileDetailsPage = () => {
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                   <FileArchive size={20} className="text-green-600" />
-                  Documents ({(fileData.file_documents || []).length})
+                  Documents ({(fileData.file_documents || fileData.documents || []).length})
                 </h3>
                 <button 
                   onClick={handleDownloadAllZip}
@@ -595,7 +595,7 @@ const FileDetailsPage = () => {
               </div>
               
               {/* Password Protected Files Notice */}
-              {(fileData.file_documents || []).length > 0 && (
+              {(fileData.file_documents || fileData.documents || []).length > 0 && (
                 <div className="mx-4 mt-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-sm text-red-600 font-medium">
                     Password Protected Files: {filePassword}
@@ -603,12 +603,16 @@ const FileDetailsPage = () => {
                 </div>
               )}
               
-              <DocumentsPanel
-                documents={fileData.file_documents || []}
-                fileId={fileId}
-                canEdit={canEdit}
-                onDocumentsChange={() => fetchFileData()}
-              />
+              <div className="p-4">
+                <DocumentsPanel
+                  documents={fileData.file_documents || fileData.documents || []}
+                  pendingDocuments={fileData.pending_documents || []}
+                  requiredDocuments={fileData.required_documents || []}
+                  fileId={fileId}
+                  canEdit={canEdit}
+                  onDocumentsChange={() => fetchFileData()}
+                />
+              </div>
             </div>
             
             <ActivityLog

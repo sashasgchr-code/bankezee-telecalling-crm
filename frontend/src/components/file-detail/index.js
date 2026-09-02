@@ -5,7 +5,7 @@ export { default as ExistingLoansSection, EXISTING_LOAN_TYPES, COMMON_BANKS } fr
 export { default as LoanRequirementsSection, LOAN_TYPES, LOAN_PURPOSES } from './LoanRequirementsSection';
 export { default as BankEligibilityCard } from './BankEligibilityCard';
 export { default as EligibilityTracker } from './EligibilityTracker';
-export { default as DocumentsPanel } from './DocumentsPanel';
+export { default as DocumentsPanel, DOCUMENT_TYPES } from './DocumentsPanel';
 export { default as ActivityLog } from './ActivityLog';
 export { default as FileStatusCard, FILE_STATUS_OPTIONS, STATUS_CATEGORIES } from './FileStatusCard';
 export { default as FileAssignmentCard } from './FileAssignmentCard';

@@ -1,0 +1,46 @@
+{
+  "summary": "Iter30 verifies OLD CRM port additions: Policy Master, Document workflow, Data→File prefill. Backend pytest: 4/5 pass. (1) Policy Master API: GET /api/files/policies returns 27 policies; each policy has 40+ fields spanning basic/eligibility/loan/employment/age/BT/documents; CRUD (POST/PUT/GET/DELETE) verified end-to-end with TEST_Iter30_Bank record. (2) File documents endpoint GET /api/files/{id}/documents returns list of documents with document_type. (3) Data→File prefill PARTIALLY works: full_name, mobile, email, city, source ARE prefilled correctly into file_details when Connect Data status changes to 'file'; BUT type_of_loan and employment_type are NEVER prefilled — root cause: LeadCreate/LeadUpdate Pydantic schemas in /app/backend/models/schemas.py do not accept 'requirement' or 'employment_type' fields, so any POST/PUT /api/leads silently drops them, and the prefill logic in /app/backend/routes/leads.py:705,709 reads lead.get('requirement')/'employment_type' from top-level (not from custom_fields) → both always resolve to None for API-created leads. Only legacy imported leads (which set requirement/employment_type at top level via files_crm.py import path) will have these prefilled. Frontend visual test: Policy Master page renders exactly 27 bank policy cards; expanding a card reveals ALL sections (Basic Criteria, Loan Parameters, Employment Requirements, Age & Accommodation, BT & Top-up Policies, Special Features/Notes, Required Documents, Applicable Loan Types); Add Policy modal opens with all 7 tabs (Basic Info, Eligibility, Loan Params, Employment, Age & Location, BT & Top-up, Documents) and tab switching works. File Detail page (/admin/files/{id}) shows Documents (8) panel with '0/7 required docs' status bar (0 Uploaded, 7 Pending), Required Documents (7 pending) collapsible listing PAN/Aadhaar/Passport Photo/Salary Slip 1-3/Bank Statement each with Upload button, All Uploaded Documents (8) collapsible listing existing files with type badges & download/delete, and Upload Additional Documents section with document-type select. All 4 numbered sections (Customer, Employment, Obligations, Loan Requirements) render with file_details values.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/leads/{id} → file conversion prefill", "issue": "type_of_loan & employment_type NEVER prefilled into file_details on Data→File conversion because LeadCreate & LeadUpdate schemas don't include 'requirement'/'employment_type' fields — Pydantic drops them → prefill reads None. Fix: either add these fields to LeadCreate/LeadUpdate schemas, or have prefill code fall back to lead.get('custom_fields',{}).get('requirement'/'employment_type').", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/files", "issue": "Response items projected with {\"_id\":0} and never post-processed via serialize_doc → newly-created leads (that have Mongo _id ObjectId but no UUID 'id' field) come back with id=None; frontend row click won't work for such files. Legacy imported files (which have UUID id) work fine. Fix: post-process files list to expose id (str(_id) if no id present)."},
+      {"endpoint": "POST /api/leads", "issue": "create_lead does not generate a UUID 'id' field on new lead documents — relies only on Mongo _id. Combined with the /api/files projection issue above, newly-converted files have no client-visible id."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Dashboard & PolicyMaster & FilesDashboard", "issues": ["Multiple React hydration warnings: <span> as child of <select>/<tbody>/<tfoot>/<table>/<tr> due to visual-edit wrapper <span data-ve-dynamic> being injected around <option>/<tr>/<tbody>. Not functional, but pollutes console and can cause hydration mismatches."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter30_policy_docs_prefill.py",
+    "/app/test_reports/pytest/iter30.xml"
+  ],
+  "action_items": [
+    "Fix Data→File prefill for type_of_loan and employment_type — add 'requirement' and 'employment_type' to LeadCreate/LeadUpdate schemas OR make prefill read from lead.custom_fields as fallback.",
+    "Return an 'id' field in GET /api/files response for every file (str(_id) fallback) — currently newly-converted files have id=None which breaks navigation from Files Dashboard row-click.",
+    "In POST /api/leads (create_lead), set a UUID 'id' on the new document so newly-created leads are addressable by both id and _id consistently."
+  ],
+  "critical_code_review_comments": [
+    "SECURITY (persistent from iter27-29): file mutation endpoints in files_crm.py still lack auth — PUT /details, POST /notes, POST /upload, DELETE /documents/{doc_id}, GET /download/{doc_id} etc still have no Depends(get_current_user) — any anonymous request can modify or download PII.",
+    "files_crm.py is 2508 lines — split into files_crud/reports/policies/documents/ratings modules.",
+    "Dashboard stats & GP report still load all files into memory (.to_list(10000)) → won't scale past ~10k files.",
+    "Schema drift: files_crm.py FileDetailsUpdate model accepts 'requirement' & 'employment_type' but LeadCreate/LeadUpdate do not — inconsistent API surface. Data ingested by files_crm.py path is invisible to leads.py path.",
+    "PolicyMaster.js is 1116 lines — big single component; consider splitting per-tab into subcomponents.",
+    "Hydration warnings in browser: <option>/<tr>/<tbody> wrapped in <span data-ve-dynamic> (visual-edit shim) → invalid HTML nesting inside <select>/<table>. Won't crash but pollutes production console."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter30_policy_docs_prefill.py (new)"
+  ],
+  "success_rate": {"backend": "80% (4/5 pytest)", "frontend": "100% (PolicyMaster + DocumentsPanel visually verified)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!",
+  "seed_data_creation": "None permanent — TEST_Iter30_Bank policy was created then deleted; TEST_Iter30 Prefill Customer leads (2) were created during test then deleted via cleanup script.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iter30 findings: (1) Policy Master 27 policies + 7-tab Add modal fully working. (2) DocumentsPanel on file detail shows required(7)/pending/uploaded workflow perfectly — tested on file id 0d8133f3-2f35-40ae-8d08-71c0766b3170. (3) Data→File prefill broken for type_of_loan/employment_type due to Pydantic schema stripping. (4) Newly-created files have id=None from /api/files endpoint (projection excludes _id, no id field on doc). Reuse /app/backend/tests/test_iter30_policy_docs_prefill.py. Existing legacy file id known: 0d8133f3-2f35-40ae-8d08-71c0766b3170.",
+  "rca of the issue": "PREFILL BUG: In /app/backend/routes/leads.py:705 the code does `lead.get('requirement')` but LeadCreate (models/schemas.py:32-40) and LeadUpdate (models/schemas.py:42-52) do NOT include 'requirement' or 'employment_type' — so Pydantic silently drops these fields on any POST/PUT /api/leads. As a result lead docs from the Connect Data create/update flow never have those top-level fields, and prefill maps them to None. Only leads created through the /api/files/import path (files_crm.py:1052-1055) get requirement/employment_type set. FIX: add `requirement: Optional[str] = None` and `employment_type: Optional[str] = None` to LeadCreate & LeadUpdate schemas, OR change prefill to read `lead.get('requirement') or lead.get('custom_fields',{}).get('requirement') or existing_file_details.get('type_of_loan')`."
+}

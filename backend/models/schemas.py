@@ -38,6 +38,9 @@ class LeadCreate(BaseModel):
     status: str = "new"
     notes: Optional[str] = None
     custom_fields: Optional[dict] = None
+    # OLD CRM fields for Data→File prefill
+    requirement: Optional[str] = None  # Loan type requirement
+    employment_type: Optional[str] = None  # salaried/self_employed/business
 
 class LeadUpdate(BaseModel):
     name: Optional[str] = None
@@ -50,6 +53,9 @@ class LeadUpdate(BaseModel):
     custom_fields: Optional[dict] = None
     assigned_to: Optional[str] = None
     last_call_outcome: Optional[str] = None
+    # OLD CRM fields for Data→File prefill
+    requirement: Optional[str] = None  # Loan type requirement
+    employment_type: Optional[str] = None  # salaried/self_employed/business
 
 class LeadAssign(BaseModel):
     lead_ids: List[str]

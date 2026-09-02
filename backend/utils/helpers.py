@@ -23,7 +23,10 @@ def serialize_doc(doc):
     """Serialize MongoDB document, converting ObjectId to string and timestamps to IST"""
     if doc is None:
         return None
-    doc["id"] = str(doc.pop("_id"))
+    # Only set 'id' from _id if no 'id' field already exists (preserves UUID if present)
+    mongo_id = doc.pop("_id", None)
+    if "id" not in doc and mongo_id:
+        doc["id"] = str(mongo_id)
     # Remove sensitive fields
     doc.pop("password", None)
     doc.pop("plain_password", None)
