@@ -92,7 +92,7 @@ const FilesDashboard = () => {
   const [allUsers, setAllUsers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [approvalFiles, setApprovalFiles] = useState([]);
+  const [pendingUsers, setPendingUsers] = useState([]);
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
@@ -151,7 +151,7 @@ const FilesDashboard = () => {
         fetchTatMetrics(),
         fetchGrowthPartner(),
         fetchAllUsers(),
-        fetchApprovalFiles()
+        fetchPendingUsers()
       ]);
     } finally {
       setLoading(false);
@@ -256,12 +256,34 @@ const FilesDashboard = () => {
     }
   };
   
-  const fetchApprovalFiles = async () => {
+  const fetchPendingUsers = async () => {
     try {
-      const response = await api.get('/files?file_status=approved&limit=100');
-      setApprovalFiles(response.data.files || []);
+      const response = await api.get('/users/pending-approval');
+      setPendingUsers(response.data || []);
     } catch (error) {
-      console.error('Failed to fetch approval files:', error);
+      console.error('Failed to fetch pending users:', error);
+    }
+  };
+
+  const handleApproveUser = async (userId) => {
+    try {
+      await api.post(`/users/${userId}/approve`);
+      toast.success('User approved successfully');
+      fetchPendingUsers();
+      fetchAllUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to approve user');
+    }
+  };
+
+  const handleRejectUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to reject this user?')) return;
+    try {
+      await api.post(`/users/${userId}/reject`);
+      toast.success('User rejected');
+      fetchPendingUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to reject user');
     }
   };
 
@@ -1260,41 +1282,53 @@ const FilesDashboard = () => {
         </>
         )}
         
-        {/* Approvals Tab Content */}
+        {/* Approvals Tab Content - User Signup Approvals */}
         {activeTab === 'approvals' && (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 bg-green-50">
-              <h3 className="font-semibold text-gray-900">Files Pending Approval</h3>
-              <p className="text-sm text-gray-500">Files with approved status awaiting disbursal</p>
+            <div className="px-4 py-3 border-b border-gray-200 bg-orange-50">
+              <h3 className="font-semibold text-gray-900">Pending User Approvals</h3>
+              <p className="text-sm text-gray-500">New user signups waiting for admin approval</p>
             </div>
-            {approvalFiles.length === 0 ? (
+            {pendingUsers.length === 0 ? (
               <div className="text-center py-16 text-gray-500">
                 <CheckCircle size={48} className="mx-auto mb-4 text-gray-300" />
-                <p>No files pending approval</p>
+                <p>No pending user approvals</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
-                {approvalFiles.map((file) => (
+                {pendingUsers.map((pendingUser) => (
                   <div
-                    key={file.id}
-                    className="px-4 py-3 hover:bg-gray-50 cursor-pointer"
-                    onClick={() => navigate(`/admin/files/${file.id}`)}
+                    key={pendingUser.id}
+                    className="px-4 py-3 hover:bg-gray-50"
                   >
                     <div className="flex items-center justify-between">
                       <div>
-                        <h4 className="font-semibold text-gray-900">{file.name || 'Unnamed'}</h4>
-                        <p className="text-sm text-gray-500">{file.phone}</p>
-                        <p className="text-xs text-gray-400">{file.requirement || '-'}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="px-3 py-1 rounded bg-green-50 text-green-700 text-sm font-medium">
-                          Approved
-                        </span>
-                        <p className="text-sm text-green-600 mt-1">
-                          {file.eligibilities?.find(e => e.approval_status === 'approved')?.approved_amount 
-                            ? formatCurrency(file.eligibilities.find(e => e.approval_status === 'approved').approved_amount, true)
-                            : '-'}
+                        <h4 className="font-semibold text-gray-900">{pendingUser.name}</h4>
+                        <p className="text-sm text-gray-500">{pendingUser.email}</p>
+                        <p className="text-xs text-gray-400">
+                          Registered: {pendingUser.created_at ? new Date(pendingUser.created_at).toLocaleDateString() : '-'}
                         </p>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
+                          pendingUser.role === 'telecaller' ? 'bg-blue-100 text-blue-700' :
+                          pendingUser.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                          'bg-gray-100 text-gray-700'
+                        }`}>
+                          {pendingUser.role}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleApproveUser(pendingUser.id)}
+                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleRejectUser(pendingUser.id)}
+                          className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm hover:bg-red-100"
+                        >
+                          Reject
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1310,14 +1344,19 @@ const FilesDashboard = () => {
             <div className="px-4 py-3 border-b border-gray-200 bg-blue-50 flex items-center justify-between">
               <div>
                 <h3 className="font-semibold text-gray-900">All Users ({allUsers.length})</h3>
-                <p className="text-sm text-gray-500">CRM users including mapped and unmapped users</p>
+                <p className="text-sm text-gray-500">CRM users - map to Connect ID for unified login</p>
               </div>
-              <button 
-                onClick={() => navigate('/admin/users/new')}
-                className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
-              >
-                + Add User
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-orange-600 bg-orange-50 px-2 py-1 rounded">
+                  {allUsers.filter(u => !u.connect_id).length} unmapped
+                </span>
+                <button 
+                  onClick={() => navigate('/admin/users')}
+                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                >
+                  Manage Users
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -1326,38 +1365,49 @@ const FilesDashboard = () => {
                     <th className="px-4 py-3 text-left font-medium text-gray-700">Name</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-700">Email</th>
                     <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Phone</th>
+                    <th className="px-4 py-3 text-center font-medium text-gray-700">Connect ID</th>
                     <th className="px-4 py-3 text-center font-medium text-gray-700">Status</th>
                     <th className="px-4 py-3 text-center font-medium text-gray-700">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {allUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-900">{user.full_name || user.name || '-'}</td>
-                      <td className="px-4 py-3 text-gray-600">{user.email || '-'}</td>
+                  {allUsers.map((mapUser) => (
+                    <tr key={mapUser.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 font-medium text-gray-900">{mapUser.full_name || mapUser.name || '-'}</td>
+                      <td className="px-4 py-3 text-gray-600">{mapUser.email || '-'}</td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                          user.role === 'caller' || user.role === 'telecaller' ? 'bg-blue-100 text-blue-700' :
-                          user.role === 'agent' ? 'bg-green-100 text-green-700' :
+                          mapUser.role === 'admin' ? 'bg-purple-100 text-purple-700' :
+                          mapUser.role === 'caller' || mapUser.role === 'telecaller' ? 'bg-blue-100 text-blue-700' :
+                          mapUser.role === 'agent' ? 'bg-green-100 text-green-700' :
                           'bg-gray-100 text-gray-700'
                         }`}>
-                          {user.role || 'user'}
+                          {mapUser.role || 'user'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{user.phone || '-'}</td>
+                      <td className="px-4 py-3 text-center">
+                        {mapUser.connect_id ? (
+                          <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
+                            ✓ Mapped
+                          </span>
+                        ) : (
+                          <span className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-700">
+                            Not Mapped
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          user.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                          mapUser.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                         }`}>
-                          {user.status || 'active'}
+                          {mapUser.is_active !== false ? 'active' : 'inactive'}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button 
-                          onClick={() => navigate(`/admin/users/${user.id}`)}
+                          onClick={() => navigate(`/admin/users/${mapUser.id}`)}
                           className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
+                          title="View/Edit User"
                         >
                           <Eye size={16} />
                         </button>

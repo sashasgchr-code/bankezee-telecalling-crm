@@ -31,7 +31,9 @@ async def register(user: UserRegister):
         "name": user.name,
         "role": allowed_role,
         "phone": None,
-        "is_active": True,
+        "is_active": False,  # Inactive until approved
+        "is_approved": False,  # Requires admin approval
+        "approval_status": "pending",  # pending, approved, rejected
         "created_at": datetime.now(timezone.utc),
         "last_login": None,
         "last_activity": None
@@ -40,11 +42,9 @@ async def register(user: UserRegister):
     result = await db.users.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
     
-    token = create_access_token({"user_id": str(result.inserted_id)})
-    
     return {
-        "token": token,
-        "user": serialize_doc(user_doc)
+        "message": "Registration successful. Please wait for admin approval.",
+        "status": "pending_approval"
     }
 
 @router.post("/login")
@@ -57,7 +57,13 @@ async def login(credentials: UserLogin):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     
     if not user.get("is_active", True):
-        raise HTTPException(status_code=401, detail="Account is deactivated")
+        # Check if pending approval
+        if user.get("approval_status") == "pending":
+            raise HTTPException(status_code=401, detail="Your account is pending admin approval")
+        elif user.get("approval_status") == "rejected":
+            raise HTTPException(status_code=401, detail="Your account registration was rejected")
+        else:
+            raise HTTPException(status_code=401, detail="Account is deactivated")
     
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)

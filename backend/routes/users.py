@@ -148,3 +148,108 @@ async def set_user_file_goal(
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
     return {"message": "File goal updated", "file_goal": file_goal}
+
+@router.get("/users/pending-approval")
+async def get_pending_approvals(current_user: dict = Depends(require_admin)):
+    """Get all users pending approval"""
+    users = await db.users.find({
+        "approval_status": "pending",
+        "is_approved": False
+    }).sort("created_at", -1).to_list(1000)
+    return serialize_docs(users)
+
+@router.post("/users/{user_id}/approve")
+async def approve_user(user_id: str, current_user: dict = Depends(require_admin)):
+    """Approve a pending user registration"""
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user.get("approval_status") != "pending":
+        raise HTTPException(status_code=400, detail="User is not pending approval")
+    
+    result = await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {
+            "is_active": True,
+            "is_approved": True,
+            "approval_status": "approved",
+            "approved_by": current_user["id"],
+            "approved_at": datetime.now(timezone.utc)
+        }}
+    )
+    
+    updated_user = await db.users.find_one({"_id": ObjectId(user_id)})
+    return {
+        "message": f"User {user['name']} has been approved",
+        "user": serialize_doc(updated_user)
+    }
+
+@router.post("/users/{user_id}/reject")
+async def reject_user(user_id: str, current_user: dict = Depends(require_admin)):
+    """Reject a pending user registration"""
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if user.get("approval_status") != "pending":
+        raise HTTPException(status_code=400, detail="User is not pending approval")
+    
+    result = await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {
+            "is_active": False,
+            "is_approved": False,
+            "approval_status": "rejected",
+            "rejected_by": current_user["id"],
+            "rejected_at": datetime.now(timezone.utc)
+        }}
+    )
+    
+    return {"message": f"User {user['name']} has been rejected"}
+
+@router.put("/users/{user_id}/map-connect")
+async def map_connect_id(
+    user_id: str,
+    connect_id: str,
+    current_user: dict = Depends(require_admin)
+):
+    """Map a CRM user to a Connect user ID"""
+    # Check if connect_id is already mapped to another user
+    existing = await db.users.find_one({
+        "connect_id": connect_id,
+        "_id": {"$ne": ObjectId(user_id)}
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="Connect ID already mapped to another user")
+    
+    result = await db.users.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {
+            "connect_id": connect_id,
+            "connect_mapped_at": datetime.now(timezone.utc),
+            "connect_mapped_by": current_user["id"]
+        }}
+    )
+    
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    return {
+        "message": "Connect ID mapped successfully",
+        "user": serialize_doc(user)
+    }
+
+@router.get("/users/unmapped")
+async def get_unmapped_users(current_user: dict = Depends(require_admin)):
+    """Get all CRM users without a connect_id mapping"""
+    users = await db.users.find({
+        "$or": [
+            {"connect_id": {"$exists": False}},
+            {"connect_id": None},
+            {"connect_id": ""}
+        ]
+    }).to_list(1000)
+    return serialize_docs(users)
+
