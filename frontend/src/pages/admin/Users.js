@@ -19,6 +19,7 @@ const ROLE_CONFIG = {
   manager: { label: 'Manager', color: 'bg-indigo-100 text-indigo-700', icon: UserCog },
   ops: { label: 'Operations', color: 'bg-orange-100 text-orange-700', icon: Briefcase },
   growth_partner: { label: 'Growth Partner', color: 'bg-green-100 text-green-700', icon: User },
+  team_lead: { label: 'Team Lead', color: 'bg-purple-100 text-purple-700', icon: Users },
   // Legacy roles mapping
   telecaller: { label: 'Growth Partner', color: 'bg-green-100 text-green-700', icon: User },
   sales_agent: { label: 'Growth Partner', color: 'bg-emerald-100 text-emerald-700', icon: User },
@@ -27,8 +28,11 @@ const ROLE_CONFIG = {
   operations: { label: 'Operations', color: 'bg-orange-100 text-orange-700', icon: Briefcase },
 };
 
-// Valid base roles for dropdown
+// Valid base roles for dropdown (includes TL as filterable option)
 const BASE_ROLES = ['admin', 'hr', 'manager', 'ops', 'growth_partner'];
+
+// Filter roles (includes Team Lead as a separate filter option)
+const FILTER_ROLES = ['admin', 'hr', 'manager', 'ops', 'growth_partner', 'team_lead'];
 
 // GP roles for filtering
 const GP_ROLES = ['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'];
@@ -387,7 +391,11 @@ const AdminUsers = () => {
     // Role filter
     if (filterRole) {
       if (filterRole === 'growth_partner') {
-        if (!isGpRole(user.role)) return false;
+        // Show GPs who are NOT TLs
+        if (!isGpRole(user.role) || user.is_tl) return false;
+      } else if (filterRole === 'team_lead') {
+        // Show only users with is_tl=true
+        if (!user.is_tl) return false;
       } else if (user.role !== filterRole) {
         return false;
       }
@@ -559,7 +567,7 @@ const AdminUsers = () => {
                   className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="">All Roles</option>
-                  {BASE_ROLES.map(role => (
+                  {FILTER_ROLES.map(role => (
                     <option key={role} value={role}>{ROLE_CONFIG[role]?.label || role}</option>
                   ))}
                 </select>

@@ -2000,45 +2000,42 @@ const FilesDashboard = () => {
                 return (
                   <div
                     key={file.id}
-                    className="px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
+                    className="px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer border-b border-gray-100"
                     data-testid={`file-row-${file.id}`}
                     onClick={() => navigate(`${getBasePath()}/files/${file.id}`)}
                   >
-                    <div className="flex items-center gap-4">
-                      {/* Checkbox */}
+                    <div className="flex items-start gap-3 sm:gap-4">
+                      {/* Checkbox - hidden on small mobile */}
                       <input
                         type="checkbox"
                         checked={selectedFiles.includes(file.id)}
                         onChange={() => toggleFileSelection(file.id)}
                         onClick={(e) => e.stopPropagation()}
-                        className="rounded border-gray-300"
+                        className="rounded border-gray-300 mt-1 hidden sm:block"
                       />
                       
                       {/* Main Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h4 className="font-semibold text-gray-900">{file.name || 'Unnamed'}</h4>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-semibold text-gray-900 truncate">{file.name || 'Unnamed'}</h4>
                           {gpName && (
                             <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
                               {gpName.split(' ')[0]}
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-500 mt-0.5">
+                        <div className="flex items-center gap-2 text-sm text-gray-500 mt-0.5 flex-wrap">
                           <span>{formatPhone(file.phone)}</span>
-                          <span className="flex items-center gap-0.5">
-                            <Eye size={12} />
-                          </span>
-                          <span className="text-gray-300">|</span>
-                          <span>{file.requirement || file.file_details?.type_of_loan || '-'}</span>
+                          <span className="text-gray-300 hidden sm:inline">|</span>
+                          <span className="truncate max-w-[150px] sm:max-w-none">{file.requirement || file.file_details?.type_of_loan || '-'}</span>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-gray-400 mt-1">
+                        <div className="flex items-center gap-2 text-xs text-gray-400 mt-1 flex-wrap">
                           <span>{file.created_at ? new Date(file.created_at).toLocaleDateString() : '-'}</span>
-                          <span>•</span>
-                          <span className="text-green-600">{assignee?.full_name || assignee?.name || 'Unassigned'}</span>
+                          <span className="hidden sm:inline">•</span>
+                          <span className="text-green-600 truncate max-w-[100px] sm:max-w-none">{assignee?.full_name || assignee?.name || 'Unassigned'}</span>
                           {loanAmount && (
                             <>
-                              <span>•</span>
+                              <span className="hidden sm:inline">•</span>
                               <span className="text-green-600">{formatCurrency(loanAmount)}</span>
                             </>
                           )}
@@ -2055,13 +2052,13 @@ const FilesDashboard = () => {
                         </div>
                       </div>
                       
-                      {/* Status Badge */}
-                      <span className={`px-3 py-1 rounded border text-sm font-medium ${statusColor.bg} ${statusColor.text} ${statusColor.border}`}>
+                      {/* Status Badge - positioned to not overlap */}
+                      <span className={`px-3 py-1 rounded border text-sm font-medium whitespace-nowrap flex-shrink-0 ${statusColor.bg} ${statusColor.text} ${statusColor.border}`}>
                         {getStatusLabel(file.file_status)}
                       </span>
                       
                       {/* Actions */}
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 flex-shrink-0">
                         <button 
                           onClick={(e) => { e.stopPropagation(); navigate(`${getBasePath()}/files/${file.id}`); }}
                           className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
