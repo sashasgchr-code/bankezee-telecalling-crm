@@ -1,18 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
-import { Phone, Clock, TrendingUp, Target, Loader2, RefreshCw, PhoneOff, PhoneMissed, Calendar } from 'lucide-react';
+import { Phone, Clock, TrendingUp, Target, Loader2, RefreshCw, PhoneOff, PhoneMissed, Calendar, BarChart3 } from 'lucide-react';
 import api from '../../services/api';
 import AttendanceCard from '../../components/attendance/AttendanceCard';
 
 const TelecallerDashboard = () => {
   const [stats, setStats] = useState(null);
   const [activityStats, setActivityStats] = useState(null);
+  const [hourlyData, setHourlyData] = useState(null);
+  const [hourlyLoading, setHourlyLoading] = useState(true);
   const [period, setPeriod] = useState('today');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showDateRange, setShowDateRange] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [hourlyDate, setHourlyDate] = useState(new Date().toISOString().split('T')[0]);
 
   const fetchData = async (showRefresh = false) => {
     try {
@@ -41,11 +44,28 @@ const TelecallerDashboard = () => {
     }
   };
 
+  const fetchHourlyData = async () => {
+    setHourlyLoading(true);
+    try {
+      const res = await api.get(`/reports/my-hourly?date=${hourlyDate}`);
+      setHourlyData(res.data);
+    } catch (error) {
+      console.error('Error fetching hourly data:', error);
+    } finally {
+      setHourlyLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
+    fetchHourlyData();
     const interval = setInterval(() => fetchData(true), 30000);
     return () => clearInterval(interval);
   }, [period, showDateRange, fromDate, toDate]);
+
+  useEffect(() => {
+    fetchHourlyData();
+  }, [hourlyDate]);
 
   const handleRefresh = () => {
     fetchData(true);
@@ -286,6 +306,105 @@ const TelecallerDashboard = () => {
                 );
               })}
             </div>
+          </div>
+
+          {/* Hourly Report - Vertical Layout */}
+          <div className="card p-4 mt-4" data-testid="hourly-report-section">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <BarChart3 size={20} className="text-green-600" />
+                <h3 className="text-lg font-semibold text-gray-900">Today's Hourly Report</h3>
+              </div>
+              <input
+                type="date"
+                value={hourlyDate}
+                onChange={(e) => setHourlyDate(e.target.value)}
+                className="text-sm border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-green-500"
+              />
+            </div>
+            
+            <p className="text-xs text-gray-500 mb-3">C = Calls, Co = Connected, L = Leads, F = Files</p>
+            
+            {hourlyLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-6 h-6 text-green-600 animate-spin" />
+              </div>
+            ) : hourlyData ? (
+              <div className="space-y-2">
+                {/* Totals Row */}
+                <div className="bg-green-600 text-white rounded-lg p-3 mb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">TOTAL</span>
+                    <div className="flex gap-4">
+                      <div className="text-center">
+                        <div className="text-lg font-bold">{hourlyData.total_calls || 0}</div>
+                        <div className="text-xs opacity-80">C</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold">{hourlyData.total_connected || 0}</div>
+                        <div className="text-xs opacity-80">Co</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold">{hourlyData.total_leads || 0}</div>
+                        <div className="text-xs opacity-80">L</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-lg font-bold">{hourlyData.total_file || 0}</div>
+                        <div className="text-xs opacity-80">F</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Hourly Breakdown - Vertical */}
+                {hourlyData.hourly_breakdown && hourlyData.hourly_breakdown.length > 0 ? (
+                  <div className="space-y-2">
+                    {hourlyData.hourly_breakdown.map((h) => (
+                      <div key={h.hour} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex items-center gap-2">
+                          <div className="w-16 font-medium text-gray-700">{h.hour_label}</div>
+                        </div>
+                        <div className="flex gap-4">
+                          <div className="text-center min-w-[40px]">
+                            <div className={`text-base font-semibold ${h.calls > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                              {h.calls || '-'}
+                            </div>
+                            <div className="text-[10px] text-gray-400">C</div>
+                          </div>
+                          <div className="text-center min-w-[40px]">
+                            <div className={`text-base font-semibold ${h.connected > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                              {h.connected || '-'}
+                            </div>
+                            <div className="text-[10px] text-gray-400">Co</div>
+                          </div>
+                          <div className="text-center min-w-[40px]">
+                            <div className={`text-base font-semibold ${h.leads > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
+                              {h.leads || '-'}
+                            </div>
+                            <div className="text-[10px] text-gray-400">L</div>
+                          </div>
+                          <div className="text-center min-w-[40px]">
+                            <div className={`text-base font-semibold ${h.file > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                              {h.file || '-'}
+                            </div>
+                            <div className="text-[10px] text-gray-400">F</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-gray-400">
+                    <Clock size={32} className="mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No activity recorded yet today</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-6 text-gray-400">
+                <p className="text-sm">Unable to load hourly data</p>
+              </div>
+            )}
           </div>
         </>
       )}

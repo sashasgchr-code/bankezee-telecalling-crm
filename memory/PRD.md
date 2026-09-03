@@ -124,8 +124,9 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 
 ### Mobile Navigation (September 2026 Update)
 30. **5-Item Bottom Nav** - Dashboard, Data, Files, Follow-ups, More
-31. **More Bottom Sheet** - Reports, Users, Attendance, Leave, Logout
+31. **More Bottom Sheet** - Attendance, Leave, Profile (Reports removed for GPs - shown inline on Dashboard)
 32. **GP Attendance Page** - Monthly matrix with check-in/out
+33. **GP Dashboard Hourly Report** - Vertical hourly report shown directly on Dashboard (C, Co, L, F metrics per hour) with date picker
 
 ---
 

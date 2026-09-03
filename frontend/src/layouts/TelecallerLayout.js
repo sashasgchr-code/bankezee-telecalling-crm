@@ -211,9 +211,8 @@ const TelecallerLayout = () => {
     { path: '/agent/followups', icon: Calendar, label: 'Follow-ups' },
   ];
   
-  // More menu items - overflow
+  // More menu items - overflow (Reports removed - shown inline on Dashboard for GPs)
   const moreNavItems = [
-    { path: '/agent/reports', icon: BarChart3, label: 'Reports' },
     { path: '/agent/attendance', icon: Clock, label: 'Attendance' },
     { path: '/agent/leave', icon: CalendarDays, label: 'Leave' },
     { path: '/agent/profile', icon: User, label: 'Profile' },
