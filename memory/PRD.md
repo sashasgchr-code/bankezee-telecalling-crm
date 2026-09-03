@@ -521,5 +521,26 @@ Implemented comprehensive bank eligibility checking with full feature parity fro
 
 ---
 
+### TL Dropdown State Reset Bug Fix (September 3, 2026)
+
+**Issue**: In Admin User Management (/admin/users), when editing a user's role and hierarchy, selecting a Manager (e.g., Saikiran) would immediately reset the dropdown back to "Unassigned", preventing Team Lead assignment.
+
+**Root Cause**: The `useEffect` hook in `Users.js` that fetched Team Leads based on `roleEditData.manager_id` was triggering on initial page load (not just when modal was open), causing a race condition that overwrote the manager-filtered TLs with all TLs.
+
+**Fix Applied** (`/app/frontend/src/pages/admin/Users.js`):
+1. Added `showEditRoleModal` as a dependency to the useEffect, gating the fetch behind modal-open state
+2. Restructured TL dropdown to have an explicit default option "No Team Lead (Direct to Manager)"
+3. Filter out null IDs from TL options to prevent key conflicts
+4. Added helpful message when no TLs are available under selected manager
+
+**Verification**: 
+- Admin can now select Manager "Saikiran" and the dropdown stays selected
+- TL dropdown correctly populates with "Yarragonda Anusha (yarragondaanusha)"
+- TL can be selected and saved successfully
+
+**Test Results**: Frontend 100% - All 3 scenarios passed
+
+---
+
 *Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*

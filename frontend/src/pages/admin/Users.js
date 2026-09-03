@@ -123,13 +123,17 @@ const AdminUsers = () => {
   }, []);
 
   // When manager changes in edit modal, fetch relevant TLs
+  // Only trigger when modal is open to avoid overwriting during initial load
   useEffect(() => {
-    if (roleEditData.manager_id) {
-      fetchTeamLeads(roleEditData.manager_id);
-    } else {
-      fetchTeamLeads();
+    if (showEditRoleModal) {
+      if (roleEditData.manager_id) {
+        fetchTeamLeads(roleEditData.manager_id);
+      } else {
+        // No manager selected, show all TLs 
+        fetchTeamLeads();
+      }
     }
-  }, [roleEditData.manager_id]);
+  }, [roleEditData.manager_id, showEditRoleModal]);
 
   const handleAddUser = async () => {
     if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
@@ -1069,12 +1073,16 @@ const AdminUsers = () => {
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                   disabled={!roleEditData.manager_id}
                 >
-                  {teamLeads.map(tl => (
-                    <option key={tl.id || 'no-tl'} value={tl.id || ''}>{tl.name}</option>
+                  <option value="">No Team Lead (Direct to Manager)</option>
+                  {teamLeads.filter(tl => tl.id).map(tl => (
+                    <option key={tl.id} value={tl.id}>{tl.name} ({tl.email?.split('@')[0] || ''})</option>
                   ))}
                 </select>
                 {!roleEditData.manager_id && (
                   <p className="text-xs text-amber-600 mt-1">Select a manager first to see available Team Leads</p>
+                )}
+                {roleEditData.manager_id && teamLeads.filter(tl => tl.id).length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">No Team Leads available under this manager</p>
                 )}
               </div>
             )}

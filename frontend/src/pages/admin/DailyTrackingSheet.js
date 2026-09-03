@@ -473,7 +473,7 @@ const DailyTrackingSheet = () => {
             </label>
             <select value={selectedUser} onChange={(e) => setSelectedUser(e.target.value)} className="input-field w-full">
               <option value="">All Agents</option>
-              {telecallers.map(tc => <option key={tc.id} value={tc.id}>{tc.name}</option>)}
+              {telecallers.map(tc => <option key={tc.id} value={tc.id}>{tc.full_name || tc.name} ({tc.email?.split('@')[0]})</option>)}
             </select>
           </div>
 
