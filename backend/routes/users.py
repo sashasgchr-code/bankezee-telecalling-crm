@@ -887,6 +887,173 @@ async def toggle_user_active(user_id: str, current_user: dict = Depends(require_
     return {"message": f"User {user.get('name', 'Unknown')} {status_text}", "is_active": new_status}
 
 
+# ===================== LEGACY CRM USER MAPPING =====================
+
+@router.get("/users/legacy-mappings")
+async def get_legacy_mappings(current_user: dict = Depends(require_admin)):
+    """
+    Get all legacy CRM users that need mapping to Connect users.
+    Shows unmapped legacy users with their file counts.
+    """
+    # Get all mappings
+    mappings = await db.user_mappings.find({}).to_list(500)
+    
+    result = []
+    for mapping in mappings:
+        legacy_id = mapping.get('legacy_user_id')
+        
+        # Try to get legacy user details from users collection
+        legacy_user = await db.users.find_one({"id": legacy_id})
+        
+        # Count files associated with this legacy user
+        file_count = await db.leads.count_documents({
+            "$or": [
+                {"source_id": legacy_id},
+                {"assigned_to": legacy_id}
+            ]
+        })
+        
+        result.append({
+            "legacy_user_id": legacy_id,
+            "legacy_name": legacy_user.get("name") if legacy_user else mapping.get("legacy_name"),
+            "legacy_email": legacy_user.get("email") if legacy_user else None,
+            "legacy_role": legacy_user.get("role") if legacy_user else mapping.get("legacy_role"),
+            "connect_user_id": mapping.get("connect_user_id"),
+            "connect_name": mapping.get("connect_name"),
+            "status": mapping.get("status", "unmapped"),
+            "files_count": file_count,
+            "is_mapped": mapping.get("connect_user_id") is not None
+        })
+    
+    # Sort: unmapped first, then by file count
+    result.sort(key=lambda x: (x["is_mapped"], -x["files_count"]))
+    
+    return result
+
+
+@router.get("/users/connect-users-for-mapping")
+async def get_connect_users_for_mapping(current_user: dict = Depends(require_admin)):
+    """
+    Get Connect users that can be mapped to legacy users.
+    Returns active users with GP/Manager roles.
+    """
+    users = await db.users.find(
+        {"is_active": True},
+        {"_id": 0, "id": 1, "name": 1, "email": 1, "role": 1}
+    ).sort("name", 1).to_list(500)
+    
+    return users
+
+
+@router.post("/users/map-legacy-to-connect")
+async def map_legacy_to_connect(
+    data: dict,
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Map a legacy CRM user to a Connect user.
+    - Updates all files referencing the legacy user to point to the Connect user
+    - Updates the mapping record
+    - Optionally deletes the legacy user from the users collection
+    """
+    legacy_user_id = data.get("legacy_user_id")
+    connect_user_id = data.get("connect_user_id")
+    delete_legacy = data.get("delete_legacy", True)
+    
+    if not legacy_user_id or not connect_user_id:
+        raise HTTPException(status_code=400, detail="Both legacy_user_id and connect_user_id are required")
+    
+    # Validate Connect user exists
+    connect_user = await db.users.find_one({"id": connect_user_id})
+    if not connect_user:
+        raise HTTPException(status_code=404, detail="Connect user not found")
+    
+    # Find legacy user
+    legacy_user = await db.users.find_one({"id": legacy_user_id})
+    
+    # Update all files: replace legacy_user_id with connect_user_id
+    files_updated = 0
+    
+    # Update source_id references
+    result1 = await db.leads.update_many(
+        {"source_id": legacy_user_id},
+        {"$set": {"source_id": connect_user_id}}
+    )
+    files_updated += result1.modified_count
+    
+    # Update assigned_to references
+    result2 = await db.leads.update_many(
+        {"assigned_to": legacy_user_id},
+        {"$set": {"assigned_to": connect_user_id}}
+    )
+    files_updated += result2.modified_count
+    
+    # Update the mapping record
+    await db.user_mappings.update_one(
+        {"legacy_user_id": legacy_user_id},
+        {
+            "$set": {
+                "connect_user_id": connect_user_id,
+                "connect_name": connect_user.get("name"),
+                "connect_role": connect_user.get("role"),
+                "status": "mapped",
+                "mapped_at": datetime.now(timezone.utc).isoformat(),
+                "mapped_by": current_user.get("id")
+            }
+        },
+        upsert=True
+    )
+    
+    # Delete legacy user from users collection if requested and exists
+    legacy_deleted = False
+    if delete_legacy and legacy_user:
+        await db.users.delete_one({"id": legacy_user_id})
+        legacy_deleted = True
+    
+    return {
+        "message": f"Successfully mapped legacy user to {connect_user.get('name')}",
+        "files_updated": files_updated,
+        "legacy_user_deleted": legacy_deleted,
+        "connect_user": {
+            "id": connect_user_id,
+            "name": connect_user.get("name"),
+            "email": connect_user.get("email")
+        }
+    }
+
+
+@router.delete("/users/legacy-mapping/{legacy_user_id}")
+async def delete_legacy_mapping(
+    legacy_user_id: str,
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Delete a legacy user and their mapping without reassigning files.
+    Use this for orphaned legacy users with no files.
+    """
+    # Check file count
+    file_count = await db.leads.count_documents({
+        "$or": [
+            {"source_id": legacy_user_id},
+            {"assigned_to": legacy_user_id}
+        ]
+    })
+    
+    if file_count > 0:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot delete legacy user with {file_count} associated files. Map to a Connect user first."
+        )
+    
+    # Delete mapping
+    await db.user_mappings.delete_one({"legacy_user_id": legacy_user_id})
+    
+    # Delete legacy user if exists
+    await db.users.delete_one({"id": legacy_user_id})
+    
+    return {"message": "Legacy user and mapping deleted"}
+
+
 # ===================== BULK OPERATIONS =====================
 
 @router.post("/users/bulk-delete")

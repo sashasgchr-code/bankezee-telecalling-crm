@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Eye, Loader2, Search, UserPlus, 
   ChevronLeft, ChevronRight, X, Key, Copy, Check,
   CheckCircle, XCircle, Clock, Edit2, User,
   Phone, CreditCard, Building2, EyeOff, Users, Mail,
   Shield, UserCog, Briefcase, ToggleLeft, ToggleRight,
-  Filter, Download, RefreshCw, Trash2, Power
+  Filter, Download, RefreshCw, Trash2, Power, Link2
 } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
@@ -33,6 +34,7 @@ const BASE_ROLES = ['admin', 'hr', 'manager', 'ops', 'growth_partner'];
 const GP_ROLES = ['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'];
 
 const AdminUsers = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [managers, setManagers] = useState([]);
@@ -484,6 +486,13 @@ const AdminUsers = () => {
                   <CheckCircle size={18} /> Approve Selected ({selectedUsers.length})
                 </button>
               )}
+              <button
+                onClick={() => navigate('/admin/users/legacy-mapping')}
+                className="px-4 py-2 border border-amber-500 text-amber-600 rounded-lg font-medium hover:bg-amber-50 flex items-center gap-2"
+                data-testid="legacy-mapping-btn"
+              >
+                <Link2 size={18} /> Legacy CRM Mapping
+              </button>
               <button
                 onClick={() => setShowAddModal(true)}
                 className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
