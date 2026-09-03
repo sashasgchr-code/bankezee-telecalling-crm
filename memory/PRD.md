@@ -544,3 +544,88 @@ Implemented comprehensive bank eligibility checking with full feature parity fro
 
 *Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*
+
+---
+
+## PRODUCTION 500 ON ADMIN FILES LIST — ROOT CAUSE & FIX (September 3, 2026) — DEPLOYED & VERIFIED
+
+### Reported symptom
+Published app (connect.bankezee.com): Admin Files dashboard loaded statistics but the list showed
+"Files (0) / No files found". Preview showed 514 files. User (correctly) demanded a full
+preview-vs-production trace instead of further frontend edits.
+
+### Environment finding (not a bug)
+Emergent preview pods and deployed pods have SEPARATE MongoDB instances.
+- Preview: mongodb://localhost:27017, DB_NAME=test_database -> 128 users (31 active), 514 status:"file"
+- Published: its own deployed Mongo -> 201 user docs (84 active), 530 status:"file"
+Never assume production data is missing because preview counts differ.
+
+### Root cause 1 - response serialization (the 500)
+Legacy CRM imports contain NaN/Infinity floats (Excel/pandas) and nested BSON ObjectId inside
+file_details / eligibilities / file_activities. Starlette's JSONResponse uses
+json.dumps(..., allow_nan=False) and FastAPI's jsonable_encoder cannot encode ObjectId, so
+returning the raw document raised ValueError -> 500. Exactly 2 of 530 documents poisoned page 1.
+Stats/report endpoints survived because they use count_documents/aggregate.
+Reproduced deterministically: limit=1 -> 200, page=20&limit=1 -> 500, file_status=disbursed -> 500.
+
+### Root cause 2 - legacy records have no `id` field (silent 404s)
+Production CRM documents have no `id`; the list endpoint exposes str(_id). All 33 per-file
+queries used {"id": file_id}, so File Detail, eligibilities, activities, status change, notes,
+documents and uploads returned 404 for EVERY old CRM record in production.
+
+### Fixes shipped
+- NEW `/app/backend/utils/json_safe.py` - `json_safe()` recursive sanitiser
+  (NaN/Inf -> None, ObjectId -> str, Decimal128 -> float, bytes/datetime normalised).
+  Applied to files list, detail, eligibilities, activities, reports/rejected, export.
+- NEW `lead_filter(file_id, **extra)` in `routes/files_crm.py` - matches {"id": id} OR
+  {"_id": ObjectId(id)}; applied to all 33 per-file sites. get_file_details now always returns `id`.
+- `FileDetailsPage.js`: 3 calls pointed at non-existent routes (PUT /files/{id} -> 405,
+  PUT /files/{id}/status -> 404, POST /files/{id}/note -> 404). Repointed to
+  /details, /file-status, /notes. Activity log now renders newest-first.
+- `routes/users.py`: `files_count` now counts status:"file" only; new `leads_count` = all records.
+
+### Production acceptance (post-deploy, 30/30 PASS)
+Admin list 200 total=530 rows=50, page2 200, stats 530, file detail by legacy _id 6a827c...1785 200,
+eligibilities/activities 200, note+status+details writes 200 and persisted, users 201/84 active,
+Nithin files 15 reconciled 3 ways (files_count=15, leads_count=7656, /api/files?gp_id=15),
+GP 15, TL Anusha 17, all 10 report endpoints 200. UI verified: "Files (530), Page 1 of 11".
+Harness: `/app/scripts/acceptance_matrix.py`, `/app/scripts/files_rbac_matrix.py`.
+
+---
+
+## OPEN ISSUES MEASURED IN PRODUCTION (authorised, NOT yet implemented)
+
+### A+B  Manager/TL scoping (authorised by user, pending implementation)
+Teja audit: he exists as TWO user docs with DIFFERENT ids -
+  e37774a4-8b44-4f6f-a282-faeaa5ab6800 (the id Pinky's manager_id points to)
+  698c346470f2678cbac393c5 (the id his LOGIN session receives)  -> team lookup returns 0.
+Hierarchy totals: direct GPs 0, direct TLs 1 (Pinky, 32 files), GPs under TLs 0,
+sub-managers 0, total tree = 2 users / 32 files, current API result 0.
+Production linkage: tl_id set on 0 of 201 docs, manager_id on 7 of 201; 201 docs / 129 unique
+emails = 72 duplicates; is_active is true 84 / false 79 / MISSING 38.
+- A: resolve logged-in user to the SET of docs sharing email/connect_id/legacy_user_id and use
+  that id-set for traversal + ownership matching.
+- B: full recursive downward hierarchy for managers (GPs + TLs + GPs under TLs + sub-manager subtrees).
+- C: data repair of manager_id/tl_id + dedupe of 72 duplicate docs - DRY-RUN REPORT FIRST, user approval required.
+
+### Fail-closed admin filters (authorised, not implemented)
+`/api/files/?manager_id=<teja>` and `?tl_id=<pinky>` return 530 = ALL files, because an empty
+team list causes the filter to be skipped. Must return 0 rows instead.
+
+### Connect/CRM badge (authorised, not implemented)
+`users.py` checks `password_hash` but `auth.py` verifies `user["password"]`. Production accounts
+store `password`, so can_login=false for all 84 active users and every row shows the CRM badge.
+Accept either field for classification only; do not touch auth data.
+
+### Meghana Daily Tracking Sheet (traced, fix NOT implemented)
+`routes/reports.py:1137` hardcodes {"role": "telecaller", "is_active": True} while the dropdown is
+fed by /api/users/growth-partners (all GP_ROLES). Evidence across all 66 dropdown GPs:
+  61 users role=telecaller -> report works; the ONLY 3 empty ones are role=growth_partner
+  (Meghana 6a4de559..., Pinky 6a869948..., Anusha 69b24904...); 2 UUID-id users (Sasha,
+  Test Agent) return HTTP 500 from ObjectId(user_id) InvalidId.
+Meghana's call_logs exist (78 rows in a 1000-row sample) under user_id=6a4de55969071f897aef1baa.
+Same hardcode at reports.py:472 (/reports/telecallers) and :1013 (verified-call-stats);
+reports.py:742/760/770 already use the 4-role list. `.to_list(100)` also truncates 106 telecaller docs.
+Minimal fix: use GP_ROLES, match `id` OR `_id` with ObjectId.is_valid guard, raise the list cap.
+
+*Last Updated: September 3, 2026 (post-deploy acceptance passed)*

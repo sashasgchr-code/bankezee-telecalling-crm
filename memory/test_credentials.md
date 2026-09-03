@@ -8,8 +8,8 @@
 ## Operations Accounts
 | Email | Password | Role | Notes |
 |-------|----------|------|-------|
-| rama@bankezee.com | rama123 | ops | Operations team |
-| ops@bankezee.com | ops123 | ops | Operations backup |
+| rama@bankezee.com | rama@bzc12 | ops | Operations team |
+| ops@bankezee.com | ops@bzc12 | ops | Operations backup |
 
 ## Manager Account
 | Email | Password | Role | Notes |
