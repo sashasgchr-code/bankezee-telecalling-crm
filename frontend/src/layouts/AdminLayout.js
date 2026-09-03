@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, X } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, X, UserCheck } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
@@ -26,8 +26,9 @@ const AdminLayout = () => {
 
   // More menu items - overflow items
   const moreNavItems = [
-    { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/admin/approvals', icon: UserCheck, label: 'Approvals' },
     { path: '/admin/users', icon: Users, label: 'Users' },
+    { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
     { path: '/admin/attendance', icon: Clock, label: 'Attendance' },
     { path: '/admin/leave', icon: Calendar, label: 'Leave' },
   ];

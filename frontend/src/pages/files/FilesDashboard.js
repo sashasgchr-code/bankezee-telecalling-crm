@@ -133,16 +133,7 @@ const FilesDashboard = () => {
   const [managers, setManagers] = useState([]); // Only actual managers
   const [growthPartners, setGrowthPartners] = useState([]); // GPs for filter
   const [teamLeads, setTeamLeads] = useState([]); // TLs for filter
-  const [allUsers, setAllUsers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [pendingUsers, setPendingUsers] = useState([]);
-  
-  // Connect ID Mapping Modal State
-  const [showMapModal, setShowMapModal] = useState(false);
-  const [mappingUser, setMappingUser] = useState(null);
-  const [connectIdInput, setConnectIdInput] = useState('');
-  const [isMapping, setIsMapping] = useState(false);
   
   // Delete confirmation state
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -290,8 +281,6 @@ const FilesDashboard = () => {
         fetchBankPerformance(),
         fetchTatMetrics(),
         fetchGrowthPartner(),
-        fetchAllUsers(),
-        fetchPendingUsers(),
         fetchManagers(),
         fetchGrowthPartners(),
         fetchTeamLeads()
@@ -572,73 +561,6 @@ const FilesDashboard = () => {
       toast.success('Commission export started');
     } catch (error) {
       toast.error('Export failed');
-    }
-  };
-  
-  const fetchAllUsers = async () => {
-    try {
-      const response = await api.get('/users');
-      setAllUsers(response.data || []);
-    } catch (error) {
-      console.error('Failed to fetch users:', error);
-    }
-  };
-  
-  const fetchPendingUsers = async () => {
-    try {
-      const response = await api.get('/users/pending-approval');
-      setPendingUsers(response.data || []);
-    } catch (error) {
-      console.error('Failed to fetch pending users:', error);
-    }
-  };
-
-  const handleApproveUser = async (userId) => {
-    try {
-      await api.post(`/users/${userId}/approve`);
-      toast.success('User approved successfully');
-      fetchPendingUsers();
-      fetchAllUsers();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to approve user');
-    }
-  };
-
-  const handleRejectUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to reject this user?')) return;
-    try {
-      await api.post(`/users/${userId}/reject`);
-      toast.success('User rejected');
-      fetchPendingUsers();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to reject user');
-    }
-  };
-
-  const openMapModal = (userToMap) => {
-    setMappingUser(userToMap);
-    setConnectIdInput('');
-    setShowMapModal(true);
-  };
-
-  const handleMapConnectId = async () => {
-    if (!connectIdInput.trim()) {
-      toast.error('Please enter a Connect ID');
-      return;
-    }
-    
-    setIsMapping(true);
-    try {
-      await api.put(`/users/${mappingUser.id}/map-connect?connect_id=${connectIdInput.trim()}`);
-      toast.success(`${mappingUser.name} mapped to Connect ID successfully`);
-      setShowMapModal(false);
-      setMappingUser(null);
-      setConnectIdInput('');
-      fetchAllUsers();
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to map Connect ID');
-    } finally {
-      setIsMapping(false);
     }
   };
 
@@ -961,33 +883,13 @@ const FilesDashboard = () => {
         </div>
       </div>
 
-      {/* Tabs - Approvals only visible for Admin */}
-      <div className="bg-white border-b border-gray-200 px-4">
-        <div className="flex gap-1">
-          {['Dashboard', ...(isAdmin ? ['Approvals', 'Users'] : [])].map(tab => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab.toLowerCase())}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === tab.toLowerCase()
-                  ? 'border-green-600 text-green-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              {tab === 'Dashboard' && <BarChart3 size={16} className="inline mr-1.5" />}
-              {tab === 'Approvals' && <Clock size={16} className="inline mr-1.5" />}
-              {tab === 'Users' && <FileText size={16} className="inline mr-1.5" />}
-              {tab}
-            </button>
-          ))}
-        </div>
-      </div>
+      {/* Tabs - Removed, now only Dashboard view */}
+      {/* Approvals and Users moved to separate admin pages under More menu */}
 
       <div className="p-4 space-y-4">
-        {/* Dashboard Tab Content */}
-        {activeTab === 'dashboard' && (
-          <>
-            {/* Filters Row */}
+        {/* Dashboard Content */}
+        <>
+          {/* Filters Row */}
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               {/* Row 1: Search + Date Filters */}
               <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -2192,217 +2094,7 @@ const FilesDashboard = () => {
           )}
         </div>
         </>
-        )}
-        
-        {/* Approvals Tab Content - User Signup Approvals */}
-        {activeTab === 'approvals' && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 bg-orange-50">
-              <h3 className="font-semibold text-gray-900">Pending User Approvals</h3>
-              <p className="text-sm text-gray-500">New user signups waiting for admin approval</p>
-            </div>
-            {pendingUsers.length === 0 ? (
-              <div className="text-center py-16 text-gray-500">
-                <CheckCircle size={48} className="mx-auto mb-4 text-gray-300" />
-                <p>No pending user approvals</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {pendingUsers.map((pendingUser) => (
-                  <div
-                    key={pendingUser.id}
-                    className="px-4 py-3 hover:bg-gray-50"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-semibold text-gray-900">{pendingUser.name}</h4>
-                        <p className="text-sm text-gray-500">{pendingUser.email}</p>
-                        <p className="text-xs text-gray-400">
-                          Registered: {pendingUser.created_at ? new Date(pendingUser.created_at).toLocaleDateString() : '-'}
-                        </p>
-                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium ${
-                          pendingUser.role === 'telecaller' ? 'bg-blue-100 text-blue-700' :
-                          pendingUser.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {pendingUser.role}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleApproveUser(pendingUser.id)}
-                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => handleRejectUser(pendingUser.id)}
-                          className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-sm hover:bg-red-100"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        
-        {/* Users Tab Content */}
-        {activeTab === 'users' && (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-200 bg-blue-50 flex items-center justify-between">
-              <div>
-                <h3 className="font-semibold text-gray-900">All Users ({allUsers.length})</h3>
-                <p className="text-sm text-gray-500">CRM users - map to Connect ID for unified login</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-orange-600 bg-orange-50 px-2 py-1 rounded">
-                  {allUsers.filter(u => !u.connect_id).length} unmapped
-                </span>
-                <button 
-                  onClick={() => navigate('/admin/users')}
-                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
-                >
-                  Manage Users
-                </button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Name</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Email</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Role</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-700">Connect ID</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-700">Status</th>
-                    <th className="px-4 py-3 text-center font-medium text-gray-700">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {allUsers.map((mapUser) => (
-                    <tr key={mapUser.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-medium text-gray-900">{mapUser.full_name || mapUser.name || '-'}</td>
-                      <td className="px-4 py-3 text-gray-600">{mapUser.email || '-'}</td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          mapUser.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                          mapUser.role === 'caller' || mapUser.role === 'telecaller' ? 'bg-blue-100 text-blue-700' :
-                          mapUser.role === 'agent' ? 'bg-green-100 text-green-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {mapUser.role || 'user'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        {mapUser.connect_id ? (
-                          <span className="px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
-                            ✓ Mapped
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => openMapModal(mapUser)}
-                            className="px-2 py-1 rounded text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 cursor-pointer transition-colors"
-                          >
-                            Not Mapped ➔
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${
-                          mapUser.is_active !== false ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}>
-                          {mapUser.is_active !== false ? 'active' : 'inactive'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button 
-                          onClick={() => navigate(`/admin/users/${mapUser.id}`)}
-                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
-                          title="View/Edit User"
-                        >
-                          <Eye size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
-
-      {/* Connect ID Mapping Modal */}
-      {showMapModal && mappingUser && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Map Connect ID</h3>
-                <button 
-                  onClick={() => setShowMapModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <XCircle size={24} />
-                </button>
-              </div>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-blue-800">
-                  <span className="font-medium">User:</span> {mappingUser.name}
-                </p>
-                <p className="text-sm text-blue-700">{mappingUser.email}</p>
-                <p className="text-xs text-blue-600 mt-1">Role: {mappingUser.role}</p>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Connect ID (UUID)
-                </label>
-                <input
-                  type="text"
-                  value={connectIdInput}
-                  onChange={(e) => setConnectIdInput(e.target.value)}
-                  placeholder="e.g., 698c182cb2efa8083454f81f"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                  autoFocus
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Enter the Connect app user ID to link accounts
-                </p>
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowMapModal(false)}
-                  className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleMapConnectId}
-                  disabled={isMapping || !connectIdInput.trim()}
-                  className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isMapping ? (
-                    <>
-                      <Loader2 size={18} className="animate-spin" />
-                      Mapping...
-                    </>
-                  ) : (
-                    'Map Connect ID'
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
       
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>

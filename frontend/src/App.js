@@ -6,6 +6,7 @@ import Register from "./pages/Register";
 import AdminDashboard from "./pages/admin/Dashboard";
 import AdminLeads from "./pages/admin/Leads";
 import AdminUsers from "./pages/admin/Users";
+import AdminApprovals from "./pages/admin/Approvals";
 import AdminReports from "./pages/admin/Reports";
 import AdminSettings from "./pages/admin/Settings";
 import AdminAttendance from "./pages/admin/Attendance";
@@ -131,6 +132,7 @@ function App() {
           <Route path="files/reports/growth-partner" element={<GrowthPartnerReport />} />
           <Route path="files/reports/quality" element={<QualityReport />} />
           <Route path="files/reports/sales-ops" element={<SalesOpsReport />} />
+          <Route path="approvals" element={<AdminApprovals />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="users/legacy-mapping" element={<LegacyUserMapping />} />
           <Route path="reports" element={<AdminReports />} />

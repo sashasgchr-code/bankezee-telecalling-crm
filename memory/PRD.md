@@ -313,5 +313,36 @@ Rebuilt `FileDetailsPage.js` with exact OLD CRM layout and strict RBAC:
 
 ---
 
+### Navigation Reorganization ✅ (September 3, 2026)
+Moved "Approvals" and "Users" tabs from Files Dashboard to Admin menu for cleaner separation:
+
+**Changes:**
+1. **Files Dashboard** - Now shows only file metrics/dashboard (no tabs)
+   - Removed: Approvals tab, Users tab
+   - Keeps: All file statistics, filters, GP/Manager dropdowns, file list
+
+2. **New "Approvals" Page** (`/admin/approvals`)
+   - Dedicated page for user signup approvals
+   - Accessible via More menu in navigation
+   - Features: Search, Select All, Bulk Approve, Individual Approve/Reject
+   - Shows pending count badge
+
+3. **Users Page** (`/admin/users`)
+   - Unchanged functionality
+   - Now primary location for all user management
+   - Includes: User list, bulk tools, Legacy CRM Mapping button
+   - Has internal tabs: Dashboard, Approvals (quick access), Users
+
+**Navigation Menu Update:**
+- More menu now shows: Approvals, Users, Reports, Attendance, Leave, Logout
+- "Approvals" added as first item for quick access
+
+**Rationale:**
+- Files Dashboard focuses purely on loan file operations
+- User management (approvals, settings) separated into dedicated admin area
+- Cleaner mental model: Files = CRM work, Admin = people management
+
+---
+
 *Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*
