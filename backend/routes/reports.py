@@ -9,7 +9,7 @@ from bson import ObjectId
 import asyncio
 
 from utils.database import db
-from utils.auth import get_current_user, require_admin
+from utils.auth import get_current_user, require_admin, require_crm_access
 from utils.helpers import serialize_doc, serialize_docs, format_duration, convert_to_ist, IST_OFFSET
 
 router = APIRouter(prefix="/api", tags=["Reports"])
@@ -703,9 +703,15 @@ async def get_telecaller_reports(
 @router.get("/reports/hourly")
 async def get_hourly_report(
     date: str = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_crm_access)
 ):
-    """Optimized hourly report using aggregation"""
+    """
+    Hourly report with role-based filtering:
+    - Admin/Ops: See all telecallers
+    - Manager: See telecallers under their management
+    - TL: See their team members
+    - GP: See only their own data
+    """
     now = datetime.now(timezone.utc)
     
     if date:
@@ -716,8 +722,48 @@ async def get_hourly_report(
     start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = start_of_day + timedelta(days=1)
     
-    # Get telecallers
-    telecallers = await db.users.find({"role": "telecaller"}).to_list(100)
+    user_role = current_user.get("role", "").lower()
+    user_id = str(current_user.get("_id", current_user.get("id", "")))
+    is_tl = current_user.get("is_tl", False)
+    
+    # Determine which telecallers to show based on role
+    if user_role in ["admin", "ops"]:
+        # Admin/Ops see all growth partners/telecallers
+        telecallers = await db.users.find({
+            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]},
+            "is_active": {"$ne": False}
+        }).to_list(500)
+    elif user_role == "manager":
+        # Manager sees GPs assigned to them (directly or via TLs)
+        # First, get TLs under this manager
+        tls_under_manager = await db.users.find({
+            "manager_id": user_id,
+            "is_tl": True
+        }).to_list(100)
+        tl_ids = [str(tl["_id"]) for tl in tls_under_manager]
+        
+        # Get GPs directly under manager OR under their TLs
+        telecallers = await db.users.find({
+            "$or": [
+                {"manager_id": user_id},  # Direct reports
+                {"tl_id": {"$in": tl_ids}}  # Reports via TLs
+            ],
+            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]},
+            "is_active": {"$ne": False}
+        }).to_list(500)
+    elif is_tl:
+        # TL sees their team members
+        telecallers = await db.users.find({
+            "tl_id": user_id,
+            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]},
+            "is_active": {"$ne": False}
+        }).to_list(100)
+    else:
+        # GP sees only themselves
+        telecallers = await db.users.find({
+            "_id": ObjectId(user_id)
+        }).to_list(1)
+    
     telecaller_ids = [str(tc["_id"]) for tc in telecallers]
     telecaller_map = {str(tc["_id"]): tc for tc in telecallers}
     

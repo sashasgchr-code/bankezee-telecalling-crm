@@ -1264,7 +1264,7 @@ const AdminReports = () => {
                   <div className="card overflow-hidden">
                     <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3">
                       <h3 className="text-lg font-semibold text-white">Caller-wise Hourly Report</h3>
-                      <p className="text-green-100 text-xs mt-1">C = Calls, L = Leads, F = File</p>
+                      <p className="text-green-100 text-xs mt-1">C = Calls, Co = Connected, L = Leads, F = File</p>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm border-collapse">
@@ -1277,13 +1277,13 @@ const AdminReports = () => {
                             {sortedHours.map(hour => (
                               <th 
                                 key={hour} 
-                                colSpan={3} 
+                                colSpan={4} 
                                 className="text-center py-2 px-1 font-bold text-gray-800 border-b border-l border-gray-300 bg-gray-50"
                               >
                                 {`${hour.toString().padStart(2, '0')}:00`}
                               </th>
                             ))}
-                            <th colSpan={3} className="text-center py-2 px-1 font-bold text-white bg-gray-700 border-l border-gray-300">
+                            <th colSpan={4} className="text-center py-2 px-1 font-bold text-white bg-gray-700 border-l border-gray-300">
                               TOTAL
                             </th>
                           </tr>
@@ -1291,14 +1291,16 @@ const AdminReports = () => {
                           <tr className="bg-gray-50">
                             {sortedHours.map(hour => (
                               <React.Fragment key={`sub-${hour}`}>
-                                <th className="py-2 px-1 text-xs font-semibold text-blue-600 border-l border-gray-200 w-10">C</th>
-                                <th className="py-2 px-1 text-xs font-semibold text-teal-600 w-10">L</th>
-                                <th className="py-2 px-1 text-xs font-semibold text-orange-600 w-10">F</th>
+                                <th className="py-2 px-1 text-xs font-semibold text-blue-600 border-l border-gray-200 w-8">C</th>
+                                <th className="py-2 px-1 text-xs font-semibold text-purple-600 w-8">Co</th>
+                                <th className="py-2 px-1 text-xs font-semibold text-teal-600 w-8">L</th>
+                                <th className="py-2 px-1 text-xs font-semibold text-orange-600 w-8">F</th>
                               </React.Fragment>
                             ))}
-                            <th className="py-2 px-1 text-xs font-semibold text-blue-200 bg-gray-700 border-l border-gray-500 w-10">C</th>
-                            <th className="py-2 px-1 text-xs font-semibold text-teal-200 bg-gray-700 w-10">L</th>
-                            <th className="py-2 px-1 text-xs font-semibold text-orange-200 bg-gray-700 w-10">F</th>
+                            <th className="py-2 px-1 text-xs font-semibold text-blue-200 bg-gray-700 border-l border-gray-500 w-8">C</th>
+                            <th className="py-2 px-1 text-xs font-semibold text-purple-200 bg-gray-700 w-8">Co</th>
+                            <th className="py-2 px-1 text-xs font-semibold text-teal-200 bg-gray-700 w-8">L</th>
+                            <th className="py-2 px-1 text-xs font-semibold text-orange-200 bg-gray-700 w-8">F</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1314,6 +1316,11 @@ const AdminReports = () => {
                                     <td className="py-2 px-1 text-center border-l border-gray-100">
                                       {data.calls > 0 ? (
                                         <span className="inline-block w-7 h-7 leading-7 rounded bg-blue-100 text-blue-700 font-bold text-xs">{data.calls}</span>
+                                      ) : <span className="text-gray-300">-</span>}
+                                    </td>
+                                    <td className="py-2 px-1 text-center">
+                                      {data.connected > 0 ? (
+                                        <span className="inline-block w-7 h-7 leading-7 rounded bg-purple-100 text-purple-700 font-bold text-xs">{data.connected}</span>
                                       ) : <span className="text-gray-300">-</span>}
                                     </td>
                                     <td className="py-2 px-1 text-center">
@@ -1334,6 +1341,9 @@ const AdminReports = () => {
                                 <span className="inline-block w-8 h-7 leading-7 rounded bg-blue-600 text-white font-bold text-xs">{tc.total_calls}</span>
                               </td>
                               <td className="py-2 px-1 text-center bg-gray-100">
+                                <span className="inline-block w-8 h-7 leading-7 rounded bg-purple-600 text-white font-bold text-xs">{tc.total_connected || 0}</span>
+                              </td>
+                              <td className="py-2 px-1 text-center bg-gray-100">
                                 <span className="inline-block w-8 h-7 leading-7 rounded bg-teal-600 text-white font-bold text-xs">{tc.total_leads || 0}</span>
                               </td>
                               <td className="py-2 px-1 text-center bg-gray-100">
@@ -1349,13 +1359,15 @@ const AdminReports = () => {
                                 const data = getHourData(tc, hour);
                                 return {
                                   calls: acc.calls + data.calls,
+                                  connected: acc.connected + (data.connected || 0),
                                   leads: acc.leads + data.leads,
                                   file: acc.file + data.file
                                 };
-                              }, { calls: 0, leads: 0, file: 0 });
+                              }, { calls: 0, connected: 0, leads: 0, file: 0 });
                               return (
                                 <React.Fragment key={`total-${hour}`}>
                                   <td className="py-2 px-1 text-center border-l border-green-500 text-blue-200">{totals.calls || '-'}</td>
+                                  <td className="py-2 px-1 text-center text-purple-200">{totals.connected || '-'}</td>
                                   <td className="py-2 px-1 text-center text-teal-200">{totals.leads || '-'}</td>
                                   <td className="py-2 px-1 text-center text-orange-200">{totals.file || '-'}</td>
                                 </React.Fragment>
@@ -1364,6 +1376,9 @@ const AdminReports = () => {
                             {/* Grand Totals */}
                             <td className="py-2 px-1 text-center bg-green-700 border-l border-green-500">
                               {hourlyReports.telecallers?.reduce((sum, tc) => sum + tc.total_calls, 0) || 0}
+                            </td>
+                            <td className="py-2 px-1 text-center bg-green-700">
+                              {hourlyReports.telecallers?.reduce((sum, tc) => sum + (tc.total_connected || 0), 0) || 0}
                             </td>
                             <td className="py-2 px-1 text-center bg-green-700">
                               {hourlyReports.telecallers?.reduce((sum, tc) => sum + (tc.total_leads || 0), 0) || 0}

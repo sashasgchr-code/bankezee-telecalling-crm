@@ -344,5 +344,44 @@ Moved "Approvals" and "Users" tabs from Files Dashboard to Admin menu for cleane
 
 ---
 
+### Hourly Report with Role-Based Filtering ✅ (September 3, 2026)
+Enhanced hourly report with "Connected" column and role-based data access:
+
+**New Features:**
+1. **Connected Column (Co)** - Added to hourly report alongside C (Calls), L (Leads), F (Files)
+2. **Role-Based Filtering:**
+   - Admin/Ops: See all growth partners
+   - Manager: See GPs under their management (direct + via TLs)
+   - TL: See their team members only
+   - GP: See only their own hourly stats
+
+**UI Changes:**
+- Column headers: C (blue), Co (purple), L (teal), F (orange)
+- Totals row shows aggregated counts per column
+- Legend updated: "C = Calls, Co = Connected, L = Leads, F = File"
+
+---
+
+### GP View-Only Access to Bank Eligibilities ✅ (September 3, 2026)
+Growth Partners can now VIEW (but not edit) administrative sections on file details:
+
+**Visible Sections for GPs (Read-Only):**
+1. **Profile Analysis** - CIBIL Issues, FOIR %, Company Type
+2. **Bank Eligibilities** - All bank processing data (0-7 banks)
+3. **Update Status** - Current status visible but dropdown disabled
+
+**UI Indicators:**
+- "View Only" badge in blue shown next to section headers
+- All form fields disabled with gray background (`bg-gray-50 cursor-not-allowed`)
+- No Save/Add Bank buttons visible for GPs
+- No delete icons on bank entries for GPs
+
+**Rationale:**
+- GPs need visibility into file progress for customer conversations
+- Prevents accidental modifications to bank processing data
+- Maintains data integrity while improving transparency
+
+---
+
 *Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*

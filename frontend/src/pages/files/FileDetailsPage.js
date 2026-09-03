@@ -700,22 +700,28 @@ const FileDetailsPage = () => {
               </div>
             </div>
 
-            {/* Profile Analysis - Admin, Ops, Managers only */}
-            {canEditBankInfo && (
+            {/* Profile Analysis - Visible to all, editable by Admin, Ops, Managers only */}
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-green-600 flex items-center gap-2">
                     <Star size={18} />
                     Profile Analysis
+                    {!canEditBankInfo && (
+                      <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                        View Only
+                      </span>
+                    )}
                   </h2>
-                  <button
-                    onClick={handleSaveProfileAnalysis}
-                    disabled={saving}
-                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                  >
-                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                    Save
-                  </button>
+                  {canEditBankInfo && (
+                    <button
+                      onClick={handleSaveProfileAnalysis}
+                      disabled={saving}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                      Save
+                    </button>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
@@ -723,7 +729,8 @@ const FileDetailsPage = () => {
                     <select
                       value={profileAnalysis.cibil_issues}
                       onChange={(e) => setProfileAnalysis({...profileAnalysis, cibil_issues: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      disabled={!canEditBankInfo}
+                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     >
                       <option value="">Select</option>
                       <option value="no_issues">No Issues</option>
@@ -739,8 +746,9 @@ const FileDetailsPage = () => {
                       type="text"
                       value={profileAnalysis.foir}
                       onChange={(e) => setProfileAnalysis({...profileAnalysis, foir: e.target.value})}
+                      disabled={!canEditBankInfo}
                       placeholder="e.g., 65"
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     />
                   </div>
                   <div>
@@ -748,7 +756,8 @@ const FileDetailsPage = () => {
                     <select
                       value={profileAnalysis.company_type}
                       onChange={(e) => setProfileAnalysis({...profileAnalysis, company_type: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      disabled={!canEditBankInfo}
+                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                     >
                       <option value="">Select</option>
                       <option value="listed">Listed</option>
@@ -762,40 +771,45 @@ const FileDetailsPage = () => {
                   </div>
                 </div>
               </div>
-            )}
 
-            {/* Bank Eligibilities - Admin, Ops, Managers only */}
-            {canEditBankInfo && (
+            {/* Bank Eligibilities - Visible to all, editable by Admin, Ops, Managers only */}
               <div className="bg-white rounded-xl border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                     <Building2 size={18} />
                     Bank Eligibilities ({eligibilities.length}/7)
+                    {!canEditBankInfo && (
+                      <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                        View Only
+                      </span>
+                    )}
                   </h2>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={handleSaveEligibilities}
-                      disabled={savingEligibilities}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {savingEligibilities ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-                      Save All
-                    </button>
-                    <button
-                      onClick={handleAddBank}
-                      disabled={eligibilities.length >= 7}
-                      className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      <Plus size={16} />
-                      Add Bank
-                    </button>
-                  </div>
+                  {canEditBankInfo && (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleSaveEligibilities}
+                        disabled={savingEligibilities}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                      >
+                        {savingEligibilities ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                        Save All
+                      </button>
+                      <button
+                        onClick={handleAddBank}
+                        disabled={eligibilities.length >= 7}
+                        className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <Plus size={16} />
+                        Add Bank
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {eligibilities.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <Building2 size={48} className="mx-auto text-gray-300 mb-3" />
-                    <p>No banks added yet. Click "Add Bank" to add bank eligibility.</p>
+                    <p>No banks added yet.{canEditBankInfo ? ' Click "Add Bank" to add bank eligibility.' : ''}</p>
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -806,14 +820,18 @@ const FileDetailsPage = () => {
                           className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer"
                           onClick={() => toggleBankExpand(index)}
                         >
-                          <h3 className="font-semibold text-green-600">Bank #{index + 1}</h3>
+                          <h3 className="font-semibold text-green-600">
+                            Bank #{index + 1} {bank.bank_name ? `- ${bank.bank_name}` : ''}
+                          </h3>
                           <div className="flex items-center gap-2">
-                            <button
-                              onClick={(e) => { e.stopPropagation(); handleRemoveBank(index); }}
-                              className="p-1 text-red-500 hover:bg-red-50 rounded"
-                            >
-                              <Trash2 size={16} />
-                            </button>
+                            {canEditBankInfo && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleRemoveBank(index); }}
+                                className="p-1 text-red-500 hover:bg-red-50 rounded"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
                             {expandedBanks[index] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                           </div>
                         </div>
@@ -827,7 +845,8 @@ const FileDetailsPage = () => {
                                 type="text"
                                 value={bank.bank_name}
                                 onChange={(e) => handleBankChange(index, 'bank_name', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                disabled={!canEditBankInfo}
+                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                               />
                             </div>
                             <div>
@@ -835,7 +854,8 @@ const FileDetailsPage = () => {
                               <select
                                 value={bank.is_eligible}
                                 onChange={(e) => handleBankChange(index, 'is_eligible', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                disabled={!canEditBankInfo}
+                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                               >
                                 <option value="">Select</option>
                                 <option value="yes">Yes - Eligible</option>
@@ -849,7 +869,8 @@ const FileDetailsPage = () => {
                                 type="number"
                                 value={bank.eligible_amount}
                                 onChange={(e) => handleBankChange(index, 'eligible_amount', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                disabled={!canEditBankInfo}
+                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                               />
                             </div>
                             <div>
@@ -858,8 +879,9 @@ const FileDetailsPage = () => {
                                 type="text"
                                 value={bank.roi}
                                 onChange={(e) => handleBankChange(index, 'roi', e.target.value)}
+                                disabled={!canEditBankInfo}
                                 placeholder="%"
-                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                               />
                             </div>
                           </div>
@@ -876,7 +898,8 @@ const FileDetailsPage = () => {
                                     <select
                                       value={bank.login_done}
                                       onChange={(e) => handleBankChange(index, 'login_done', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     >
                                       <option value="">Select</option>
                                       <option value="yes">Yes</option>
@@ -889,7 +912,8 @@ const FileDetailsPage = () => {
                                       type="text"
                                       value={bank.login_bank}
                                       onChange={(e) => handleBankChange(index, 'login_bank', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
@@ -898,7 +922,8 @@ const FileDetailsPage = () => {
                                       type="text"
                                       value={bank.application_id}
                                       onChange={(e) => handleBankChange(index, 'application_id', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
@@ -907,7 +932,8 @@ const FileDetailsPage = () => {
                                       type="text"
                                       value={bank.sm_name}
                                       onChange={(e) => handleBankChange(index, 'sm_name', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
@@ -916,7 +942,8 @@ const FileDetailsPage = () => {
                                       type="text"
                                       value={bank.sm_number}
                                       onChange={(e) => handleBankChange(index, 'sm_number', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                 </div>
@@ -931,7 +958,8 @@ const FileDetailsPage = () => {
                                     <select
                                       value={bank.approval_status}
                                       onChange={(e) => handleBankChange(index, 'approval_status', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     >
                                       <option value="">Select</option>
                                       <option value="pending">Pending</option>
@@ -945,7 +973,8 @@ const FileDetailsPage = () => {
                                       type="text"
                                       value={bank.approved_bank}
                                       onChange={(e) => handleBankChange(index, 'approved_bank', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
@@ -954,7 +983,8 @@ const FileDetailsPage = () => {
                                       type="number"
                                       value={bank.approved_amount}
                                       onChange={(e) => handleBankChange(index, 'approved_amount', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
@@ -963,7 +993,8 @@ const FileDetailsPage = () => {
                                       type="number"
                                       value={bank.approved_tenure}
                                       onChange={(e) => handleBankChange(index, 'approved_tenure', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
@@ -972,7 +1003,8 @@ const FileDetailsPage = () => {
                                       type="text"
                                       value={bank.approved_roi}
                                       onChange={(e) => handleBankChange(index, 'approved_roi', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                 </div>
@@ -987,7 +1019,8 @@ const FileDetailsPage = () => {
                                     <select
                                       value={bank.disbursed}
                                       onChange={(e) => handleBankChange(index, 'disbursed', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     >
                                       <option value="">Select</option>
                                       <option value="yes">Yes</option>
@@ -1000,16 +1033,8 @@ const FileDetailsPage = () => {
                                       type="date"
                                       value={bank.disbursal_date}
                                       onChange={(e) => handleBankChange(index, 'disbursal_date', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Disbursed Bank</label>
-                                    <input
-                                      type="text"
-                                      value={bank.disbursed_bank}
-                                      onChange={(e) => handleBankChange(index, 'disbursed_bank', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
@@ -1018,25 +1043,38 @@ const FileDetailsPage = () => {
                                       type="number"
                                       value={bank.disbursed_amount}
                                       onChange={(e) => handleBankChange(index, 'disbursed_amount', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Tenure (months)</label>
+                                    <label className="text-xs text-gray-500 block mb-1">PF (₹)</label>
                                     <input
                                       type="number"
-                                      value={bank.disbursed_tenure}
-                                      onChange={(e) => handleBankChange(index, 'disbursed_tenure', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      value={bank.pf}
+                                      onChange={(e) => handleBankChange(index, 'pf', e.target.value)}
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-gray-500 block mb-1">ROI (%)</label>
+                                    <label className="text-xs text-gray-500 block mb-1">EMI (₹)</label>
                                     <input
-                                      type="text"
-                                      value={bank.disbursed_roi}
-                                      onChange={(e) => handleBankChange(index, 'disbursed_roi', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      type="number"
+                                      value={bank.emi}
+                                      onChange={(e) => handleBankChange(index, 'emi', e.target.value)}
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">First EMI Date</label>
+                                    <input
+                                      type="date"
+                                      value={bank.first_emi_date}
+                                      onChange={(e) => handleBankChange(index, 'first_emi_date', e.target.value)}
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                 </div>
@@ -1044,27 +1082,65 @@ const FileDetailsPage = () => {
 
                               {/* Commission */}
                               <div className="pt-4 mt-4 border-t border-gray-100">
-                                <h4 className="text-sm font-semibold text-amber-600 mb-3">Commission (for Agent/Partner)</h4>
-                                <div className="grid grid-cols-2 gap-4">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Commission Details</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                   <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Commission %</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Commission (₹)</label>
                                     <input
-                                      type="text"
-                                      value={bank.commission_percentage}
-                                      onChange={(e) => handleBankChange(index, 'commission_percentage', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      type="number"
+                                      value={bank.commission}
+                                      onChange={(e) => handleBankChange(index, 'commission', e.target.value)}
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Commission Amount</label>
+                                    <label className="text-xs text-gray-500 block mb-1">Commission Status</label>
+                                    <select
+                                      value={bank.commission_status}
+                                      onChange={(e) => handleBankChange(index, 'commission_status', e.target.value)}
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="pending">Pending</option>
+                                      <option value="partial">Partial</option>
+                                      <option value="received">Received</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Commission Received (₹)</label>
                                     <input
                                       type="number"
-                                      value={bank.commission_amount}
-                                      onChange={(e) => handleBankChange(index, 'commission_amount', e.target.value)}
-                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                      value={bank.commission_received}
+                                      onChange={(e) => handleBankChange(index, 'commission_received', e.target.value)}
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Commission Balance (₹)</label>
+                                    <input
+                                      type="number"
+                                      value={bank.commission_balance}
+                                      onChange={(e) => handleBankChange(index, 'commission_balance', e.target.value)}
+                                      disabled={!canEditBankInfo}
+                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                                     />
                                   </div>
                                 </div>
+                              </div>
+
+                              {/* Notes */}
+                              <div className="pt-4 mt-4 border-t border-gray-100">
+                                <label className="text-xs text-gray-500 block mb-1">Notes</label>
+                                <textarea
+                                  value={bank.notes}
+                                  onChange={(e) => handleBankChange(index, 'notes', e.target.value)}
+                                  disabled={!canEditBankInfo}
+                                  rows={2}
+                                  className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
+                                />
                               </div>
                             </>
                           )}
@@ -1074,17 +1150,23 @@ const FileDetailsPage = () => {
                   </div>
                 )}
               </div>
-            )}
 
-            {/* Update Status - Admin, Ops, Managers */}
-            {canEditBankInfo && (
+            {/* Update Status - Visible to all, editable by Admin, Ops, Managers */}
               <div className="bg-white rounded-xl border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Update Status</h2>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  Update Status
+                  {!canEditBankInfo && (
+                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-medium rounded">
+                      View Only
+                    </span>
+                  )}
+                </h2>
                 <div className="flex items-center gap-4">
                   <select
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value)}
-                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    disabled={!canEditBankInfo}
+                    className={`flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                   >
                     <option value="new">New</option>
                     <option value="contacted">Contacted</option>
@@ -1097,15 +1179,16 @@ const FileDetailsPage = () => {
                     <option value="rejected">Rejected</option>
                     <option value="on_hold">On Hold</option>
                   </select>
-                  <button
-                    onClick={handleStatusUpdate}
-                    className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
-                  >
-                    Update Status
-                  </button>
+                  {canEditBankInfo && (
+                    <button
+                      onClick={handleStatusUpdate}
+                      className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
+                    >
+                      Update Status
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
           </div>
 
           {/* Right Column - Documents & Activity */}
