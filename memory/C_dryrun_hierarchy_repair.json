@@ -1,0 +1,2038 @@
+{
+ "generated_against": "https://connect.bankezee.com",
+ "writes_performed": 0,
+ "production_user_docs": 201,
+ "unique_people": 129,
+ "duplicate_people": 72,
+ "duplicate_people_with_DIFFERENT_ids": 5,
+ "proposed_link_changes": 16,
+ "unresolved_targets": [],
+ "link_changes": [
+  {
+   "email": "asma.sultana0r@gmail.com",
+   "name": "Asma Sultana",
+   "prod_id": "6a5866a969071f897aef93a1",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 4
+  },
+  {
+   "email": "banothunithinnaik@gmail.com",
+   "name": "Banothu Nithin",
+   "prod_id": "6a43535269071f897aeeb626",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 15
+  },
+  {
+   "email": "gosangideevenadevaswamy@gmail.com",
+   "name": "Deevena",
+   "prod_id": "6a9261aed7ec26ef02eec42f",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 0
+  },
+  {
+   "email": "gujjarisaikiran13@gmail.com",
+   "name": "Gujjari Sai kiran",
+   "prod_id": "6a8e6d934282cf0a38adadb6",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+   "proposed_manager": "teja@bankezee.com",
+   "current_tl_id": null,
+   "proposed_tl_id": null,
+   "proposed_tl": null,
+   "files": 0
+  },
+  {
+   "email": "jkavithabhai@gmail.com",
+   "name": "J vishnu vardhan",
+   "prod_id": "6a506f3269071f897aef216d",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+   "proposed_manager": "teja@bankezee.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "6a86994835a1d0070f83970d",
+   "proposed_tl": "pinkynagulapally@gmail.com",
+   "files": 6
+  },
+  {
+   "email": "kemidiraju134@gmail.com",
+   "name": "Raju",
+   "prod_id": "6a7d4e6c119d0a4fd2da3d3d",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 0
+  },
+  {
+   "email": "lellachandana24@gmail.com",
+   "name": "Lellamarychandana",
+   "prod_id": "6a868b9f119d0a4fd2da7c77",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+   "proposed_manager": "teja@bankezee.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "6a86994835a1d0070f83970d",
+   "proposed_tl": "pinkynagulapally@gmail.com",
+   "files": 0
+  },
+  {
+   "email": "masoommd7472@gmai.com",
+   "name": "Md masoom babu",
+   "prod_id": "6a86a73b119d0a4fd2da8d9b",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 2
+  },
+  {
+   "email": "meghanaaaa.36@gmail.com",
+   "name": "Anamdhas Meghana",
+   "prod_id": "6a4de55969071f897aef1baa",
+   "role": "growth_partner",
+   "is_tl": false,
+   "current_manager_id": "6a9863c4fe8cfe3c00bea7a5",
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 4
+  },
+  {
+   "email": "mivimivi51@gmail.com",
+   "name": "BEJJANKI RISHIKESH RAO",
+   "prod_id": "6a9657f7870766c46c8e5c29",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 0
+  },
+  {
+   "email": "mohammadwameez607@gmail.com",
+   "name": "Mohammad wameezuddin",
+   "prod_id": "6a62ec06e483d1a21b0b21d4",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+   "proposed_manager": "teja@bankezee.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "6a86994835a1d0070f83970d",
+   "proposed_tl": "pinkynagulapally@gmail.com",
+   "files": 2
+  },
+  {
+   "email": "nalavonilakshmipriya@gmail.com",
+   "name": "Nalavoni Lakshmi Priya",
+   "prod_id": "6a43534d69071f897aeeb623",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 5
+  },
+  {
+   "email": "nani9346480@gmail.com",
+   "name": "nani934680@gmail.com",
+   "prod_id": "6a4352e169071f897aeeb618",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 8
+  },
+  {
+   "email": "pillalamarrishivasai@gmail.com",
+   "name": "Pillalamarri Shivasai",
+   "prod_id": "6a3b5f380801645549a87dfe",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+   "proposed_manager": "teja@bankezee.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "6a86994835a1d0070f83970d",
+   "proposed_tl": "pinkynagulapally@gmail.com",
+   "files": 6
+  },
+  {
+   "email": "regurivijayendra@gmail.com",
+   "name": "Reguri Vijayendra",
+   "prod_id": "6a7d5013119d0a4fd2da3d69",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+   "proposed_manager": "teja@bankezee.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "6a86994835a1d0070f83970d",
+   "proposed_tl": "pinkynagulapally@gmail.com",
+   "files": 1
+  },
+  {
+   "email": "srivallisiri537@gmail.com",
+   "name": "Kambala santhi",
+   "prod_id": "6a8fdb418dee5cfe8c73ab3d",
+   "role": "telecaller",
+   "is_tl": false,
+   "current_manager_id": null,
+   "proposed_manager_id": "6a8e6d934282cf0a38adadb6",
+   "proposed_manager": "gujjarisaikiran13@gmail.com",
+   "current_tl_id": null,
+   "proposed_tl_id": "69b2490466de144b08f2d108",
+   "proposed_tl": "yarragondaanusha@gmail.com",
+   "files": 0
+  }
+ ],
+ "duplicates": [
+  {
+   "email": "9876bindhu@gmail.com",
+   "documents": [
+    {
+     "id": "6a717f2a5014dbb877a65135",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a717f2a5014dbb877a65135",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a717f2a5014dbb877a65135",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a717f2a5014dbb877a65135",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "a22065561@gmail.com",
+   "documents": [
+    {
+     "id": "6a6ad65d39a573863a86f6aa",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a6ad65d39a573863a86f6aa",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a6ad65d39a573863a86f6aa",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a6ad65d39a573863a86f6aa",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "admin@bankezee.com",
+   "documents": [
+    {
+     "id": "698c182cb2efa8083454f81f",
+     "role": "admin",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "2284e6a5-ad78-4a92-9898-52f7a12f2b8c",
+     "role": "admin",
+     "is_active": true,
+     "legacy_user_id": "ace792d7-ee96-442c-b30c-50ccaf53d457",
+     "connect_id": "698c182cb2efa8083454f81f",
+     "same_id_as_keep": false
+    }
+   ],
+   "would_keep_id": "698c182cb2efa8083454f81f",
+   "would_keep_role": "admin",
+   "distinct_ids": 2,
+   "files": 0
+  },
+  {
+   "email": "akhilk16654@gmail.com",
+   "documents": [
+    {
+     "id": "69b5004e9c8e607452e649cd",
+     "role": "telecaller",
+     "is_active": false,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69b5004e9c8e607452e649cd",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "c815d791-7319-4ac7-bab3-930b62c3d1d4",
+     "connect_id": "69b5004e9c8e607452e649cd",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69b5004e9c8e607452e649cd",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 8
+  },
+  {
+   "email": "akshaya03302023@gmail.com",
+   "documents": [
+    {
+     "id": "698c2a48a9cb42ac6c817564",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c2a48a9cb42ac6c817564",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "698c2a48a9cb42ac6c817564",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "638ece9e-4b69-4072-8975-8d08251fc8e4",
+     "connect_id": "698c2a48a9cb42ac6c817564",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "698c2a48a9cb42ac6c817564",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 2
+  },
+  {
+   "email": "anithamahakaleshwar@gmail.com",
+   "documents": [
+    {
+     "id": "6a4353c169071f897aeeb635",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a4353c169071f897aeeb635",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "2fbfb3eb-ca21-46fa-bb0c-c03706bdea2d",
+     "connect_id": "6a4353c169071f897aeeb635",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a4353c169071f897aeeb635",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 2
+  },
+  {
+   "email": "asma.sultana0r@gmail.com",
+   "documents": [
+    {
+     "id": "6a5866a969071f897aef93a1",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a5866a969071f897aef93a1",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "8f4d4bca-297c-49f4-ad8e-a1152f8ce21f",
+     "connect_id": "6a5866a969071f897aef93a1",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a5866a969071f897aef93a1",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 4
+  },
+  {
+   "email": "banothunithinnaik@gmail.com",
+   "documents": [
+    {
+     "id": "6a43535269071f897aeeb626",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a43535269071f897aeeb626",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "95e19457-ef6c-4972-9d25-ba04581125eb",
+     "connect_id": "6a43535269071f897aeeb626",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a43535269071f897aeeb626",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 15
+  },
+  {
+   "email": "bkarunanidhi16@gmail.com",
+   "documents": [
+    {
+     "id": "6a868ae7119d0a4fd2da7c70",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a868ae7119d0a4fd2da7c70",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868ae7119d0a4fd2da7c70",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868ae7119d0a4fd2da7c70",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "deekshithareddy951@gmail.com",
+   "documents": [
+    {
+     "id": "6a4497be69071f897aeebb26",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "bd55bbf2-ffd2-411a-9f0b-ebd6fa7749c3",
+     "connect_id": "6a4497be69071f897aeebb26",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a4497be69071f897aeebb26",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a4497be69071f897aeebb26",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 1
+  },
+  {
+   "email": "dhanunjay11428@gmail.com",
+   "documents": [
+    {
+     "id": "6a6ad6ea39a573863a86f6b6",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a6ad6ea39a573863a86f6b6",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a6ad6ea39a573863a86f6b6",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a6ad6ea39a573863a86f6b6",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "dyavandlasravankumar@gmail.com",
+   "documents": [
+    {
+     "id": "6a868a67119d0a4fd2da7c6c",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868a67119d0a4fd2da7c6c",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a868a67119d0a4fd2da7c6c",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868a67119d0a4fd2da7c6c",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "gosangideevenadevaswamy@gmail.com",
+   "documents": [
+    {
+     "id": "6a9261aed7ec26ef02eec42f",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a9261aed7ec26ef02eec42f",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a9261aed7ec26ef02eec42f",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a9261aed7ec26ef02eec42f",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "govindamsaithilak@gmail.com",
+   "documents": [
+    {
+     "id": "6a8fba168dee5cfe8c739916",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a8fba168dee5cfe8c739916",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a8fba168dee5cfe8c739916",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a8fba168dee5cfe8c739916",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "gudurupranaykumar18@gmail.com",
+   "documents": [
+    {
+     "id": "6a868b9d119d0a4fd2da7c76",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868b9d119d0a4fd2da7c76",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a868b9d119d0a4fd2da7c76",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868b9d119d0a4fd2da7c76",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "gujjarisaikiran13@gmail.com",
+   "documents": [
+    {
+     "id": "6a8e6d934282cf0a38adadb6",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a8e6d934282cf0a38adadb6",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a8e6d934282cf0a38adadb6",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a8e6d934282cf0a38adadb6",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "guntitriveni37@gmail.com",
+   "documents": [
+    {
+     "id": "6a9278fa3a71a81d8580309d",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a9278fa3a71a81d8580309d",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a9278fa3a71a81d8580309d",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a9278fa3a71a81d8580309d",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "gurramabhinay9391@gmail.com",
+   "documents": [
+    {
+     "id": "6a7d4e2f119d0a4fd2da3d3b",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7d4e2f119d0a4fd2da3d3b",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a7d4e2f119d0a4fd2da3d3b",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7d4e2f119d0a4fd2da3d3b",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "jkavithabhai@gmail.com",
+   "documents": [
+    {
+     "id": "6a506f3269071f897aef216d",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a506f3269071f897aef216d",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "a00459e4-e629-4f50-9755-cc905eda078f",
+     "connect_id": "6a506f3269071f897aef216d",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a506f3269071f897aef216d",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 6
+  },
+  {
+   "email": "kammarimalleshwari1322@gmail.com",
+   "documents": [
+    {
+     "id": "69b4fa6e9c8e607452e6498b",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69b4fa6e9c8e607452e6498b",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "a1f0c8ff-e233-4a95-895d-bcb5c12a6ee4",
+     "connect_id": "69b4fa6e9c8e607452e6498b",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69b4fa6e9c8e607452e6498b",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 9
+  },
+  {
+   "email": "karthikkondaveeti14@gmail.com",
+   "documents": [
+    {
+     "id": "6a58663669071f897aef939b",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a58663669071f897aef939b",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a58663669071f897aef939b",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a58663669071f897aef939b",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "kavyakolichalam123@gmail.com",
+   "documents": [
+    {
+     "id": "6a8e6d2c4282cf0a38adadb3",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a8e6d2c4282cf0a38adadb3",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a8e6d2c4282cf0a38adadb3",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a8e6d2c4282cf0a38adadb3",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "kemidiraju134@gmail.com",
+   "documents": [
+    {
+     "id": "6a7d4e6c119d0a4fd2da3d3d",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "b3cd830b-c4a6-49b7-8b1c-3d43c6f87299",
+     "connect_id": "6a7d4e6c119d0a4fd2da3d3d",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7d4e6c119d0a4fd2da3d3d",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7d4e6c119d0a4fd2da3d3d",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "kolpulavardhan789@gmail.com",
+   "documents": [
+    {
+     "id": "6a868aa6119d0a4fd2da7c6e",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a868aa6119d0a4fd2da7c6e",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868aa6119d0a4fd2da7c6e",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868aa6119d0a4fd2da7c6e",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "kushaliphone99@gmail.com",
+   "documents": [
+    {
+     "id": "6a965950870766c46c8e5c40",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a965950870766c46c8e5c40",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a965950870766c46c8e5c40",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a965950870766c46c8e5c40",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "laksmip579@gmail.com",
+   "documents": [
+    {
+     "id": "6a04213d672535b3a79d6478",
+     "role": "telecaller",
+     "is_active": false,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a04213d672535b3a79d6478",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "3e5118ef-7cf2-464e-8915-dcec3f3b57c4",
+     "connect_id": "6a04213d672535b3a79d6478",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a04213d672535b3a79d6478",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 10
+  },
+  {
+   "email": "leelamyla90@gmail.com",
+   "documents": [
+    {
+     "id": "69b4fa139c8e607452e64985",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69b4fa139c8e607452e64985",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "69b4fa139c8e607452e64985",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69b4fa139c8e607452e64985",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 6
+  },
+  {
+   "email": "lekha4743@gmail.com",
+   "documents": [
+    {
+     "id": "6a717f26a1146915521bdfe8",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a717f26a1146915521bdfe8",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a717f26a1146915521bdfe8",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a717f26a1146915521bdfe8",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "lellachandana24@gmail.com",
+   "documents": [
+    {
+     "id": "6a868b9f119d0a4fd2da7c77",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a868b9f119d0a4fd2da7c77",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868b9f119d0a4fd2da7c77",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868b9f119d0a4fd2da7c77",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "mahieepatel2710@gmail.com",
+   "documents": [
+    {
+     "id": "6a8e6d234282cf0a38adadb2",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a8e6d234282cf0a38adadb2",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a8e6d234282cf0a38adadb2",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a8e6d234282cf0a38adadb2",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "manager2@bankezee.com",
+   "documents": [
+    {
+     "id": "698c346670f2678cbac393c7",
+     "role": "admin",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "manager2@bankezee.com",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "2b15b0eb-3acb-4ffe-b3cd-e1cf938ae871",
+     "role": "admin",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c346670f2678cbac393c7",
+     "same_id_as_keep": false
+    }
+   ],
+   "would_keep_id": "698c346670f2678cbac393c7",
+   "would_keep_role": "admin",
+   "distinct_ids": 2,
+   "files": 0
+  },
+  {
+   "email": "manager@bankezee.com",
+   "documents": [
+    {
+     "id": "2bcfc93f-4af8-42ab-a7bd-8e16e35fb8ab",
+     "role": "admin",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c346570f2678cbac393c6",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "698c346570f2678cbac393c6",
+     "role": "admin",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c346570f2678cbac393c6",
+     "same_id_as_keep": false
+    }
+   ],
+   "would_keep_id": "2bcfc93f-4af8-42ab-a7bd-8e16e35fb8ab",
+   "would_keep_role": "admin",
+   "distinct_ids": 2,
+   "files": 0
+  },
+  {
+   "email": "manikantasuddala1@gmail.com",
+   "documents": [
+    {
+     "id": "6a7c1225119d0a4fd2da3346",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a7c1225119d0a4fd2da3346",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7c1225119d0a4fd2da3346",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7c1225119d0a4fd2da3346",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "masoom7472@gmail.com",
+   "documents": [
+    {
+     "id": "6a868b14119d0a4fd2da7c71",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868b14119d0a4fd2da7c71",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "f6a747f9-1221-4b9b-a705-bec27e6e1a89",
+     "connect_id": "6a868b14119d0a4fd2da7c71",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868b14119d0a4fd2da7c71",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "masoommd7472@gmai.com",
+   "documents": [
+    {
+     "id": "6a86a73b119d0a4fd2da8d9b",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a86a73b119d0a4fd2da8d9b",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a86a73b119d0a4fd2da8d9b",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a86a73b119d0a4fd2da8d9b",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 2
+  },
+  {
+   "email": "meghanaaaa.36@gmail.com",
+   "documents": [
+    {
+     "id": "6a4de55969071f897aef1baa",
+     "role": "growth_partner",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a4de55969071f897aef1baa",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "c3586fb1-b9ff-4281-9049-7342d8cc96b6",
+     "connect_id": "6a4de55969071f897aef1baa",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a4de55969071f897aef1baa",
+   "would_keep_role": "growth_partner",
+   "distinct_ids": 1,
+   "files": 4
+  },
+  {
+   "email": "mivimivi51@gmail.com",
+   "documents": [
+    {
+     "id": "6a9657f7870766c46c8e5c29",
+     "role": "telecaller",
+     "is_active": false,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a9657f7870766c46c8e5c29",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a9657f7870766c46c8e5c29",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a9657f7870766c46c8e5c29",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "mohammadwameez607@gmail.com",
+   "documents": [
+    {
+     "id": "6a62ec06e483d1a21b0b21d4",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "9f3b4572-35ca-42cb-b14c-930e09efac6a",
+     "connect_id": "6a62ec06e483d1a21b0b21d4",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a62ec06e483d1a21b0b21d4",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a62ec06e483d1a21b0b21d4",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 2
+  },
+  {
+   "email": "monishanakka@gmail.com",
+   "documents": [
+    {
+     "id": "6a62ec71e483d1a21b0b21d8",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "776f5602-f8b2-4e69-ad2d-3cda0fe73fbe",
+     "connect_id": "6a62ec71e483d1a21b0b21d8",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a62ec71e483d1a21b0b21d8",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a62ec71e483d1a21b0b21d8",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 2
+  },
+  {
+   "email": "nalavonilakshmipriya@gmail.com",
+   "documents": [
+    {
+     "id": "6a43534d69071f897aeeb623",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a43534d69071f897aeeb623",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "6c1a2854-e18d-4edb-ac9c-3cdf79b34332",
+     "connect_id": "6a43534d69071f897aeeb623",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a43534d69071f897aeeb623",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 5
+  },
+  {
+   "email": "nani9346480@gmail.com",
+   "documents": [
+    {
+     "id": "6a4352e169071f897aeeb618",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "c640956f-07cf-4864-800a-4fc829838ad5",
+     "connect_id": "6a4352e169071f897aeeb618",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a4352e169071f897aeeb618",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a4352e169071f897aeeb618",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 8
+  },
+  {
+   "email": "nikithamathangi44@gmail.com",
+   "documents": [
+    {
+     "id": "69e9a87e1ebdba44d9d0f5d0",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69e9a87e1ebdba44d9d0f5d0",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "52235ede-8bf9-4046-a0eb-4f2c190a75f8",
+     "connect_id": "69e9a87e1ebdba44d9d0f5d0",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69e9a87e1ebdba44d9d0f5d0",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 14
+  },
+  {
+   "email": "nishanthballakari@gmail.com",
+   "documents": [
+    {
+     "id": "6a89283603fdf4c36f07e029",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a89283603fdf4c36f07e029",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a89283603fdf4c36f07e029",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a89283603fdf4c36f07e029",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "palakurthibrahmam@gmail.com",
+   "documents": [
+    {
+     "id": "6a4f2ab769071f897aef2150",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a4f2ab769071f897aef2150",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "72d97ae2-5cd8-4a01-ac54-f00a9f2b691a",
+     "connect_id": "6a4f2ab769071f897aef2150",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a4f2ab769071f897aef2150",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 7
+  },
+  {
+   "email": "pillalamarrishivasai@gmail.com",
+   "documents": [
+    {
+     "id": "6a3b5f380801645549a87dfe",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "405716b2-61dc-4dea-954c-6133791412d8",
+     "connect_id": "6a3b5f380801645549a87dfe",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a3b5f380801645549a87dfe",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a3b5f380801645549a87dfe",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 6
+  },
+  {
+   "email": "pinkynagulapally@gmail.com",
+   "documents": [
+    {
+     "id": "6a86994835a1d0070f83970d",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a86994835a1d0070f83970d",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a86994835a1d0070f83970d",
+     "role": "growth_partner",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a86994835a1d0070f83970d",
+   "would_keep_role": "growth_partner",
+   "distinct_ids": 1,
+   "files": 32
+  },
+  {
+   "email": "poornima.aspire22@gmail.com",
+   "documents": [
+    {
+     "id": "69b4fafb9c8e607452e6498f",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "731d9a4f-4081-449f-b9a8-f6539c3baa11",
+     "connect_id": "69b4fafb9c8e607452e6498f",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69b4fafb9c8e607452e6498f",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69b4fafb9c8e607452e6498f",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 44
+  },
+  {
+   "email": "praveenbhukya842@gmail.com",
+   "documents": [
+    {
+     "id": "6a9657fa870766c46c8e5c2a",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a9657fa870766c46c8e5c2a",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a9657fa870766c46c8e5c2a",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a9657fa870766c46c8e5c2a",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "pushparajbhar911@gmail.com",
+   "documents": [
+    {
+     "id": "6a5867d669071f897aef93bd",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "3e4ab5d0-cd02-4abc-979a-ca9786989294",
+     "connect_id": "6a5867d669071f897aef93bd",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a5867d669071f897aef93bd",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a5867d669071f897aef93bd",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 4
+  },
+  {
+   "email": "rama@bankezee.com",
+   "documents": [
+    {
+     "id": "6d8a0c94-7cb2-4813-817b-532b02daecb2",
+     "role": "admin",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c346370f2678cbac393c4",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "698c346370f2678cbac393c4",
+     "role": "ops",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c346370f2678cbac393c4",
+     "same_id_as_keep": false
+    }
+   ],
+   "would_keep_id": "6d8a0c94-7cb2-4813-817b-532b02daecb2",
+   "would_keep_role": "admin",
+   "distinct_ids": 2,
+   "files": 0
+  },
+  {
+   "email": "rathodsrinivas139@gmail.com",
+   "documents": [
+    {
+     "id": "6a7e9beb119d0a4fd2da4ac3",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7e9beb119d0a4fd2da4ac3",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "b2bfbd31-64a5-4ad4-b4b8-ae5930d6807e",
+     "connect_id": "6a7e9beb119d0a4fd2da4ac3",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7e9beb119d0a4fd2da4ac3",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 7
+  },
+  {
+   "email": "regurivijayendra@gmail.com",
+   "documents": [
+    {
+     "id": "6a7d5013119d0a4fd2da3d69",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "83c50182-880d-4637-ae04-4771f79734d1",
+     "connect_id": "6a7d5013119d0a4fd2da3d69",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7d5013119d0a4fd2da3d69",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7d5013119d0a4fd2da3d69",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 1
+  },
+  {
+   "email": "roshnishaik8074@gmail.com",
+   "documents": [
+    {
+     "id": "6a7180ffa1146915521be01c",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a7180ffa1146915521be01c",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7180ffa1146915521be01c",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7180ffa1146915521be01c",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "sandhyabathula333@gmail.com",
+   "documents": [
+    {
+     "id": "6a868a4a119d0a4fd2da7c6b",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a868a4a119d0a4fd2da7c6b",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868a4a119d0a4fd2da7c6b",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868a4a119d0a4fd2da7c6b",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "shankarp00c00@gmail.com",
+   "documents": [
+    {
+     "id": "6a717e50a1146915521bdfd0",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a717e50a1146915521bdfd0",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a717e50a1146915521bdfd0",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a717e50a1146915521bdfd0",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "sharanya777sharu@gmail.com",
+   "documents": [
+    {
+     "id": "6a8e6e784282cf0a38adadc2",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a8e6e784282cf0a38adadc2",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "faffb8a4-ff19-4018-8561-0713315a4db6",
+     "connect_id": "6a8e6e784282cf0a38adadc2",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a8e6e784282cf0a38adadc2",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 1
+  },
+  {
+   "email": "shruthiukanti@gmail.com",
+   "documents": [
+    {
+     "id": "6a717e7da1146915521bdfd3",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a717e7da1146915521bdfd3",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a717e7da1146915521bdfd3",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a717e7da1146915521bdfd3",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "snapshivasai123@gmail.com",
+   "documents": [
+    {
+     "id": "69b4f92b9c8e607452e64644",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69b4f92b9c8e607452e64644",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "e742027c-b210-4839-8ba6-59c2253e74f1",
+     "connect_id": "69b4f92b9c8e607452e64644",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69b4f92b9c8e607452e64644",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 8
+  },
+  {
+   "email": "sravan.thrive2308@gmail.com",
+   "documents": [
+    {
+     "id": "69b51f58c13c6884630350e8",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69b51f58c13c6884630350e8",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "57a23326-effc-4d60-b7eb-92b316f8a477",
+     "connect_id": "69b51f58c13c6884630350e8",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69b51f58c13c6884630350e8",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 8
+  },
+  {
+   "email": "sridevikonidana853@gmail.com",
+   "documents": [
+    {
+     "id": "6a868cd8119d0a4fd2da7c8c",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a868cd8119d0a4fd2da7c8c",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a868cd8119d0a4fd2da7c8c",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a868cd8119d0a4fd2da7c8c",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "srivallisiri537@gmail.com",
+   "documents": [
+    {
+     "id": "6a8fdb418dee5cfe8c73ab3d",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a8fdb418dee5cfe8c73ab3d",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a8fdb418dee5cfe8c73ab3d",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a8fdb418dee5cfe8c73ab3d",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "srivallisiri912@gmail.com",
+   "documents": [
+    {
+     "id": "6a7d4eca119d0a4fd2da3d41",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7d4eca119d0a4fd2da3d41",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a7d4eca119d0a4fd2da3d41",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7d4eca119d0a4fd2da3d41",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "sruthika.kotte2003@gmail.com",
+   "documents": [
+    {
+     "id": "6a8fba178dee5cfe8c739917",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a8fba178dee5cfe8c739917",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a8fba178dee5cfe8c739917",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a8fba178dee5cfe8c739917",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "ssrikar836@gmail.com",
+   "documents": [
+    {
+     "id": "69eb00971ebdba44d9d0fbb1",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "dfcd2200-3b11-4eb7-9296-dedaf2ac05fd",
+     "connect_id": "69eb00971ebdba44d9d0fbb1",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69eb00971ebdba44d9d0fbb1",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69eb00971ebdba44d9d0fbb1",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 2
+  },
+  {
+   "email": "supriyagondhi2@gmail.com",
+   "documents": [
+    {
+     "id": "6a6c26df39a573863a870591",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a6c26df39a573863a870591",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a6c26df39a573863a870591",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a6c26df39a573863a870591",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "t.vittalbharadwaj2001@gmail.com",
+   "documents": [
+    {
+     "id": "6a6aff5539a573863a86ff4c",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a6aff5539a573863a86ff4c",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "5b42823d-63c2-48f2-ab19-f48d55d2fef5",
+     "connect_id": "6a6aff5539a573863a86ff4c",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a6aff5539a573863a86ff4c",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 1
+  },
+  {
+   "email": "teja@bankezee.com",
+   "documents": [
+    {
+     "id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+     "role": "manager",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c346470f2678cbac393c5",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "698c346470f2678cbac393c5",
+     "role": "manager",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c346470f2678cbac393c5",
+     "same_id_as_keep": false
+    }
+   ],
+   "would_keep_id": "e37774a4-8b44-4f6f-a282-faeaa5ab6800",
+   "would_keep_role": "manager",
+   "distinct_ids": 2,
+   "files": 0
+  },
+  {
+   "email": "thotachayadevi71@gmail.com",
+   "documents": [
+    {
+     "id": "6a7408e45014dbb877a676d8",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a7408e45014dbb877a676d8",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a7408e45014dbb877a676d8",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a7408e45014dbb877a676d8",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "tulasirohith9999@gmail.com",
+   "documents": [
+    {
+     "id": "6a717e945014dbb877a65130",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a717e945014dbb877a65130",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a717e945014dbb877a65130",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a717e945014dbb877a65130",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "vamshikopparaju03@gmail.com",
+   "documents": [
+    {
+     "id": "698c284ba9cb42ac6c817562",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "698c284ba9cb42ac6c817562",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "698c284ba9cb42ac6c817562",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "698c284ba9cb42ac6c817562",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "698c284ba9cb42ac6c817562",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 18
+  },
+  {
+   "email": "yadavlligopichandu@gmail.com",
+   "documents": [
+    {
+     "id": "6a965829870766c46c8e5c2c",
+     "role": "telecaller",
+     "is_active": null,
+     "legacy_user_id": null,
+     "connect_id": "6a965829870766c46c8e5c2c",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "6a965829870766c46c8e5c2c",
+     "role": "telecaller",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": null,
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "6a965829870766c46c8e5c2c",
+   "would_keep_role": "telecaller",
+   "distinct_ids": 1,
+   "files": 0
+  },
+  {
+   "email": "yarragondaanusha@gmail.com",
+   "documents": [
+    {
+     "id": "69b2490466de144b08f2d108",
+     "role": "growth_partner",
+     "is_active": true,
+     "legacy_user_id": null,
+     "connect_id": "69b2490466de144b08f2d108",
+     "same_id_as_keep": true
+    },
+    {
+     "id": "69b2490466de144b08f2d108",
+     "role": "sales_agent",
+     "is_active": false,
+     "legacy_user_id": "72bfce0b-dfa7-42e0-96ea-49778f43d4cd",
+     "connect_id": "69b2490466de144b08f2d108",
+     "same_id_as_keep": true
+    }
+   ],
+   "would_keep_id": "69b2490466de144b08f2d108",
+   "would_keep_role": "growth_partner",
+   "distinct_ids": 1,
+   "files": 17
+  }
+ ]
+}

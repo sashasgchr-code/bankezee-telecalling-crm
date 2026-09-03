@@ -1,0 +1,38 @@
+{
+  "summary": "Iteration 42 regression on PREVIEW: shared identity resolver, recursive Manager scope, fail-closed filters, list-vs-stats parity, Daily Tracking Sheet for growth_partner-role users, CSV export scoping+auth. 73/73 backend pytest PASS. Admin frontend smoke: /admin/files renders Total Files=514 matching backend. All baselines from review request confirmed: Admin=514, Manager Teja=94 (recursive; up from 46), Manager Saikiran=56, TL Anusha own=14/team=42, TL Pinky=32, GP Nithin=15. Admin tl_id filters: Anusha=42, Pinky=20; gp_id=Nithin=15. Fail-closed verified for bogus manager_id/tl_id/gp_id/assigned_to: list=0 and stats all-zero. List-vs-stats parity holds for empty/status=file/loan_type=Home Loan/search=a. Daily Tracking Sheet contains Meghana, Pinky, Anusha with no duplicate rows. HR blocked from files (total=0). Users list exposes source/can_login/has_password/has_password_hash/has_connect_id. CSV export at /api/files/export/dashboard: 401 unauth, 200+text/csv with admin, respects gp_id filter, and returns header-only when scope is empty (fail-closed). Reports smoke across Admin, Ops, Manager, TL, GP for 9 report endpoints - zero 5xx.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Multiple pages", "issues": ["Persistent React hydration warnings from x-ve-dynamic <span> wrappers around <option>/<tr>/<tbody>/<tfoot>/<table>/<select> - already flagged in iter_40/iter_41. Non-blocking dev instrumentation noise."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter42_hierarchy_parity.py",
+    "/app/test_reports/pytest/iter42.xml"
+  ],
+  "action_items": [
+    "(Carry-over) Scope out x-ve-dynamic span injector from production bundle to eliminate hydration console errors around option/tr/table elements.",
+    "(Carry-over from iter_41) FileDetailsPage.js line ~1319: activities.slice(0, 10) still hides newest notes on files with >10 activities; sort desc or slice(-10).reverse()."
+  ],
+  "critical_code_review_comments": [
+    "hierarchy.UserIndex union-find correctly resolves duplicate/legacy identities - Manager Teja jumped from 46 (broken) to 94 (recursive), Saikiran resolves as sub-manager under Teja, and TL/GP scopes match verify_hierarchy.py matrix exactly.",
+    "build_files_query() returning None to signal fail-closed is respected by both list (/api/files/) and stats (/api/files/dashboard/stats) and export (/api/files/export/dashboard) - all 3 return 0 for unknown scope ids.",
+    "list-vs-stats parity confirmed via API for 4 filter combos; Total Files card should equal Files(N) list count. UI screenshot for admin no-filter shows Total Files=514 matching backend.",
+    "CSV export now correctly requires auth (was previously unauth per problem statement) - unauth call returns 401, authed call returns text/csv.",
+    "Daily tracking sheet no longer hardcodes role='telecaller' - the 3 growth_partner role users (Meghana, Pinky, Anusha) appear in the sheet with no duplicates. UUID-shaped ids no longer trigger ObjectId() 500.",
+    "/app/backend/routes/files_crm.py still ~4200 lines - should be split (files_list/files_detail/files_reports/files_commissions).",
+    "Manager Saikiran creds (saikiran@bankezee.com / saikiran12) DO work on preview - the note in review request that they might not work is stale."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter42_hierarchy_parity.py (new)"
+  ],
+  "success_rate": {"backend": "100% (73/73)", "frontend": "Smoke pass - admin /admin/files shows Total Files=514 matching backend; deep multi-role UI parity verified indirectly via API"},
+  "test_credentials": "All credentials in /app/memory/test_credentials.md worked, including saikiran@bankezee.com / saikiran12.",
+  "seed_data_creation": "None. No writes to users/leads.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression suite at /app/backend/tests/test_iter42_hierarchy_parity.py covers baselines, parity, fail-closed, daily tracking, CSV export, HR block, users source flags, and reports x roles smoke. CSV export endpoint is /api/files/export/dashboard (not /dashboard/export). Files list total = pagination.total. Stats endpoint returns top-level total_files. Daily tracking endpoint = /api/reports/daily-tracking-sheet. Bogus id used for fail-closed: 00000000-0000-0000-0000-deadbeef0000.",
+  "rca of the issue": "All four scoped fixes from the request verified: (A) UserIndex union-find pulls duplicate 'Teja' identities together so his recursive tree returns 94 files instead of 46; (B) descendants() traverses through TLs and sub-managers (Saikiran under Teja) giving Teja the full downward subtree; (C) build_files_query returning None -> get_all_files returns empty list & get_files_dashboard_stats returns EMPTY_DASHBOARD_STATS(), verified for unknown manager_id/tl_id/gp_id; (D) list, stats, and export all call the same build_files_query producing identical populations - verified equal totals for 4 filter combinations. Daily Tracking Sheet fix (removing hardcoded role='telecaller' + str(_id) OR id match) confirmed by presence of Meghana/Pinky/Anusha and absence of duplicate rows."
+}

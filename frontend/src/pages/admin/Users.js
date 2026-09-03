@@ -100,7 +100,14 @@ const AdminUsers = () => {
     try {
       const url = managerId ? `/users/team-leads?manager_id=${managerId}` : '/users/team-leads';
       const response = await api.get(url);
-      setTeamLeads(response.data);
+      const leads = response.data || [];
+      setTeamLeads(leads);
+      // Clear a stale TL selection that does not belong under the newly selected Manager
+      setRoleEditData(prev => (
+        prev.tl_id && !leads.some(tl => tl.id === prev.tl_id)
+          ? { ...prev, tl_id: null }
+          : prev
+      ));
     } catch (error) {
       console.error('Error fetching team leads:', error);
     }
@@ -134,6 +141,14 @@ const AdminUsers = () => {
       }
     }
   }, [roleEditData.manager_id, showEditRoleModal]);
+
+  // Approval / hierarchy modal: scope the TL dropdown to the Manager picked there
+  useEffect(() => {
+    if (selectedManagerId) {
+      setSelectedTlId(null);
+      fetchTeamLeads(selectedManagerId);
+    }
+  }, [selectedManagerId]);
 
   const handleAddUser = async () => {
     if (!newUser.name.trim() || !newUser.email.trim() || !newUser.password.trim()) {
@@ -948,7 +963,7 @@ const AdminUsers = () => {
                         disabled={!selectedManagerId}
                       >
                         <option value="">No Team Lead</option>
-                        {teamLeads.filter(t => t.id && (!selectedManagerId || t.manager_id === selectedManagerId)).map(tl => (
+                        {teamLeads.filter(t => t.id).map(tl => (
                           <option key={tl.id} value={tl.id}>{tl.name}</option>
                         ))}
                       </select>
@@ -1161,7 +1176,7 @@ const AdminUsers = () => {
                 disabled={!selectedManagerId}
               >
                 <option value="">No Team Lead</option>
-                {teamLeads.filter(t => t.id && (!selectedManagerId || t.manager_id === selectedManagerId)).map(tl => (
+                {teamLeads.filter(t => t.id).map(tl => (
                   <option key={tl.id} value={tl.id}>{tl.name}</option>
                 ))}
               </select>

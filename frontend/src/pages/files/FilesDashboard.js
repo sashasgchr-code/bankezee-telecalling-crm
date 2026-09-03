@@ -298,31 +298,44 @@ const FilesDashboard = () => {
     }
   };
 
+  // Loans by Type must reflect exactly the filtered population from /files/dashboard/stats
+  const formatLoanTypeLabel = (key) => String(key || 'Unknown')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  const filteredLoanTypes = useMemo(() => (
+    Object.entries(stats?.loans_by_type || {})
+      .map(([type, count]) => ({ type, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10)
+  ), [stats]);
+
+  // Single definition of the active Files filters - used by the list, the stat cards
+  // and the CSV export so all three always describe the same population.
+  const buildFileFilterParams = () => {
+    const params = new URLSearchParams();
+    if (statusFilter) params.append('file_status', statusFilter);
+    if (managerFilter) params.append('manager_id', managerFilter);
+    if (gpFilter) params.append('gp_id', gpFilter);
+    if (tlFilter) params.append('tl_id', tlFilter);
+    if (searchTerm) params.append('search', searchTerm);
+    if (loanTypeFilter.length > 0) params.append('loan_types', loanTypeFilter.join(','));
+
+    const { startDate, endDate } = getDateRange(createdDateFilter);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    const activityDates = getDateRange(activityDateFilter);
+    if (activityDates.startDate) params.append('activity_start_date', activityDates.startDate);
+    if (activityDates.endDate) params.append('activity_end_date', activityDates.endDate);
+    return params;
+  };
+
   const fetchFiles = async () => {
     try {
-      const params = new URLSearchParams();
+      const params = buildFileFilterParams();
       params.append('page', page);
       params.append('limit', 50);
-      if (statusFilter) params.append('file_status', statusFilter);
-      if (managerFilter) params.append('manager_id', managerFilter);
-      if (gpFilter) params.append('gp_id', gpFilter);
-      if (tlFilter) params.append('tl_id', tlFilter);
-      if (searchTerm) params.append('search', searchTerm);
-      
-      // Loan type filter (can be multiple)
-      if (loanTypeFilter.length > 0) {
-        params.append('loan_types', loanTypeFilter.join(','));
-      }
-      
-      // Add date range filters based on created date
-      const { startDate, endDate } = getDateRange(createdDateFilter);
-      if (startDate) params.append('start_date', startDate);
-      if (endDate) params.append('end_date', endDate);
-      
-      // Activity date filter
-      const activityDates = getDateRange(activityDateFilter);
-      if (activityDates.startDate) params.append('activity_start_date', activityDates.startDate);
-      if (activityDates.endDate) params.append('activity_end_date', activityDates.endDate);
 
       const response = await api.get(`/files?${params.toString()}`);
       setFiles(response.data.files || []);
@@ -335,29 +348,7 @@ const FilesDashboard = () => {
 
   const fetchStats = async () => {
     try {
-      const params = new URLSearchParams();
-      
-      // Created date filter for: Total Files, New, In Progress, Amt in Pipeline
-      const { startDate, endDate } = getDateRange(createdDateFilter);
-      if (startDate) params.append('created_start_date', startDate);
-      if (endDate) params.append('created_end_date', endDate);
-      
-      // Activity date filter for: Login, Approved, Disbursed, Rejections, etc.
-      const activityDates = getDateRange(activityDateFilter);
-      if (activityDates.startDate) params.append('activity_start_date', activityDates.startDate);
-      if (activityDates.endDate) params.append('activity_end_date', activityDates.endDate);
-      
-      if (searchTerm) params.append('search', searchTerm);
-      if (managerFilter) params.append('manager_id', managerFilter);
-      if (gpFilter) params.append('gp_id', gpFilter);
-      if (tlFilter) params.append('tl_id', tlFilter);
-      
-      // Loan type filter
-      if (loanTypeFilter.length > 0) {
-        params.append('loan_types', loanTypeFilter.join(','));
-      }
-      
-      const response = await api.get(`/files/dashboard/stats?${params.toString()}`);
+      const response = await api.get(`/files/dashboard/stats?${buildFileFilterParams().toString()}`);
       setStats(response.data);
     } catch (error) {
       console.error('Failed to fetch stats:', error);
@@ -538,8 +529,19 @@ const FilesDashboard = () => {
   // Export handlers
   const handleExportDashboard = async () => {
     try {
-      window.open(`${process.env.REACT_APP_BACKEND_URL}/api/files/export/dashboard`, '_blank');
-      toast.success('Dashboard export started');
+      // Authenticated download honouring the same active filters as the list and stats
+      const response = await api.get(`/files/export/dashboard?${buildFileFilterParams().toString()}`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `files_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Dashboard export downloaded');
     } catch (error) {
       toast.error('Export failed');
     }
@@ -1258,22 +1260,22 @@ const FilesDashboard = () => {
             )}
           </div>
 
-          {/* Loans by Type (Bar Chart) - Real Data */}
+          {/* Loans by Type (Bar Chart) - from the filtered stats population */}
           <div className="bg-white rounded-lg border border-gray-200 p-4">
             <h3 className="font-semibold text-gray-900 mb-2">Loans by Type</h3>
-            {reports?.loan_type_stats && reports.loan_type_stats.length > 0 ? (
+            {filteredLoanTypes.length > 0 ? (
               <div className="space-y-3">
-                {reports.loan_type_stats.map((item) => (
-                  <div key={item.type || item._id} className="flex items-center gap-2">
+                {filteredLoanTypes.map((item) => (
+                  <div key={item.type} className="flex items-center gap-2" data-testid={`loan-type-${item.type}`}>
                     <div className="flex-1">
                       <div className="flex justify-between text-sm mb-1">
-                        <span className="text-gray-700">{item.type || item._id || 'Unknown'}</span>
+                        <span className="text-gray-700">{formatLoanTypeLabel(item.type)}</span>
                         <span className="text-gray-500">{item.count}</span>
                       </div>
                       <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                         <div 
                           className="h-full bg-blue-500 rounded-full"
-                          style={{ width: `${Math.min((item.count / (reports.loan_type_stats[0]?.count || 1)) * 100, 100)}%` }}
+                          style={{ width: `${Math.min((item.count / (filteredLoanTypes[0]?.count || 1)) * 100, 100)}%` }}
                         ></div>
                       </div>
                     </div>
@@ -1952,7 +1954,9 @@ const FilesDashboard = () => {
             <div className="flex items-center gap-3">
               <h3 className="font-semibold text-gray-900">{(isAdmin || isManager) ? 'Files' : 'My Files'} ({totalFiles})</h3>
               <span className="text-sm text-gray-500">
-                {(isAdmin || isManager) ? 'All files in the system' : 'Files assigned to you'}
+                {(statusFilter || managerFilter || gpFilter || tlFilter || searchTerm || loanTypeFilter.length > 0)
+                  ? 'Matching the active filters'
+                  : (isAdmin || isManager) ? 'All files in the system' : 'Files assigned to you'}
               </span>
             </div>
             <button 

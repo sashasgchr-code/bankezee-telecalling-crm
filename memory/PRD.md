@@ -629,3 +629,59 @@ reports.py:742/760/770 already use the 4-role list. `.to_list(100)` also truncat
 Minimal fix: use GP_ROLES, match `id` OR `_id` with ObjectId.is_valid guard, raise the list cap.
 
 *Last Updated: September 3, 2026 (post-deploy acceptance passed)*
+
+---
+
+## A + B + FAIL-CLOSED + SHARED FILES QUERY + MEGHANA TRACKING (September 3, 2026)
+### Implemented on Preview, 34/34 own matrix + 73/73 testing-agent backend PASS. AWAITING PUBLISH.
+
+### New shared modules (single source of truth)
+- `/app/backend/utils/hierarchy.py` — `UserIndex` union-find over `_id` / `id` / `connect_id` /
+  `legacy_user_id` / normalized email. `aliases()`, `descendants()` (recursive, cycle-safe,
+  depth-capped, person-level `is_active`), `subtree_members()`, `team_leads_under()`,
+  `belongs_under()`, `load_user_index()`. Never writes; never rewrites ownership ids.
+  Validated against real production metadata: 129 groups for 129 emails, ZERO wrong merges.
+- `/app/backend/utils/files_query.py` — `build_files_query()` is THE definition of the Files
+  population, used by the list, `dashboard/stats` and `export/dashboard`.
+  Returns `None` to signal FAIL CLOSED; callers must render 0 rows / 0 stats.
+- `/app/backend/utils/helpers.py` — `classify_source()` / `has_login_credential()`.
+
+### Wired into
+- `files_crm.get_all_files`, `get_files_dashboard_stats` (+ new params: file_status, gp_id, tl_id,
+  manager_id, loan_types, activity dates, team_view), `export_dashboard_csv`
+  (previously unscoped AND unauthenticated — a GP could export every file).
+- `utils/auth.get_user_team_ids`, `get_manager_hierarchy_ids`, `validate_tl_manager_match`.
+- `users.py`: `/users/team-leads` (TLs anywhere under the selected manager),
+  `/users/growth-partners` (manager/TL branches use the subtree), `list_users` source badge.
+- `reports.py`: `AGENT_ROLE_FILTER` + `resolve_agent_query()`; daily-tracking-sheet,
+  `/reports/telecallers`, `/reports/verified-call-stats` no longer hardcode `role="telecaller"`,
+  match `str(_id)` OR `id`, dedupe per person, list cap 100 -> 2000.
+- Frontend: `FilesDashboard.buildFileFilterParams()` shared by list/stats/export (stats had been
+  sending `created_start_date`, which the backend never read); authenticated blob CSV download;
+  `Users.js` clears a stale `tl_id` when the Manager changes and no longer re-filters TLs by
+  `manager_id` on the client (which would hide sub-managers' TLs).
+
+### Preview before -> after
+| Scope | Before | After |
+|---|---|---|
+| Admin no filter | 514 | 514 |
+| Manager Teja | 46 | 94 |
+| Manager Saikiran | n/a | 56 |
+| TL Anusha own / team_view | 14 / 38 | 14 / 42 |
+| TL Pinky own | 32 | 32 |
+| GP Nithin | 15 | 15 |
+| admin tl_id=Anusha / Pinky | 38 / - | 42 / 20 |
+| Manager GP dropdown | 7 | 18 |
+| Unknown manager_id/tl_id/gp_id | 514 (fail OPEN) | 0 (fail closed) |
+| Daily tracking agents | 61 of 66, 3 always empty, 2x HTTP 500 | all, 0 empty, 0 500s, no dupes |
+
+### Still pending
+- PUBLISH: source-classification fix + everything above is Preview-only.
+- Verify on production: Meghana/Asma/Nithin/Pinky = Connect, placeholders = CRM, Files counts,
+  and the production-only assertion that BOTH Teja ids resolve to the same scope.
+- C dry-run written to `/app/memory/C_dryrun_hierarchy_repair.md` + `.json` — 16 proposed link
+  writes, 5 genuinely-divergent duplicate pairs. AWAITING USER APPROVAL, zero writes so far.
+- Known unfixed: 3 other CSV exports (rejected / growth-partner / commissions) still use
+  `window.open` without a token, so they 401.
+
+*Last Updated: September 3, 2026*

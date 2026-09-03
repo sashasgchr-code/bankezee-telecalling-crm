@@ -71,3 +71,24 @@ def normalize_phone(phone: str) -> str:
     if len(normalized) > 10:
         normalized = normalized[-10:]
     return normalized
+
+
+# ===================== ACCOUNT SOURCE CLASSIFICATION =====================
+# Single source of truth used by every endpoint that reports a user's Source badge,
+# so Preview and Production always classify identically.
+# The badge reflects CURRENT account capability, not where the record was imported from.
+
+def has_login_credential(user):
+    """True when the account holds a usable login credential.
+
+    Production stores the bcrypt hash in `password` (auth.py verifies against it);
+    accounts created through Connect registration store it in `password_hash`.
+    """
+    return bool(user.get("password") or user.get("password_hash"))
+
+
+def classify_source(user):
+    """'connect' = has a current Connect login identity. 'crm_import' = legacy-only record."""
+    if has_login_credential(user) or user.get("connect_id"):
+        return "connect"
+    return "crm_import"

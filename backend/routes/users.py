@@ -14,7 +14,8 @@ from utils.auth import (
     get_password_hash, normalize_role, is_gp_role, get_user_team_ids,
     validate_tl_manager_match, GP_ROLES, VALID_ROLES
 )
-from utils.helpers import serialize_doc, serialize_docs
+from utils.helpers import serialize_doc, serialize_docs, classify_source, has_login_credential
+from utils.hierarchy import load_user_index
 
 router = APIRouter(prefix="/api", tags=["Users"])
 
@@ -78,6 +79,12 @@ async def list_users(
     # Enrich with manager/TL names, file counts, and source detection
     enriched_users = []
     for user in users:
+        # Classify BEFORE serialize_doc, which strips the credential fields
+        account_source = classify_source(user)
+        login_ok = has_login_credential(user)
+        has_pwd = bool(user.get("password"))
+        has_pwd_hash = bool(user.get("password_hash"))
+        has_connect_id = bool(user.get("connect_id"))
         user_data = serialize_doc(user)
         
         # Get manager name
@@ -97,10 +104,12 @@ async def list_users(
         user_data["files_count"] = await db.leads.count_documents({**owner_filter, "status": "file"})
         user_data["leads_count"] = await db.leads.count_documents(owner_filter)
         
-        # Detect source: has password = Connect native, no password = CRM import
-        has_password = bool(user.get("password_hash"))
-        user_data["source"] = user.get("source") or ("connect" if has_password else "crm_import")
-        user_data["can_login"] = has_password
+        # Source badge = current account capability (see utils.helpers.classify_source)
+        user_data["source"] = account_source
+        user_data["can_login"] = login_ok
+        user_data["has_password"] = has_pwd
+        user_data["has_password_hash"] = has_pwd_hash
+        user_data["has_connect_id"] = has_connect_id
         
         # Add last_login for activity tracking
         user_data["last_login"] = user.get("last_login")
@@ -141,14 +150,22 @@ async def list_growth_partners(
         if tl_id:
             query["tl_id"] = tl_id
     elif role == "manager":
-        # Manager sees only their team
-        query["manager_id"] = user_id
+        # Manager sees their full downward subtree (identity-resolved)
+        index = await load_user_index(db)
+        scope = index.descendants(user_id, include_self=False)
+        if not scope:
+            return []
+        query["id"] = {"$in": sorted(scope)}
         if tl_id:
             query["tl_id"] = tl_id
     elif is_gp_role(role):
         if current_user.get("is_tl"):
-            # TL sees GPs assigned to them
-            query["tl_id"] = user_id
+            # TL sees GPs in their own subtree
+            index = await load_user_index(db)
+            scope = index.descendants(user_id, include_self=False)
+            if not scope:
+                return []
+            query["id"] = {"$in": sorted(scope)}
         else:
             # Regular GP sees only themselves
             query["id"] = user_id
@@ -211,12 +228,22 @@ async def get_team_leads(
         "is_active": True
     }
     
-    if manager_id:
-        query["manager_id"] = manager_id
-    
     tls = await db.users.find(query, {
         "_id": 0, "id": 1, "name": 1, "email": 1, "manager_id": 1
-    }).to_list(100)
+    }).to_list(500)
+    
+    if manager_id:
+        # Resolve TLs anywhere in the selected Manager's subtree, through all their identities
+        index = await load_user_index(db)
+        allowed = {
+            lead.get("id") for lead in index.team_leads_under(manager_id) if lead.get("id")
+        }
+        allowed |= {
+            alias
+            for lead in index.team_leads_under(manager_id)
+            for alias in index.aliases(lead.get("id") or str(lead.get("_id")))
+        }
+        tls = [tl for tl in tls if tl.get("id") in allowed]
     
     # Add default option
     result = [{"id": None, "name": "No Team Lead (Direct to Manager)", "email": "", "manager_id": None}]
@@ -1331,7 +1358,12 @@ async def get_duplicate_users(current_user: dict = Depends(require_admin)):
             "id": 1, "name": 1, 
             "email": 1,
             "email_lower": {"$toLower": {"$trim": {"input": "$email"}}},
-            "phone": 1, "role": 1, "is_active": 1, "password_hash": 1
+            "phone": 1, "role": 1, "is_active": 1,
+            "has_login": {"$or": [
+                {"$toBool": {"$ifNull": ["$password", False]}},
+                {"$toBool": {"$ifNull": ["$password_hash", False]}}
+            ]},
+            "has_connect_id": {"$toBool": {"$ifNull": ["$connect_id", False]}}
         }},
         {"$group": {
             "_id": "$email_lower",
@@ -1339,7 +1371,7 @@ async def get_duplicate_users(current_user: dict = Depends(require_admin)):
             "users": {"$push": {
                 "id": "$id", "name": "$name", "email": "$email",
                 "phone": "$phone", "role": "$role", "is_active": "$is_active",
-                "has_password": {"$cond": [{"$ifNull": ["$password_hash", False]}, True, False]}
+                "has_password": "$has_login", "has_connect_id": "$has_connect_id"
             }}
         }},
         {"$match": {"count": {"$gt": 1}}},
@@ -1359,7 +1391,10 @@ async def get_duplicate_users(current_user: dict = Depends(require_admin)):
             enriched_users.append({
                 **u,
                 "files_count": file_count,
-                "source": "connect" if u.get('has_password') else "crm_import",
+                "source": classify_source({
+                    "password": u.get('has_password'),
+                    "connect_id": u.get('has_connect_id')
+                }),
                 "can_login": u.get('has_password', False)
             })
         
@@ -1456,12 +1491,15 @@ async def auto_merge_all_duplicates(current_user: dict = Depends(require_admin))
         {"$project": {
             "id": 1, "name": 1, 
             "email_lower": {"$toLower": {"$trim": {"input": "$email"}}},
-            "password_hash": 1
+            "has_login": {"$or": [
+                {"$toBool": {"$ifNull": ["$password", False]}},
+                {"$toBool": {"$ifNull": ["$password_hash", False]}}
+            ]}
         }},
         {"$group": {
             "_id": "$email_lower",
             "count": {"$sum": 1},
-            "users": {"$push": {"id": "$id", "name": "$name", "has_password": {"$cond": [{"$ifNull": ["$password_hash", False]}, True, False]}}}
+            "users": {"$push": {"id": "$id", "name": "$name", "has_password": "$has_login"}}
         }},
         {"$match": {"count": {"$gt": 1}}}
     ]

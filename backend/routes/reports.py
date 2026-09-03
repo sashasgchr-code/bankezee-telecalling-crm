@@ -9,8 +9,31 @@ from bson import ObjectId
 import asyncio
 
 from utils.database import db
-from utils.auth import get_current_user, require_admin, require_crm_access
+from utils.auth import get_current_user, require_admin, require_crm_access, GP_ROLES
 from utils.helpers import serialize_doc, serialize_docs, format_duration, convert_to_ist, IST_OFFSET
+from utils.hierarchy import load_user_index
+
+# Every Growth Partner role can own call/lead activity, not just legacy 'telecaller'.
+# Activity is keyed by str(_id) on some records and by the `id` field on others, so agents
+# are matched through identity resolution rather than a single identifier.
+AGENT_ROLE_FILTER = {"$in": GP_ROLES}
+
+
+async def resolve_agent_query(user_id: Optional[str], active_only: bool = True):
+    """Build the users query for reporting agents, resolving all identities of `user_id`."""
+    query = {"role": AGENT_ROLE_FILTER}
+    if active_only:
+        query["is_active"] = True
+    if not user_id:
+        return query, None
+    index = await load_user_index(db)
+    aliases = index.aliases(user_id) or {user_id}
+    or_clauses = [{"id": {"$in": sorted(aliases)}}]
+    object_ids = [ObjectId(a) for a in aliases if ObjectId.is_valid(a)]
+    if object_ids:
+        or_clauses.append({"_id": {"$in": object_ids}})
+    query["$or"] = or_clauses
+    return query, aliases
 
 router = APIRouter(prefix="/api", tags=["Reports"])
 
@@ -468,10 +491,14 @@ async def get_telecaller_reports(
     start_date, end_date, period = get_date_range(period, from_date, to_date)
     now = datetime.now(timezone.utc)
     
-    # Get all telecallers
-    telecallers = await db.users.find({"role": "telecaller"}).to_list(100)
-    telecaller_ids = [str(tc["_id"]) for tc in telecallers]
+    # Get all reporting agents (every GP role, not just legacy 'telecaller')
+    telecallers = await db.users.find({"role": AGENT_ROLE_FILTER}).to_list(2000)
+    telecaller_ids = sorted({str(tc["_id"]) for tc in telecallers} |
+                            {tc["id"] for tc in telecallers if isinstance(tc.get("id"), str)})
     telecaller_map = {str(tc["_id"]): tc for tc in telecallers}
+    for tc in telecallers:
+        if isinstance(tc.get("id"), str):
+            telecaller_map.setdefault(tc["id"], tc)
     
     # Build time filters
     if start_date and end_date:
@@ -1010,8 +1037,9 @@ async def get_verified_call_stats(
     start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
     end_of_day = start_of_day + timedelta(days=1)
     
-    telecallers = await db.users.find({"role": "telecaller", "is_active": True}).to_list(100)
-    telecaller_ids = [str(tc["_id"]) for tc in telecallers]
+    telecallers = await db.users.find({"role": AGENT_ROLE_FILTER, "is_active": True}).to_list(2000)
+    telecaller_ids = sorted({str(tc["_id"]) for tc in telecallers} |
+                            {tc["id"] for tc in telecallers if isinstance(tc.get("id"), str)})
     
     # Aggregation for verified logs
     verified_pipeline = [
@@ -1134,12 +1162,12 @@ async def get_daily_tracking_sheet(
         else:
             range_end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
     
-    query = {"role": "telecaller", "is_active": True}
-    if user_id:
-        query["_id"] = ObjectId(user_id)
+    query, _aliases = await resolve_agent_query(user_id)
     
-    telecallers = await db.users.find(query).to_list(100)
-    telecaller_ids = [str(tc["_id"]) for tc in telecallers]
+    telecallers = await db.users.find(query).to_list(2000)
+    # Activity records reference either str(_id) or the `id` field - match both, deduplicated
+    telecaller_ids = sorted({str(tc["_id"]) for tc in telecallers} |
+                            {tc["id"] for tc in telecallers if isinstance(tc.get("id"), str)})
     
     # Aggregation for activity logs (login/logout times by date)
     activity_pipeline = [
@@ -1203,8 +1231,22 @@ async def get_daily_tracking_sheet(
     
     results = []
     
+    # One row per PERSON: duplicate/legacy documents of the same user must not produce
+    # two rows or double-counted activity.
+    index = await load_user_index(db)
+    seen_people = set()
+    deduped = []
     for tc in telecallers:
+        person = index.root_for(str(tc["_id"])) or index.root_for(tc.get("id")) or str(tc["_id"])
+        if person in seen_people:
+            continue
+        seen_people.add(person)
+        deduped.append(tc)
+    
+    for tc in deduped:
         tc_id = str(tc["_id"])
+        tc_keys = sorted({tc_id} | (index.aliases(tc_id) or set()) |
+                         ({tc["id"]} if isinstance(tc.get("id"), str) else set()))
         tc_name = tc.get("name", "Unknown")
         file_goal = tc.get("file_goal", 5)
         
@@ -1219,10 +1261,21 @@ async def get_daily_tracking_sheet(
         while current_date < range_end:
             date_str = current_date.strftime("%Y-%m-%d")
             day_name = current_date.strftime("%A")[:3]
-            key = (tc_id, date_str)
             
-            # Get activity times
-            activities = activity_map.get(key, [])
+            # Merge activity recorded under any of this person's identifiers
+            activities = []
+            calls = {"calls": 0, "connected": 0, "talk_time": 0}
+            leads = {"leads": 0, "files": 0}
+            for tc_key in tc_keys:
+                key = (tc_key, date_str)
+                activities.extend(activity_map.get(key, []))
+                c = call_map.get(key)
+                if c:
+                    calls = {k: calls[k] + c[k] for k in calls}
+                l = lead_map.get(key)
+                if l:
+                    leads = {k: leads[k] + l[k] for k in leads}
+            
             start_time = None
             end_time = None
             for act in activities:
@@ -1230,12 +1283,6 @@ async def get_daily_tracking_sheet(
                     start_time = act["time"]
                 elif act["action"] == "logout":
                     end_time = act["time"]
-            
-            # Get call stats
-            calls = call_map.get(key, {"calls": 0, "connected": 0, "talk_time": 0})
-            
-            # Get lead stats
-            leads = lead_map.get(key, {"leads": 0, "files": 0})
             
             if start_time or calls["calls"] > 0 or leads["leads"] > 0 or leads["files"] > 0:
                 talk_time_seconds = calls["talk_time"]

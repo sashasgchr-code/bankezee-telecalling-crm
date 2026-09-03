@@ -190,83 +190,64 @@ async def require_bank_processing(current_user: dict = Depends(get_current_user)
 async def get_user_team_ids(user: dict) -> List[str]:
     """
     Get list of user IDs that the current user can see based on hierarchy.
-    
-    - Admin/Ops: All users
-    - Manager: Users with manager_id = this manager's ID (includes TLs and their GPs)
-    - TL: Users with tl_id = this user's ID
-    - GP: Only themselves
-    - HR: Only themselves (for attendance/leave of self)
+
+    Uses shared identity resolution + recursive traversal (utils.hierarchy), so duplicate
+    and legacy user documents resolve to the same person and a Manager sees their whole
+    downward subtree (direct GPs, TLs, GPs under TLs, sub-managers and everyone below).
+
+    - Admin/Ops: All users (None)
+    - Manager: full downward subtree, including self
+    - TL: own team subtree, including self
+    - GP / HR: only themselves
     """
+    from utils.hierarchy import load_user_index
+
     role = normalize_role(user.get("role", "growth_partner"))
-    user_id = user.get("id")
+    user_id = user.get("id") or str(user.get("_id") or "")
     is_tl = user.get("is_tl", False)
-    
+
     # Admin and Ops see everyone
     if role in ["admin", "ops"]:
         return None  # None means no filter - see all
-    
+
+    index = await load_user_index(db)
+    own = index.aliases(user_id) or {user_id}
+
     # HR sees only themselves
     if role == "hr":
-        return [user_id]
-    
-    # Manager sees their entire hierarchy
-    if role == "manager":
-        # Get all users where manager_id = this manager
-        team_users = await db.users.find(
-            {"manager_id": user_id, "is_active": True},
-            {"_id": 0, "id": 1}
-        ).to_list(1000)
-        team_ids = [u["id"] for u in team_users if u.get("id")]
-        team_ids.append(user_id)  # Include self
-        return team_ids
-    
-    # GP with TL capability sees their team members
-    if is_tl and is_gp_role(role):
-        team_users = await db.users.find(
-            {"tl_id": user_id, "is_active": True},
-            {"_id": 0, "id": 1}
-        ).to_list(1000)
-        team_ids = [u["id"] for u in team_users if u.get("id")]
-        team_ids.append(user_id)  # Include self
-        return team_ids
-    
+        return sorted(own)
+
+    if role == "manager" or (is_tl and is_gp_role(role)):
+        return sorted(index.descendants(user_id) or own)
+
     # Regular GP sees only themselves
-    return [user_id]
+    return sorted(own)
 
 async def get_manager_hierarchy_ids(manager_id: str) -> List[str]:
     """
-    Get all user IDs in a manager's hierarchy (including TLs and their GPs).
-    Used for Manager team visibility.
+    Get all user IDs in a manager's FULL downward hierarchy (TLs, GPs under those TLs,
+    sub-managers and everyone below), resolved across duplicate/legacy identities.
     """
     if not manager_id:
         return []
     
-    # Get all users directly under this manager
-    direct_reports = await db.users.find(
-        {"manager_id": manager_id},
-        {"_id": 0, "id": 1}
-    ).to_list(1000)
-    
-    hierarchy_ids = [manager_id]  # Include the manager
-    for user in direct_reports:
-        if user.get("id"):
-            hierarchy_ids.append(user["id"])
-    
-    return hierarchy_ids
+    from utils.hierarchy import load_user_index
+    index = await load_user_index(db)
+    return sorted(index.descendants(manager_id) or {manager_id})
 
 async def validate_tl_manager_match(tl_id: str, manager_id: str) -> bool:
     """
-    Validate that a TL belongs to the same manager hierarchy.
-    TL must have the same manager_id as the GP being assigned.
+    Validate that a TL belongs under the given manager, anywhere in the subtree,
+    using shared identity resolution.
     """
     if not tl_id or not manager_id:
         return True  # No TL or no manager is valid
     
-    tl_user = await db.users.find_one({"id": tl_id})
-    if not tl_user:
+    from utils.hierarchy import load_user_index
+    index = await load_user_index(db)
+    if not index.root_for(tl_id):
         return False
-    
-    return tl_user.get("manager_id") == manager_id
+    return index.belongs_under(tl_id, manager_id)
 
 # ===================== PERMISSION CHECKS =====================
 

@@ -15,6 +15,7 @@ from typing import Optional, List
 import logging
 from utils.auth import get_current_user, require_admin
 from utils.json_safe import json_safe
+from utils.files_query import build_files_query
 
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / '.env')
@@ -41,6 +42,22 @@ def is_gp(role: str) -> bool:
 # Helper function to check if user can edit bank processing
 def can_edit_bank_processing(role: str) -> bool:
     return role == 'admin' or role in OPS_ROLES
+
+
+def EMPTY_DASHBOARD_STATS():
+    """Zeroed dashboard payload - used when an explicit scope filter resolves to nobody."""
+    keys = [
+        "total_files", "new", "in_progress", "login", "login_current", "login_spillover",
+        "approved", "approved_current", "approved_spillover", "total_approved_amount",
+        "disbursed", "disbursed_current", "disbursed_spillover", "total_disbursed_amount",
+        "interim_rejects", "interim_rejects_current", "interim_rejects_spillover",
+        "final_rejections", "final_rejections_current", "final_rejections_spillover",
+        "amt_in_pipeline", "contacted", "documents_collected", "sent_to_bank", "rejected",
+    ]
+    payload = {k: 0 for k in keys}
+    payload["by_status"] = {}
+    payload["loans_by_type"] = {}
+    return payload
 
 
 def lead_filter(file_id: str, **extra) -> dict:
@@ -239,197 +256,27 @@ async def get_all_files(
     - team_view: If 'true' and user is TL, shows team's files (read-only)
     - Role-based filtering: GPs only see their own files
     """
-    from datetime import datetime as dt, timezone as tz
-    
-    query = {"status": "file"}
-    
-    # Check if team_view is requested and user is a TL
-    is_team_view = team_view == 'true' and current_user.get("is_tl", False)
-    
-    # GP role restriction - GPs only see their own files (by source_id)
-    # Manager role sees their team's files (like admin but scoped to their team)
-    user_role = current_user.get('role')
-    user_id = current_user.get('id')
-    is_manager_role = user_role == 'manager'
-    
-    if is_manager_role:
-        # Manager sees their full hierarchy (direct GPs + TLs + GPs under TLs)
-        team_members = await db.users.find(
-            {"manager_id": user_id, "is_active": True},
-            {"_id": 0, "id": 1}
-        ).to_list(200)
-        team_ids = [m["id"] for m in team_members if m.get("id")]
-        team_ids.append(user_id)  # Include manager's own files too
-        
-        if team_ids:
-            query["$or"] = [
-                {"assigned_to": {"$in": team_ids}},
-                {"file_assigned_to": {"$in": team_ids}},
-                {"source_id": {"$in": team_ids}}
-            ]
-        # If no team, show empty (manager with no team members)
-    elif is_team_view and is_gp(user_role):
-        # TL viewing team's files - get team member IDs
-        team_members = await db.users.find(
-            {"tl_id": user_id, "is_active": True},
-            {"_id": 0, "id": 1}
-        ).to_list(100)
-        team_ids = [m["id"] for m in team_members if m.get("id")]
-        
-        if team_ids:
-            query["$or"] = [
-                {"assigned_to": {"$in": team_ids}},
-                {"file_assigned_to": {"$in": team_ids}},
-                {"source_id": {"$in": team_ids}}
-            ]
-        else:
-            return {
-                "files": [],
-                "pagination": {"page": page, "limit": limit, "total": 0, "pages": 0}
-            }
-    elif is_gp(user_role):
-        gp_id_for_filter = user_id
-        query["$or"] = [
-            {"assigned_to": gp_id_for_filter},
-            {"file_assigned_to": gp_id_for_filter},
-            {"source_id": gp_id_for_filter}
-        ]
-    else:
-        # Admin/Ops filters
-        if gp_id:
-            # Filter by specific GP
-            query["$or"] = [
-                {"assigned_to": gp_id},
-                {"file_assigned_to": gp_id},
-                {"source_id": gp_id}
-            ]
-        elif tl_id:
-            # Filter by TL's team
-            team_members = await db.users.find(
-                {"tl_id": tl_id, "is_active": True},
-                {"_id": 0, "id": 1}
-            ).to_list(100)
-            team_ids = [m["id"] for m in team_members if m.get("id")]
-            if team_ids:
-                query["$or"] = [
-                    {"assigned_to": {"$in": team_ids}},
-                    {"file_assigned_to": {"$in": team_ids}},
-                    {"source_id": {"$in": team_ids}}
-                ]
-        elif manager_id:
-            # Filter by manager's team (GPs with this manager_id)
-            team_members = await db.users.find(
-                {"manager_id": manager_id, "is_active": True},
-                {"_id": 0, "id": 1}
-            ).to_list(200)
-            team_ids = [m["id"] for m in team_members if m.get("id")]
-            if team_ids:
-                query["$or"] = [
-                    {"assigned_to": {"$in": team_ids}},
-                    {"file_assigned_to": {"$in": team_ids}},
-                    {"source_id": {"$in": team_ids}}
-                ]
-        elif assigned_to:
-            query["$or"] = [
-                {"assigned_to": assigned_to},
-                {"file_assigned_to": assigned_to}
-            ]
-    
-    if file_status:
-        query["file_status"] = file_status
-    
-    # Loan type filter (multiple)
-    if loan_types:
-        loan_type_list = [lt.strip() for lt in loan_types.split(',') if lt.strip()]
-        if loan_type_list:
-            query["$or"] = query.get("$or", [])
-            # Combine with existing $or if present, or create new condition
-            loan_query = {"file_details.type_of_loan": {"$in": loan_type_list}}
-            if "$and" not in query:
-                query["$and"] = []
-            query["$and"].append(loan_query)
-    
-    # Search filter (name, mobile, email) - include both 'name' and 'full_name' fields
-    if search:
-        search_regex = {"$regex": search, "$options": "i"}
-        search_query = {
-            "$or": [
-                {"name": search_regex},  # Direct name field (used in old CRM data)
-                {"full_name": search_regex},
-                {"mobile": search_regex},
-                {"phone": search_regex},  # Also search phone field
-                {"email": search_regex},
-                {"file_details.full_name": search_regex},
-                {"file_details.mobile": search_regex}
-            ]
+    query = await build_files_query(
+        db, current_user,
+        file_status=file_status,
+        gp_id=gp_id,
+        tl_id=tl_id,
+        manager_id=manager_id,
+        assigned_to=assigned_to,
+        loan_types=loan_types,
+        search=search,
+        start_date=start_date,
+        end_date=end_date,
+        activity_start_date=activity_start_date,
+        activity_end_date=activity_end_date,
+        team_view=(team_view == 'true'),
+    )
+    if query is None:
+        # Fail closed: an explicitly selected scope resolved to nobody
+        return {
+            "files": [],
+            "pagination": {"page": page, "limit": limit, "total": 0, "pages": 0}
         }
-        if "$or" in query:
-            # Combine existing $or (from role/assigned_to) with search $or using $and
-            query = {"$and": [
-                {"status": "file"},
-                {"$or": query["$or"]},
-                search_query
-            ]}
-            if file_status:
-                query["$and"].append({"file_status": file_status})
-        else:
-            query.update(search_query)
-    
-    # Date range filter - handle both datetime objects and ISO string formats
-    if start_date or end_date:
-        date_query = {}
-        # Also create string-based queries for backwards compatibility with string dates
-        string_date_query = {}
-        
-        if start_date:
-            try:
-                # Parse the date
-                if 'T' in start_date:
-                    date_start = dt.fromisoformat(start_date.replace('Z', '+00:00'))
-                else:
-                    date_start = dt.fromisoformat(start_date + 'T00:00:00+00:00')
-                if date_start.tzinfo is None:
-                    date_start = date_start.replace(tzinfo=tz.utc)
-                date_query["$gte"] = date_start
-                # String comparison for legacy data
-                string_date_query["$gte"] = date_start.strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-        if end_date:
-            try:
-                if 'T' in end_date:
-                    date_end = dt.fromisoformat(end_date.replace('Z', '+00:00'))
-                else:
-                    date_end = dt.fromisoformat(end_date + 'T23:59:59+00:00')
-                if date_end.tzinfo is None:
-                    date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=tz.utc)
-                date_query["$lte"] = date_end
-                # String comparison for legacy data - use the next day to include full day
-                string_date_query["$lte"] = (date_end + timedelta(days=1)).strftime("%Y-%m-%d")
-            except ValueError:
-                pass
-        
-        if date_query:
-            # Use $or to match both datetime objects and string dates
-            date_filter = {
-                "$or": [
-                    {"created_at": date_query},
-                    {"created_at": string_date_query}
-                ]
-            }
-            if isinstance(query, dict) and "$and" in query:
-                query["$and"].append(date_filter)
-            elif isinstance(query, dict) and "$or" in query:
-                # Already has $or from search, wrap in $and
-                query = {"$and": [
-                    {"status": "file"},
-                    {"$or": query["$or"]},
-                    date_filter
-                ]}
-                if file_status:
-                    query["$and"][0]["file_status"] = file_status
-            else:
-                query.update(date_filter)
     
     skip = (page - 1) * limit
     
@@ -675,7 +522,7 @@ async def get_daily_report(
     - Disbursals Today
     - Rejections Today
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
     
     # Build base query with role-based filtering
     base_query = {"status": "file"}
@@ -2582,6 +2429,14 @@ async def get_files_dashboard_stats(
     end_date: Optional[str] = None,
     assigned_to: Optional[str] = None,
     search: Optional[str] = None,
+    file_status: Optional[str] = None,
+    gp_id: Optional[str] = None,
+    tl_id: Optional[str] = None,
+    manager_id: Optional[str] = None,
+    loan_types: Optional[str] = None,
+    activity_start_date: Optional[str] = None,
+    activity_end_date: Optional[str] = None,
+    team_view: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -2658,88 +2513,24 @@ async def get_files_dashboard_stats(
         disbursed = elig.get('disbursed')
         return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
     
-    # Build query for filtering
-    query = {"status": "file"}
-    
-    # Role-based restriction
-    user_role = current_user.get('role')
-    user_id = current_user.get('id')
-    
-    # Manager role - see team's files (similar to admin but scoped)
-    if user_role == 'manager':
-        team_members = await db.users.find(
-            {"manager_id": user_id, "is_active": True},
-            {"_id": 0, "id": 1}
-        ).to_list(200)
-        team_ids = [m["id"] for m in team_members if m.get("id")]
-        team_ids.append(user_id)  # Include manager's own files
-        
-        if team_ids:
-            query["$or"] = [
-                {"assigned_to": {"$in": team_ids}},
-                {"file_assigned_to": {"$in": team_ids}},
-                {"source_id": {"$in": team_ids}}
-            ]
-    # GP role restriction - GPs only see their own files
-    elif is_gp(user_role):
-        gp_id = user_id
-        query["$or"] = [
-            {"assigned_to": gp_id},
-            {"file_assigned_to": gp_id},
-            {"source_id": gp_id}  # Also match by source_id for historical files
-        ]
-    elif assigned_to:
-        # Admin/Ops can filter by assigned_to
-        query["$or"] = [
-            {"assigned_to": assigned_to},
-            {"file_assigned_to": assigned_to}
-        ]
-    
-    # Search filter
-    if search:
-        search_regex = {"$regex": search, "$options": "i"}
-        search_query = {
-            "$or": [
-                {"full_name": search_regex},
-                {"mobile": search_regex},
-                {"email": search_regex},
-                {"file_details.full_name": search_regex},
-                {"file_details.mobile": search_regex}
-            ]
-        }
-        if "$or" in query:
-            query = {"$and": [
-                {"status": "file"},
-                {"$or": query["$or"]},
-                search_query
-            ]}
-        else:
-            query.update(search_query)
-    
-    # Date range filter
-    if start_date or end_date:
-        date_query = {}
-        if start_date:
-            try:
-                date_start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                if date_start.tzinfo is None:
-                    date_start = date_start.replace(tzinfo=timezone.utc)
-                date_query["$gte"] = date_start
-            except ValueError:
-                pass
-        if end_date:
-            try:
-                date_end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-                if date_end.tzinfo is None:
-                    date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
-                date_query["$lte"] = date_end
-            except ValueError:
-                pass
-        if date_query:
-            if isinstance(query, dict) and "$and" in query:
-                query["$and"].append({"created_at": date_query})
-            else:
-                query["created_at"] = date_query
+    # Same shared builder as the Files list, so identical filters = identical population
+    query = await build_files_query(
+        db, current_user,
+        file_status=file_status,
+        gp_id=gp_id,
+        tl_id=tl_id,
+        manager_id=manager_id,
+        assigned_to=assigned_to,
+        loan_types=loan_types,
+        search=search,
+        start_date=start_date,
+        end_date=end_date,
+        activity_start_date=activity_start_date,
+        activity_end_date=activity_end_date,
+        team_view=(team_view == 'true'),
+    )
+    if query is None:
+        return EMPTY_DASHBOARD_STATS()
     
     all_files = await db.leads.find(query).to_list(10000)
     
@@ -3770,15 +3561,36 @@ async def get_eligibility_history(file_id: str, current_user: dict = Depends(get
 # ============ EXPORT REPORTS - PDF/CSV ============
 
 @router.get("/export/dashboard")
-async def export_dashboard_csv(current_user: dict = Depends(get_current_user)):
-    """Export dashboard data as CSV"""
+async def export_dashboard_csv(
+    file_status: Optional[str] = None,
+    gp_id: Optional[str] = None,
+    tl_id: Optional[str] = None,
+    manager_id: Optional[str] = None,
+    assigned_to: Optional[str] = None,
+    loan_types: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    activity_start_date: Optional[str] = None,
+    activity_end_date: Optional[str] = None,
+    team_view: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    """Export dashboard data as CSV - same population as the Files list and stats"""
     from fastapi.responses import StreamingResponse
     import io
     import csv
     
-    # Get all files
-    files = await db.leads.find(
-        {"status": "file"},
+    query = await build_files_query(
+        db, current_user,
+        file_status=file_status, gp_id=gp_id, tl_id=tl_id, manager_id=manager_id,
+        assigned_to=assigned_to, loan_types=loan_types, search=search,
+        start_date=start_date, end_date=end_date,
+        activity_start_date=activity_start_date, activity_end_date=activity_end_date,
+        team_view=(team_view == 'true'),
+    )
+    files = [] if query is None else await db.leads.find(
+        query,
         {"_id": 0, "id": 1, "name": 1, "phone": 1, "email": 1, "city": 1, "file_status": 1, 
          "source_id": 1, "created_at": 1, "file_details": 1, "eligibilities": 1}
     ).to_list(10000)
@@ -4216,7 +4028,7 @@ async def get_sales_ops_report(
     Comprehensive Sales & Operations Report matching OLD CRM format.
     Includes: Business Volume, Team Productivity, Bank Performance, Rejection Analysis
     """
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timezone
     from collections import defaultdict
     
     # Parse dates

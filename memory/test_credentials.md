@@ -48,7 +48,7 @@
 ## HR Account
 | Email | Password | Role | Notes |
 |-------|----------|------|-------|
-| test_hr_user@bankezee.com | hrpassword123 | hr | HR access for attendance/leave |
+| hr@neosales.in | HrNeo12!! | hr | HR access for attendance/leave (seeded in server.py) |
 
 ## Application URLs
 - **Preview URL**: https://responsive-crm-app-1.preview.emergentagent.com
