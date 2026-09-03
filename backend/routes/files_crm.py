@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import logging
 from utils.auth import get_current_user, require_admin
@@ -259,13 +259,15 @@ async def get_all_files(
     if file_status:
         query["file_status"] = file_status
     
-    # Search filter (name, mobile, email)
+    # Search filter (name, mobile, email) - include both 'name' and 'full_name' fields
     if search:
         search_regex = {"$regex": search, "$options": "i"}
         search_query = {
             "$or": [
+                {"name": search_regex},  # Direct name field (used in old CRM data)
                 {"full_name": search_regex},
                 {"mobile": search_regex},
+                {"phone": search_regex},  # Also search phone field
                 {"email": search_regex},
                 {"file_details.full_name": search_regex},
                 {"file_details.mobile": search_regex}
@@ -283,35 +285,78 @@ async def get_all_files(
         else:
             query.update(search_query)
     
-    # Date range filter
+    # Date range filter - handle both datetime objects and ISO string formats
     if start_date or end_date:
         date_query = {}
+        # Also create string-based queries for backwards compatibility with string dates
+        string_date_query = {}
+        
         if start_date:
             try:
-                date_start = dt.fromisoformat(start_date.replace('Z', '+00:00'))
+                # Parse the date
+                if 'T' in start_date:
+                    date_start = dt.fromisoformat(start_date.replace('Z', '+00:00'))
+                else:
+                    date_start = dt.fromisoformat(start_date + 'T00:00:00+00:00')
                 if date_start.tzinfo is None:
                     date_start = date_start.replace(tzinfo=tz.utc)
                 date_query["$gte"] = date_start
+                # String comparison for legacy data
+                string_date_query["$gte"] = date_start.strftime("%Y-%m-%d")
             except ValueError:
                 pass
         if end_date:
             try:
-                date_end = dt.fromisoformat(end_date.replace('Z', '+00:00'))
+                if 'T' in end_date:
+                    date_end = dt.fromisoformat(end_date.replace('Z', '+00:00'))
+                else:
+                    date_end = dt.fromisoformat(end_date + 'T23:59:59+00:00')
                 if date_end.tzinfo is None:
                     date_end = date_end.replace(hour=23, minute=59, second=59, tzinfo=tz.utc)
                 date_query["$lte"] = date_end
+                # String comparison for legacy data - use the next day to include full day
+                string_date_query["$lte"] = (date_end + timedelta(days=1)).strftime("%Y-%m-%d")
             except ValueError:
                 pass
+        
         if date_query:
+            # Use $or to match both datetime objects and string dates
+            date_filter = {
+                "$or": [
+                    {"created_at": date_query},
+                    {"created_at": string_date_query}
+                ]
+            }
             if isinstance(query, dict) and "$and" in query:
-                query["$and"].append({"created_at": date_query})
+                query["$and"].append(date_filter)
+            elif isinstance(query, dict) and "$or" in query:
+                # Already has $or from search, wrap in $and
+                query = {"$and": [
+                    {"status": "file"},
+                    {"$or": query["$or"]},
+                    date_filter
+                ]}
+                if file_status:
+                    query["$and"][0]["file_status"] = file_status
             else:
-                query["created_at"] = date_query
+                query.update(date_filter)
     
     skip = (page - 1) * limit
     
-    files = await db.leads.find(query, {"_id": 0}).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
+    # Fetch files - include _id to ensure we can always provide an id
+    files_cursor = db.leads.find(query).sort("updated_at", -1).skip(skip).limit(limit)
+    files_raw = await files_cursor.to_list(limit)
     total = await db.leads.count_documents(query)
+    
+    # Process files to ensure each has an id field
+    files = []
+    for f in files_raw:
+        # Convert _id to string id if id field is missing
+        if not f.get('id') and f.get('_id'):
+            f['id'] = str(f['_id'])
+        # Remove _id from response
+        f.pop('_id', None)
+        files.append(f)
     
     return {
         "files": files,
