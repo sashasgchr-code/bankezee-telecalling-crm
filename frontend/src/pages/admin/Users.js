@@ -6,7 +6,7 @@ import {
   CheckCircle, XCircle, Clock, Edit2, User,
   Phone, CreditCard, Building2, EyeOff, Users, Mail,
   Shield, UserCog, Briefcase, ToggleLeft, ToggleRight,
-  Filter, Download, RefreshCw, Trash2, Power, Link2
+  Filter, Download, RefreshCw, Trash2, Power, Link2, Merge, AlertTriangle
 } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
@@ -68,6 +68,9 @@ const AdminUsers = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [copiedField, setCopiedField] = useState(null);
   const [showPassword, setShowPassword] = useState({});
+  const [duplicates, setDuplicates] = useState([]);
+  const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
+  const [isLoadingDuplicates, setIsLoadingDuplicates] = useState(false);
   const pageSize = 15;
 
   const fetchUsers = async () => {
@@ -284,6 +287,53 @@ const AdminUsers = () => {
     }
   };
 
+  const fetchDuplicates = async () => {
+    setIsLoadingDuplicates(true);
+    try {
+      const response = await api.get('/users/duplicates');
+      setDuplicates(response.data);
+      setShowDuplicatesModal(true);
+    } catch (error) {
+      toast.error('Failed to check for duplicates');
+    } finally {
+      setIsLoadingDuplicates(false);
+    }
+  };
+
+  const handleAutoMerge = async () => {
+    if (!window.confirm('This will automatically merge all duplicate users where there is a clear winner (only one has files). Continue?')) {
+      return;
+    }
+    
+    try {
+      const response = await api.post('/users/auto-merge-duplicates');
+      toast.success(response.data.message);
+      setShowDuplicatesModal(false);
+      fetchUsers();
+      fetchDuplicates();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to auto-merge');
+    }
+  };
+
+  const handleMergePair = async (keepId, mergeIds) => {
+    if (!window.confirm('Merge these users? Files will be transferred to the selected user and duplicates will be deleted.')) {
+      return;
+    }
+    
+    try {
+      const response = await api.post('/users/merge-duplicates', {
+        keep_user_id: keepId,
+        merge_user_ids: mergeIds
+      });
+      toast.success(response.data.message);
+      fetchUsers();
+      fetchDuplicates();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to merge users');
+    }
+  };
+
   const handleChangePassword = async () => {
     if (!newPassword || newPassword.length < 6) {
       toast.error('Password must be at least 6 characters');
@@ -487,6 +537,15 @@ const AdminUsers = () => {
                 </button>
               )}
               <button
+                onClick={fetchDuplicates}
+                disabled={isLoadingDuplicates}
+                className="px-4 py-2 border border-purple-500 text-purple-600 rounded-lg font-medium hover:bg-purple-50 flex items-center gap-2"
+                data-testid="cleanup-duplicates-btn"
+              >
+                {isLoadingDuplicates ? <Loader2 size={18} className="animate-spin" /> : <Merge size={18} />}
+                Clean Up Duplicates
+              </button>
+              <button
                 onClick={() => navigate('/admin/users/legacy-mapping')}
                 className="px-4 py-2 border border-amber-500 text-amber-600 rounded-lg font-medium hover:bg-amber-50 flex items-center gap-2"
                 data-testid="legacy-mapping-btn"
@@ -546,8 +605,8 @@ const AdminUsers = () => {
           {/* Users Table */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             {/* Table Header */}
-            <div className="min-w-[1000px]">
-              <div className="grid gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-600" style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto 1fr 1fr auto 120px' }}>
+            <div className="min-w-[1100px]">
+              <div className="grid gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-600" style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto auto 1fr 1fr auto 120px' }}>
                 {activeTab === 'approvals' && (
                   <div className="flex items-center">
                     <input
@@ -561,7 +620,8 @@ const AdminUsers = () => {
                 <div>Name</div>
                 <div>Email</div>
                 <div>Role</div>
-                <div>TL?</div>
+                <div>Source</div>
+                <div>Files</div>
                 <div>Manager</div>
                 <div>Team Lead</div>
                 <div>Status</div>
@@ -589,7 +649,7 @@ const AdminUsers = () => {
                       <div 
                         key={user.id} 
                         className={`grid gap-2 px-4 py-3 items-center hover:bg-gray-50 transition-colors ${isSelected ? 'bg-green-50' : ''}`}
-                        style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto 1fr 1fr auto 120px' }}
+                        style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto auto 1fr 1fr auto 120px' }}
                       >
                         {activeTab === 'approvals' && (
                           <div>
@@ -614,17 +674,18 @@ const AdminUsers = () => {
                           </span>
                         </div>
                         <div>
-                          {isGP && (
-                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded ${
-                              user.is_tl ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
-                            }`}>
-                              {user.is_tl ? (
-                                <><ToggleRight size={12} /> Yes</>
-                              ) : (
-                                <><ToggleLeft size={12} /> No</>
-                              )}
-                            </span>
-                          )}
+                          <span className={`inline-block px-2 py-0.5 text-xs rounded ${
+                            user.source === 'connect' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {user.source === 'connect' ? 'Connect' : 'CRM'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={`px-2 py-0.5 text-xs rounded font-medium ${
+                            user.files_count > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                          }`}>
+                            {user.files_count || 0}
+                          </span>
                         </div>
                         <div>
                           <p className="text-sm text-gray-600 truncate">
@@ -1256,6 +1317,117 @@ const AdminUsers = () => {
               className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Set Password'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Clean Up Duplicates Modal */}
+      <Modal
+        isOpen={showDuplicatesModal}
+        onClose={() => setShowDuplicatesModal(false)}
+        title="Clean Up Duplicate Users"
+      >
+        <div className="p-6 max-h-[70vh] overflow-y-auto">
+          {duplicates.length === 0 ? (
+            <div className="text-center py-8">
+              <Check size={48} className="mx-auto text-green-500 mb-3" />
+              <p className="text-lg font-medium text-gray-900">No Duplicates Found</p>
+              <p className="text-gray-500">All users have unique email addresses.</p>
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="text-amber-600 mt-0.5" size={18} />
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">
+                      Found {duplicates.length} duplicate email{duplicates.length > 1 ? 's' : ''}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      Users with same email (case variations) are shown below. The recommended user to keep is highlighted.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Auto-merge button */}
+              <button
+                onClick={handleAutoMerge}
+                className="w-full mb-4 px-4 py-2.5 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 flex items-center justify-center gap-2"
+              >
+                <Merge size={18} /> Auto-Merge All (Keep user with most files)
+              </button>
+
+              {/* Duplicate groups */}
+              <div className="space-y-4">
+                {duplicates.map((group, idx) => (
+                  <div key={idx} className="border border-gray-200 rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2 border-b border-gray-200">
+                      <p className="text-sm font-medium text-gray-700">
+                        Email: <span className="text-gray-900">{group.email}</span>
+                        <span className="ml-2 px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded">
+                          {group.count} duplicates
+                        </span>
+                      </p>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      {group.users.map((user, userIdx) => (
+                        <div 
+                          key={user.id}
+                          className={`flex items-center justify-between p-3 rounded-lg ${
+                            user.id === group.recommended_keep 
+                              ? 'bg-green-50 border border-green-200' 
+                              : 'bg-gray-50 border border-gray-200'
+                          }`}
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-gray-900">{user.name}</p>
+                              {user.id === group.recommended_keep && (
+                                <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded">
+                                  Recommended
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-500">{user.email}</p>
+                            <div className="flex items-center gap-3 mt-1 text-xs">
+                              <span className={`px-2 py-0.5 rounded ${
+                                user.source === 'connect' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {user.source === 'connect' ? 'Connect' : 'CRM'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded ${
+                                user.files_count > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                              }`}>
+                                {user.files_count} files
+                              </span>
+                              <span className="text-gray-400">{user.role}</span>
+                            </div>
+                          </div>
+                          {user.id !== group.recommended_keep && (
+                            <button
+                              onClick={() => handleMergePair(group.recommended_keep, [user.id])}
+                              className="px-3 py-1.5 bg-red-100 text-red-700 text-xs rounded-lg hover:bg-red-200 flex items-center gap-1"
+                            >
+                              <Trash2 size={14} /> Merge into recommended
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => setShowDuplicatesModal(false)}
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
+            >
+              Close
             </button>
           </div>
         </div>

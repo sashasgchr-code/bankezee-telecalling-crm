@@ -75,7 +75,7 @@ async def list_users(
     
     users = await db.users.find(query).sort("name", 1).to_list(1000)
     
-    # Enrich with manager/TL names for display
+    # Enrich with manager/TL names, file counts, and source detection
     enriched_users = []
     for user in users:
         user_data = serialize_doc(user)
@@ -89,6 +89,18 @@ async def list_users(
         if user.get("tl_id"):
             tl = await db.users.find_one({"id": user["tl_id"]}, {"name": 1})
             user_data["tl_name"] = tl.get("name") if tl else "Unknown"
+        
+        # Get file count for this user
+        user_id_str = user.get("id")
+        file_count = await db.leads.count_documents({
+            "$or": [{"source_id": user_id_str}, {"assigned_to": user_id_str}]
+        })
+        user_data["files_count"] = file_count
+        
+        # Detect source: has password = Connect native, no password = CRM import
+        has_password = bool(user.get("password_hash"))
+        user_data["source"] = "connect" if has_password else "crm_import"
+        user_data["can_login"] = has_password
         
         enriched_users.append(user_data)
     
@@ -1181,6 +1193,217 @@ async def undo_mapping(
         "message": f"Mapping undone successfully. {files_restored} files restored to legacy user.",
         "files_restored": files_restored,
         "legacy_user_restored": legacy_user_backup is not None
+    }
+
+
+# ===================== DUPLICATE USER MANAGEMENT =====================
+
+@router.get("/users/duplicates")
+async def get_duplicate_users(current_user: dict = Depends(require_admin)):
+    """
+    Find duplicate users based on normalized email (case-insensitive).
+    Returns groups of users that share the same email.
+    """
+    pipeline = [
+        {"$project": {
+            "id": 1, "name": 1, 
+            "email": 1,
+            "email_lower": {"$toLower": {"$trim": {"input": "$email"}}},
+            "phone": 1, "role": 1, "is_active": 1, "password_hash": 1
+        }},
+        {"$group": {
+            "_id": "$email_lower",
+            "count": {"$sum": 1},
+            "users": {"$push": {
+                "id": "$id", "name": "$name", "email": "$email",
+                "phone": "$phone", "role": "$role", "is_active": "$is_active",
+                "has_password": {"$cond": [{"$ifNull": ["$password_hash", False]}, True, False]}
+            }}
+        }},
+        {"$match": {"count": {"$gt": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    
+    duplicates = await db.users.aggregate(pipeline).to_list(100)
+    
+    # Enrich with file counts
+    result = []
+    for dup in duplicates:
+        enriched_users = []
+        for u in dup['users']:
+            file_count = await db.leads.count_documents({
+                "$or": [{"source_id": u['id']}, {"assigned_to": u['id']}]
+            })
+            enriched_users.append({
+                **u,
+                "files_count": file_count,
+                "source": "connect" if u.get('has_password') else "crm_import",
+                "can_login": u.get('has_password', False)
+            })
+        
+        # Sort by files count descending (recommend keeping the one with most files)
+        enriched_users.sort(key=lambda x: -x['files_count'])
+        
+        result.append({
+            "email": dup['_id'],
+            "count": dup['count'],
+            "users": enriched_users,
+            "recommended_keep": enriched_users[0]['id'] if enriched_users else None
+        })
+    
+    return result
+
+
+@router.post("/users/merge-duplicates")
+async def merge_duplicate_users(
+    data: dict,
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Merge duplicate users: keep one, transfer files from others, delete others.
+    
+    Request body:
+    - keep_user_id: The user ID to keep
+    - merge_user_ids: List of user IDs to merge into the kept user (will be deleted)
+    """
+    keep_id = data.get("keep_user_id")
+    merge_ids = data.get("merge_user_ids", [])
+    
+    if not keep_id:
+        raise HTTPException(status_code=400, detail="keep_user_id is required")
+    if not merge_ids:
+        raise HTTPException(status_code=400, detail="merge_user_ids is required")
+    
+    # Validate the keep user exists
+    keep_user = await db.users.find_one({"id": keep_id})
+    if not keep_user:
+        raise HTTPException(status_code=404, detail="Keep user not found")
+    
+    # Cannot merge into yourself
+    if keep_id in merge_ids:
+        raise HTTPException(status_code=400, detail="Cannot include keep_user_id in merge_user_ids")
+    
+    total_files_transferred = 0
+    users_deleted = 0
+    
+    for merge_id in merge_ids:
+        merge_user = await db.users.find_one({"id": merge_id})
+        if not merge_user:
+            continue
+        
+        # Transfer files: update source_id
+        result1 = await db.leads.update_many(
+            {"source_id": merge_id},
+            {"$set": {"source_id": keep_id}}
+        )
+        total_files_transferred += result1.modified_count
+        
+        # Transfer files: update assigned_to
+        result2 = await db.leads.update_many(
+            {"assigned_to": merge_id},
+            {"$set": {"assigned_to": keep_id}}
+        )
+        total_files_transferred += result2.modified_count
+        
+        # Delete the merged user
+        await db.users.delete_one({"id": merge_id})
+        users_deleted += 1
+        
+        # Remove any mapping records for this user
+        await db.user_mappings.delete_one({"legacy_user_id": merge_id})
+    
+    return {
+        "message": f"Merged {users_deleted} users into {keep_user.get('name')}",
+        "files_transferred": total_files_transferred,
+        "users_deleted": users_deleted,
+        "kept_user": {
+            "id": keep_id,
+            "name": keep_user.get("name"),
+            "email": keep_user.get("email")
+        }
+    }
+
+
+@router.post("/users/auto-merge-duplicates")
+async def auto_merge_all_duplicates(current_user: dict = Depends(require_admin)):
+    """
+    Automatically merge all duplicate users where only one has files.
+    Safe operation - only merges when there's a clear "winner".
+    """
+    pipeline = [
+        {"$project": {
+            "id": 1, "name": 1, 
+            "email_lower": {"$toLower": {"$trim": {"input": "$email"}}},
+            "password_hash": 1
+        }},
+        {"$group": {
+            "_id": "$email_lower",
+            "count": {"$sum": 1},
+            "users": {"$push": {"id": "$id", "name": "$name", "has_password": {"$cond": [{"$ifNull": ["$password_hash", False]}, True, False]}}}
+        }},
+        {"$match": {"count": {"$gt": 1}}}
+    ]
+    
+    duplicates = await db.users.aggregate(pipeline).to_list(100)
+    
+    total_merged = 0
+    total_files_transferred = 0
+    merged_groups = []
+    
+    for dup in duplicates:
+        users = dup['users']
+        
+        # For each user, get file count
+        user_file_counts = []
+        for u in users:
+            file_count = await db.leads.count_documents({
+                "$or": [{"source_id": u['id']}, {"assigned_to": u['id']}]
+            })
+            user_file_counts.append({
+                "id": u['id'],
+                "name": u['name'],
+                "files": file_count,
+                "can_login": u.get('has_password', False)
+            })
+        
+        # Sort by: can_login first, then by files
+        user_file_counts.sort(key=lambda x: (-int(x['can_login']), -x['files']))
+        
+        # Count how many have files
+        users_with_files = sum(1 for u in user_file_counts if u['files'] > 0)
+        
+        # Only auto-merge if at most 1 user has files (clear winner)
+        if users_with_files <= 1:
+            keep_user = user_file_counts[0]
+            merge_users = user_file_counts[1:]
+            
+            for merge_user in merge_users:
+                # Transfer files
+                result1 = await db.leads.update_many(
+                    {"source_id": merge_user['id']},
+                    {"$set": {"source_id": keep_user['id']}}
+                )
+                result2 = await db.leads.update_many(
+                    {"assigned_to": merge_user['id']},
+                    {"$set": {"assigned_to": keep_user['id']}}
+                )
+                total_files_transferred += result1.modified_count + result2.modified_count
+                
+                # Delete merged user
+                await db.users.delete_one({"id": merge_user['id']})
+                await db.user_mappings.delete_one({"legacy_user_id": merge_user['id']})
+                total_merged += 1
+            
+            merged_groups.append({
+                "email": dup['_id'],
+                "kept": keep_user['name'],
+                "merged_count": len(merge_users)
+            })
+    
+    return {
+        "message": f"Auto-merged {total_merged} duplicate users",
+        "total_files_transferred": total_files_transferred,
+        "merged_groups": merged_groups
     }
 
 
