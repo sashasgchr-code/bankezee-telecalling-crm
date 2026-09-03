@@ -64,7 +64,8 @@ const InfoPill = ({ icon: Icon, label, value, className = '' }) => {
 };
 
 export default function EligibilityCheck() {
-  const { leadId } = useParams();
+  const { fileId } = useParams();
+  const leadId = fileId; // Alias for clarity - files are leads with status='file'
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);

@@ -128,7 +128,7 @@ function App() {
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
-          <Route path="files/:leadId/check-eligibility" element={<EligibilityCheck />} />
+          <Route path="files/:fileId/check-eligibility" element={<EligibilityCheck />} />
           <Route path="files/migrate" element={<DataMigration />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="files/bank-policies" element={<BankPolicyMaster />} />
@@ -159,7 +159,7 @@ function App() {
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
-          <Route path="files/:leadId/check-eligibility" element={<EligibilityCheck />} />
+          <Route path="files/:fileId/check-eligibility" element={<EligibilityCheck />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="followups" element={<TelecallerFollowUps />} />
           <Route path="attendance" element={<TelecallerAttendance />} />
