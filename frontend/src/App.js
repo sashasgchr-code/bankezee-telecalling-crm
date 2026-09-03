@@ -150,6 +150,7 @@ function App() {
           <Route path="leads/:id" element={<LeadDetail />} />
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
+          <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="followups" element={<TelecallerFollowUps />} />
           <Route path="attendance" element={<TelecallerAttendance />} />

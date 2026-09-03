@@ -284,5 +284,34 @@ Added comprehensive monthly attendance summary view for both Admin and GP roles.
 
 ---
 
+### File Details Page RBAC Complete ✅ (September 3, 2026)
+Rebuilt `FileDetailsPage.js` with exact OLD CRM layout and strict RBAC:
+
+**Page Layout:**
+- Complete Lead Information (Customer, Employment, Loans, Requirements, Source & Status)
+- Profile Analysis (CIBIL Issues, FOIR %, Company Type)
+- Bank Eligibilities (0-7 banks with expandable details: Eligibility, Login, Approval, Disbursement, Commission)
+- Update Status dropdown
+- Documents panel (upload, download ZIP, password protection)
+- Activity Log with notes
+
+**RBAC Implementation:**
+| Section | Admin | Ops | Manager | GP |
+|---------|-------|-----|---------|-----|
+| Complete Lead Info | ✅ Edit | ✅ Edit | ✅ Edit | ✅ Edit |
+| Profile Analysis | ✅ Edit | ✅ Edit | ✅ Edit | ❌ Hidden |
+| Bank Eligibilities | ✅ Edit | ✅ Edit | ✅ Edit | ❌ Hidden |
+| Update Status | ✅ Edit | ✅ Edit | ✅ Edit | ❌ Hidden |
+| Documents | ✅ Full | ✅ Full | ✅ Full | ✅ Upload/Delete |
+| Activity Log | ✅ Full | ✅ Full | ✅ Full | ✅ Add Notes |
+
+**Key Features:**
+- Check Eligibility button navigates to separate page (role-aware: `/admin/` or `/agent/`)
+- Manual bank eligibilities drive approval stats (NOT AI check results)
+- Masked phone/email with reveal toggles
+- Password-protected document downloads
+
+---
+
 *Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*

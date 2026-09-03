@@ -1,94 +1,132 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Edit2, Loader2, Star, Building2, Download, FileArchive, User, Briefcase, CreditCard, FileText } from 'lucide-react';
+import { 
+  ArrowLeft, Save, Edit2, Loader2, Star, Building2, Download, 
+  Trash2, Plus, Eye, EyeOff, Upload, ChevronDown, ChevronUp,
+  User, Briefcase, CreditCard, FileText, Phone, Mail, MapPin,
+  Calendar, Copy, Check
+} from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
 
-import {
-  CustomerDetailsSection,
-  EmploymentDetailsSection,
-  ExistingLoansSection,
-  LoanRequirementsSection,
-  EligibilityTracker,
-  DocumentsPanel,
-  ActivityLog,
-  FileStatusCard,
-  FileAssignmentCard,
-  CollapsibleSection
-} from '../../components/file-detail';
-
-const EMPTY_ELIGIBILITY = {
-  bank_name: '',
-  is_eligible: '',
-  eligible_amount: '',
-  eligible_tenure: '',
-  not_eligible_reason: '',
-  login_done: '',
-  login_bank: '',
-  login_rejection_reason: '',
-  approval_status: '',
-  approved_bank: '',
-  approved_amount: '',
-  approved_tenure: '',
-  approved_roi: '',
-  declined_bank: '',
-  declined_reason: '',
-  disbursed: '',
-  disbursed_bank: '',
-  disbursed_amount: '',
-  disbursed_tenure: '',
-  disbursed_roi: '',
-  disbursement_rejection_reason: '',
-  commission_percentage: '',
-  commission_amount: ''
+// Format currency
+const formatCurrency = (amount) => {
+  if (!amount) return '';
+  return new Intl.NumberFormat('en-IN').format(parseFloat(amount));
 };
 
-// Generate password for protected files (matches old CRM pattern)
+// Mask sensitive data
+const maskPhone = (phone) => {
+  if (!phone) return '-';
+  const str = String(phone);
+  if (str.length >= 10) return '******' + str.slice(-4);
+  return str;
+};
+
+const maskEmail = (email) => {
+  if (!email) return '-';
+  const [local, domain] = email.split('@');
+  if (!domain) return email;
+  return local.slice(0, 2) + '****@' + domain;
+};
+
+// Generate password for protected files
 const generateFilePassword = (fileId) => {
   const timestamp = Date.now();
   return `7${timestamp}${fileId?.slice(0, 8) || ''}`.slice(0, 20);
 };
 
+// Empty bank eligibility template
+const EMPTY_BANK = {
+  bank_name: '',
+  is_eligible: '',
+  eligible_amount: '',
+  roi: '',
+  // Login Status
+  login_done: '',
+  login_bank: '',
+  application_id: '',
+  sm_name: '',
+  sm_number: '',
+  // Approval Status
+  approval_status: '',
+  approved_bank: '',
+  approved_amount: '',
+  approved_tenure: '',
+  approved_roi: '',
+  // Disbursement
+  disbursed: '',
+  disbursal_date: '',
+  disbursed_bank: '',
+  disbursed_amount: '',
+  disbursed_tenure: '',
+  disbursed_roi: '',
+  // Commission
+  commission_percentage: '',
+  commission_amount: ''
+};
+
 const FileDetailsPage = () => {
   const { fileId } = useParams();
   const navigate = useNavigate();
+  
   const [fileData, setFileData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [note, setNote] = useState('');
-  const [newStatus, setNewStatus] = useState('new');
-  const [opsTeam, setOpsTeam] = useState([]);
-  const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [saving, setSaving] = useState(false);
+  
+  // Edit modes
+  const [isEditingDetails, setIsEditingDetails] = useState(false);
+  const [editedDetails, setEditedDetails] = useState({});
+  
+  // Profile Analysis
+  const [profileAnalysis, setProfileAnalysis] = useState({
+    cibil_issues: '',
+    foir: '',
+    company_type: ''
+  });
+  
+  // Bank Eligibilities (manual entry)
   const [eligibilities, setEligibilities] = useState([]);
   const [savingEligibilities, setSavingEligibilities] = useState(false);
-  const [isEditingDetails, setIsEditingDetails] = useState(false);
-  const [savingDetails, setSavingDetails] = useState(false);
-  const [editedDetails, setEditedDetails] = useState({});
-  const [rating, setRating] = useState(0);
-  const [score, setScore] = useState(0);
   
+  // Status update
+  const [newStatus, setNewStatus] = useState('new');
+  
+  // Documents
+  const [documents, setDocuments] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
+  
+  // Activity
+  const [note, setNote] = useState('');
+  const [activities, setActivities] = useState([]);
+  
+  // UI state
+  const [showMobile, setShowMobile] = useState(false);
+  const [showEmail, setShowEmail] = useState(false);
+  const [expandedBanks, setExpandedBanks] = useState({});
+  
+  // User permissions
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
   const isOps = user.role === 'ops' || user.role === 'operations';
-  // Growth Partner roles: telecaller, sales_agent, team_leader, partner, manager
-  const isGP = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'manager'].includes(user.role);
+  const isManager = user.role === 'manager';
+  const isGP = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'growth_partner'].includes(user.role);
   
-  // Section 1 (Customer/Application Info): GP, Ops, Admin can all edit
-  const canEditCustomerDetails = isAdmin || isOps || isGP;
+  // GP, Admin, Ops, Managers can edit customer details (Image 1)
+  const canEditLeadInfo = isAdmin || isOps || isManager || isGP;
   
-  // Section 2 (Bank Processing): ONLY Ops and Admin can edit
-  // GPs can VIEW bank processing status but CANNOT modify
-  const canEditBankProcessing = isAdmin || isOps;
-  
-  // Overall edit permission (for general actions like notes, status)
-  const canEdit = isAdmin || isOps || isGP;
+  // Only Admin, Ops, Managers can edit Bank Eligibilities (Image 2 & 3)
+  const canEditBankInfo = isAdmin || isOps || isManager;
 
   useEffect(() => {
     fetchFileData();
-    fetchOpsTeam();
   }, [fileId]);
 
   const fetchFileData = async () => {
     try {
+      setLoading(true);
       const response = await api.get(`/files/${fileId}`);
       const data = response.data;
       
@@ -100,606 +138,1110 @@ const FileDetailsPage = () => {
       
       setFileData(data);
       setNewStatus(data.file_status || 'new');
-      setSelectedAssignee(data.file_assigned_to || '');
-      setRating(data.rating || data.star_rating || 0);
-      setScore(data.score || data.star_score || 0);
       
-      // Initialize edited details with ALL OLD CRM fields
-      const fileDetails = data.file_details || data.additional_data || {};
+      // Initialize details
+      const fd = data.file_details || {};
       setEditedDetails({
-        // Customer Details
-        full_name: data.name || '',
-        mobile: data.phone || '',
-        email: data.email || '',
-        father_name: fileDetails.father_name || '',
-        mother_name: fileDetails.mother_name || '',
-        date_of_birth: fileDetails.date_of_birth || '',
-        pan_number: fileDetails.pan_number || '',
-        aadhaar_number: fileDetails.aadhaar_number || '',
-        current_address: fileDetails.current_address || '',
-        city: data.city || fileDetails.city || '',
-        permanent_address: fileDetails.permanent_address || '',
-        pin_code: fileDetails.pin_code || '',
-        residence_type: fileDetails.residence_type || '',
-        years_at_current_address: fileDetails.years_at_current_address || '',
-        
-        // Employment Details
-        employment_type: data.employment_type || fileDetails.employment_type || '',
-        company_name: fileDetails.company_name || '',
-        company_type: fileDetails.company_type || '',
-        designation: fileDetails.designation || '',
-        office_address: fileDetails.office_address || '',
-        office_city: fileDetails.office_city || '',
-        office_pincode: fileDetails.office_pincode || '',
-        present_employment_months: fileDetails.present_employment_months || '',
-        total_employment_months: fileDetails.total_employment_months || '',
-        gross_salary: fileDetails.gross_salary || '',
-        net_salary: fileDetails.net_salary || '',
-        salary_bank_name: fileDetails.salary_bank_name || '',
-        salary_account_number: fileDetails.salary_account_number || '',
-        additional_income: fileDetails.additional_income || '',
-        additional_income_source: fileDetails.additional_income_source || '',
-        // Self-employed fields
-        business_name: fileDetails.business_name || '',
-        business_vintage: fileDetails.business_vintage || '',
-        annual_turnover: fileDetails.annual_turnover || '',
-        itr_filed_amount: fileDetails.itr_filed_amount || '',
-        
-        // Existing Obligations
-        cibil_score: fileDetails.cibil_score || '',
-        cibil_issues: fileDetails.cibil_issues || '',
-        obligations_emi: fileDetails.obligations_emi || '',
-        foir: fileDetails.foir || '',
-        tvr_done: fileDetails.tvr_done || '',
-        tvr_not_done_reason: fileDetails.tvr_not_done_reason || '',
-        emi_ok: fileDetails.emi_ok || '',
-        emi_not_ok_reason: fileDetails.emi_not_ok_reason || '',
-        existing_loans: fileDetails.existing_loans || [],
-        existing_loan_1: fileDetails.existing_loan_1 || '',
-        existing_loan_2: fileDetails.existing_loan_2 || '',
-        existing_loan_3: fileDetails.existing_loan_3 || '',
-        credit_card_count: fileDetails.credit_card_count || '',
-        total_cc_limit: fileDetails.total_cc_limit || '',
-        cc_outstanding: fileDetails.cc_outstanding || '',
-        cc_utilization: fileDetails.cc_utilization || '',
-        
-        // Loan Requirements
-        type_of_loan: fileDetails.type_of_loan || data.requirement || '',
-        loan_amount_required: fileDetails.loan_amount_required || '',
-        tenure_required: fileDetails.tenure_required || '',
-        loan_purpose: fileDetails.loan_purpose || '',
-        expected_roi: fileDetails.expected_roi || '',
-        expected_emi: fileDetails.expected_emi || '',
-        bt_amount: fileDetails.bt_amount || '',
-        current_roi: fileDetails.current_roi || '',
-        topup_amount: fileDetails.topup_amount || '',
-        property_value: fileDetails.property_value || '',
-        property_type: fileDetails.property_type || '',
-        property_location: fileDetails.property_location || '',
-        vehicle_type: fileDetails.vehicle_type || '',
-        vehicle_model: fileDetails.vehicle_model || '',
-        vehicle_year: fileDetails.vehicle_year || '',
-        requirement_notes: fileDetails.requirement_notes || '',
-        
-        // OLD CRM additional fields
-        pending_documents: data.pending_documents || fileDetails.pending_documents || '',
-        query_hold_reason: data.query_hold_reason || fileDetails.query_hold_reason || '',
-        documents_note: fileDetails.documents_note || '',
-        has_password_files: fileDetails.has_password_files || '',
-        file_passwords: fileDetails.file_passwords || ''
+        full_name: fd.full_name || data.name || '',
+        mobile: fd.mobile || data.phone || '',
+        email: fd.email || data.email || '',
+        mother_name: fd.mother_name || '',
+        current_address: fd.current_address || '',
+        employment_type: fd.employment_type || data.employment_type || '',
+        company_name: fd.company_name || '',
+        net_salary: fd.net_salary || '',
+        office_address: fd.office_address || '',
+        monthly_emi_obligations: fd.monthly_emi_obligations || fd.obligations_emi || '',
+        existing_loan_1: fd.existing_loan_1 || '',
+        existing_loan_2: fd.existing_loan_2 || '',
+        existing_loan_3: fd.existing_loan_3 || '',
+        type_of_loan: fd.type_of_loan || data.requirement || '',
+        cibil_score: fd.cibil_score || '',
+        loan_amount_required: fd.loan_amount_required || '',
+        tenure_required: fd.tenure_required || '',
+        source_type: fd.source_type || 'Agent',
+        growth_partner_name: data.source_name || fd.growth_partner_name || '',
+        growth_partner_code: fd.growth_partner_code || '',
+        growth_partner_contact: fd.growth_partner_contact || ''
       });
       
-      // Convert eligibilities to form format
-      const formattedElig = (data.eligibilities || []).map(e => ({
-        ...e,
-        is_eligible: e.is_eligible === true ? 'yes' : e.is_eligible === false ? 'no' : '',
-        login_done: e.login_done === true ? 'yes' : e.login_done === false ? 'no' : '',
-        disbursed: e.disbursed === true ? 'yes' : e.disbursed === false ? 'no' : '',
-        eligible_amount: e.eligible_amount || '',
-        eligible_tenure: e.eligible_tenure || '',
-        not_eligible_reason: e.not_eligible_reason || '',
-        approved_amount: e.approved_amount || '',
-        approved_tenure: e.approved_tenure || '',
-        approved_roi: e.approved_roi || '',
-        disbursed_amount: e.disbursed_amount || '',
-        disbursed_tenure: e.disbursed_tenure || '',
-        disbursed_roi: e.disbursed_roi || '',
-      }));
-      setEligibilities(formattedElig);
+      // Profile Analysis
+      setProfileAnalysis({
+        cibil_issues: fd.cibil_issues || '',
+        foir: fd.foir || '',
+        company_type: fd.company_type || ''
+      });
+      
+      // Bank Eligibilities
+      setEligibilities(data.eligibilities || []);
+      
+      // Documents
+      setDocuments(data.documents || []);
+      
+      // Activities
+      setActivities(data.file_activities || data.activities || []);
+      
     } catch (error) {
-      console.error('Failed to load file:', error);
-      toast.error('Failed to load file details');
-      navigate(-1);
+      toast.error('Failed to load file data');
+      console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchOpsTeam = async () => {
-    try {
-      const response = await api.get('/files/operations-team');
-      setOpsTeam(response.data);
-    } catch (error) {
-      console.error('Failed to fetch ops team:', error);
-    }
-  };
-
-  const handleDetailChange = (field, value) => {
-    setEditedDetails(prev => ({ ...prev, [field]: value }));
-  };
-
   const handleSaveDetails = async () => {
-    setSavingDetails(true);
+    setSaving(true);
     try {
-      // Build comprehensive additional_data object with all OLD CRM fields
-      const additionalData = {
-        // Personal Details
-        father_name: editedDetails.father_name,
-        mother_name: editedDetails.mother_name,
-        date_of_birth: editedDetails.date_of_birth,
-        pan_number: editedDetails.pan_number,
-        aadhaar_number: editedDetails.aadhaar_number,
-        current_address: editedDetails.current_address,
-        permanent_address: editedDetails.permanent_address,
-        pin_code: editedDetails.pin_code,
-        residence_type: editedDetails.residence_type,
-        years_at_current_address: editedDetails.years_at_current_address,
-        
-        // Employment Details
-        company_name: editedDetails.company_name,
-        company_type: editedDetails.company_type,
-        designation: editedDetails.designation,
-        office_address: editedDetails.office_address,
-        office_city: editedDetails.office_city,
-        office_pincode: editedDetails.office_pincode,
-        present_employment_months: editedDetails.present_employment_months,
-        total_employment_months: editedDetails.total_employment_months,
-        gross_salary: editedDetails.gross_salary,
-        net_salary: editedDetails.net_salary,
-        salary_bank_name: editedDetails.salary_bank_name,
-        salary_account_number: editedDetails.salary_account_number,
-        additional_income: editedDetails.additional_income,
-        additional_income_source: editedDetails.additional_income_source,
-        business_name: editedDetails.business_name,
-        business_vintage: editedDetails.business_vintage,
-        annual_turnover: editedDetails.annual_turnover,
-        itr_filed_amount: editedDetails.itr_filed_amount,
-        
-        // Existing Obligations
-        cibil_score: editedDetails.cibil_score,
-        cibil_issues: editedDetails.cibil_issues,
-        obligations_emi: editedDetails.obligations_emi,
-        foir: editedDetails.foir,
-        tvr_done: editedDetails.tvr_done,
-        tvr_not_done_reason: editedDetails.tvr_not_done_reason,
-        emi_ok: editedDetails.emi_ok,
-        emi_not_ok_reason: editedDetails.emi_not_ok_reason,
-        existing_loans: editedDetails.existing_loans,
-        existing_loan_1: editedDetails.existing_loan_1,
-        existing_loan_2: editedDetails.existing_loan_2,
-        existing_loan_3: editedDetails.existing_loan_3,
-        credit_card_count: editedDetails.credit_card_count,
-        total_cc_limit: editedDetails.total_cc_limit,
-        cc_outstanding: editedDetails.cc_outstanding,
-        cc_utilization: editedDetails.cc_utilization,
-        
-        // Loan Requirements
-        type_of_loan: editedDetails.type_of_loan,
-        loan_amount_required: editedDetails.loan_amount_required,
-        tenure_required: editedDetails.tenure_required,
-        loan_purpose: editedDetails.loan_purpose,
-        expected_roi: editedDetails.expected_roi,
-        expected_emi: editedDetails.expected_emi,
-        bt_amount: editedDetails.bt_amount,
-        current_roi: editedDetails.current_roi,
-        topup_amount: editedDetails.topup_amount,
-        property_value: editedDetails.property_value,
-        property_type: editedDetails.property_type,
-        property_location: editedDetails.property_location,
-        vehicle_type: editedDetails.vehicle_type,
-        vehicle_model: editedDetails.vehicle_model,
-        vehicle_year: editedDetails.vehicle_year,
-        requirement_notes: editedDetails.requirement_notes,
-        
-        // OLD CRM additional fields
-        pending_documents: editedDetails.pending_documents,
-        documents_note: editedDetails.documents_note,
-        has_password_files: editedDetails.has_password_files,
-        file_passwords: editedDetails.file_passwords
-      };
-      
-      await api.put(`/files/${fileId}/details`, {
-        full_name: editedDetails.full_name,
-        mobile: editedDetails.mobile,
-        email: editedDetails.email,
-        city: editedDetails.city,
-        employment_type: editedDetails.employment_type,
-        additional_data: additionalData
+      await api.put(`/files/${fileId}`, {
+        file_details: editedDetails
       });
       toast.success('Details saved successfully');
       setIsEditingDetails(false);
       fetchFileData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save details');
+      toast.error('Failed to save details');
     } finally {
-      setSavingDetails(false);
+      setSaving(false);
     }
+  };
+
+  const handleSaveProfileAnalysis = async () => {
+    setSaving(true);
+    try {
+      await api.put(`/files/${fileId}`, {
+        file_details: {
+          ...fileData?.file_details,
+          ...profileAnalysis
+        }
+      });
+      toast.success('Profile analysis saved');
+      fetchFileData();
+    } catch (error) {
+      toast.error('Failed to save profile analysis');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveEligibilities = async () => {
+    setSavingEligibilities(true);
+    try {
+      await api.put(`/files/${fileId}/eligibilities`, { eligibilities });
+      toast.success('Bank eligibilities saved');
+      fetchFileData();
+    } catch (error) {
+      toast.error('Failed to save eligibilities');
+    } finally {
+      setSavingEligibilities(false);
+    }
+  };
+
+  const handleAddBank = () => {
+    if (eligibilities.length >= 7) {
+      toast.error('Maximum 7 banks allowed');
+      return;
+    }
+    setEligibilities([...eligibilities, { ...EMPTY_BANK }]);
+  };
+
+  const handleRemoveBank = (index) => {
+    setEligibilities(eligibilities.filter((_, i) => i !== index));
+  };
+
+  const handleBankChange = (index, field, value) => {
+    const updated = [...eligibilities];
+    updated[index] = { ...updated[index], [field]: value };
+    setEligibilities(updated);
   };
 
   const handleStatusUpdate = async () => {
     try {
-      await api.put(`/files/${fileId}/file-status`, { file_status: newStatus });
-      toast.success('Status updated successfully');
+      await api.put(`/files/${fileId}/status`, { file_status: newStatus });
+      toast.success('Status updated');
       fetchFileData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to update status');
-    }
-  };
-
-  const handleAssignment = async () => {
-    try {
-      await api.put(`/files/${fileId}/assign`, { assigned_to: selectedAssignee });
-      toast.success('File assigned successfully');
-      fetchFileData();
-    } catch (error) {
-      toast.error('Failed to assign file');
+      toast.error('Failed to update status');
     }
   };
 
   const handleAddNote = async () => {
     if (!note.trim()) return;
     try {
-      await api.post(`/files/${fileId}/notes`, { note: note });
+      await api.post(`/files/${fileId}/note`, { note });
       toast.success('Note added');
       setNote('');
       fetchFileData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to add note');
+      toast.error('Failed to add note');
     }
   };
 
-  const handleRatingChange = async (newRating) => {
-    setRating(newRating);
-    try {
-      await api.put(`/files/${fileId}/details`, { rating: newRating });
-    } catch (error) {
-      console.error('Failed to update rating');
+  const handleFileUpload = async (e) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    
+    setUploading(true);
+    const formData = new FormData();
+    for (let file of files) {
+      formData.append('files', file);
     }
-  };
-
-  const [checkingEligibility, setCheckingEligibility] = useState(false);
-
-  // Navigate to separate Bank Eligibility Analysis page
-  const handleCheckBankEligibility = () => {
-    navigate(`/admin/files/${fileId}/eligibility`);
-  };
-
-  // Eligibility handlers
-  const addEligibility = () => {
-    if (eligibilities.length >= 7) return;
-    setEligibilities([...eligibilities, { ...EMPTY_ELIGIBILITY }]);
-  };
-
-  const removeEligibility = (index) => {
-    setEligibilities(eligibilities.filter((_, i) => i !== index));
-  };
-
-  const updateEligibility = (index, field, value) => {
-    const updated = [...eligibilities];
-    updated[index] = { ...updated[index], [field]: value };
-    setEligibilities(updated);
-  };
-
-  const saveEligibilities = async () => {
-    setSavingEligibilities(true);
+    
     try {
-      const formattedEligibilities = eligibilities.map(e => ({
-        bank_name: e.bank_name || '',
-        is_eligible: e.is_eligible === 'yes',
-        eligible_amount: e.eligible_amount ? parseFloat(e.eligible_amount) : null,
-        eligible_tenure: e.eligible_tenure ? parseInt(e.eligible_tenure) : null,
-        not_eligible_reason: e.not_eligible_reason || null,
-        login_done: e.login_done === 'yes' ? true : e.login_done === 'no' ? false : null,
-        login_bank: e.login_bank || null,
-        login_rejection_reason: e.login_rejection_reason || null,
-        approval_status: e.approval_status || null,
-        approved_bank: e.approved_bank || null,
-        approved_amount: e.approved_amount ? parseFloat(e.approved_amount) : null,
-        approved_tenure: e.approved_tenure ? parseInt(e.approved_tenure) : null,
-        approved_roi: e.approved_roi ? parseFloat(e.approved_roi) : null,
-        declined_bank: e.declined_bank || null,
-        declined_reason: e.declined_reason || null,
-        disbursed: e.disbursed === 'yes' ? true : e.disbursed === 'no' ? false : null,
-        disbursed_bank: e.disbursed_bank || null,
-        disbursed_amount: e.disbursed_amount ? parseFloat(e.disbursed_amount) : null,
-        disbursed_tenure: e.disbursed_tenure ? parseInt(e.disbursed_tenure) : null,
-        disbursed_roi: e.disbursed_roi ? parseFloat(e.disbursed_roi) : null,
-        disbursement_rejection_reason: e.disbursement_rejection_reason || null,
-        commission_percentage: e.commission_percentage ? parseFloat(e.commission_percentage) : null,
-        commission_amount: e.commission_percentage && e.disbursed_amount 
-          ? parseFloat(((parseFloat(e.disbursed_amount) * parseFloat(e.commission_percentage)) / 100).toFixed(2)) 
-          : null
-      }));
-      await api.put(`/files/${fileId}/eligibilities`, { eligibilities: formattedEligibilities });
-      toast.success('Eligibilities saved successfully');
+      await api.post(`/files/${fileId}/documents`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Documents uploaded');
       fetchFileData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to save eligibilities');
+      toast.error('Failed to upload documents');
     } finally {
-      setSavingEligibilities(false);
+      setUploading(false);
     }
   };
 
-  const handleDownloadAllZip = () => {
-    toast.info('Preparing ZIP download...');
-    // In real implementation, this would call a backend endpoint to create a ZIP
+  const handleDeleteDocument = async (docId) => {
+    try {
+      await api.delete(`/files/${fileId}/documents/${docId}`);
+      toast.success('Document deleted');
+      fetchFileData();
+    } catch (error) {
+      toast.error('Failed to delete document');
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    try {
+      const response = await api.get(`/files/${fileId}/documents/download-all`, {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `${fileData?.name || 'documents'}.zip`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      toast.error('Failed to download documents');
+    }
+  };
+
+  const copyPassword = () => {
+    const password = generateFilePassword(fileId);
+    navigator.clipboard.writeText(password);
+    setCopiedPassword(true);
+    setTimeout(() => setCopiedPassword(false), 2000);
+  };
+
+  const toggleBankExpand = (index) => {
+    setExpandedBanks(prev => ({
+      ...prev,
+      [index]: !prev[index]
+    }));
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 size={32} className="animate-spin text-green-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-green-600" />
       </div>
     );
   }
 
-  if (!fileData) return null;
-
+  const fd = fileData?.file_details || {};
   const filePassword = generateFilePassword(fileId);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header - Match Old CRM */}
-      <nav className="bg-white border-b border-gray-200 px-4 py-3 flex items-center gap-4 sticky top-0 z-50">
-        <button 
-          onClick={() => navigate(-1)} 
-          className="flex items-center gap-1 text-gray-600 hover:text-gray-900"
-          data-testid="back-btn"
-        >
-          <ArrowLeft size={18} />
-          Back
-        </button>
-        
-        <h1 className="text-xl font-bold text-gray-900">File Details</h1>
-        
-        {/* Star Rating */}
-        <div className="flex items-center gap-1 ml-2">
-          {[1, 2, 3, 4, 5].map((star) => (
-            <button
-              key={star}
-              onClick={() => handleRatingChange(star)}
-              className="focus:outline-none"
-            >
-              <Star
-                size={20}
-                className={star <= rating 
-                  ? 'text-yellow-400 fill-yellow-400' 
-                  : 'text-gray-300 hover:text-yellow-300'
-                }
-              />
+    <div className="min-h-screen bg-gray-50 pb-24" data-testid="file-details-page">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-lg">
+              <ArrowLeft size={20} />
             </button>
-          ))}
-          <span className="text-sm text-gray-500 ml-2">{score}/100</span>
+            <h1 className="text-xl font-bold text-gray-900">File Details</h1>
+          </div>
+          <button
+            onClick={() => {
+              const basePath = isAdmin || isOps || isManager ? '/admin' : '/agent';
+              navigate(`${basePath}/files/${fileId}/eligibility`);
+            }}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
+          >
+            <Building2 size={18} />
+            Check Eligibility
+          </button>
         </div>
-        
-        {/* Check Bank Eligibility Button - Navigate to Analysis Page */}
-        <button
-          onClick={handleCheckBankEligibility}
-          className="ml-4 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
-        >
-          <Building2 size={18} />
-          Check Eligibility
-        </button>
-        
-        <div className="ml-auto text-sm text-gray-500">
-          {fileData.name || 'Unnamed'} • {fileData.phone}
-        </div>
-      </nav>
+      </div>
 
-      <div className="px-4 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-w-7xl mx-auto">
-          {/* Main Content - Left 2 columns */}
-          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
-            {/* Section 1: Customer & Application Information - Collapsible on Mobile */}
-            <CollapsibleSection
-              title="Customer & Application"
-              subtitle="Editable by Growth Partner, Ops, and Admin"
-              icon={User}
-              defaultExpanded={true}
-              testId="file-info-card"
-              rightContent={
-                canEditCustomerDetails && (
-                  <div className="flex gap-2">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Lead Information */}
+          <div className="lg:col-span-2 space-y-6">
+            
+            {/* Complete Lead Information */}
+            <div className="bg-white rounded-xl border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-lg font-semibold text-gray-900">Complete Lead Information</h2>
+                {canEditLeadInfo && (
+                  <button
+                    onClick={() => isEditingDetails ? handleSaveDetails() : setIsEditingDetails(true)}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                  >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : isEditingDetails ? <Save size={16} /> : <Edit2 size={16} />}
+                    {isEditingDetails ? 'Save Details' : 'Edit Details'}
+                  </button>
+                )}
+              </div>
+
+              {/* Customer Details */}
+              <div className="mb-6">
+                <h3 className="text-sm font-semibold text-green-600 mb-3">Customer Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Full Name</label>
                     {isEditingDetails ? (
-                      <>
-                        <button 
-                          onClick={() => setIsEditingDetails(false)} 
-                          className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50"
-                        >
-                          Cancel
-                        </button>
-                        <button 
-                          onClick={handleSaveDetails} 
-                          disabled={savingDetails} 
-                          className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
-                        >
-                          {savingDetails ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                          {savingDetails ? 'Saving...' : 'Save'}
-                        </button>
-                      </>
+                      <input
+                        type="text"
+                        value={editedDetails.full_name}
+                        onChange={(e) => setEditedDetails({...editedDetails, full_name: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
                     ) : (
-                      <button 
-                        onClick={() => setIsEditingDetails(true)} 
-                        className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
-                        data-testid="edit-details-btn"
-                      >
-                        <Edit2 size={14} />
-                        Edit
-                      </button>
+                      <p className="font-medium text-gray-900">{fd.full_name || fileData?.name || '-'}</p>
                     )}
                   </div>
-                )
-              }
-            >
-              {/* Sub-sections within Customer & Application */}
-              <div className="space-y-4">
-                {/* Customer Details - Collapsible subsection */}
-                <CollapsibleSection
-                  title="Customer Details"
-                  icon={User}
-                  defaultExpanded={true}
-                  className="border-gray-50"
-                >
-                  <CustomerDetailsSection
-                    details={editedDetails}
-                    isEditing={isEditingDetails}
-                    onDetailChange={handleDetailChange}
-                  />
-                </CollapsibleSection>
-                
-                {/* Employment Details */}
-                <CollapsibleSection
-                  title="Employment & Income"
-                  icon={Briefcase}
-                  defaultExpanded={false}
-                  className="border-gray-50"
-                >
-                  <EmploymentDetailsSection
-                    details={editedDetails}
-                    isEditing={isEditingDetails}
-                    onDetailChange={handleDetailChange}
-                  />
-                </CollapsibleSection>
-                
-                {/* Existing Loans */}
-                <CollapsibleSection
-                  title="Existing Obligations"
-                  icon={CreditCard}
-                  defaultExpanded={false}
-                  className="border-gray-50"
-                >
-                  <ExistingLoansSection
-                    details={editedDetails}
-                    isEditing={isEditingDetails}
-                    onDetailChange={handleDetailChange}
-                  />
-                </CollapsibleSection>
-                
-                {/* Loan Requirements */}
-                <CollapsibleSection
-                  title="Loan Requirements"
-                  icon={FileText}
-                  defaultExpanded={false}
-                  className="border-gray-50"
-                >
-                  <LoanRequirementsSection
-                    details={editedDetails}
-                    isEditing={isEditingDetails}
-                    onDetailChange={handleDetailChange}
-                  />
-                </CollapsibleSection>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Mobile</label>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">
+                        {showMobile ? (fd.mobile || fileData?.phone || '-') : maskPhone(fd.mobile || fileData?.phone)}
+                      </p>
+                      <button onClick={() => setShowMobile(!showMobile)} className="text-gray-400 hover:text-gray-600">
+                        {showMobile ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Email</label>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-gray-900">
+                        {showEmail ? (fd.email || fileData?.email || '-') : maskEmail(fd.email || fileData?.email)}
+                      </p>
+                      <button onClick={() => setShowEmail(!showEmail)} className="text-gray-400 hover:text-gray-600">
+                        {showEmail ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Mother Name</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="text"
+                        value={editedDetails.mother_name}
+                        onChange={(e) => setEditedDetails({...editedDetails, mother_name: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.mother_name || '-'}</p>
+                    )}
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="text-xs text-gray-500 block mb-1">Current Address</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="text"
+                        value={editedDetails.current_address}
+                        onChange={(e) => setEditedDetails({...editedDetails, current_address: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.current_address || '-'}</p>
+                    )}
+                  </div>
+                </div>
               </div>
-            </CollapsibleSection>
 
-            {/* Section 2: Bank Processing - Collapsible on Mobile */}
-            <CollapsibleSection
-              title="Bank Processing & Eligibility"
-              subtitle={canEditBankProcessing 
-                ? 'Editable by Ops and Admin only' 
-                : 'View only - Contact Ops/Admin to update'}
-              icon={Building2}
-              defaultExpanded={true}
-              testId="bank-processing-section"
-              badge={!canEditBankProcessing && isGP && (
-                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">View Only</span>
-              )}
-            >
-              <EligibilityTracker
-                eligibilities={eligibilities}
-                canEdit={canEditBankProcessing}
-                onUpdate={updateEligibility}
-                onAdd={addEligibility}
-                onRemove={removeEligibility}
-                onSave={saveEligibilities}
-                isSaving={savingEligibilities}
-              />
-            </CollapsibleSection>
+              {/* Employment Details */}
+              <div className="mb-6 pt-4 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-green-600 mb-3">Employment Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Employment Type</label>
+                    {isEditingDetails ? (
+                      <select
+                        value={editedDetails.employment_type}
+                        onChange={(e) => setEditedDetails({...editedDetails, employment_type: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      >
+                        <option value="">Select</option>
+                        <option value="salaried">Salaried</option>
+                        <option value="self_employed">Self Employed</option>
+                        <option value="business">Business</option>
+                      </select>
+                    ) : (
+                      <p className="font-medium text-gray-900 capitalize">{fd.employment_type || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Company Name</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="text"
+                        value={editedDetails.company_name}
+                        onChange={(e) => setEditedDetails({...editedDetails, company_name: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.company_name || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Net Salary (₹)</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="number"
+                        value={editedDetails.net_salary}
+                        onChange={(e) => setEditedDetails({...editedDetails, net_salary: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.net_salary ? formatCurrency(fd.net_salary) : '-'}</p>
+                    )}
+                  </div>
+                  <div className="md:col-span-3">
+                    <label className="text-xs text-gray-500 block mb-1">Office Address</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="text"
+                        value={editedDetails.office_address}
+                        onChange={(e) => setEditedDetails({...editedDetails, office_address: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.office_address || '-'}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-            {/* Status Update */}
-            {canEdit && (
-              <FileStatusCard
-                currentStatus={fileData.file_status}
-                newStatus={newStatus}
-                onStatusChange={setNewStatus}
-                onUpdate={handleStatusUpdate}
-              />
+              {/* Existing Loans & Obligations */}
+              <div className="mb-6 pt-4 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-green-600 mb-3">Existing Loans & Obligations</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Monthly EMI Obligations (₹)</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="number"
+                        value={editedDetails.monthly_emi_obligations}
+                        onChange={(e) => setEditedDetails({...editedDetails, monthly_emi_obligations: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.monthly_emi_obligations || fd.obligations_emi || '0'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Existing Loan 1</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="text"
+                        value={editedDetails.existing_loan_1}
+                        onChange={(e) => setEditedDetails({...editedDetails, existing_loan_1: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        placeholder="e.g., SBI 14839 emi pl"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.existing_loan_1 || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Existing Loan 2</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="text"
+                        value={editedDetails.existing_loan_2}
+                        onChange={(e) => setEditedDetails({...editedDetails, existing_loan_2: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.existing_loan_2 || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Existing Loan 3</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="text"
+                        value={editedDetails.existing_loan_3}
+                        onChange={(e) => setEditedDetails({...editedDetails, existing_loan_3: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.existing_loan_3 || '-'}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Loan Requirements */}
+              <div className="mb-6 pt-4 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-green-600 mb-3">Loan Requirements</h3>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Type of Loan</label>
+                    {isEditingDetails ? (
+                      <select
+                        value={editedDetails.type_of_loan}
+                        onChange={(e) => setEditedDetails({...editedDetails, type_of_loan: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      >
+                        <option value="">Select</option>
+                        <option value="new_personal_loan">New Personal Loan</option>
+                        <option value="balance_transfer_topup_pl">Balance Transfer+Top Up PL</option>
+                        <option value="used_vehicle_loan_bt">Used Vehicle Loan BT</option>
+                        <option value="used_vehicle_loan_fresh">Used Vehicle Loan Fresh</option>
+                        <option value="new_vehicle_loan">New Vehicle Loan</option>
+                        <option value="merge_multiple_loans">Merge Multiple Loans</option>
+                        <option value="balance_transfer_pl">Balance Transfer PL</option>
+                        <option value="top_up_pl">Top Up PL</option>
+                        <option value="bt_topup_hl">BT Topup HL</option>
+                        <option value="reduce_home_loan_emi">Reduce Home Loan EMI</option>
+                        <option value="business_loan">Business Loan</option>
+                        <option value="new_home_loan">New Home Loan</option>
+                      </select>
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.type_of_loan?.replace(/_/g, ' ') || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">CIBIL Score</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="number"
+                        value={editedDetails.cibil_score}
+                        onChange={(e) => setEditedDetails({...editedDetails, cibil_score: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.cibil_score || '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Loan Amount Required (₹)</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="number"
+                        value={editedDetails.loan_amount_required}
+                        onChange={(e) => setEditedDetails({...editedDetails, loan_amount_required: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.loan_amount_required ? formatCurrency(fd.loan_amount_required) : '-'}</p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Tenure Required (months)</label>
+                    {isEditingDetails ? (
+                      <input
+                        type="number"
+                        value={editedDetails.tenure_required}
+                        onChange={(e) => setEditedDetails({...editedDetails, tenure_required: e.target.value})}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    ) : (
+                      <p className="font-medium text-gray-900">{fd.tenure_required || '-'}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Lead Source & Status */}
+              <div className="pt-4 border-t border-gray-100">
+                <h3 className="text-sm font-semibold text-green-600 mb-3">Lead Source & Status</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Source Type</label>
+                    <p className="font-medium text-gray-900">{fd.source_type || 'Agent'}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Growth Partner Name</label>
+                    <p className="font-medium text-gray-900">{fileData?.source_name || fd.growth_partner_name || '-'}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Growth Partner Code</label>
+                    <p className="font-medium text-green-600">{fd.growth_partner_code || '-'}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Growth Partner Contact</label>
+                    <p className="font-medium text-gray-900">{fd.growth_partner_contact || '-'}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Current Status</label>
+                    <span className={`inline-block px-2 py-1 rounded-full text-xs font-medium ${
+                      fileData?.file_status === 'disbursed' ? 'bg-green-100 text-green-700' :
+                      fileData?.file_status === 'approved' ? 'bg-blue-100 text-blue-700' :
+                      fileData?.file_status === 'login' ? 'bg-purple-100 text-purple-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>
+                      {fileData?.file_status?.replace(/_/g, ' ') || 'New'}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Created</label>
+                    <p className="font-medium text-gray-900">
+                      {fileData?.created_at ? new Date(fileData.created_at).toLocaleDateString('en-IN') : '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Profile Analysis - Admin, Ops, Managers only */}
+            {canEditBankInfo && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-green-600 flex items-center gap-2">
+                    <Star size={18} />
+                    Profile Analysis
+                  </h2>
+                  <button
+                    onClick={handleSaveProfileAnalysis}
+                    disabled={saving}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                    Save
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">CIBIL Issues</label>
+                    <select
+                      value={profileAnalysis.cibil_issues}
+                      onChange={(e) => setProfileAnalysis({...profileAnalysis, cibil_issues: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="no_issues">No Issues</option>
+                      <option value="minor_issues">Minor Issues</option>
+                      <option value="major_issues">Major Issues</option>
+                      <option value="settlement">Settlement</option>
+                      <option value="write_off">Write Off</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">FOIR %</label>
+                    <input
+                      type="text"
+                      value={profileAnalysis.foir}
+                      onChange={(e) => setProfileAnalysis({...profileAnalysis, foir: e.target.value})}
+                      placeholder="e.g., 65"
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Company Type</label>
+                    <select
+                      value={profileAnalysis.company_type}
+                      onChange={(e) => setProfileAnalysis({...profileAnalysis, company_type: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    >
+                      <option value="">Select</option>
+                      <option value="listed">Listed</option>
+                      <option value="mnc">MNC</option>
+                      <option value="private_ltd">Private Ltd</option>
+                      <option value="partnership">Partnership</option>
+                      <option value="proprietorship">Proprietorship</option>
+                      <option value="government">Government</option>
+                      <option value="psu">PSU</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
             )}
 
-            {/* Assign File */}
-            {canEdit && (
-              <FileAssignmentCard
-                opsTeam={opsTeam}
-                selectedAssignee={selectedAssignee}
-                currentAssignee={fileData.file_assigned_to}
-                onAssigneeChange={setSelectedAssignee}
-                onAssign={handleAssignment}
-              />
+            {/* Bank Eligibilities - Admin, Ops, Managers only */}
+            {canEditBankInfo && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                    <Building2 size={18} />
+                    Bank Eligibilities ({eligibilities.length}/7)
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSaveEligibilities}
+                      disabled={savingEligibilities}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                    >
+                      {savingEligibilities ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                      Save All
+                    </button>
+                    <button
+                      onClick={handleAddBank}
+                      disabled={eligibilities.length >= 7}
+                      className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <Plus size={16} />
+                      Add Bank
+                    </button>
+                  </div>
+                </div>
+
+                {eligibilities.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <Building2 size={48} className="mx-auto text-gray-300 mb-3" />
+                    <p>No banks added yet. Click "Add Bank" to add bank eligibility.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {eligibilities.map((bank, index) => (
+                      <div key={index} className="border border-gray-200 rounded-lg overflow-hidden">
+                        {/* Bank Header */}
+                        <div 
+                          className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer"
+                          onClick={() => toggleBankExpand(index)}
+                        >
+                          <h3 className="font-semibold text-green-600">Bank #{index + 1}</h3>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleRemoveBank(index); }}
+                              className="p-1 text-red-500 hover:bg-red-50 rounded"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                            {expandedBanks[index] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                          </div>
+                        </div>
+
+                        {/* Bank Details - Always show basic info */}
+                        <div className="p-4">
+                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">Bank Name</label>
+                              <input
+                                type="text"
+                                value={bank.bank_name}
+                                onChange={(e) => handleBankChange(index, 'bank_name', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">Eligible?</label>
+                              <select
+                                value={bank.is_eligible}
+                                onChange={(e) => handleBankChange(index, 'is_eligible', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                              >
+                                <option value="">Select</option>
+                                <option value="yes">Yes - Eligible</option>
+                                <option value="no">No - Not Eligible</option>
+                                <option value="possible">Possible</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">Eligible Amount (₹)</label>
+                              <input
+                                type="number"
+                                value={bank.eligible_amount}
+                                onChange={(e) => handleBankChange(index, 'eligible_amount', e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs text-gray-500 block mb-1">ROI (%)</label>
+                              <input
+                                type="text"
+                                value={bank.roi}
+                                onChange={(e) => handleBankChange(index, 'roi', e.target.value)}
+                                placeholder="%"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Expanded Details */}
+                          {expandedBanks[index] !== false && (
+                            <>
+                              {/* Login Status */}
+                              <div className="pt-4 border-t border-gray-100">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Login Status</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Login Done?</label>
+                                    <select
+                                      value={bank.login_done}
+                                      onChange={(e) => handleBankChange(index, 'login_done', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="yes">Yes</option>
+                                      <option value="no">No</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Login Bank</label>
+                                    <input
+                                      type="text"
+                                      value={bank.login_bank}
+                                      onChange={(e) => handleBankChange(index, 'login_bank', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Application ID</label>
+                                    <input
+                                      type="text"
+                                      value={bank.application_id}
+                                      onChange={(e) => handleBankChange(index, 'application_id', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">SM Name</label>
+                                    <input
+                                      type="text"
+                                      value={bank.sm_name}
+                                      onChange={(e) => handleBankChange(index, 'sm_name', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">SM Number</label>
+                                    <input
+                                      type="text"
+                                      value={bank.sm_number}
+                                      onChange={(e) => handleBankChange(index, 'sm_number', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Approval Status */}
+                              <div className="pt-4 mt-4 border-t border-gray-100">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Approval Status</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Status</label>
+                                    <select
+                                      value={bank.approval_status}
+                                      onChange={(e) => handleBankChange(index, 'approval_status', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="pending">Pending</option>
+                                      <option value="approved">Approved</option>
+                                      <option value="declined">Declined</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Approved Bank</label>
+                                    <input
+                                      type="text"
+                                      value={bank.approved_bank}
+                                      onChange={(e) => handleBankChange(index, 'approved_bank', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Approved Amount (₹)</label>
+                                    <input
+                                      type="number"
+                                      value={bank.approved_amount}
+                                      onChange={(e) => handleBankChange(index, 'approved_amount', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Tenure (months)</label>
+                                    <input
+                                      type="number"
+                                      value={bank.approved_tenure}
+                                      onChange={(e) => handleBankChange(index, 'approved_tenure', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">ROI (%)</label>
+                                    <input
+                                      type="text"
+                                      value={bank.approved_roi}
+                                      onChange={(e) => handleBankChange(index, 'approved_roi', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Disbursement */}
+                              <div className="pt-4 mt-4 border-t border-gray-100">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Disbursement</h4>
+                                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Disbursed?</label>
+                                    <select
+                                      value={bank.disbursed}
+                                      onChange={(e) => handleBankChange(index, 'disbursed', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    >
+                                      <option value="">Select</option>
+                                      <option value="yes">Yes</option>
+                                      <option value="no">No</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Disbursal Date</label>
+                                    <input
+                                      type="date"
+                                      value={bank.disbursal_date}
+                                      onChange={(e) => handleBankChange(index, 'disbursal_date', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Disbursed Bank</label>
+                                    <input
+                                      type="text"
+                                      value={bank.disbursed_bank}
+                                      onChange={(e) => handleBankChange(index, 'disbursed_bank', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Disbursed Amount (₹)</label>
+                                    <input
+                                      type="number"
+                                      value={bank.disbursed_amount}
+                                      onChange={(e) => handleBankChange(index, 'disbursed_amount', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Tenure (months)</label>
+                                    <input
+                                      type="number"
+                                      value={bank.disbursed_tenure}
+                                      onChange={(e) => handleBankChange(index, 'disbursed_tenure', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">ROI (%)</label>
+                                    <input
+                                      type="text"
+                                      value={bank.disbursed_roi}
+                                      onChange={(e) => handleBankChange(index, 'disbursed_roi', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Commission */}
+                              <div className="pt-4 mt-4 border-t border-gray-100">
+                                <h4 className="text-sm font-semibold text-amber-600 mb-3">Commission (for Agent/Partner)</h4>
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Commission %</label>
+                                    <input
+                                      type="text"
+                                      value={bank.commission_percentage}
+                                      onChange={(e) => handleBankChange(index, 'commission_percentage', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs text-gray-500 block mb-1">Commission Amount</label>
+                                    <input
+                                      type="number"
+                                      value={bank.commission_amount}
+                                      onChange={(e) => handleBankChange(index, 'commission_amount', e.target.value)}
+                                      className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Update Status - Admin, Ops, Managers */}
+            {canEditBankInfo && (
+              <div className="bg-white rounded-xl border border-gray-200 p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Update Status</h2>
+                <div className="flex items-center gap-4">
+                  <select
+                    value={newStatus}
+                    onChange={(e) => setNewStatus(e.target.value)}
+                    className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                  >
+                    <option value="new">New</option>
+                    <option value="contacted">Contacted</option>
+                    <option value="documents_pending">Documents Pending</option>
+                    <option value="documents_collected">Documents Collected</option>
+                    <option value="sent_to_bank">Sent to Bank</option>
+                    <option value="login">Login</option>
+                    <option value="approved">Approved</option>
+                    <option value="disbursed">Disbursed</option>
+                    <option value="rejected">Rejected</option>
+                    <option value="on_hold">On Hold</option>
+                  </select>
+                  <button
+                    onClick={handleStatusUpdate}
+                    className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
+                  >
+                    Update Status
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
-          {/* Sidebar - Right column */}
-          <div className="space-y-4 sm:space-y-6">
-            {/* Documents Panel - Collapsible on Mobile */}
-            <CollapsibleSection
-              title={`Documents (${(fileData.file_documents || fileData.documents || []).length})`}
-              icon={FileArchive}
-              defaultExpanded={false}
-              testId="documents-card"
-              rightContent={
-                <button 
-                  onClick={handleDownloadAllZip}
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg hover:bg-gray-50 flex items-center gap-1"
+          {/* Right Column - Documents & Activity */}
+          <div className="space-y-6">
+            {/* Documents */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <FileText size={18} className="text-green-600" />
+                  Documents ({documents.length})
+                </h2>
+                <button
+                  onClick={handleDownloadAll}
+                  className="flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900"
                 >
                   <Download size={14} />
-                  <span className="hidden sm:inline">Download ZIP</span>
+                  Download All ZIP
                 </button>
-              }
-            >
-              {/* Password Protected Files Notice */}
-              {(fileData.file_documents || fileData.documents || []).length > 0 && (
-                <div className="mb-4 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600 font-medium">
-                    Password: {filePassword}
-                  </p>
+              </div>
+
+              {/* Password Protected Notice */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-amber-700 font-medium">
+                    Password Protected Files: {showPassword ? filePassword : '••••••••••••'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setShowPassword(!showPassword)} className="text-amber-600 hover:text-amber-800">
+                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                    <button onClick={copyPassword} className="text-amber-600 hover:text-amber-800">
+                      {copiedPassword ? <Check size={14} /> : <Copy size={14} />}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Documents List */}
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {documents.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">No documents uploaded</p>
+                ) : (
+                  documents.map((doc, index) => (
+                    <div key={doc.id || index} className="flex items-center justify-between py-2 px-3 bg-gray-50 rounded-lg">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{doc.name || doc.filename}</p>
+                        <p className="text-xs text-gray-500">{doc.category || 'general'} • {doc.size || '-'}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <a
+                          href={doc.url}
+                          download
+                          className="p-1 text-gray-500 hover:text-gray-700"
+                        >
+                          <Download size={16} />
+                        </a>
+                        {canEditLeadInfo && (
+                          <button
+                            onClick={() => handleDeleteDocument(doc.id)}
+                            className="p-1 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Upload */}
+              {canEditLeadInfo && (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <div className="flex flex-col items-center justify-center">
+                      {uploading ? (
+                        <Loader2 size={24} className="animate-spin text-green-600" />
+                      ) : (
+                        <>
+                          <Upload size={24} className="text-gray-400 mb-2" />
+                          <span className="text-sm text-gray-500">Upload Documents</span>
+                          <span className="text-xs text-gray-400">PDF, Images, DOC, XLS (max 10MB each)</span>
+                        </>
+                      )}
+                    </div>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
+                    />
+                  </label>
                 </div>
               )}
+            </div>
+
+            {/* Activity Log */}
+            <div className="bg-white rounded-xl border border-gray-200 p-4">
+              <h2 className="font-semibold text-gray-900 mb-4">Activity Log</h2>
               
-              <DocumentsPanel
-                documents={fileData.file_documents || fileData.documents || []}
-                pendingDocuments={fileData.pending_documents || []}
-                requiredDocuments={fileData.required_documents || []}
-                fileId={fileId}
-                canEdit={canEdit}
-                onDocumentsChange={() => fetchFileData()}
-              />
-            </CollapsibleSection>
-            
-            {/* Activity Log - Collapsible on Mobile */}
-            <CollapsibleSection
-              title="Activity Log"
-              subtitle={`${(fileData.file_activities || []).length} events`}
-              defaultExpanded={false}
-              testId="activity-log-card"
-            >
-              <ActivityLog
-                activities={fileData.file_activities || []}
-                note={note}
-                onNoteChange={setNote}
-                onAddNote={handleAddNote}
-                canEdit={canEdit}
-                compact={true}
-              />
-            </CollapsibleSection>
+              {/* Add Note */}
+              <div className="mb-4">
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="Add a note..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm resize-none"
+                  rows={2}
+                />
+                <button
+                  onClick={handleAddNote}
+                  disabled={!note.trim()}
+                  className="mt-2 w-full py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+                >
+                  Add Note
+                </button>
+              </div>
+
+              {/* Activity List */}
+              <div className="space-y-3 max-h-60 overflow-y-auto">
+                {activities.length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
+                ) : (
+                  activities.slice(0, 10).map((activity, index) => (
+                    <div key={index} className="text-sm border-l-2 border-gray-200 pl-3">
+                      <p className="text-gray-900">{activity.message || activity.note}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {activity.by_name || activity.user_name || 'System'} • 
+                        {activity.timestamp ? new Date(activity.timestamp).toLocaleString('en-IN') : '-'}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
