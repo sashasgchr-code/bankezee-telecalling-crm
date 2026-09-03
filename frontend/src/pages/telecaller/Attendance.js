@@ -218,20 +218,48 @@ const TelecallerAttendance = () => {
         {/* Monthly Matrix */}
         {monthlyData && (
           <div className="bg-white rounded-xl border border-gray-200 p-4" data-testid="monthly-matrix">
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg">
-                <ChevronLeft size={20} />
-              </button>
-              <h3 className="font-semibold text-gray-900">
-                {monthNames[currentMonth - 1]} {currentYear}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Calendar size={18} className="text-green-600" />
+                Monthly Summary
               </h3>
-              <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg">
-                <ChevronRight size={20} />
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg">
+                  <ChevronLeft size={20} />
+                </button>
+                
+                {/* Month Dropdown */}
+                <select
+                  value={currentMonth}
+                  onChange={(e) => setCurrentMonth(parseInt(e.target.value))}
+                  className="h-9 px-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  data-testid="month-select"
+                >
+                  {monthNames.map((m, i) => (
+                    <option key={i + 1} value={i + 1}>{m}</option>
+                  ))}
+                </select>
+                
+                {/* Year Dropdown */}
+                <select
+                  value={currentYear}
+                  onChange={(e) => setCurrentYear(parseInt(e.target.value))}
+                  className="h-9 px-2 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  data-testid="year-select"
+                >
+                  {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                
+                <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg">
+                  <ChevronRight size={20} />
+                </button>
+              </div>
             </div>
 
             {/* Summary */}
-            <div className="grid grid-cols-5 gap-2 mb-4">
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-4">
               <div className="text-center p-2 bg-green-50 rounded-lg">
                 <p className="text-lg font-bold text-green-700">{monthlyData.summary?.present || 0}</p>
                 <p className="text-xs text-gray-600">Present</p>
@@ -251,6 +279,10 @@ const TelecallerAttendance = () => {
               <div className="text-center p-2 bg-red-50 rounded-lg">
                 <p className="text-lg font-bold text-red-700">{monthlyData.summary?.absent || 0}</p>
                 <p className="text-xs text-gray-600">Absent</p>
+              </div>
+              <div className="text-center p-2 bg-gray-100 rounded-lg">
+                <p className="text-lg font-bold text-gray-700">{monthlyData.summary?.working_days || 0}</p>
+                <p className="text-xs text-gray-600">Work Days</p>
               </div>
             </div>
 

@@ -404,12 +404,12 @@ const AdminAttendanceDashboard = () => {
       {/* Monthly Matrix View */}
       {showMatrixView && (
         <div className="card p-4" data-testid="monthly-matrix-view">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <h3 className="font-semibold text-gray-900 flex items-center gap-2">
               <Grid3X3 size={18} className="text-green-600" />
               Monthly Attendance Matrix
             </h3>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button 
                 onClick={() => {
                   if (matrixMonth === 1) {
@@ -420,12 +420,36 @@ const AdminAttendanceDashboard = () => {
                   }
                 }}
                 className="p-2 hover:bg-gray-100 rounded-lg"
+                data-testid="prev-month-btn"
               >
                 <ChevronLeft size={18} />
               </button>
-              <span className="font-medium px-3">
-                {new Date(matrixYear, matrixMonth - 1).toLocaleString('default', { month: 'long' })} {matrixYear}
-              </span>
+              
+              {/* Month Dropdown */}
+              <select
+                value={matrixMonth}
+                onChange={(e) => setMatrixMonth(parseInt(e.target.value))}
+                className="h-9 px-3 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                data-testid="month-select"
+              >
+                {['January', 'February', 'March', 'April', 'May', 'June', 
+                  'July', 'August', 'September', 'October', 'November', 'December'].map((m, i) => (
+                  <option key={i + 1} value={i + 1}>{m}</option>
+                ))}
+              </select>
+              
+              {/* Year Dropdown */}
+              <select
+                value={matrixYear}
+                onChange={(e) => setMatrixYear(parseInt(e.target.value))}
+                className="h-9 px-3 border border-gray-200 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                data-testid="year-select"
+              >
+                {Array.from({ length: 3 }, (_, i) => new Date().getFullYear() - 2 + i).map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              
               <button 
                 onClick={() => {
                   const now = new Date();
@@ -439,6 +463,7 @@ const AdminAttendanceDashboard = () => {
                   }
                 }}
                 className="p-2 hover:bg-gray-100 rounded-lg"
+                data-testid="next-month-btn"
               >
                 <ChevronRight size={18} />
               </button>
@@ -450,53 +475,73 @@ const AdminAttendanceDashboard = () => {
               <Loader2 className="w-8 h-8 animate-spin text-green-600" />
             </div>
           ) : matrixData ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-2 py-2 text-left font-semibold text-gray-700 sticky left-0 bg-gray-50 min-w-[120px]">Growth Partner</th>
-                    {Array.from({ length: matrixData.days_in_month }, (_, i) => (
-                      <th key={i + 1} className="px-1 py-2 text-center font-medium text-gray-600 w-8">{i + 1}</th>
-                    ))}
-                    <th className="px-2 py-2 text-center font-semibold text-green-700 bg-green-50">P</th>
-                    <th className="px-2 py-2 text-center font-semibold text-orange-700 bg-orange-50">L</th>
-                    <th className="px-2 py-2 text-center font-semibold text-blue-700 bg-blue-50">W</th>
-                    <th className="px-2 py-2 text-center font-semibold text-amber-700 bg-amber-50">A</th>
-                    <th className="px-2 py-2 text-center font-semibold text-red-700 bg-red-50">U</th>
-                    <th className="px-2 py-2 text-center font-semibold text-gray-700 bg-gray-100">%</th>
+            <div className="overflow-x-auto max-h-[60vh] border border-gray-200 rounded-lg">
+              <table className="w-full text-xs border-collapse">
+                <thead className="sticky top-0 z-20 bg-gray-50">
+                  <tr>
+                    <th className="sticky left-0 z-30 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-700 border-b border-r border-gray-200 min-w-[140px] sm:min-w-[180px]">
+                      Growth Partner
+                    </th>
+                    {Array.from({ length: matrixData.days_in_month }, (_, i) => {
+                      const day = i + 1;
+                      const date = new Date(matrixYear, matrixMonth - 1, day);
+                      const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+                      return (
+                        <th key={day} className={`px-1 py-2 text-center font-medium border-b border-gray-200 min-w-[32px] ${isWeekend ? 'bg-gray-100 text-gray-500' : 'text-gray-600'}`}>
+                          {day}
+                        </th>
+                      );
+                    })}
+                    <th className="px-2 py-2 text-center font-semibold text-green-700 bg-green-50 border-b border-l border-gray-200 min-w-[36px]" title="Present">P</th>
+                    <th className="px-2 py-2 text-center font-semibold text-orange-700 bg-orange-50 border-b border-gray-200 min-w-[36px]" title="Late">L</th>
+                    <th className="px-2 py-2 text-center font-semibold text-blue-700 bg-blue-50 border-b border-gray-200 min-w-[36px]" title="Work From Home">W</th>
+                    <th className="px-2 py-2 text-center font-semibold text-amber-700 bg-amber-50 border-b border-gray-200 min-w-[36px]" title="Approved Leave">A</th>
+                    <th className="px-2 py-2 text-center font-semibold text-red-700 bg-red-50 border-b border-gray-200 min-w-[36px]" title="Uninformed Absence">U</th>
+                    <th className="px-2 py-2 text-center font-semibold text-gray-700 bg-gray-100 border-b border-gray-200 min-w-[44px]" title="Working Days">WD</th>
+                    <th className="px-2 py-2 text-center font-semibold text-gray-900 bg-gray-100 border-b border-gray-200 min-w-[44px]" title="Attendance Percentage">%</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {matrixData.matrix?.map((row, idx) => (
-                    <tr key={row.user_id || idx} className="hover:bg-gray-50">
-                      <td className="px-2 py-2 font-medium text-gray-800 sticky left-0 bg-white">{row.user_name}</td>
+                    <tr key={row.user_id || idx} className="hover:bg-gray-50/50">
+                      <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-800 border-r border-gray-200 whitespace-nowrap">
+                        {row.user_name}
+                      </td>
                       {Array.from({ length: matrixData.days_in_month }, (_, i) => {
                         const day = i + 1;
                         const dayData = row.days?.[day];
-                        const code = dayData?.code || '-';
-                        const displayCode = code.startsWith('L') ? 'L' : code;
+                        const code = dayData?.code || '';
+                        const displayCode = code.startsWith('L ') ? 'L' : code;
+                        const date = new Date(matrixYear, matrixMonth - 1, day);
+                        const isWeekend = date.getDay() === 0 || date.getDay() === 6;
                         
                         const bgColor = {
-                          'P': 'bg-green-100 text-green-700',
-                          'W': 'bg-blue-100 text-blue-700',
-                          'L': 'bg-orange-100 text-orange-700',
-                          'A': 'bg-amber-100 text-amber-700',
-                          'U': 'bg-red-100 text-red-700',
-                          '-': 'text-gray-300'
+                          'P': 'bg-green-100 text-green-700 font-medium',
+                          'W': 'bg-blue-100 text-blue-700 font-medium',
+                          'L': 'bg-orange-100 text-orange-700 font-medium',
+                          'A': 'bg-amber-100 text-amber-700 font-medium',
+                          'U': 'bg-red-100 text-red-700 font-medium',
+                          '-': 'bg-gray-100 text-gray-400',
+                          '': 'bg-gray-50 text-gray-300'
                         }[displayCode] || 'text-gray-400';
                         
                         return (
-                          <td key={day} className={`px-1 py-2 text-center ${bgColor}`} title={dayData?.detail || ''}>
+                          <td 
+                            key={day} 
+                            className={`px-1 py-2 text-center cursor-pointer transition-colors ${bgColor} ${isWeekend && code === '-' ? 'bg-gray-50' : ''}`} 
+                            title={dayData?.detail || (code.startsWith('L ') ? `Late - Check-in: ${code.replace('L ', '')}` : '')}
+                          >
                             {displayCode}
                           </td>
                         );
                       })}
-                      <td className="px-2 py-2 text-center font-semibold bg-green-50 text-green-700">{row.summary?.present || 0}</td>
+                      <td className="px-2 py-2 text-center font-semibold bg-green-50 text-green-700 border-l border-gray-200">{row.summary?.present || 0}</td>
                       <td className="px-2 py-2 text-center font-semibold bg-orange-50 text-orange-700">{row.summary?.late || 0}</td>
                       <td className="px-2 py-2 text-center font-semibold bg-blue-50 text-blue-700">{row.summary?.wfh || 0}</td>
                       <td className="px-2 py-2 text-center font-semibold bg-amber-50 text-amber-700">{row.summary?.leave || 0}</td>
                       <td className="px-2 py-2 text-center font-semibold bg-red-50 text-red-700">{row.summary?.absent || 0}</td>
-                      <td className="px-2 py-2 text-center font-bold bg-gray-100">{row.summary?.attendance_percentage || 0}%</td>
+                      <td className="px-2 py-2 text-center font-semibold bg-gray-100 text-gray-700">{row.summary?.working_days || 0}</td>
+                      <td className="px-2 py-2 text-center font-bold bg-gray-100 text-gray-900">{row.summary?.attendance_percentage || 0}%</td>
                     </tr>
                   ))}
                 </tbody>
@@ -511,8 +556,9 @@ const AdminAttendanceDashboard = () => {
             <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-green-100 border border-green-200"></span> P = Present</span>
             <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-orange-100 border border-orange-200"></span> L = Late</span>
             <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-blue-100 border border-blue-200"></span> W = WFH</span>
-            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-amber-100 border border-amber-200"></span> A = Leave</span>
-            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-red-100 border border-red-200"></span> U = Absent/Unmarked</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-amber-100 border border-amber-200"></span> A = Approved Leave</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-red-100 border border-red-200"></span> U = Uninformed Absence</span>
+            <span className="flex items-center gap-1"><span className="w-4 h-4 rounded bg-gray-100 border border-gray-200"></span> - = Weekend</span>
           </div>
         </div>
       )}

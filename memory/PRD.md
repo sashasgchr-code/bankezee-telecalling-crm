@@ -256,5 +256,33 @@ Team Lead users (GPs with `is_tl=true`) now have a dedicated "Team Lead View" se
 
 ---
 
-*Last Updated: September 2, 2026*
+### Enhanced Monthly Attendance Matrix ✅ (September 3, 2026)
+Added comprehensive monthly attendance summary view for both Admin and GP roles.
+
+**Features:**
+1. **Month/Year Dropdowns** - Quick selection with navigation arrows
+2. **Dynamic Year Selector** - Shows current year and 2 previous years
+3. **Working Days (WD) Column** - Shows total working days in month
+4. **Attendance Codes:**
+   - P = Present
+   - L = Late (with login time in tooltip, e.g., "Late - Check-in: 10:24")
+   - W = Work From Home
+   - A = Approved Leave
+   - U = Uninformed Absence (only for past working days)
+   - `-` = Weekend/Non-working day
+5. **Summary Totals** - P, L, W, A, U counts per row
+6. **Attendance Percentage** - (Present / Working Days) × 100
+
+**Mobile Optimization:**
+- Sticky Growth Partner name column
+- Horizontally scrollable day columns
+- Compact day cells
+- Touch-friendly filters and selectors
+
+**Admin View:** All Growth Partners with full matrix
+**GP View:** Personal attendance with calendar grid
+
+---
+
+*Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*
