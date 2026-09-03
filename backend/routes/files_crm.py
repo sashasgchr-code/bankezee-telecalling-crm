@@ -1966,10 +1966,44 @@ async def bulk_delete_files(request: BulkDeleteRequest, current_user: dict = Dep
 
 @router.get("/{file_id}")
 async def get_file_details(file_id: str, current_user: dict = Depends(get_current_user)):
-    """Get detailed file information"""
+    """Get detailed file information with enriched GP data and documents"""
     file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
+    
+    # Enrich with GP (source) information
+    source_id = file_doc.get("source_id") or file_doc.get("assigned_to")
+    if source_id:
+        source_user = await db.users.find_one(
+            {"id": source_id},
+            {"_id": 0, "full_name": 1, "name": 1, "email": 1, "phone": 1, "employee_code": 1}
+        )
+        if source_user:
+            # Set source_name for display
+            file_doc["source_name"] = source_user.get("full_name") or source_user.get("name") or source_user.get("email", "").split("@")[0]
+            # Add GP details to file_details
+            if "file_details" not in file_doc:
+                file_doc["file_details"] = {}
+            file_doc["file_details"]["growth_partner_name"] = file_doc["source_name"]
+            file_doc["file_details"]["growth_partner_code"] = source_user.get("employee_code") or source_id[:8]
+            file_doc["file_details"]["growth_partner_contact"] = source_user.get("phone") or source_user.get("email", "")
+    
+    # Map file_documents to documents with download URLs
+    file_documents = file_doc.get("file_documents", [])
+    documents = []
+    for doc in file_documents:
+        doc_data = {
+            "id": doc.get("file_id"),
+            "name": doc.get("original_name") or doc.get("file_name", "Document"),
+            "filename": doc.get("file_name"),
+            "category": doc.get("category", "general"),
+            "size": doc.get("size"),
+            "uploaded_at": doc.get("uploaded_at"),
+            "url": f"/api/files/{file_id}/documents/{doc.get('file_id')}/download"
+        }
+        documents.append(doc_data)
+    file_doc["documents"] = documents
+    
     return file_doc
 
 
@@ -2323,6 +2357,46 @@ async def download_document(doc_id: str, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=404, detail=f"Document not found: {str(e)}")
 
 
+@router.get("/{file_id}/documents/{doc_id}/download")
+async def download_file_document(file_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
+    """Download a specific document for a file"""
+    from fastapi.responses import StreamingResponse
+    from bson import ObjectId
+    import io
+    
+    # Find document metadata within the file
+    file_doc = await db.leads.find_one(
+        {"id": file_id, "file_documents.file_id": doc_id},
+        {"_id": 0, "file_documents.$": 1}
+    )
+    
+    if not file_doc or not file_doc.get("file_documents"):
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    doc = file_doc["file_documents"][0]
+    grid_id = doc.get("grid_id")
+    
+    if not grid_id:
+        raise HTTPException(status_code=404, detail="Document file not found in storage")
+    
+    try:
+        fs_bucket = await get_gridfs_bucket()
+        grid_out = await fs_bucket.open_download_stream(ObjectId(grid_id))
+        content = await grid_out.read()
+        
+        filename = doc.get("original_name") or doc.get("file_name", "document")
+        
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type=doc.get("mime_type", "application/octet-stream"),
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=f"Failed to download document: {str(e)}")
+
+
+
+
 @router.delete("/{file_id}/documents/{doc_id}")
 async def delete_document(file_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a document"""
@@ -2357,6 +2431,56 @@ async def delete_document(file_id: str, doc_id: str, current_user: dict = Depend
     )
     
     return {"success": True, "message": "Document deleted"}
+
+
+
+@router.get("/{file_id}/documents/download-all")
+async def download_all_documents(file_id: str, current_user: dict = Depends(get_current_user)):
+    """Download all documents for a file as a ZIP archive"""
+    from fastapi.responses import StreamingResponse
+    from bson import ObjectId
+    import io
+    import zipfile
+    
+    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_documents": 1, "name": 1})
+    if not file_doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    documents = file_doc.get("file_documents", [])
+    if not documents:
+        raise HTTPException(status_code=404, detail="No documents to download")
+    
+    # Create ZIP in memory
+    zip_buffer = io.BytesIO()
+    
+    try:
+        fs_bucket = await get_gridfs_bucket()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+            for doc in documents:
+                grid_id = doc.get("grid_id")
+                if not grid_id:
+                    continue
+                    
+                try:
+                    grid_out = await fs_bucket.open_download_stream(ObjectId(grid_id))
+                    content = await grid_out.read()
+                    filename = doc.get("original_name") or doc.get("file_name", f"document_{doc.get('file_id')}")
+                    zip_file.writestr(filename, content)
+                except Exception:
+                    continue  # Skip files that can't be downloaded
+        
+        zip_buffer.seek(0)
+        customer_name = file_doc.get("name", "documents").replace(" ", "_")
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f"attachment; filename={customer_name}_documents.zip"}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create ZIP: {str(e)}")
+
 
 
 # Dashboard stats for Files - Following OLD CRM Exact Calculation Logic

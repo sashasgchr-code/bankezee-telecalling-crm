@@ -1087,7 +1087,7 @@ const FilesDashboard = () => {
                 >
                   <option value="">All Growth Partners</option>
                   {growthPartners.map(gp => (
-                    <option key={gp.id} value={gp.id}>{gp.full_name || gp.name}</option>
+                    <option key={gp.id} value={gp.id}>{gp.full_name || gp.name} ({gp.email?.split('@')[0]})</option>
                   ))}
                 </select>
                 

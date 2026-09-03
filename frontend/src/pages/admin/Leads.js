@@ -514,7 +514,7 @@ const AdminLeads = () => {
               <option value="">All Assignments</option>
               <option value="unassigned">Unassigned</option>
               {telecallers.map((tc) => (
-                <option key={tc.id} value={tc.id}>{tc.name}</option>
+                <option key={tc.id} value={tc.id}>{tc.name || tc.full_name} ({tc.email?.split('@')[0]})</option>
               ))}
             </select>
           </div>
