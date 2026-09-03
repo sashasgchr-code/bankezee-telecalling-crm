@@ -2309,6 +2309,79 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=f"Failed to upload: {str(e)}")
 
 
+
+@router.post("/{file_id}/documents")
+async def upload_documents(
+    file_id: str,
+    files: List[UploadFile] = File(...),
+    category: str = "general",
+    current_user: dict = Depends(get_current_user)
+):
+    """Upload multiple documents for a file - stored in MongoDB GridFS"""
+    uploaded = []
+    errors = []
+    
+    for file in files:
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            errors.append(f"'{file.filename}' - type not allowed")
+            continue
+        
+        content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            errors.append(f"'{file.filename}' - too large (max 10MB)")
+            continue
+        
+        try:
+            doc_id = str(uuid.uuid4())
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            safe_name = f"{category}_{timestamp}_{doc_id}{file_ext}"
+            
+            # Store in GridFS
+            fs_bucket = await get_gridfs_bucket()
+            grid_id = await fs_bucket.upload_from_stream(
+                safe_name,
+                content,
+                metadata={
+                    "file_id": file_id,
+                    "doc_id": doc_id,
+                    "original_name": file.filename,
+                    "category": category,
+                    "mime_type": file.content_type
+                }
+            )
+            
+            doc_data = {
+                "file_id": doc_id,
+                "grid_id": str(grid_id),
+                "file_name": safe_name,
+                "original_name": file.filename,
+                "size": len(content),
+                "mime_type": file.content_type,
+                "category": category,
+                "uploaded_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            await db.leads.update_one(
+                {"id": file_id},
+                {
+                    "$push": {"file_documents": doc_data},
+                    "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+                }
+            )
+            
+            uploaded.append(doc_data)
+        except Exception as e:
+            errors.append(f"'{file.filename}' - {str(e)}")
+    
+    return {
+        "success": len(uploaded) > 0,
+        "uploaded": uploaded,
+        "errors": errors if errors else None
+    }
+
+
+
 @router.get("/{file_id}/documents")
 async def list_file_documents(file_id: str):
     """List all documents for a file"""

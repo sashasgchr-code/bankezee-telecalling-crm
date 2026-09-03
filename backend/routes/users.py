@@ -157,7 +157,17 @@ async def list_growth_partners(
         raise HTTPException(status_code=403, detail="HR cannot access Growth Partner data")
     
     users = await db.users.find(query).sort("name", 1).to_list(1000)
-    return serialize_docs(users)
+    
+    # Deduplicate by email (keep first occurrence)
+    seen_emails = set()
+    unique_users = []
+    for user in users:
+        email = user.get("email", "").lower()
+        if email and email not in seen_emails:
+            seen_emails.add(email)
+            unique_users.append(user)
+    
+    return serialize_docs(unique_users)
 
 
 @router.get("/users/telecallers")

@@ -29,12 +29,18 @@ const DailyTrackingSheet = () => {
   const [useCustomRange, setUseCustomRange] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(true);
 
-  // Fetch telecallers list
+  // Fetch telecallers list (all GP roles, active only, deduplicated by email)
   useEffect(() => {
     const fetchTelecallers = async () => {
       try {
-        const response = await api.get('/users');
-        const tcs = response.data.filter(u => u.role === 'telecaller');
+        const response = await api.get('/users/growth-partners');
+        // Filter active users only and deduplicate by email
+        const seen = new Set();
+        const tcs = response.data.filter(u => {
+          if (!u.is_active || seen.has(u.email)) return false;
+          seen.add(u.email);
+          return true;
+        });
         setTelecallers(tcs);
         if (tcs.length > 0 && !selectedUser) {
           setSelectedUser(tcs[0].id);
