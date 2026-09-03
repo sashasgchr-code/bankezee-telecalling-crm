@@ -49,6 +49,7 @@ const AdminLeads = () => {
   const [selectedLeads, setSelectedLeads] = useState([]);
   const [selectMode, setSelectMode] = useState(false);
   const [selectAllFiltered, setSelectAllFiltered] = useState(false); // NEW: For "select all X matching"
+  const [gpSearchQuery, setGpSearchQuery] = useState(''); // Search in assign modal
   
   // Form
   const [newLead, setNewLead] = useState({ name: '', phone: '', email: '', city: '', source: '', notes: '' });
@@ -521,12 +522,20 @@ const AdminLeads = () => {
       </div>
 
       {/* Selection Actions */}
-      {selectMode && selectedLeads.length > 0 && (
+      {selectMode && (
         <div className="p-3 bg-green-50 border-b border-green-200 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <button onClick={selectAll} className="text-sm text-green-700 font-medium hover:underline">
-              {selectedLeads.length === leads.length ? 'Deselect Page' : 'Select Page'}
-            </button>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={selectedLeads.length === leads.length && leads.length > 0}
+                onChange={selectAll}
+                className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+              />
+              <span className="text-sm text-green-700 font-medium">
+                Select All on Page ({leads.length})
+              </span>
+            </label>
             {totalCount > leads.length && (
               <button 
                 onClick={handleSelectAllFiltered} 
@@ -536,41 +545,45 @@ const AdminLeads = () => {
                 {selectAllFiltered ? `✓ All ${totalCount} selected` : `Select all ${totalCount} matching`}
               </button>
             )}
-            <span className="text-green-700 font-semibold">
-              {selectAllFiltered ? `${totalCount} selected` : `${selectedLeads.length} selected`}
-            </span>
+            {selectedLeads.length > 0 && (
+              <span className="text-green-700 font-semibold">
+                {selectAllFiltered ? `${totalCount} selected` : `${selectedLeads.length} selected`}
+              </span>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowAssignModal(true)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium"
-              data-testid="assign-selected-btn"
-            >
-              <Users size={16} />
-              Assign
-            </button>
-            <button
-              onClick={handleArchive}
-              className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium"
-              data-testid="archive-selected-btn"
-            >
-              <Archive size={16} />
-              Archive
-            </button>
-            <button
-              onClick={handleBulkDelete}
-              className="flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm font-medium"
-              data-testid="delete-selected-btn"
-            >
-              <Trash2 size={16} />
-            </button>
-            <button
-              onClick={() => { setSelectedLeads([]); setSelectMode(false); setSelectAllFiltered(false); }}
-              className="p-1.5 text-gray-600"
-            >
-              <X size={20} />
-            </button>
-          </div>
+          {selectedLeads.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowAssignModal(true)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium"
+                data-testid="assign-selected-btn"
+              >
+                <Users size={16} />
+                Assign
+              </button>
+              <button
+                onClick={handleArchive}
+                className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-sm font-medium"
+                data-testid="archive-selected-btn"
+              >
+                <Archive size={16} />
+                Archive
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1 px-3 py-1.5 bg-red-500 text-white rounded-lg text-sm font-medium"
+                data-testid="delete-selected-btn"
+              >
+                <Trash2 size={16} />
+              </button>
+              <button
+                onClick={() => { setSelectedLeads([]); setSelectMode(false); setSelectAllFiltered(false); }}
+                className="p-1.5 text-gray-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -797,23 +810,50 @@ const AdminLeads = () => {
       </Modal>
 
       {/* Assign Modal */}
-      <Modal isOpen={showAssignModal} onClose={() => setShowAssignModal(false)} title="Assign to Growth Partner">
+      <Modal isOpen={showAssignModal} onClose={() => { setShowAssignModal(false); setGpSearchQuery(''); }} title="Assign to Growth Partner">
         <div className="p-4">
           <p className="text-gray-600 mb-4">
             Assign <span className="font-semibold">{selectedLeads.length}</span> leads to:
           </p>
+          
+          {/* Search Growth Partners */}
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              value={gpSearchQuery}
+              onChange={(e) => setGpSearchQuery(e.target.value)}
+              placeholder="Search growth partner..."
+              className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+              data-testid="gp-search-input"
+            />
+          </div>
+          
           <div className="space-y-2 mb-4 max-h-60 overflow-auto">
-            {telecallers.map((tc) => (
+            {telecallers
+              .filter(tc => 
+                !gpSearchQuery || 
+                tc.name?.toLowerCase().includes(gpSearchQuery.toLowerCase()) ||
+                tc.email?.toLowerCase().includes(gpSearchQuery.toLowerCase())
+              )
+              .map((tc) => (
               <button
                 key={tc.id}
                 onClick={() => handleAssign(tc.id)}
                 disabled={isSubmitting}
-                className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                className="w-full p-3 text-left bg-gray-50 hover:bg-green-50 hover:border-green-200 border border-transparent rounded-lg transition-colors"
               >
                 <p className="font-medium text-gray-900">{tc.name}</p>
                 <p className="text-sm text-gray-500">{tc.email}</p>
               </button>
             ))}
+            {telecallers.filter(tc => 
+              !gpSearchQuery || 
+              tc.name?.toLowerCase().includes(gpSearchQuery.toLowerCase()) ||
+              tc.email?.toLowerCase().includes(gpSearchQuery.toLowerCase())
+            ).length === 0 && (
+              <p className="text-center text-gray-500 py-4">No growth partners found</p>
+            )}
           </div>
           <button
             onClick={handleAutoDistribute}

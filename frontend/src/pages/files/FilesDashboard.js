@@ -159,7 +159,7 @@ const FilesDashboard = () => {
     
     setIsDeleting(true);
     try {
-      await api.delete(`/api/files/${fileToDelete.id}`);
+      await api.delete(`/files/${fileToDelete.id}`);
       toast.success(`File "${fileToDelete.name}" deleted successfully`);
       setDeleteConfirmOpen(false);
       setFileToDelete(null);
@@ -180,7 +180,7 @@ const FilesDashboard = () => {
     
     setIsDeleting(true);
     try {
-      const response = await api.post('/api/files/bulk-delete', {
+      const response = await api.post('/files/bulk-delete', {
         file_ids: selectedFiles
       });
       toast.success(`${response.data.deleted_count} files deleted successfully`);
