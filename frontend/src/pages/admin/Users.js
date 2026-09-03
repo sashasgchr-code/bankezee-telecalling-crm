@@ -1054,7 +1054,7 @@ const AdminUsers = () => {
               >
                 <option value="">Unassigned</option>
                 {managers.filter(m => m.id).map(manager => (
-                  <option key={manager.id} value={manager.id}>{manager.name}</option>
+                  <option key={manager.id} value={manager.id}>{manager.name} ({manager.email?.split('@')[0]})</option>
                 ))}
               </select>
             </div>
