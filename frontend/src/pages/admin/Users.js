@@ -5,7 +5,7 @@ import {
   CheckCircle, XCircle, Clock, Edit2, User,
   Phone, CreditCard, Building2, EyeOff, Users, Mail,
   Shield, UserCog, Briefcase, ToggleLeft, ToggleRight,
-  Filter, Download, RefreshCw
+  Filter, Download, RefreshCw, Trash2, Power
 } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
@@ -257,11 +257,28 @@ const AdminUsers = () => {
   const handleToggleActive = async (userId, currentStatus, e) => {
     e?.stopPropagation();
     try {
-      await api.put(`/users/${userId}`, { is_active: !currentStatus });
+      await api.put(`/users/${userId}/toggle-active`);
       fetchUsers();
       toast.success(currentStatus ? 'User deactivated' : 'User activated');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to update user');
+    }
+  };
+
+  const handleDeleteUser = async (user, e) => {
+    e?.stopPropagation();
+    
+    // Confirm deletion
+    if (!window.confirm(`Are you sure you want to delete "${user.name}"? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      await api.delete(`/users/${user.id}`);
+      fetchUsers();
+      toast.success(`User "${user.name}" deleted successfully`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to delete user');
     }
   };
 
@@ -520,10 +537,10 @@ const AdminUsers = () => {
           {/* Users Table */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             {/* Table Header */}
-            <div className="min-w-[900px]">
-              <div className="grid grid-cols-12 gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-600">
+            <div className="min-w-[1000px]">
+              <div className="grid gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-600" style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto 1fr 1fr auto 120px' }}>
                 {activeTab === 'approvals' && (
-                  <div className="col-span-1 flex items-center">
+                  <div className="flex items-center">
                     <input
                       type="checkbox"
                       checked={selectedUsers.length === pendingUsers.length && pendingUsers.length > 0}
@@ -532,14 +549,14 @@ const AdminUsers = () => {
                     />
                   </div>
                 )}
-                <div className={activeTab === 'approvals' ? 'col-span-2' : 'col-span-2'}>Name</div>
-                <div className="col-span-2">Email</div>
-                <div className="col-span-1">Role</div>
-                <div className="col-span-1">TL?</div>
-                <div className="col-span-2">Manager</div>
-                <div className="col-span-2">Team Lead</div>
-                <div className="col-span-1">Status</div>
-                <div className={activeTab === 'approvals' ? 'col-span-1' : 'col-span-1'}>Actions</div>
+                <div>Name</div>
+                <div>Email</div>
+                <div>Role</div>
+                <div>TL?</div>
+                <div>Manager</div>
+                <div>Team Lead</div>
+                <div>Status</div>
+                <div>Actions</div>
               </div>
 
               {/* Table Body */}
@@ -562,10 +579,11 @@ const AdminUsers = () => {
                     return (
                       <div 
                         key={user.id} 
-                        className={`grid grid-cols-12 gap-2 px-4 py-3 items-center hover:bg-gray-50 transition-colors ${isSelected ? 'bg-green-50' : ''}`}
+                        className={`grid gap-2 px-4 py-3 items-center hover:bg-gray-50 transition-colors ${isSelected ? 'bg-green-50' : ''}`}
+                        style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto 1fr 1fr auto 120px' }}
                       >
                         {activeTab === 'approvals' && (
-                          <div className="col-span-1">
+                          <div>
                             <input
                               type="checkbox"
                               checked={isSelected}
@@ -574,19 +592,19 @@ const AdminUsers = () => {
                             />
                           </div>
                         )}
-                        <div className="col-span-2">
+                        <div>
                           <p className="font-medium text-gray-900 truncate">{user.name || 'Unnamed'}</p>
                           {user.phone && <p className="text-xs text-gray-500">{user.phone}</p>}
                         </div>
-                        <div className="col-span-2">
+                        <div>
                           <p className="text-gray-600 truncate text-sm">{user.email}</p>
                         </div>
-                        <div className="col-span-1">
+                        <div>
                           <span className={`inline-block px-2 py-0.5 text-xs rounded ${roleConfig.color}`}>
                             {roleConfig.label}
                           </span>
                         </div>
-                        <div className="col-span-1">
+                        <div>
                           {isGP && (
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded ${
                               user.is_tl ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
@@ -599,7 +617,7 @@ const AdminUsers = () => {
                             </span>
                           )}
                         </div>
-                        <div className="col-span-2">
+                        <div>
                           <p className="text-sm text-gray-600 truncate">
                             {user.manager_name || user.manager_id ? (
                               user.manager_name || 'Assigned'
@@ -608,7 +626,7 @@ const AdminUsers = () => {
                             )}
                           </p>
                         </div>
-                        <div className="col-span-2">
+                        <div>
                           <p className="text-sm text-gray-600 truncate">
                             {user.tl_name || user.tl_id ? (
                               user.tl_name || 'Assigned'
@@ -617,7 +635,7 @@ const AdminUsers = () => {
                             )}
                           </p>
                         </div>
-                        <div className="col-span-1">
+                        <div>
                           {isPending ? (
                             <span className="px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700 flex items-center gap-1 w-fit">
                               <Clock size={12} /> Pending
@@ -630,7 +648,7 @@ const AdminUsers = () => {
                             </span>
                           )}
                         </div>
-                        <div className="col-span-1 flex items-center gap-1">
+                        <div className="flex items-center gap-0.5">
                           <button
                             onClick={(e) => openUserDetail(user, e)}
                             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
@@ -639,13 +657,39 @@ const AdminUsers = () => {
                             <Eye size={16} />
                           </button>
                           {!isPending && (
-                            <button
-                              onClick={(e) => openEditRoleModal(user, e)}
-                              className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded"
-                              title="Edit role & hierarchy"
-                            >
-                              <Edit2 size={16} />
-                            </button>
+                            <>
+                              <button
+                                onClick={(e) => openEditRoleModal(user, e)}
+                                className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded"
+                                title="Edit role & hierarchy"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                              {/* Toggle Active/Inactive - not for admins */}
+                              {user.role !== 'admin' && (
+                                <button
+                                  onClick={(e) => handleToggleActive(user.id, user.is_active !== false, e)}
+                                  className={`p-1.5 rounded ${
+                                    user.is_active !== false 
+                                      ? 'text-amber-500 hover:text-amber-700 hover:bg-amber-50' 
+                                      : 'text-green-500 hover:text-green-700 hover:bg-green-50'
+                                  }`}
+                                  title={user.is_active !== false ? 'Deactivate user' : 'Activate user'}
+                                >
+                                  <Power size={16} />
+                                </button>
+                              )}
+                              {/* Delete - not for admins */}
+                              {user.role !== 'admin' && (
+                                <button
+                                  onClick={(e) => handleDeleteUser(user, e)}
+                                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                  title="Delete user"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
+                            </>
                           )}
                           {isPending && (
                             <button

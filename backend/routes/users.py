@@ -797,6 +797,96 @@ async def bulk_approve_users(data: dict, current_user: dict = Depends(require_ma
     }
 
 
+# ===================== USER DELETE & TOGGLE =====================
+
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str, current_user: dict = Depends(require_admin)):
+    """
+    Delete a single user - Admin only.
+    Cannot delete:
+    - Admin users
+    - Your own account
+    - Users with associated files (must deactivate instead)
+    """
+    if current_user["id"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    
+    # Find user
+    user = await find_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Cannot delete admins
+    if user.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin users")
+    
+    # Check for associated files
+    user_id_str = user.get("id") or str(user.get("_id"))
+    file_count = await db.leads.count_documents({
+        "$or": [
+            {"source_id": user_id_str},
+            {"assigned_to": user_id_str}
+        ]
+    })
+    
+    if file_count > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot delete user - has {file_count} associated files. Deactivate instead."
+        )
+    
+    # Check if TL with assigned GPs
+    if user.get("is_tl"):
+        assigned_gps = await db.users.count_documents({"tl_id": user_id_str})
+        if assigned_gps > 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot delete TL - has {assigned_gps} GPs assigned. Reassign them first."
+            )
+    
+    # Delete user
+    result = await db.users.delete_one({"_id": user["_id"]})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to delete user")
+    
+    return {"message": f"User {user.get('name', 'Unknown')} deleted successfully"}
+
+
+@router.put("/users/{user_id}/toggle-active")
+async def toggle_user_active(user_id: str, current_user: dict = Depends(require_admin)):
+    """
+    Toggle user active/inactive status - Admin only.
+    Cannot deactivate your own account.
+    """
+    if current_user["id"] == user_id:
+        raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
+    
+    user = await find_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Toggle status
+    new_status = not user.get("is_active", True)
+    
+    # Update
+    result = await db.users.update_one(
+        {"_id": user["_id"]},
+        {
+            "$set": {
+                "is_active": new_status,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        }
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=500, detail="Failed to update user status")
+    
+    status_text = "activated" if new_status else "deactivated"
+    return {"message": f"User {user.get('name', 'Unknown')} {status_text}", "is_active": new_status}
+
+
 # ===================== BULK OPERATIONS =====================
 
 @router.post("/users/bulk-delete")
