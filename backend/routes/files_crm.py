@@ -436,15 +436,36 @@ async def get_files_reports(
     """Get files reports with disbursement analytics"""
     query = {"status": "file"}
     
+    # GP role restriction - GPs only see their own files
+    user_role = current_user.get('role')
+    if is_gp(user_role):
+        gp_id = current_user.get('id')
+        query["$or"] = [
+            {"assigned_to": gp_id},
+            {"file_assigned_to": gp_id},
+            {"source_id": gp_id}
+        ]
+    elif assigned_to:
+        query["file_assigned_to"] = assigned_to
+    
     if start_date:
-        query["created_at"] = {"$gte": start_date}
+        if "$or" in query:
+            query["$and"] = query.get("$and", [])
+            query["$and"].append({"created_at": {"$gte": start_date}})
+        else:
+            query["created_at"] = {"$gte": start_date}
     if end_date:
-        if "created_at" in query:
+        if "$and" in query:
+            for cond in query["$and"]:
+                if "created_at" in cond:
+                    cond["created_at"]["$lte"] = end_date
+                    break
+            else:
+                query["$and"].append({"created_at": {"$lte": end_date}})
+        elif "created_at" in query:
             query["created_at"]["$lte"] = end_date
         else:
             query["created_at"] = {"$lte": end_date}
-    if assigned_to:
-        query["file_assigned_to"] = assigned_to
     
     # Status breakdown
     status_pipeline = [
@@ -602,6 +623,17 @@ async def get_daily_report(
     """
     from datetime import datetime, timezone, timedelta
     
+    # Build base query with GP filtering
+    base_query = {"status": "file"}
+    user_role = current_user.get('role')
+    if is_gp(user_role):
+        gp_id = current_user.get('id')
+        base_query["$or"] = [
+            {"assigned_to": gp_id},
+            {"file_assigned_to": gp_id},
+            {"source_id": gp_id}
+        ]
+    
     # Use today if no date specified
     if report_date:
         try:
@@ -636,8 +668,8 @@ async def get_daily_report(
             return False
         return day_start <= dt <= day_end
     
-    # Get all files
-    total_files = await db.leads.count_documents({"status": "file"})
+    # Get all files (with GP filtering)
+    total_files = await db.leads.count_documents(base_query)
     
     # New files created today
     new_files_today = 0
@@ -647,7 +679,7 @@ async def get_daily_report(
     disbursals_today = 0
     rejections_today = 0
     
-    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    all_files = await db.leads.find(base_query).to_list(10000)
     
     for f in all_files:
         created_at = f.get('created_at')
@@ -2584,6 +2616,17 @@ async def get_bank_performance(
     """
     from datetime import datetime, timezone
     
+    # Build base query with GP filtering
+    base_query = {"status": "file"}
+    user_role = current_user.get('role')
+    if is_gp(user_role):
+        gp_id = current_user.get('id')
+        base_query["$or"] = [
+            {"assigned_to": gp_id},
+            {"file_assigned_to": gp_id},
+            {"source_id": gp_id}
+        ]
+    
     # Parse date range
     is_all_time = not start_date and not end_date
     date_start = None
@@ -2643,7 +2686,7 @@ async def get_bank_performance(
     # Bank stats aggregation
     bank_stats = {}
     
-    all_files = await db.leads.find({"status": "file"}).to_list(10000)
+    all_files = await db.leads.find(base_query).to_list(10000)
     
     for f in all_files:
         for elig in (f.get('eligibilities') or []):
