@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Link2, Users, FileText, Loader2, Search, 
   ArrowRight, Check, X, AlertTriangle, Trash2,
-  UserCheck, ChevronDown, ChevronUp
+  UserCheck, ChevronDown, ChevronUp, RotateCcw, Clock
 } from 'lucide-react';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
@@ -19,6 +19,8 @@ const LegacyUserMapping = () => {
   const [selectedConnectUser, setSelectedConnectUser] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedRows, setExpandedRows] = useState({});
+  const [showUndoModal, setShowUndoModal] = useState(false);
+  const [selectedForUndo, setSelectedForUndo] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -97,6 +99,47 @@ const LegacyUserMapping = () => {
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to delete');
     }
+  };
+
+  const openUndoModal = (mapping) => {
+    setSelectedForUndo(mapping);
+    setShowUndoModal(true);
+  };
+
+  const handleUndo = async () => {
+    if (!selectedForUndo) return;
+    
+    setIsSubmitting(true);
+    try {
+      const result = await api.post(`/users/undo-mapping/${selectedForUndo.legacy_user_id}`);
+      toast.success(result.data.message);
+      setShowUndoModal(false);
+      setSelectedForUndo(null);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to undo mapping');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Calculate time remaining for undo
+  const getUndoTimeRemaining = (canUndoUntil) => {
+    if (!canUndoUntil) return null;
+    
+    const deadline = new Date(canUndoUntil);
+    const now = new Date();
+    const diffMs = deadline - now;
+    
+    if (diffMs <= 0) return null;
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m left`;
+    }
+    return `${minutes}m left`;
   };
 
   const toggleRow = (id) => {
@@ -276,9 +319,28 @@ const LegacyUserMapping = () => {
                           </>
                         )}
                         {mapping.is_mapped && (
-                          <span className="text-green-600">
-                            <Check size={18} />
-                          </span>
+                          <div className="flex items-center gap-2">
+                            {mapping.can_undo ? (
+                              <>
+                                <button
+                                  onClick={() => openUndoModal(mapping)}
+                                  className="px-3 py-1.5 bg-amber-100 text-amber-700 text-xs rounded-lg hover:bg-amber-200 flex items-center gap-1"
+                                  title="Undo this mapping"
+                                >
+                                  <RotateCcw size={14} /> Undo
+                                </button>
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <Clock size={12} />
+                                  {getUndoTimeRemaining(mapping.can_undo_until)}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-green-600 flex items-center gap-1">
+                                <Check size={18} />
+                                <span className="text-xs text-gray-400">Permanent</span>
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </td>
@@ -362,6 +424,85 @@ const LegacyUserMapping = () => {
                   <Check size={18} />
                 )}
                 Map & Transfer Files
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Undo Modal */}
+      <Modal
+        isOpen={showUndoModal}
+        onClose={() => { setShowUndoModal(false); setSelectedForUndo(null); }}
+        title="Undo Mapping"
+      >
+        {selectedForUndo && (
+          <div className="p-6">
+            {/* Warning */}
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="text-amber-600 mt-0.5" size={20} />
+                <div>
+                  <p className="font-medium text-amber-800">Are you sure you want to undo this mapping?</p>
+                  <p className="text-sm text-amber-700 mt-1">
+                    This will restore the legacy user and transfer all files back from the Connect user.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Mapping Details */}
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-gray-500">Legacy User</p>
+                  <p className="font-medium text-gray-900">{selectedForUndo.legacy_name}</p>
+                  <p className="text-sm text-gray-500">{selectedForUndo.legacy_email}</p>
+                </div>
+                <ArrowRight className="text-gray-400" />
+                <div className="text-right">
+                  <p className="text-xs text-gray-500">Connect User</p>
+                  <p className="font-medium text-green-700">{selectedForUndo.connect_name}</p>
+                  <p className="text-sm text-gray-500">{selectedForUndo.connect_email}</p>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="text-sm text-gray-600">
+                  <FileText size={14} className="inline mr-1" />
+                  {selectedForUndo.files_transferred || selectedForUndo.files_count} files will be restored to the legacy user
+                </p>
+              </div>
+            </div>
+
+            {/* Time Remaining */}
+            {selectedForUndo.can_undo_until && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <p className="text-sm text-blue-700 flex items-center gap-2">
+                  <Clock size={14} />
+                  Undo window: {getUndoTimeRemaining(selectedForUndo.can_undo_until)}
+                </p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowUndoModal(false)}
+                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUndo}
+                disabled={isSubmitting}
+                className="flex-1 px-4 py-2.5 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isSubmitting ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : (
+                  <RotateCcw size={18} />
+                )}
+                Undo Mapping
               </button>
             </div>
           </div>

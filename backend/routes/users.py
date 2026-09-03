@@ -905,24 +905,45 @@ async def get_legacy_mappings(current_user: dict = Depends(require_admin)):
         # Try to get legacy user details from users collection
         legacy_user = await db.users.find_one({"id": legacy_id})
         
-        # Count files associated with this legacy user
+        # Count files associated with this legacy user (or the connect user if mapped)
+        search_id = legacy_id
+        if mapping.get("connect_user_id") and mapping.get("status") == "mapped":
+            # If mapped, count files under the connect user
+            search_id = mapping.get("connect_user_id")
+        
         file_count = await db.leads.count_documents({
             "$or": [
-                {"source_id": legacy_id},
-                {"assigned_to": legacy_id}
+                {"source_id": search_id},
+                {"assigned_to": search_id}
             ]
         })
+        
+        # Check if undo is still available
+        can_undo_until = mapping.get("can_undo_until")
+        can_undo = False
+        if can_undo_until and mapping.get("status") == "mapped":
+            try:
+                undo_deadline = datetime.fromisoformat(can_undo_until.replace('Z', '+00:00'))
+                can_undo = datetime.now(timezone.utc) < undo_deadline
+            except (ValueError, TypeError):
+                can_undo = False
         
         result.append({
             "legacy_user_id": legacy_id,
             "legacy_name": legacy_user.get("name") if legacy_user else mapping.get("legacy_name"),
-            "legacy_email": legacy_user.get("email") if legacy_user else None,
+            "legacy_email": legacy_user.get("email") if legacy_user else mapping.get("legacy_email"),
             "legacy_role": legacy_user.get("role") if legacy_user else mapping.get("legacy_role"),
             "connect_user_id": mapping.get("connect_user_id"),
             "connect_name": mapping.get("connect_name"),
+            "connect_email": mapping.get("connect_email"),
             "status": mapping.get("status", "unmapped"),
             "files_count": file_count,
-            "is_mapped": mapping.get("connect_user_id") is not None
+            "is_mapped": mapping.get("connect_user_id") is not None and mapping.get("status") == "mapped",
+            "mapped_at": mapping.get("mapped_at"),
+            "mapped_by_name": mapping.get("mapped_by_name"),
+            "can_undo_until": can_undo_until if can_undo else None,
+            "can_undo": can_undo,
+            "files_transferred": mapping.get("files_transferred")
         })
     
     # Sort: unmapped first, then by file count
@@ -953,7 +974,7 @@ async def map_legacy_to_connect(
     """
     Map a legacy CRM user to a Connect user.
     - Updates all files referencing the legacy user to point to the Connect user
-    - Updates the mapping record
+    - Updates the mapping record with undo data
     - Optionally deletes the legacy user from the users collection
     """
     legacy_user_id = data.get("legacy_user_id")
@@ -968,8 +989,12 @@ async def map_legacy_to_connect(
     if not connect_user:
         raise HTTPException(status_code=404, detail="Connect user not found")
     
-    # Find legacy user
+    # Find legacy user and store for potential undo
     legacy_user = await db.users.find_one({"id": legacy_user_id})
+    legacy_user_backup = None
+    if legacy_user:
+        # Create a backup of the legacy user for undo (exclude _id)
+        legacy_user_backup = {k: v for k, v in legacy_user.items() if k != "_id"}
     
     # Update all files: replace legacy_user_id with connect_user_id
     files_updated = 0
@@ -988,17 +1013,23 @@ async def map_legacy_to_connect(
     )
     files_updated += result2.modified_count
     
-    # Update the mapping record
+    # Update the mapping record with undo data
+    mapped_at = datetime.now(timezone.utc)
     await db.user_mappings.update_one(
         {"legacy_user_id": legacy_user_id},
         {
             "$set": {
                 "connect_user_id": connect_user_id,
                 "connect_name": connect_user.get("name"),
+                "connect_email": connect_user.get("email"),
                 "connect_role": connect_user.get("role"),
                 "status": "mapped",
-                "mapped_at": datetime.now(timezone.utc).isoformat(),
-                "mapped_by": current_user.get("id")
+                "mapped_at": mapped_at.isoformat(),
+                "mapped_by": current_user.get("id"),
+                "mapped_by_name": current_user.get("name"),
+                "files_transferred": files_updated,
+                "legacy_user_backup": legacy_user_backup,
+                "can_undo_until": (mapped_at + timedelta(hours=24)).isoformat()
             }
         },
         upsert=True
@@ -1014,6 +1045,7 @@ async def map_legacy_to_connect(
         "message": f"Successfully mapped legacy user to {connect_user.get('name')}",
         "files_updated": files_updated,
         "legacy_user_deleted": legacy_deleted,
+        "can_undo_until": (mapped_at + timedelta(hours=24)).isoformat(),
         "connect_user": {
             "id": connect_user_id,
             "name": connect_user.get("name"),
@@ -1052,6 +1084,104 @@ async def delete_legacy_mapping(
     await db.users.delete_one({"id": legacy_user_id})
     
     return {"message": "Legacy user and mapping deleted"}
+
+
+@router.post("/users/undo-mapping/{legacy_user_id}")
+async def undo_mapping(
+    legacy_user_id: str,
+    current_user: dict = Depends(require_admin)
+):
+    """
+    Undo a mapping within 24 hours.
+    - Restores the legacy user entry
+    - Updates files back to the legacy user ID
+    - Resets the mapping status to unmapped
+    """
+    # Find the mapping
+    mapping = await db.user_mappings.find_one({"legacy_user_id": legacy_user_id})
+    
+    if not mapping:
+        raise HTTPException(status_code=404, detail="Mapping not found")
+    
+    if mapping.get("status") != "mapped":
+        raise HTTPException(status_code=400, detail="This mapping is not in a mapped state")
+    
+    # Check if within 24-hour window
+    can_undo_until = mapping.get("can_undo_until")
+    if can_undo_until:
+        undo_deadline = datetime.fromisoformat(can_undo_until.replace('Z', '+00:00'))
+        if datetime.now(timezone.utc) > undo_deadline:
+            raise HTTPException(
+                status_code=400, 
+                detail="Undo window has expired (24 hours from mapping)"
+            )
+    else:
+        # For backwards compatibility - check mapped_at
+        mapped_at = mapping.get("mapped_at")
+        if mapped_at:
+            mapped_time = datetime.fromisoformat(mapped_at.replace('Z', '+00:00'))
+            if datetime.now(timezone.utc) > mapped_time + timedelta(hours=24):
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Undo window has expired (24 hours from mapping)"
+                )
+    
+    connect_user_id = mapping.get("connect_user_id")
+    legacy_user_backup = mapping.get("legacy_user_backup")
+    
+    # Restore files back to legacy user
+    files_restored = 0
+    
+    # Update source_id references back to legacy
+    result1 = await db.leads.update_many(
+        {"source_id": connect_user_id},
+        {"$set": {"source_id": legacy_user_id}}
+    )
+    files_restored += result1.modified_count
+    
+    # Update assigned_to references back to legacy
+    result2 = await db.leads.update_many(
+        {"assigned_to": connect_user_id},
+        {"$set": {"assigned_to": legacy_user_id}}
+    )
+    files_restored += result2.modified_count
+    
+    # Restore legacy user if we have a backup
+    if legacy_user_backup:
+        # Check if legacy user already exists (shouldn't, but safety check)
+        existing = await db.users.find_one({"id": legacy_user_id})
+        if not existing:
+            await db.users.insert_one(legacy_user_backup)
+    
+    # Update mapping status back to unmapped
+    await db.user_mappings.update_one(
+        {"legacy_user_id": legacy_user_id},
+        {
+            "$set": {
+                "status": "unmapped",
+                "undone_at": datetime.now(timezone.utc).isoformat(),
+                "undone_by": current_user.get("id"),
+                "undone_by_name": current_user.get("name")
+            },
+            "$unset": {
+                "connect_user_id": "",
+                "connect_name": "",
+                "connect_email": "",
+                "connect_role": "",
+                "mapped_at": "",
+                "mapped_by": "",
+                "mapped_by_name": "",
+                "files_transferred": "",
+                "can_undo_until": ""
+            }
+        }
+    )
+    
+    return {
+        "message": f"Mapping undone successfully. {files_restored} files restored to legacy user.",
+        "files_restored": files_restored,
+        "legacy_user_restored": legacy_user_backup is not None
+    }
 
 
 # ===================== BULK OPERATIONS =====================
