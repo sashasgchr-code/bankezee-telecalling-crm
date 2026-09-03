@@ -3345,28 +3345,50 @@ async def check_bank_eligibility(file_id: str, current_user: dict = Depends(get_
     # Sort: eligible first, then by eligible amount
     eligibility_results.sort(key=lambda x: (not x["is_eligible"], -(x.get("eligible_amount") or 0)))
     
-    # Update file with eligibility results
-    existing_eligibilities = file_doc.get("eligibilities") or []
-    existing_banks = {e.get("bank_name") for e in existing_eligibilities}
+    # Identify missing data that could improve results
+    missing_data = []
+    if not cibil:
+        missing_data.append("CIBIL Score")
+    if not net_salary:
+        missing_data.append("Net Salary")
+    if not loan_amount:
+        missing_data.append("Loan Amount")
+    if not foir and net_salary:
+        missing_data.append("FOIR / EMI Details")
+    if not age:
+        missing_data.append("Date of Birth")
+    if not present_emp_months:
+        missing_data.append("Employment Duration")
     
-    for result in eligibility_results:
-        if result["bank_name"] not in existing_banks:
-            existing_eligibilities.append({
-                "bank_name": result["bank_name"],
-                "is_eligible": result["is_eligible"],
-                "eligible_amount": result["eligible_amount"],
-                "not_eligible_reason": result["not_eligible_reason"],
-                "login_done": False,
-                "approval_status": None,
-                "disbursed": False,
-                "checked_at": datetime.now(timezone.utc).isoformat()
-            })
+    # Store eligibility check result in separate collection (NOT the manual eligibilities)
+    eligibility_check_result = {
+        "file_id": file_id,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "checked_by": current_user["id"],
+        "checked_by_name": current_user.get("name", "Unknown"),
+        "results": eligibility_results,
+        "eligible_count": sum(1 for r in eligibility_results if r["is_eligible"]),
+        "total_checked": len(eligibility_results),
+        "customer_data": {
+            "cibil": cibil,
+            "net_salary": net_salary,
+            "loan_amount": loan_amount,
+            "foir": foir,
+            "employment_type": employment_type,
+            "age": age
+        },
+        "missing_data": missing_data
+    }
     
+    # Store in eligibility_checks collection (for history)
+    await db.eligibility_checks.insert_one(eligibility_check_result)
+    
+    # Update file with ONLY the last_eligibility_check reference (NOT modifying manual eligibilities)
     await db.leads.update_one(
         {"id": file_id},
         {
             "$set": {
-                "eligibilities": existing_eligibilities,
+                "last_eligibility_check": eligibility_check_result,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             },
             "$push": {
@@ -3389,6 +3411,8 @@ async def check_bank_eligibility(file_id: str, current_user: dict = Depends(get_
         "results": eligibility_results,
         "eligible_count": sum(1 for r in eligibility_results if r["is_eligible"]),
         "not_eligible_count": sum(1 for r in eligibility_results if not r["is_eligible"]),
+        "total_lenders_checked": len(eligibility_results),
+        "missing_data": missing_data,
         "customer_data": {
             "cibil": cibil,
             "net_salary": net_salary,
@@ -3398,6 +3422,18 @@ async def check_bank_eligibility(file_id: str, current_user: dict = Depends(get_
             "age": age
         }
     }
+
+
+@router.get("/{file_id}/eligibility-history")
+async def get_eligibility_history(file_id: str, current_user: dict = Depends(get_current_user)):
+    """Get history of eligibility checks for a file"""
+    
+    history = await db.eligibility_checks.find(
+        {"file_id": file_id},
+        {"_id": 0, "file_id": 0, "results": 0, "customer_data": 0}  # Exclude large fields
+    ).sort("checked_at", -1).limit(10).to_list(10)
+    
+    return history
 
 
 # ============ EXPORT REPORTS - PDF/CSV ============

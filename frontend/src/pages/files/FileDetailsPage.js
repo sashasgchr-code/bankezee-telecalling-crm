@@ -368,44 +368,10 @@ const FileDetailsPage = () => {
   };
 
   const [checkingEligibility, setCheckingEligibility] = useState(false);
-  const [eligibilityResults, setEligibilityResults] = useState(null);
 
-  const handleCheckBankEligibility = async () => {
-    setCheckingEligibility(true);
-    try {
-      const response = await api.post(`/files/${fileId}/check-eligibility`);
-      setEligibilityResults(response.data);
-      
-      // Merge new eligibilities with existing ones
-      const newEligibilities = response.data.results || [];
-      const existingBanks = new Set(eligibilities.map(e => e.bank_name));
-      
-      const mergedEligibilities = [...eligibilities];
-      for (const result of newEligibilities) {
-        if (!existingBanks.has(result.bank_name) && result.is_eligible) {
-          mergedEligibilities.push({
-            bank_name: result.bank_name,
-            is_eligible: result.is_eligible,
-            eligible_amount: result.eligible_amount,
-            not_eligible_reason: result.not_eligible_reason,
-            login_done: false,
-            approval_status: null,
-            disbursed: false
-          });
-        }
-      }
-      
-      if (mergedEligibilities.length > eligibilities.length) {
-        setEligibilities(mergedEligibilities.slice(0, 7)); // Max 7 banks
-      }
-      
-      toast.success(`Eligibility checked: ${response.data.eligible_count} banks eligible`);
-      fetchFileData(); // Refresh to show updated eligibilities
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to check eligibility');
-    } finally {
-      setCheckingEligibility(false);
-    }
+  // Navigate to separate Bank Eligibility Analysis page
+  const handleCheckBankEligibility = () => {
+    navigate(`/admin/files/${fileId}/eligibility`);
   };
 
   // Eligibility handlers
@@ -516,23 +482,13 @@ const FileDetailsPage = () => {
           <span className="text-sm text-gray-500 ml-2">{score}/100</span>
         </div>
         
-        {/* Check Bank Eligibility Button */}
+        {/* Check Bank Eligibility Button - Navigate to Analysis Page */}
         <button
           onClick={handleCheckBankEligibility}
-          disabled={checkingEligibility}
-          className="ml-4 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2 disabled:opacity-50"
+          className="ml-4 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
         >
-          {checkingEligibility ? (
-            <>
-              <Loader2 size={18} className="animate-spin" />
-              Checking...
-            </>
-          ) : (
-            <>
-              <Building2 size={18} />
-              Check Bank Eligibility
-            </>
-          )}
+          <Building2 size={18} />
+          Check Eligibility
         </button>
         
         <div className="ml-auto text-sm text-gray-500">

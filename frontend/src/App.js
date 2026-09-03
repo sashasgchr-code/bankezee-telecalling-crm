@@ -19,6 +19,7 @@ import TelecallerAttendance from "./pages/telecaller/Attendance";
 import { TeamMembers, TeamData, TeamFiles, TeamCalls } from "./pages/telecaller/team";
 import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
+import BankEligibilityAnalysis from "./pages/files/BankEligibilityAnalysis";
 import DataMigration from "./pages/files/DataMigration";
 import PolicyMaster from "./pages/files/PolicyMaster";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
@@ -122,6 +123,7 @@ function App() {
           <Route path="leads/:id" element={<LeadDetail />} />
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
+          <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
           <Route path="files/migrate" element={<DataMigration />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="files/reports/rejected" element={<RejectedCasesReport />} />
