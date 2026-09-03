@@ -391,5 +391,38 @@ Growth Partners can now VIEW (but not edit) administrative sections on file deta
 
 ---
 
+### User Consolidation & Legacy CRM Migration ✅ (September 3, 2026)
+Complete user identity consolidation from @users spreadsheet as source of truth.
+
+**Migration Summary:**
+- **19 Active GP accounts** consolidated from @users spreadsheet
+- **2 Team Leaders**: Anusha (11 members), Pinky (5 members)
+- **97 users deactivated** (not in @users list)
+- **2 CRM-to-Connect mappings** created (Pinky, Masoom with different emails)
+
+**What Changed:**
+1. All GP passwords updated to match Connect column in @users
+2. Manager/TL hierarchy established from spreadsheet
+3. CRM accounts with different emails mapped to Connect accounts
+4. Non-@users GP accounts deactivated (is_active=false)
+5. Historical data preserved (no files/activities deleted)
+
+**Hierarchy Structure:**
+```
+Teja (Manager)
+├── Pinky (TL) - 5 GPs: Wamiz, Vijayendra, Vishnu, Shiva, Chandana
+└── G Saikiran (Manager role)
+    └── Anusha (TL) - 11 GPs: Pushpa, Deevena, Shanthi, Anil, Nithin, Priya, Raju, Meghana, Rishikesh, Masoom, Asma
+```
+
+**Special Cases Handled:**
+- **Pinky**: CRM email (akshaya03302023@gmail.com) different from Connect email (pinkynagulapally@gmail.com) - properly mapped
+- **Masoom**: Typo in Connect email (masoommd7472@gmai.com) - kept as-is per spreadsheet
+- **G Saikiran**: No CRM account - uses Connect only
+
+**Connect is now the ONLY operational login system.**
+
+---
+
 *Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*
