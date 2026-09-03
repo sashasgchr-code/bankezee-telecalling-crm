@@ -723,7 +723,16 @@ async def get_hourly_report(
     end_of_day = start_of_day + timedelta(days=1)
     
     user_role = current_user.get("role", "").lower()
-    user_id = str(current_user.get("_id", current_user.get("id", "")))
+    # Handle different user ID formats
+    user_obj_id = current_user.get("_id")
+    user_uuid = current_user.get("id", "")
+    
+    # Convert to string for comparisons
+    if user_obj_id:
+        user_id = str(user_obj_id)
+    else:
+        user_id = user_uuid
+    
     is_tl = current_user.get("is_tl", False)
     
     # Determine which telecallers to show based on role
@@ -740,7 +749,7 @@ async def get_hourly_report(
             "manager_id": user_id,
             "is_tl": True
         }).to_list(100)
-        tl_ids = [str(tl["_id"]) for tl in tls_under_manager]
+        tl_ids = [str(tl.get("_id", tl.get("id", ""))) for tl in tls_under_manager]
         
         # Get GPs directly under manager OR under their TLs
         telecallers = await db.users.find({
@@ -752,17 +761,27 @@ async def get_hourly_report(
             "is_active": {"$ne": False}
         }).to_list(500)
     elif is_tl:
-        # TL sees their team members
+        # TL sees their team members - match by both possible ID formats
         telecallers = await db.users.find({
-            "tl_id": user_id,
+            "$or": [
+                {"tl_id": user_id},
+                {"tl_id": user_uuid}
+            ],
             "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]},
             "is_active": {"$ne": False}
         }).to_list(100)
     else:
-        # GP sees only themselves
-        telecallers = await db.users.find({
-            "_id": ObjectId(user_id)
-        }).to_list(1)
+        # GP sees only themselves - find by either _id or id field
+        try:
+            telecallers = await db.users.find({
+                "$or": [
+                    {"_id": ObjectId(user_id) if len(user_id) == 24 else None},
+                    {"id": user_uuid}
+                ]
+            }).to_list(1)
+        except Exception:
+            # Fallback if ObjectId conversion fails
+            telecallers = await db.users.find({"id": user_uuid}).to_list(1)
     
     telecaller_ids = [str(tc["_id"]) for tc in telecallers]
     telecaller_map = {str(tc["_id"]): tc for tc in telecallers}

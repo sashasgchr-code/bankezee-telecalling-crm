@@ -160,11 +160,11 @@ function App() {
           <Route path="attendance" element={<TelecallerAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="profile" element={<TelecallerProfile />} />
-          {/* Team Lead Routes - Only visible/accessible for TLs */}
           <Route path="team" element={<TeamMembers />} />
           <Route path="team/data" element={<TeamData />} />
           <Route path="team/files" element={<TeamFiles />} />
           <Route path="team/calls" element={<TeamCalls />} />
+          <Route path="reports" element={<AdminReports />} />
         </Route>
 
         {/* Role-neutral File route - redirects to correct role-based route */}

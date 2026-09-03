@@ -354,11 +354,19 @@ Enhanced hourly report with "Connected" column and role-based data access:
    - Manager: See GPs under their management (direct + via TLs)
    - TL: See their team members only
    - GP: See only their own hourly stats
+3. **Reports Page Access for All Roles:**
+   - Added `/agent/reports` route for GPs, TLs, Managers
+   - "Reports" added to the More menu in agent navigation
+   - Same Reports page works for all roles with filtered data
 
 **UI Changes:**
 - Column headers: C (blue), Co (purple), L (teal), F (orange)
 - Totals row shows aggregated counts per column
 - Legend updated: "C = Calls, Co = Connected, L = Leads, F = File"
+
+**Navigation:**
+- Admin: More menu → Reports
+- GP/TL/Manager: More menu → Reports (first option)
 
 ---
 
