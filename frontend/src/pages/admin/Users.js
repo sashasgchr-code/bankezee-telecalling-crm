@@ -1069,9 +1069,8 @@ const AdminUsers = () => {
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                   disabled={!roleEditData.manager_id}
                 >
-                  <option value="">No Team Lead (Direct to Manager)</option>
-                  {teamLeads.filter(t => t.id && (!roleEditData.manager_id || t.manager_id === roleEditData.manager_id)).map(tl => (
-                    <option key={tl.id} value={tl.id}>{tl.name}</option>
+                  {teamLeads.map(tl => (
+                    <option key={tl.id || 'no-tl'} value={tl.id || ''}>{tl.name}</option>
                   ))}
                 </select>
                 {!roleEditData.manager_id && (
