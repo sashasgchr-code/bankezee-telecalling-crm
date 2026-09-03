@@ -90,12 +90,12 @@ async def list_users(
             tl = await db.users.find_one({"id": user["tl_id"]}, {"name": 1})
             user_data["tl_name"] = tl.get("name") if tl else "Unknown"
         
-        # Get file count for this user
+        # File count for this user - Files = old CRM records with status='file' only.
+        # leads_count = every record (Connect leads + files) owned by / assigned to the user.
         user_id_str = user.get("id")
-        file_count = await db.leads.count_documents({
-            "$or": [{"source_id": user_id_str}, {"assigned_to": user_id_str}]
-        })
-        user_data["files_count"] = file_count
+        owner_filter = {"$or": [{"source_id": user_id_str}, {"assigned_to": user_id_str}]}
+        user_data["files_count"] = await db.leads.count_documents({**owner_filter, "status": "file"})
+        user_data["leads_count"] = await db.leads.count_documents(owner_filter)
         
         # Detect source: has password = Connect native, no password = CRM import
         has_password = bool(user.get("password_hash"))

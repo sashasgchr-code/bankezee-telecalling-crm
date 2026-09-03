@@ -668,7 +668,9 @@ const AdminUsers = () => {
                           </span>
                         </div>
                         <div>
-                          <span className={`px-2 py-0.5 text-xs rounded font-medium ${
+                          <span
+                            title={`${user.files_count || 0} CRM files · ${user.leads_count || 0} total records (leads + files)`}
+                            className={`px-2 py-0.5 text-xs rounded font-medium ${
                             user.files_count > 0 ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                           }`}>
                             {user.files_count || 0}

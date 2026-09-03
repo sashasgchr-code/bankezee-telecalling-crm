@@ -192,8 +192,11 @@ const FileDetailsPage = () => {
   const handleSaveDetails = async () => {
     setSaving(true);
     try {
-      await api.put(`/files/${fileId}`, {
-        file_details: editedDetails
+      await api.put(`/files/${fileId}/details`, {
+        full_name: editedDetails.full_name,
+        mobile: editedDetails.mobile,
+        email: editedDetails.email,
+        additional_data: editedDetails
       });
       toast.success('Details saved successfully');
       setIsEditingDetails(false);
@@ -208,8 +211,8 @@ const FileDetailsPage = () => {
   const handleSaveProfileAnalysis = async () => {
     setSaving(true);
     try {
-      await api.put(`/files/${fileId}`, {
-        file_details: {
+      await api.put(`/files/${fileId}/details`, {
+        additional_data: {
           ...fileData?.file_details,
           ...profileAnalysis
         }
@@ -256,7 +259,7 @@ const FileDetailsPage = () => {
 
   const handleStatusUpdate = async () => {
     try {
-      await api.put(`/files/${fileId}/status`, { file_status: newStatus });
+      await api.put(`/files/${fileId}/file-status`, { file_status: newStatus });
       toast.success('Status updated');
       fetchFileData();
     } catch (error) {
@@ -267,7 +270,7 @@ const FileDetailsPage = () => {
   const handleAddNote = async () => {
     if (!note.trim()) return;
     try {
-      await api.post(`/files/${fileId}/note`, { note });
+      await api.post(`/files/${fileId}/notes`, { note });
       toast.success('Note added');
       setNote('');
       fetchFileData();
@@ -1313,7 +1316,7 @@ const FileDetailsPage = () => {
                 {activities.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-4">No activity yet</p>
                 ) : (
-                  activities.slice(0, 10).map((activity, index) => (
+                  [...activities].reverse().slice(0, 10).map((activity, index) => (
                     <div key={index} className="text-sm border-l-2 border-gray-200 pl-3">
                       <p className="text-gray-900">{activity.message || activity.note}</p>
                       <p className="text-xs text-gray-500 mt-1">

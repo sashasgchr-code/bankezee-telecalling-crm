@@ -1,0 +1,46 @@
+{
+  "summary": "Full re-verification of Files CRM RBAC + json_safe fixes on PREVIEW. Backend: 23/23 pytest passed (list 514, GP=15, TL=14, TL team_view=38, Manager=46, all 11 report endpoints 200, file detail loads for both UUID and 24-char ObjectId ids, PUT /files/{id}/details, PUT /files/{id}/file-status, POST /files/{id}/notes, GET /files/{id}/eligibilities, GET /files/{id}/activities, /api/users returns files_count AND leads_count). Frontend Admin: /admin/files renders Files (514) with 'Page 1 of 11', file rows visible, clicking a row opens FileDetailsPage with customer/employment/loan/lead sections + Documents + Profile Analysis (Save) + Bank Eligibilities (Save All) + Activity Log. Add Note POST -> 200, Edit Details PUT -> 200. Frontend GP (Nithin): lands on /agent with exactly '15 data assigned to you'. All bug-fix scenarios in the review request are verified working.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "FileDetailsPage Activity Log",
+        "issue": "Newly added notes are not visible in the Activity Log after page reload even though POST /files/{id}/notes returns 200 and the note IS persisted in GET /files/{id}/activities (verified via pytest). Root cause: FileDetailsPage.js line ~1319 renders `activities.slice(0, 10)` — the API returns activities in chronological (oldest-first) order so on files with >10 activities the newest note gets truncated. Should either reverse-sort by timestamp desc before slicing, or slice from the end.",
+        "selector": "FileDetailsPage.js:1319 activities.slice(0, 10).map(...)",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Multiple pages",
+        "issues": ["Same React hydration warnings from prior iteration are still present in console (x-ve-dynamic <span> wrappers around <option>/<tr>/<tbody>/<tfoot>/<table>). Non-blocking dev-instrumentation noise. Already flagged in iteration_40."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter41_files_rbac.py",
+    "/app/test_reports/pytest/iter41.xml"
+  ],
+  "action_items": [
+    "Fix FileDetailsPage.js Activity Log to sort/slice so the newest note appears at top (activities.slice(-10).reverse() or sort by timestamp desc before slicing).",
+    "(Carry-over from iter 40) Investigate x-ve-dynamic span wrappers causing hydration warnings around option/tr/table children."
+  ],
+  "critical_code_review_comments": [
+    "lead_filter() correctly matches by id or _id (ObjectId) — verified via file detail fetch for both UUID and 24-char ObjectId records.",
+    "json_safe() sanitiser is working — the Admin Files list endpoint that previously 500'd with NaN/Inf/ObjectId now returns 200 with total=514.",
+    "FileDetailsPage.js: `activities.slice(0, 10)` truncates newest notes when list has >10 items — bug for legacy files with many activities.",
+    "/app/backend/routes/files_crm.py is ~4200 lines — split into files_list.py / files_detail.py / files_reports.py / files_commissions.py to improve maintainability.",
+    "Admin Users API correctly exposes both files_count (status='file' only) and leads_count — matches spec."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter41_files_rbac.py (new)"
+  ],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "~90% (all core flows working; 1 display bug in Activity Log slice)"},
+  "test_credentials": "See /app/memory/test_credentials.md — all provided credentials worked.",
+  "seed_data_creation": "None. Only test data created were harmless TEST_iter41 notes on 1 file and a details-PUT with the same values that were already present.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression test at /app/backend/tests/test_iter41_files_rbac.py — reusable for future Files CRM changes. Files list uses pagination.total (not top-level total). Files report endpoints live at /api/files/reports/* and /api/files/dashboard/stats (not /api/files/{name}). File detail activity log on the UI truncates newest notes when >10 activities exist — verify fix by adding a note on file 6d194952-c102-4c4b-89b4-7917c2f1fb02 which already has 7+ activities.",
+  "rca of the issue": "The activity-log 'note not visible' UI symptom that appeared during frontend testing was NOT the backend bug from the review request (which is fixed). Its RCA: FileDetailsPage.js:1319 uses activities.slice(0, 10) with an oldest-first array from the backend, so any note added on a file that already has 10+ activities is silently hidden below the fold. Confirmed the note IS saved by hitting GET /api/files/{id}/activities directly — response contains 'TEST_iter41_note'. Fix: sort activities by timestamp desc before slicing (or slice(-10).reverse())."
+}

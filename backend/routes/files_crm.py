@@ -5,6 +5,7 @@ Handles file details, eligibilities, document management for leads with status='
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
+from bson import ObjectId
 from dotenv import load_dotenv
 from pathlib import Path
 import os
@@ -13,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import logging
 from utils.auth import get_current_user, require_admin
+from utils.json_safe import json_safe
 
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / '.env')
@@ -39,6 +41,20 @@ def is_gp(role: str) -> bool:
 # Helper function to check if user can edit bank processing
 def can_edit_bank_processing(role: str) -> bool:
     return role == 'admin' or role in OPS_ROLES
+
+
+def lead_filter(file_id: str, **extra) -> dict:
+    """Match a lead by its 'id' field, or by _id for legacy CRM records that have no 'id'.
+
+    The files list exposes str(_id) as the id for imported CRM records, so every
+    per-file endpoint must accept that value too.
+    """
+    if ObjectId.is_valid(file_id):
+        f = {"$or": [{"id": file_id}, {"_id": ObjectId(file_id)}]}
+    else:
+        f = {"id": file_id}
+    f.update(extra)
+    return f
 
 # File storage - using MongoDB GridFS for persistence across deployments
 
@@ -430,7 +446,7 @@ async def get_all_files(
             f['id'] = str(f['_id'])
         # Remove _id from response
         f.pop('_id', None)
-        files.append(f)
+        files.append(json_safe(f))
     
     return {
         "files": files,
@@ -891,7 +907,7 @@ async def get_rejected_files(
     
     return {
         "summary": summary,
-        "cases": cases[:500]  # Limit for performance
+        "cases": json_safe(cases[:500])  # Limit for performance
     }
 
 
@@ -1173,7 +1189,7 @@ def calculate_star_rating(file_data: dict) -> dict:
 @router.get("/calculate-rating/{file_id}")
 async def calculate_file_rating(file_id: str, current_user: dict = Depends(get_current_user)):
     """Calculate and optionally update the star rating for a file"""
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -1184,14 +1200,14 @@ async def calculate_file_rating(file_id: str, current_user: dict = Depends(get_c
 @router.put("/update-rating/{file_id}")
 async def update_file_rating(file_id: str, current_user: dict = Depends(get_current_user)):
     """Calculate and update the star rating for a file"""
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
     rating = calculate_star_rating(file_doc)
     
     await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$set": {
                 "star_rating": rating['star_rating'],
@@ -1216,7 +1232,7 @@ async def recalculate_all_ratings(current_user: dict = Depends(require_admin)):
     for f in all_files:
         rating = calculate_star_rating(f)
         await db.leads.update_one(
-            {"id": f.get('id')},
+            {"_id": f["_id"]},
             {
                 "$set": {
                     "star_rating": rating['star_rating'],
@@ -1493,7 +1509,7 @@ async def export_files_data(file_status: Optional[str] = None, current_user: dic
     
     return {
         "count": len(files),
-        "files": files,
+        "files": json_safe(files),
         "exported_at": datetime.now(timezone.utc).isoformat()
     }
 
@@ -1875,12 +1891,12 @@ async def delete_file(file_id: str, current_user: dict = Depends(require_admin))
     Also cleans up related records (activities, documents, commissions).
     """
     # Verify file exists
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
     # Delete the file
-    result = await db.leads.delete_one({"id": file_id})
+    result = await db.leads.delete_one(lead_filter(file_id))
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="File not found or already deleted")
@@ -1933,7 +1949,7 @@ async def bulk_delete_files(request: BulkDeleteRequest, current_user: dict = Dep
     
     for file_id in request.file_ids:
         try:
-            result = await db.leads.delete_one({"id": file_id})
+            result = await db.leads.delete_one(lead_filter(file_id))
             if result.deleted_count > 0:
                 deleted_count += 1
                 # Clean up related records
@@ -1967,9 +1983,11 @@ async def bulk_delete_files(request: BulkDeleteRequest, current_user: dict = Dep
 @router.get("/{file_id}")
 async def get_file_details(file_id: str, current_user: dict = Depends(get_current_user)):
     """Get detailed file information with enriched GP data and documents"""
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id))
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
+    file_doc.pop("_id", None)
+    file_doc["id"] = file_doc.get("id") or file_id
     
     # Enrich with GP (source) information
     source_id = file_doc.get("source_id") or file_doc.get("assigned_to")
@@ -2004,13 +2022,13 @@ async def get_file_details(file_id: str, current_user: dict = Depends(get_curren
         documents.append(doc_data)
     file_doc["documents"] = documents
     
-    return file_doc
+    return json_safe(file_doc)
 
 
 @router.put("/{file_id}/details")
 async def update_file_details(file_id: str, update_data: FileDetailsUpdate, current_user: dict = Depends(get_current_user)):
     """Update file customer details"""
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -2038,7 +2056,7 @@ async def update_file_details(file_id: str, update_data: FileDetailsUpdate, curr
     update_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$set": update_dict,
             "$push": {
@@ -2060,12 +2078,12 @@ async def update_file_status(file_id: str, status_update: FileStatusUpdate, curr
     if status_update.file_status not in FILE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Valid: {', '.join(FILE_STATUSES)}")
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
     await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$set": {
                 "file_status": status_update.file_status,
@@ -2088,7 +2106,7 @@ async def update_file_status(file_id: str, status_update: FileStatusUpdate, curr
 async def add_file_note(file_id: str, note_data: NoteAdd, current_user: dict = Depends(get_current_user)):
     """Add a note to a file"""
     result = await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$push": {
                 "file_activities": {
@@ -2114,12 +2132,12 @@ async def assign_file(file_id: str, assignment: FileAssignment, current_user: di
     if not assignee:
         raise HTTPException(status_code=404, detail="Assignee not found")
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
     await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$set": {
                 "file_assigned_to": assignment.assigned_to,
@@ -2151,7 +2169,7 @@ async def bulk_assign_files(assignment: BulkFileAssignment, current_user: dict =
     assigned_count = 0
     for file_id in assignment.file_ids:
         result = await db.leads.update_one(
-            {"id": file_id},
+            lead_filter(file_id),
             {
                 "$set": {
                     "file_assigned_to": assignment.assigned_to,
@@ -2187,7 +2205,7 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
     if len(eligibility_update.eligibilities) > 7:
         raise HTTPException(status_code=400, detail="Maximum 7 eligibilities allowed")
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -2202,7 +2220,7 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
         eligibilities_data.append(elig_dict)
     
     await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$set": {
                 "eligibilities": eligibilities_data,
@@ -2225,24 +2243,24 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
 async def get_eligibilities(file_id: str, current_user: dict = Depends(get_current_user)):
     """Get file eligibilities"""
     # First check if file exists (without projection that may return empty dict)
-    file_exists = await db.leads.count_documents({"id": file_id})
+    file_exists = await db.leads.count_documents(lead_filter(file_id))
     if not file_exists:
         raise HTTPException(status_code=404, detail="File not found")
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "eligibilities": 1})
-    return file_doc.get("eligibilities", []) if file_doc else []
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "eligibilities": 1})
+    return json_safe(file_doc.get("eligibilities", [])) if file_doc else []
 
 
 @router.get("/{file_id}/activities")
 async def get_file_activities(file_id: str, current_user: dict = Depends(get_current_user)):
     """Get file activity log"""
     # First check if file exists (without projection that may return empty dict)
-    file_exists = await db.leads.count_documents({"id": file_id})
+    file_exists = await db.leads.count_documents(lead_filter(file_id))
     if not file_exists:
         raise HTTPException(status_code=404, detail="File not found")
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_activities": 1})
-    return file_doc.get("file_activities", []) if file_doc else []
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "file_activities": 1})
+    return json_safe(file_doc.get("file_activities", [])) if file_doc else []
 
 
 # File Storage Routes - Using GridFS for persistent storage
@@ -2296,7 +2314,7 @@ async def upload_document(
         }
         
         await db.leads.update_one(
-            {"id": file_id},
+            lead_filter(file_id),
             {
                 "$push": {"file_documents": doc_data},
                 "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
@@ -2363,7 +2381,7 @@ async def upload_documents(
             }
             
             await db.leads.update_one(
-                {"id": file_id},
+                lead_filter(file_id),
                 {
                     "$push": {"file_documents": doc_data},
                     "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
@@ -2386,11 +2404,11 @@ async def upload_documents(
 async def list_file_documents(file_id: str):
     """List all documents for a file"""
     # First check if file exists (without projection that may return empty dict)
-    file_exists = await db.leads.count_documents({"id": file_id})
+    file_exists = await db.leads.count_documents(lead_filter(file_id))
     if not file_exists:
         raise HTTPException(status_code=404, detail="File not found")
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_documents": 1})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "file_documents": 1})
     return file_doc.get("file_documents", []) if file_doc else []
 
 
@@ -2439,7 +2457,7 @@ async def download_file_document(file_id: str, doc_id: str, current_user: dict =
     
     # Find document metadata within the file
     file_doc = await db.leads.find_one(
-        {"id": file_id, "file_documents.file_id": doc_id},
+        lead_filter(file_id, **{"file_documents.file_id": doc_id}),
         {"_id": 0, "file_documents.$": 1}
     )
     
@@ -2475,7 +2493,7 @@ async def delete_document(file_id: str, doc_id: str, current_user: dict = Depend
     """Delete a document"""
     from bson import ObjectId
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_documents": 1})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "file_documents": 1})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -2496,7 +2514,7 @@ async def delete_document(file_id: str, doc_id: str, current_user: dict = Depend
     
     # Remove from database
     await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$pull": {"file_documents": {"file_id": doc_id}},
             "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
@@ -2515,7 +2533,7 @@ async def download_all_documents(file_id: str, current_user: dict = Depends(get_
     import io
     import zipfile
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0, "file_documents": 1, "name": 1})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "file_documents": 1, "name": 1})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -3495,7 +3513,7 @@ async def check_bank_eligibility(file_id: str, current_user: dict = Depends(get_
     """
     
     # Get file details
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
@@ -3698,7 +3716,7 @@ async def check_bank_eligibility(file_id: str, current_user: dict = Depends(get_
     
     # Update file with ONLY the last_eligibility_check reference (NOT modifying manual eligibilities)
     await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$set": {
                 "last_eligibility_check": eligibility_check_result,
@@ -4042,7 +4060,7 @@ async def add_eligibility_activity(
     }
     
     result = await db.leads.update_one(
-        {"id": file_id},
+        lead_filter(file_id),
         {
             "$push": {"file_activities": activity},
             "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
@@ -4061,7 +4079,7 @@ async def get_file_timeline(file_id: str, current_user: dict = Depends(get_curre
     Get complete file timeline with all activities, eligibility changes, and milestones
     """
     
-    file_doc = await db.leads.find_one({"id": file_id}, {"_id": 0})
+    file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
