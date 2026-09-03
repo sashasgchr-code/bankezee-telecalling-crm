@@ -65,6 +65,22 @@ const formatPhone = (phone) => {
   return str;
 };
 
+// Loan Type Options for multi-select
+const LOAN_TYPE_OPTIONS = [
+  { value: 'new_personal_loan', label: 'New Personal Loan' },
+  { value: 'balance_transfer_topup_pl', label: 'Balance Transfer+Top Up PL' },
+  { value: 'used_vehicle_loan_bt', label: 'Used Vehicle Loan BT' },
+  { value: 'used_vehicle_loan_fresh', label: 'Used Vehicle Loan Fresh' },
+  { value: 'new_vehicle_loan', label: 'New Vehicle Loan' },
+  { value: 'merge_multiple_loans', label: 'Merge Multiple Loans' },
+  { value: 'balance_transfer_pl', label: 'Balance Transfer PL' },
+  { value: 'top_up_pl', label: 'Top Up PL' },
+  { value: 'bt_topup_hl', label: 'BT Topup HL' },
+  { value: 'reduce_home_loan_emi', label: 'Reduce Home Loan EMI' },
+  { value: 'business_loan', label: 'Business Loan' },
+  { value: 'new_home_loan', label: 'New Home Loan' },
+];
+
 const FilesDashboard = () => {
   const navigate = useNavigate();
   const [files, setFiles] = useState([]);
@@ -76,7 +92,6 @@ const FilesDashboard = () => {
   const [totalFiles, setTotalFiles] = useState(0);
   
   // Date Range State
-  const [dateFilter, setDateFilter] = useState('all'); // 'all', 'today', 'week', 'month', 'custom'
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   
@@ -104,14 +119,20 @@ const FilesDashboard = () => {
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [loanTypeFilter, setLoanTypeFilter] = useState('');
+  const [loanTypeFilter, setLoanTypeFilter] = useState([]); // Changed to array for multi-select
   const [managerFilter, setManagerFilter] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
+  const [gpFilter, setGpFilter] = useState(''); // New: Growth Partner filter
+  const [tlFilter, setTlFilter] = useState(''); // New: Team Lead filter
   const [starFilter, setStarFilter] = useState('');
   const [createdDateFilter, setCreatedDateFilter] = useState('all');
   const [activityDateFilter, setActivityDateFilter] = useState('all');
+  const [showLoanTypeDropdown, setShowLoanTypeDropdown] = useState(false);
   
+  // Filter data
   const [opsTeam, setOpsTeam] = useState([]);
+  const [managers, setManagers] = useState([]); // Only actual managers
+  const [growthPartners, setGrowthPartners] = useState([]); // GPs for filter
+  const [teamLeads, setTeamLeads] = useState([]); // TLs for filter
   const [allUsers, setAllUsers] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -183,21 +204,35 @@ const FilesDashboard = () => {
   };
   
   // Calculate date range based on filter
-  const getDateRange = () => {
+  const getDateRange = (filterValue = 'all') => {
     const now = new Date();
     let startDate = null;
     let endDate = null;
     
-    switch(dateFilter) {
+    switch(filterValue) {
       case 'today':
         startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
         endDate = now.toISOString();
+        break;
+      case 'yesterday':
+        const yesterday = new Date(now);
+        yesterday.setDate(yesterday.getDate() - 1);
+        startDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate()).toISOString();
+        endDate = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59).toISOString();
         break;
       case 'week':
         const weekStart = new Date(now);
         weekStart.setDate(now.getDate() - now.getDay());
         startDate = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate()).toISOString();
         endDate = now.toISOString();
+        break;
+      case 'last_week':
+        const lastWeekEnd = new Date(now);
+        lastWeekEnd.setDate(now.getDate() - now.getDay() - 1);
+        const lastWeekStart = new Date(lastWeekEnd);
+        lastWeekStart.setDate(lastWeekEnd.getDate() - 6);
+        startDate = new Date(lastWeekStart.getFullYear(), lastWeekStart.getMonth(), lastWeekStart.getDate()).toISOString();
+        endDate = new Date(lastWeekEnd.getFullYear(), lastWeekEnd.getMonth(), lastWeekEnd.getDate(), 23, 59, 59).toISOString();
         break;
       case 'month':
         startDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -207,7 +242,16 @@ const FilesDashboard = () => {
         const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
         const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
         startDate = lastMonth.toISOString();
-        endDate = lastDay.toISOString();
+        endDate = new Date(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 23, 59, 59).toISOString();
+        break;
+      case 'quarter':
+        const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+        startDate = quarterStart.toISOString();
+        endDate = now.toISOString();
+        break;
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1).toISOString();
+        endDate = now.toISOString();
         break;
       case 'custom':
         if (customStartDate) startDate = new Date(customStartDate).toISOString();
@@ -222,7 +266,7 @@ const FilesDashboard = () => {
 
   useEffect(() => {
     fetchAll();
-  }, [page, statusFilter, managerFilter, dateFilter, customStartDate, customEndDate]);
+  }, [page, statusFilter, managerFilter, gpFilter, tlFilter, createdDateFilter, activityDateFilter, customStartDate, customEndDate, loanTypeFilter]);
 
   // Debounced search effect
   useEffect(() => {
@@ -247,7 +291,10 @@ const FilesDashboard = () => {
         fetchTatMetrics(),
         fetchGrowthPartner(),
         fetchAllUsers(),
-        fetchPendingUsers()
+        fetchPendingUsers(),
+        fetchManagers(),
+        fetchGrowthPartners(),
+        fetchTeamLeads()
       ]);
     } finally {
       setLoading(false);
@@ -260,16 +307,25 @@ const FilesDashboard = () => {
       params.append('page', page);
       params.append('limit', 50);
       if (statusFilter) params.append('file_status', statusFilter);
-      if (managerFilter) params.append('assigned_to', managerFilter);
+      if (managerFilter) params.append('manager_id', managerFilter);
+      if (gpFilter) params.append('gp_id', gpFilter);
+      if (tlFilter) params.append('tl_id', tlFilter);
       if (searchTerm) params.append('search', searchTerm);
       
-      // Add date range filters
-      const { startDate, endDate } = getDateRange();
+      // Loan type filter (can be multiple)
+      if (loanTypeFilter.length > 0) {
+        params.append('loan_types', loanTypeFilter.join(','));
+      }
+      
+      // Add date range filters based on created date
+      const { startDate, endDate } = getDateRange(createdDateFilter);
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
       
-      // Note: Backend handles GP role restriction via get_current_user
-      // For Admin viewing specific GP's files, use managerFilter
+      // Activity date filter
+      const activityDates = getDateRange(activityDateFilter);
+      if (activityDates.startDate) params.append('activity_start_date', activityDates.startDate);
+      if (activityDates.endDate) params.append('activity_end_date', activityDates.endDate);
 
       const response = await api.get(`/files?${params.toString()}`);
       setFiles(response.data.files || []);
@@ -282,14 +338,27 @@ const FilesDashboard = () => {
 
   const fetchStats = async () => {
     try {
-      const { startDate, endDate } = getDateRange();
       const params = new URLSearchParams();
-      if (startDate) params.append('start_date', startDate);
-      if (endDate) params.append('end_date', endDate);
-      if (searchTerm) params.append('search', searchTerm);
-      if (managerFilter) params.append('assigned_to', managerFilter);
       
-      // Note: Backend handles GP role restriction via get_current_user
+      // Created date filter for: Total Files, New, In Progress, Amt in Pipeline
+      const { startDate, endDate } = getDateRange(createdDateFilter);
+      if (startDate) params.append('created_start_date', startDate);
+      if (endDate) params.append('created_end_date', endDate);
+      
+      // Activity date filter for: Login, Approved, Disbursed, Rejections, etc.
+      const activityDates = getDateRange(activityDateFilter);
+      if (activityDates.startDate) params.append('activity_start_date', activityDates.startDate);
+      if (activityDates.endDate) params.append('activity_end_date', activityDates.endDate);
+      
+      if (searchTerm) params.append('search', searchTerm);
+      if (managerFilter) params.append('manager_id', managerFilter);
+      if (gpFilter) params.append('gp_id', gpFilter);
+      if (tlFilter) params.append('tl_id', tlFilter);
+      
+      // Loan type filter
+      if (loanTypeFilter.length > 0) {
+        params.append('loan_types', loanTypeFilter.join(','));
+      }
       
       const response = await api.get(`/files/dashboard/stats?${params.toString()}`);
       setStats(response.data);
@@ -579,6 +648,36 @@ const FilesDashboard = () => {
       setOpsTeam(response.data || []);
     } catch (error) {
       console.error('Failed to fetch ops team:', error);
+    }
+  };
+
+  // Fetch managers only (role=manager)
+  const fetchManagers = async () => {
+    try {
+      const response = await api.get('/users/managers');
+      setManagers(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch managers:', error);
+    }
+  };
+
+  // Fetch Growth Partners
+  const fetchGrowthPartners = async () => {
+    try {
+      const response = await api.get('/users/growth-partners');
+      setGrowthPartners(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch growth partners:', error);
+    }
+  };
+
+  // Fetch Team Leads
+  const fetchTeamLeads = async () => {
+    try {
+      const response = await api.get('/users/team-leads');
+      setTeamLeads(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch team leads:', error);
     }
   };
 
@@ -890,7 +989,8 @@ const FilesDashboard = () => {
           <>
             {/* Filters Row */}
             <div className="bg-white rounded-lg border border-gray-200 p-4">
-              <div className="flex flex-wrap items-center gap-3">
+              {/* Row 1: Search + Date Filters */}
+              <div className="flex flex-wrap items-center gap-3 mb-3">
                 {/* Search */}
                 <div className="relative flex-1 min-w-[200px] max-w-md">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -904,29 +1004,59 @@ const FilesDashboard = () => {
                   />
                 </div>
                 
-                {/* Date Filters */}
+                {/* Lead Created Date Filter - For Total, New, In Progress, Pipeline */}
                 <div className="flex items-center gap-2">
-                  <Calendar size={16} className="text-gray-400" />
+                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Lead Created:</span>
                   <select
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value)}
+                    value={createdDateFilter}
+                    onChange={(e) => setCreatedDateFilter(e.target.value)}
                     className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white font-medium"
-                    data-testid="date-filter"
+                    data-testid="created-date-filter"
                   >
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-                <option value="last_month">Last Month</option>
-                <option value="custom">Custom Range</option>
-              </select>
-              {dateFilter === 'custom' && (
-                <>
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="week">This Week</option>
+                    <option value="last_week">Last Week</option>
+                    <option value="month">This Month</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="quarter">This Quarter</option>
+                    <option value="year">This Year</option>
+                    <option value="custom">Custom Range</option>
+                  </select>
+                </div>
+                
+                {/* Activity Date Filter - For Login, Approved, Disbursed, etc. */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Activity Date:</span>
+                  <select
+                    value={activityDateFilter}
+                    onChange={(e) => setActivityDateFilter(e.target.value)}
+                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white font-medium"
+                    data-testid="activity-date-filter"
+                  >
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="yesterday">Yesterday</option>
+                    <option value="week">This Week</option>
+                    <option value="last_week">Last Week</option>
+                    <option value="month">This Month</option>
+                    <option value="last_month">Last Month</option>
+                    <option value="quarter">This Quarter</option>
+                    <option value="year">This Year</option>
+                  </select>
+                </div>
+              </div>
+              
+              {/* Custom date range if selected */}
+              {(createdDateFilter === 'custom' || activityDateFilter === 'custom') && (
+                <div className="flex items-center gap-2 mb-3 pl-0">
+                  <span className="text-xs text-gray-500">Custom Range:</span>
                   <input
                     type="date"
                     value={customStartDate}
                     onChange={(e) => setCustomStartDate(e.target.value)}
-                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                    className="h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white"
                     data-testid="custom-start-date"
                   />
                   <span className="text-gray-400">to</span>
@@ -934,77 +1064,134 @@ const FilesDashboard = () => {
                     type="date"
                     value={customEndDate}
                     onChange={(e) => setCustomEndDate(e.target.value)}
-                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                    className="h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white"
                     data-testid="custom-end-date"
                   />
-                </>
+                </div>
               )}
+              
+              {/* Row 2: Other Filters */}
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Loan Type - Multi-select with dropdown */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowLoanTypeDropdown(!showLoanTypeDropdown)}
+                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white flex items-center gap-2 min-w-[160px]"
+                    data-testid="loan-type-dropdown"
+                  >
+                    <span className={loanTypeFilter.length > 0 ? 'text-green-600 font-medium' : 'text-gray-600'}>
+                      {loanTypeFilter.length === 0 
+                        ? 'All Loan Types' 
+                        : `${loanTypeFilter.length} Selected`}
+                    </span>
+                    <ChevronDown size={16} className="text-gray-400 ml-auto" />
+                  </button>
+                  
+                  {showLoanTypeDropdown && (
+                    <div className="absolute z-50 top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg max-h-80 overflow-y-auto">
+                      <div className="p-2 border-b border-gray-100 flex gap-2">
+                        <button
+                          onClick={() => setLoanTypeFilter(LOAN_TYPE_OPTIONS.map(o => o.value))}
+                          className="text-xs text-green-600 hover:underline"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          onClick={() => setLoanTypeFilter([])}
+                          className="text-xs text-gray-500 hover:underline"
+                        >
+                          Clear All
+                        </button>
+                      </div>
+                      <div className="p-2">
+                        {LOAN_TYPE_OPTIONS.map(opt => (
+                          <label key={opt.value} className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-50 rounded cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={loanTypeFilter.includes(opt.value)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setLoanTypeFilter([...loanTypeFilter, opt.value]);
+                                } else {
+                                  setLoanTypeFilter(loanTypeFilter.filter(v => v !== opt.value));
+                                }
+                              }}
+                              className="w-4 h-4 text-green-600 rounded border-gray-300 focus:ring-green-500"
+                            />
+                            <span className="text-sm text-gray-700">{opt.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Status */}
+                <select
+                  value={statusFilter}
+                  onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+                  className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                  data-testid="status-filter"
+                >
+                  <option value="">All Status</option>
+                  {FILE_STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                
+                {/* Managers - Only actual managers */}
+                <select
+                  value={managerFilter}
+                  onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
+                  className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                  data-testid="manager-filter"
+                >
+                  <option value="">All Managers</option>
+                  {managers.map(mgr => (
+                    <option key={mgr.id} value={mgr.id}>{mgr.full_name || mgr.name}</option>
+                  ))}
+                </select>
+                
+                {/* Team Leads */}
+                <select
+                  value={tlFilter}
+                  onChange={(e) => { setTlFilter(e.target.value); setPage(1); }}
+                  className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                  data-testid="tl-filter"
+                >
+                  <option value="">All Team Leads</option>
+                  {teamLeads.map(tl => (
+                    <option key={tl.id} value={tl.id}>{tl.full_name || tl.name}</option>
+                  ))}
+                </select>
+                
+                {/* Growth Partners */}
+                <select
+                  value={gpFilter}
+                  onChange={(e) => { setGpFilter(e.target.value); setPage(1); }}
+                  className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                  data-testid="gp-filter"
+                >
+                  <option value="">All Growth Partners</option>
+                  {growthPartners.map(gp => (
+                    <option key={gp.id} value={gp.id}>{gp.full_name || gp.name}</option>
+                  ))}
+                </select>
+                
+                {/* Stars */}
+                <select
+                  value={starFilter}
+                  onChange={(e) => setStarFilter(e.target.value)}
+                  className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                  data-testid="star-filter"
+                >
+                  <option value="">All Stars</option>
+                  <option value="5">5 Stars</option>
+                  <option value="4">4+ Stars</option>
+                  <option value="3">3+ Stars</option>
+                </select>
+              </div>
             </div>
-            
-            {/* Loan Type */}
-            <select
-              value={loanTypeFilter}
-              onChange={(e) => setLoanTypeFilter(e.target.value)}
-              className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="">All Loan Types</option>
-              <option value="personal">New Personal Loan</option>
-              <option value="balance_transfer">Balance Transfer+Top Up PL</option>
-              <option value="used_vehicle">Used Vehicle</option>
-              <option value="merge_loans">Merge Multiple Loans</option>
-              <option value="business">Business Loan</option>
-            </select>
-            
-            {/* Status */}
-            <select
-              value={statusFilter}
-              onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-              className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-              data-testid="status-filter"
-            >
-              <option value="">All Status</option>
-              {FILE_STATUS_OPTIONS.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
-            
-            {/* Managers */}
-            <select
-              value={managerFilter}
-              onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
-              className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="">All Managers</option>
-              {opsTeam.map(member => (
-                <option key={member.id} value={member.id}>{member.full_name || member.name}</option>
-              ))}
-            </select>
-            
-            {/* Sources */}
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="">All Sources</option>
-              <option value="website">Website</option>
-              <option value="referral">Referral</option>
-              <option value="import">Import</option>
-            </select>
-            
-            {/* Stars */}
-            <select
-              value={starFilter}
-              onChange={(e) => setStarFilter(e.target.value)}
-              className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-            >
-              <option value="">All Stars</option>
-              <option value="5">5 Stars</option>
-              <option value="4">4+ Stars</option>
-              <option value="3">3+ Stars</option>
-            </select>
-          </div>
-        </div>
 
         {/* Stats Cards - Two Rows */}
         <div className="space-y-3">

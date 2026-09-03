@@ -194,9 +194,15 @@ async def get_operations_team():
 async def get_all_files(
     file_status: Optional[str] = None,
     assigned_to: Optional[str] = None,
+    manager_id: Optional[str] = None,
+    gp_id: Optional[str] = None,
+    tl_id: Optional[str] = None,
+    loan_types: Optional[str] = None,  # Comma-separated list
     search: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    activity_start_date: Optional[str] = None,
+    activity_end_date: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
     team_view: Optional[str] = None,
@@ -206,9 +212,13 @@ async def get_all_files(
     
     Supports:
     - file_status: Filter by file processing status
-    - assigned_to: Filter by assigned Growth Partner
+    - manager_id: Filter by manager
+    - gp_id: Filter by Growth Partner
+    - tl_id: Filter by Team Lead's team
+    - loan_types: Comma-separated loan types
     - search: Search by name, mobile, or email
-    - start_date/end_date: Date range filter on created_at
+    - start_date/end_date: Date range filter on created_at (for Total, New, In Progress)
+    - activity_start_date/activity_end_date: Date range for status change (for Login, Approved, etc.)
     - team_view: If 'true' and user is TL, shows team's files (read-only)
     - Role-based filtering: GPs only see their own files
     """
@@ -237,27 +247,71 @@ async def get_all_files(
                 {"source_id": {"$in": team_ids}}
             ]
         else:
-            # No team members, return empty
             return {
                 "files": [],
                 "pagination": {"page": page, "limit": limit, "total": 0, "pages": 0}
             }
     elif is_gp(user_role):
-        gp_id = current_user.get('id')
+        gp_id_for_filter = current_user.get('id')
         query["$or"] = [
-            {"assigned_to": gp_id},
-            {"file_assigned_to": gp_id},
-            {"source_id": gp_id}  # Also match by source_id for historical files
+            {"assigned_to": gp_id_for_filter},
+            {"file_assigned_to": gp_id_for_filter},
+            {"source_id": gp_id_for_filter}
         ]
-    elif assigned_to:
-        # Admin/Ops can filter by assigned_to
-        query["$or"] = [
-            {"assigned_to": assigned_to},
-            {"file_assigned_to": assigned_to}
-        ]
+    else:
+        # Admin/Ops filters
+        if gp_id:
+            # Filter by specific GP
+            query["$or"] = [
+                {"assigned_to": gp_id},
+                {"file_assigned_to": gp_id},
+                {"source_id": gp_id}
+            ]
+        elif tl_id:
+            # Filter by TL's team
+            team_members = await db.users.find(
+                {"tl_id": tl_id, "is_active": True},
+                {"_id": 0, "id": 1}
+            ).to_list(100)
+            team_ids = [m["id"] for m in team_members if m.get("id")]
+            if team_ids:
+                query["$or"] = [
+                    {"assigned_to": {"$in": team_ids}},
+                    {"file_assigned_to": {"$in": team_ids}},
+                    {"source_id": {"$in": team_ids}}
+                ]
+        elif manager_id:
+            # Filter by manager's team (GPs with this manager_id)
+            team_members = await db.users.find(
+                {"manager_id": manager_id, "is_active": True},
+                {"_id": 0, "id": 1}
+            ).to_list(200)
+            team_ids = [m["id"] for m in team_members if m.get("id")]
+            if team_ids:
+                query["$or"] = [
+                    {"assigned_to": {"$in": team_ids}},
+                    {"file_assigned_to": {"$in": team_ids}},
+                    {"source_id": {"$in": team_ids}}
+                ]
+        elif assigned_to:
+            query["$or"] = [
+                {"assigned_to": assigned_to},
+                {"file_assigned_to": assigned_to}
+            ]
     
     if file_status:
         query["file_status"] = file_status
+    
+    # Loan type filter (multiple)
+    if loan_types:
+        loan_type_list = [lt.strip() for lt in loan_types.split(',') if lt.strip()]
+        if loan_type_list:
+            query["$or"] = query.get("$or", [])
+            # Combine with existing $or if present, or create new condition
+            loan_query = {"file_details.type_of_loan": {"$in": loan_type_list}}
+            if "$and" not in query:
+                query["$and"] = []
+            query["$and"].append(loan_query)
     
     # Search filter (name, mobile, email) - include both 'name' and 'full_name' fields
     if search:
