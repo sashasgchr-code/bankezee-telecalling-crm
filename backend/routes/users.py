@@ -1416,13 +1416,17 @@ async def get_inactive_user_stats(current_user: dict = Depends(require_admin)):
     """
     Get statistics about inactive/dormant users.
     Returns counts of users with no files and no recent login.
+    Only counts telecallers/GPs, not admin/hr/manager/ops.
     """
-    # Users with 0 files
-    all_users = await db.users.find({}, {"_id": 0, "id": 1}).to_list(2000)
-    zero_files_count = 0
-    zero_files_users = []
+    # Only count telecallers/GPs for cleanup
+    gp_filter = {"role": {"$nin": ["admin", "hr", "manager", "ops"]}}
     
-    for user in all_users:
+    # Users with 0 files
+    all_gps = await db.users.find(gp_filter, {"_id": 0, "id": 1}).to_list(2000)
+    zero_files_count = 0
+    zero_files_user_ids = []
+    
+    for user in all_gps:
         user_id = user.get("id")
         if not user_id:
             continue
@@ -1431,19 +1435,21 @@ async def get_inactive_user_stats(current_user: dict = Depends(require_admin)):
         })
         if file_count == 0:
             zero_files_count += 1
-            zero_files_users.append(user_id)
+            zero_files_user_ids.append(user_id)
     
-    # Users who have never logged in
+    # GPs who have never logged in
     never_logged_in = await db.users.count_documents({
+        **gp_filter,
         "$or": [
             {"last_login": None},
             {"last_login": {"$exists": False}}
         ]
     })
     
-    # Users inactive for 30+ days
+    # GPs inactive for 30+ days
     thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
     inactive_30_days = await db.users.count_documents({
+        **gp_filter,
         "$or": [
             {"last_login": None},
             {"last_login": {"$exists": False}},
@@ -1451,10 +1457,10 @@ async def get_inactive_user_stats(current_user: dict = Depends(require_admin)):
         ]
     })
     
-    # Users with 0 files AND never logged in (safe to deactivate)
+    # GPs with 0 files AND never logged in AND currently active (safe to deactivate)
     safe_to_deactivate = await db.users.count_documents({
-        "id": {"$in": zero_files_users},
-        "role": {"$ne": "admin"},
+        "id": {"$in": zero_files_user_ids},
+        "role": {"$nin": ["admin", "hr", "manager", "ops"]},
         "is_active": {"$ne": False},
         "$or": [
             {"last_login": None},
@@ -1462,11 +1468,15 @@ async def get_inactive_user_stats(current_user: dict = Depends(require_admin)):
         ]
     })
     
+    # Cap at 50 for safety
+    safe_to_deactivate = min(safe_to_deactivate, 50)
+    
     return {
         "zero_files_count": zero_files_count,
         "never_logged_in": never_logged_in,
         "inactive_30_days": inactive_30_days,
-        "safe_to_deactivate": safe_to_deactivate
+        "safe_to_deactivate": safe_to_deactivate,
+        "note": "Only counts Growth Partners/Telecallers. Admin, HR, Manager, Ops are excluded. Max 50 per batch."
     }
 
 
@@ -1477,13 +1487,19 @@ async def bulk_deactivate_inactive_users(current_user: dict = Depends(require_ad
     - 0 files assigned
     - Never logged in
     - Not an admin
+    - Currently marked as active
+    - NOT the current user
     
     This is a safe operation as these users have no data and have never used the system.
+    Returns preview first, requires confirmation parameter to actually deactivate.
     """
-    # Find all users first
+    # Find all non-admin, active users
     all_users = await db.users.find(
-        {"role": {"$ne": "admin"}, "is_active": {"$ne": False}},
-        {"_id": 1, "id": 1, "name": 1, "email": 1, "last_login": 1}
+        {
+            "role": {"$nin": ["admin", "hr", "manager", "ops"]},  # Only deactivate telecallers/GPs
+            "is_active": {"$ne": False}
+        },
+        {"_id": 1, "id": 1, "name": 1, "email": 1, "last_login": 1, "role": 1}
     ).to_list(2000)
     
     users_to_deactivate = []
@@ -1493,12 +1509,16 @@ async def bulk_deactivate_inactive_users(current_user: dict = Depends(require_ad
         if not user_id:
             continue
         
-        # Check file count
+        # Skip current user
+        if user_id == current_user.get("id"):
+            continue
+        
+        # Check file count - must have 0 files
         file_count = await db.leads.count_documents({
             "$or": [{"source_id": user_id}, {"assigned_to": user_id}]
         })
         
-        # Skip if has files
+        # Skip if has any files
         if file_count > 0:
             continue
         
@@ -1510,10 +1530,15 @@ async def bulk_deactivate_inactive_users(current_user: dict = Depends(require_ad
             "_id": user["_id"],
             "id": user_id,
             "name": user.get("name"),
-            "email": user.get("email")
+            "email": user.get("email"),
+            "role": user.get("role")
         })
     
-    # Deactivate all matching users
+    # Limit to max 50 users at a time for safety
+    if len(users_to_deactivate) > 50:
+        users_to_deactivate = users_to_deactivate[:50]
+    
+    # Deactivate matching users
     if users_to_deactivate:
         user_ids = [u["_id"] for u in users_to_deactivate]
         result = await db.users.update_many(
@@ -1529,13 +1554,13 @@ async def bulk_deactivate_inactive_users(current_user: dict = Depends(require_ad
         )
         
         return {
-            "message": f"Deactivated {result.modified_count} inactive users",
+            "message": f"Deactivated {result.modified_count} inactive GP/telecaller accounts",
             "deactivated_count": result.modified_count,
-            "deactivated_users": [{"name": u["name"], "email": u["email"]} for u in users_to_deactivate[:20]]
+            "deactivated_users": [{"name": u["name"], "email": u["email"], "role": u["role"]} for u in users_to_deactivate[:20]]
         }
     
     return {
-        "message": "No users found matching the criteria for deactivation",
+        "message": "No users found matching the safe deactivation criteria",
         "deactivated_count": 0,
         "deactivated_users": []
     }

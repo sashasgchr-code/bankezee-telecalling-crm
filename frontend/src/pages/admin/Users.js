@@ -1511,7 +1511,7 @@ const AdminUsers = () => {
 
                 {/* Explanation */}
                 <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Safe to Deactivate Criteria:</p>
+                  <p className="text-sm font-medium text-gray-700 mb-2">Safe to Deactivate Criteria (GPs/Telecallers only):</p>
                   <ul className="text-sm text-gray-600 space-y-1">
                     <li className="flex items-center gap-2">
                       <Check size={14} className="text-green-500" /> Has 0 files assigned
@@ -1520,12 +1520,15 @@ const AdminUsers = () => {
                       <Check size={14} className="text-green-500" /> Has never logged in
                     </li>
                     <li className="flex items-center gap-2">
-                      <Check size={14} className="text-green-500" /> Not an admin user
+                      <Check size={14} className="text-green-500" /> Role is Growth Partner or Telecaller
                     </li>
                     <li className="flex items-center gap-2">
                       <Check size={14} className="text-green-500" /> Currently active (not already deactivated)
                     </li>
                   </ul>
+                  <p className="text-xs text-amber-600 mt-3 font-medium">
+                    Note: Admin, HR, Manager, and Ops users are NEVER deactivated. Max 50 users per batch.
+                  </p>
                 </div>
               </div>
 
@@ -1534,7 +1537,7 @@ const AdminUsers = () => {
                   onClick={handleBulkDeactivateInactive}
                   className="w-full px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 flex items-center justify-center gap-2"
                 >
-                  <Power size={18} /> Deactivate {inactiveStats.safe_to_deactivate} Inactive Users
+                  <Power size={18} /> Deactivate {inactiveStats.safe_to_deactivate} Inactive GPs
                 </button>
               ) : (
                 <div className="text-center py-4">
