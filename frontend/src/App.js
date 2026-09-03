@@ -29,6 +29,9 @@ import BankPolicyMaster from "./pages/admin/BankPolicyMaster";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
 import TelecallerLayout from "./layouts/TelecallerLayout";
+import ManagerLayout from "./layouts/ManagerLayout";
+import ManagerDashboard from "./pages/manager/ManagerDashboard";
+import ManagerTeam from "./pages/manager/ManagerTeam";
 import LoadingScreen from "./components/LoadingScreen";
 import "./App.css";
 
@@ -69,16 +72,25 @@ const ProtectedRoute = ({ children, requiredRole }) => {
     return <Navigate to="/agent/attendance" replace />;
   }
 
+  // Manager role gets its own route set
+  if (requiredRole === 'manager' && userRole !== 'manager' && userRole !== 'admin') {
+    return <Navigate to={userRole === 'admin' ? '/admin' : '/agent'} replace />;
+  }
+
   // If requiredRole is 'telecaller' or 'gp', allow all GP roles, ops, and manager
   if (requiredRole === 'telecaller' && !CRM_ACCESS_ROLES.includes(userRole)) {
-    return <Navigate to={userRole === 'admin' ? '/admin' : '/agent'} replace />;
+    return <Navigate to={userRole === 'admin' ? '/admin' : (userRole === 'manager' ? '/manager' : '/agent')} replace />;
   }
   
   // For admin role, strict check
   if (requiredRole === 'admin' && userRole !== 'admin') {
-    // Ops and Manager can access admin routes for CRM operations
-    if (userRole === 'ops' || userRole === 'manager') {
-      return children; // Allow ops/manager to access admin CRM routes
+    // Ops can access admin routes for CRM operations
+    if (userRole === 'ops') {
+      return children; // Allow ops to access admin CRM routes
+    }
+    // Managers now have their own dedicated routes
+    if (userRole === 'manager') {
+      return <Navigate to="/manager" replace />;
     }
     return <Navigate to="/agent" replace />;
   }
@@ -97,20 +109,28 @@ function App() {
     return <LoadingScreen />;
   }
 
+  // Determine the correct base route based on user role
+  const getBaseRoute = () => {
+    if (!user) return '/login';
+    if (user.role === 'admin') return '/admin';
+    if (user.role === 'manager') return '/manager';
+    return '/agent';
+  };
+
   return (
     <BrowserRouter>
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={
           isAuthenticated ? (
-            <Navigate to={user?.role === 'admin' ? '/admin' : '/agent'} replace />
+            <Navigate to={getBaseRoute()} replace />
           ) : (
             <Login />
           )
         } />
         <Route path="/register" element={
           isAuthenticated ? (
-            <Navigate to={user?.role === 'admin' ? '/admin' : '/agent'} replace />
+            <Navigate to={getBaseRoute()} replace />
           ) : (
             <Register />
           )
@@ -172,6 +192,35 @@ function App() {
           <Route path="reports" element={<AdminReports />} />
         </Route>
 
+        {/* Manager Routes - Admin-like access without User Management */}
+        <Route path="/manager" element={
+          <ProtectedRoute requiredRole="manager">
+            <ManagerLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<ManagerDashboard />} />
+          <Route path="leads" element={<AdminLeads />} />
+          <Route path="leads/:id" element={<LeadDetail />} />
+          <Route path="files" element={<FilesDashboard />} />
+          <Route path="files/:fileId" element={<FileDetailsPage />} />
+          <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
+          <Route path="files/:fileId/check-eligibility" element={<EligibilityCheck />} />
+          <Route path="files/policies" element={<PolicyMaster />} />
+          <Route path="files/bank-policies" element={<BankPolicyMaster />} />
+          <Route path="files/reports/rejected" element={<RejectedCasesReport />} />
+          <Route path="files/reports/growth-partner" element={<GrowthPartnerReport />} />
+          <Route path="files/reports/quality" element={<QualityReport />} />
+          <Route path="files/reports/sales-ops" element={<SalesOpsReport />} />
+          <Route path="reports" element={<AdminReports />} />
+          <Route path="tracking" element={<DailyTrackingSheet />} />
+          <Route path="attendance" element={<AdminAttendance />} />
+          <Route path="leave" element={<LeaveManagement />} />
+          <Route path="team" element={<ManagerTeam />} />
+          <Route path="team/data" element={<TeamData />} />
+          <Route path="team/files" element={<TeamFiles />} />
+          <Route path="team/calls" element={<TeamCalls />} />
+        </Route>
+
         {/* Role-neutral File route - redirects to correct role-based route */}
         <Route path="/files/:fileId" element={
           <ProtectedRoute>
@@ -181,7 +230,7 @@ function App() {
 
         {/* Default redirect */}
         <Route path="*" element={
-          <Navigate to={isAuthenticated ? (user?.role === 'admin' ? '/admin' : '/agent') : '/login'} replace />
+          <Navigate to={isAuthenticated ? getBaseRoute() : '/login'} replace />
         } />
       </Routes>
     </BrowserRouter>

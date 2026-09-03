@@ -286,6 +286,114 @@ async def get_my_team(current_user: dict = Depends(get_current_user)):
     }
 
 
+@router.get("/users/manager-team-members")
+async def get_manager_team_members(current_user: dict = Depends(get_current_user)):
+    """
+    Get team members for the current manager (Manager-only endpoint).
+    Returns the full hierarchy: direct GPs + TLs + GPs under those TLs.
+    Also includes stats for each member.
+    """
+    user_id = current_user.get("id")
+    role = normalize_role(current_user.get("role", ""))
+    
+    # Only managers, admin, ops can access this endpoint
+    if role not in ["manager", "admin", "ops"]:
+        raise HTTPException(status_code=403, detail="Only Managers can access this endpoint")
+    
+    # Get all team members for this manager
+    if role == "manager":
+        team_query = {"manager_id": user_id, "is_active": True}
+    else:
+        # Admin/Ops see all GP users
+        team_query = {"is_active": True, "role": {"$nin": ["admin", "ops", "hr"]}}
+    
+    team_members = await db.users.find(team_query).to_list(500)
+    
+    # Get today's date for active today calculation
+    today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # Build TL name map for quick lookup
+    tl_map = {}
+    for member in team_members:
+        if member.get("is_tl"):
+            tl_map[member.get("id")] = member.get("full_name") or member.get("name") or member.get("email", "").split("@")[0]
+    
+    # Get stats for all members in one batch
+    member_ids = [m.get("id") for m in team_members if m.get("id")]
+    
+    # Count calls by user
+    calls_pipeline = [
+        {"$match": {"user_id": {"$in": member_ids}}},
+        {"$group": {"_id": "$user_id", "calls": {"$sum": 1}}}
+    ]
+    calls_data = await db.call_logs.aggregate(calls_pipeline).to_list(500)
+    calls_map = {c["_id"]: c["calls"] for c in calls_data}
+    
+    # Count leads by user
+    leads_pipeline = [
+        {"$match": {"assigned_to": {"$in": member_ids}, "status": {"$nin": ["file"]}}},
+        {"$group": {"_id": "$assigned_to", "leads": {"$sum": 1}}}
+    ]
+    leads_data = await db.leads.aggregate(leads_pipeline).to_list(500)
+    leads_map = {l["_id"]: l["leads"] for l in leads_data}
+    
+    # Count files by user
+    files_pipeline = [
+        {"$match": {"source_id": {"$in": member_ids}, "status": "file"}},
+        {"$group": {"_id": "$source_id", "files": {"$sum": 1}}}
+    ]
+    files_data = await db.leads.aggregate(files_pipeline).to_list(500)
+    files_map = {f["_id"]: f["files"] for f in files_data}
+    
+    # Count disbursed amounts
+    disbursement_pipeline = [
+        {"$match": {"source_id": {"$in": member_ids}, "status": "file", "eligibilities": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$eligibilities"},
+        {"$match": {"eligibilities.disbursed": True}},
+        {"$group": {"_id": "$source_id", "amount": {"$sum": {"$toDouble": {"$ifNull": ["$eligibilities.disbursed_amount", 0]}}}}}
+    ]
+    disbursement_data = await db.leads.aggregate(disbursement_pipeline).to_list(500)
+    disbursement_map = {d["_id"]: d["amount"] for d in disbursement_data}
+    
+    # Count team members per TL
+    team_count_map = {}
+    for member in team_members:
+        tl_id = member.get("tl_id")
+        if tl_id:
+            team_count_map[tl_id] = team_count_map.get(tl_id, 0) + 1
+    
+    # Enrich members with stats
+    enriched_members = []
+    for member in team_members:
+        member_id = member.get("id") or str(member.get("_id"))
+        
+        member_data = {
+            "id": member_id,
+            "name": member.get("full_name") or member.get("name") or member.get("email", "").split("@")[0],
+            "email": member.get("email"),
+            "is_tl": member.get("is_tl", False),
+            "tl_id": member.get("tl_id"),
+            "tl_name": tl_map.get(member.get("tl_id"), None),
+            "calls": calls_map.get(member_id, 0),
+            "leads": leads_map.get(member_id, 0),
+            "files": files_map.get(member_id, 0),
+            "disbursed_amount": disbursement_map.get(member_id, 0),
+            "team_count": team_count_map.get(member_id, 0) if member.get("is_tl") else 0
+        }
+        enriched_members.append(member_data)
+    
+    # Sort: TLs first, then by files descending
+    enriched_members.sort(key=lambda x: (-int(x["is_tl"]), -x["files"]))
+    
+    return {
+        "members": enriched_members,
+        "total": len(enriched_members),
+        "tls_count": sum(1 for m in enriched_members if m["is_tl"])
+    }
+
+
+
+
 @router.get("/users/by-role")
 async def get_users_by_role(
     roles: str = Query(..., description="Comma-separated roles"),

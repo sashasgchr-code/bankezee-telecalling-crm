@@ -1299,6 +1299,234 @@ async def migrate_form_filling_time(current_user: dict = Depends(require_admin))
         "call_logs_updated": result.modified_count + result2.modified_count
     }
 
+
+# ===================== MANAGER TEAM STATS =====================
+
+@router.get("/reports/manager-team-stats")
+async def get_manager_team_stats(
+    period: str = "today",
+    current_user: dict = Depends(get_current_user)
+):
+    """
+    Comprehensive team stats for Manager role.
+    Returns: calls, connected, leads, files metrics + GP performance breakdown.
+    Manager sees their full hierarchy (direct GPs + TLs + GPs under those TLs).
+    """
+    from utils.auth import get_user_team_ids, normalize_role, is_gp_role
+    
+    user_role = normalize_role(current_user.get("role", ""))
+    user_id = current_user.get("id")
+    
+    # Only managers and admin can use this endpoint
+    if user_role not in ["manager", "admin", "ops"]:
+        return {"error": "Unauthorized", "message": "This endpoint is for managers only"}
+    
+    # Get date range
+    start_date, end_date, _ = get_date_range(period)
+    
+    # Get team IDs for this manager
+    if user_role == "manager":
+        team_users = await db.users.find(
+            {"manager_id": user_id, "is_active": True},
+            {"_id": 0, "id": 1, "name": 1, "full_name": 1, "email": 1, "is_tl": 1, "tl_id": 1}
+        ).to_list(500)
+        team_ids = [u["id"] for u in team_users if u.get("id")]
+        team_ids.append(user_id)  # Include manager's own data
+    else:
+        # Admin/Ops see all
+        team_users = await db.users.find(
+            {"is_active": True, "role": {"$nin": ["admin", "ops", "hr"]}},
+            {"_id": 0, "id": 1, "name": 1, "full_name": 1, "email": 1, "is_tl": 1, "tl_id": 1}
+        ).to_list(500)
+        team_ids = [u["id"] for u in team_users if u.get("id")]
+    
+    # Build user name map
+    user_map = {}
+    for u in team_users:
+        uid = u.get("id")
+        if uid:
+            user_map[uid] = {
+                "name": u.get("full_name") or u.get("name") or u.get("email", "").split("@")[0],
+                "is_tl": u.get("is_tl", False),
+                "tl_id": u.get("tl_id")
+            }
+    
+    # Build time filter for calls
+    calls_time_filter = {}
+    leads_time_filter = {}
+    if start_date and end_date:
+        calls_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
+        leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
+    
+    # Aggregation: Calls by user
+    call_pipeline = [
+        {"$match": {"user_id": {"$in": team_ids}, **calls_time_filter}},
+        {"$group": {
+            "_id": "$user_id",
+            "calls": {"$sum": 1},
+            "connected": {"$sum": {"$cond": [{"$eq": ["$outcome", "connected"]}, 1, 0]}}
+        }}
+    ]
+    
+    # Aggregation: Leads by user
+    lead_pipeline = [
+        {"$match": {"assigned_to": {"$in": team_ids}, **leads_time_filter}},
+        {"$group": {
+            "_id": {"user_id": "$assigned_to", "status": "$status"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    
+    # Aggregation: Files by user (status=file)
+    files_pipeline = [
+        {"$match": {"source_id": {"$in": team_ids}, "status": "file"}},
+        {"$group": {
+            "_id": {"user_id": "$source_id", "file_status": "$file_status"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    
+    # Aggregation: Disbursement amounts
+    disbursement_pipeline = [
+        {"$match": {"source_id": {"$in": team_ids}, "status": "file", "eligibilities": {"$exists": True, "$ne": []}}},
+        {"$unwind": "$eligibilities"},
+        {"$match": {"eligibilities.disbursed": True}},
+        {"$group": {
+            "_id": "$source_id",
+            "disbursed_amount": {"$sum": {"$toDouble": {"$ifNull": ["$eligibilities.disbursed_amount", 0]}}}
+        }}
+    ]
+    
+    # Run all aggregations in parallel
+    call_stats, lead_stats, files_stats, disbursement_stats = await asyncio.gather(
+        db.call_logs.aggregate(call_pipeline).to_list(500),
+        db.leads.aggregate(lead_pipeline).to_list(1000),
+        db.leads.aggregate(files_pipeline).to_list(1000),
+        db.leads.aggregate(disbursement_pipeline).to_list(500)
+    )
+    
+    # Process call stats
+    call_map = {c["_id"]: {"calls": c["calls"], "connected": c["connected"]} for c in call_stats}
+    
+    # Process lead stats
+    lead_map = {}
+    for ls in lead_stats:
+        uid = ls["_id"]["user_id"]
+        status = ls["_id"]["status"]
+        if uid not in lead_map:
+            lead_map[uid] = {"leads": 0, "files": 0}
+        if status in ["leads", "converted"]:
+            lead_map[uid]["leads"] += ls["count"]
+        elif status == "file":
+            lead_map[uid]["files"] += ls["count"]
+    
+    # Process files stats
+    files_map = {}
+    for fs in files_stats:
+        uid = fs["_id"]["user_id"]
+        file_status = fs["_id"]["file_status"]
+        if uid not in files_map:
+            files_map[uid] = {"total_files": 0, "login": 0, "approved": 0, "disbursed": 0}
+        files_map[uid]["total_files"] += fs["count"]
+        if file_status == "login":
+            files_map[uid]["login"] += fs["count"]
+        elif file_status in ["approved", "sanctioned"]:
+            files_map[uid]["approved"] += fs["count"]
+        elif file_status == "disbursed":
+            files_map[uid]["disbursed"] += fs["count"]
+    
+    # Process disbursement stats
+    disbursement_map = {d["_id"]: d["disbursed_amount"] for d in disbursement_stats}
+    
+    # Build GP performance list
+    gp_performance = []
+    gp_call_stats = []
+    
+    total_calls = 0
+    total_connected = 0
+    total_leads = 0
+    total_files = 0
+    total_login = 0
+    total_approved = 0
+    total_disbursed = 0
+    total_disbursed_amount = 0
+    
+    for uid, info in user_map.items():
+        calls_data = call_map.get(uid, {"calls": 0, "connected": 0})
+        leads_data = lead_map.get(uid, {"leads": 0, "files": 0})
+        files_data = files_map.get(uid, {"total_files": 0, "login": 0, "approved": 0, "disbursed": 0})
+        disb_amt = disbursement_map.get(uid, 0)
+        
+        # Aggregate totals
+        total_calls += calls_data["calls"]
+        total_connected += calls_data["connected"]
+        total_leads += leads_data["leads"]
+        total_files += files_data["total_files"]
+        total_login += files_data["login"]
+        total_approved += files_data["approved"]
+        total_disbursed += files_data["disbursed"]
+        total_disbursed_amount += disb_amt
+        
+        # GP Performance (files metrics)
+        gp_performance.append({
+            "id": uid,
+            "name": info["name"],
+            "is_tl": info["is_tl"],
+            "total_files": files_data["total_files"],
+            "login": files_data["login"],
+            "approved": files_data["approved"],
+            "disbursed": files_data["disbursed"],
+            "disbursed_amount": disb_amt
+        })
+        
+        # GP Call Stats
+        gp_call_stats.append({
+            "id": uid,
+            "name": info["name"],
+            "is_tl": info["is_tl"],
+            "calls": calls_data["calls"],
+            "connected": calls_data["connected"],
+            "leads": leads_data["leads"],
+            "files": leads_data["files"]
+        })
+    
+    # Sort by total_files descending
+    gp_performance.sort(key=lambda x: -x["total_files"])
+    gp_call_stats.sort(key=lambda x: -x["calls"])
+    
+    # Count TLs and active users today
+    tls_count = sum(1 for u in team_users if u.get("is_tl"))
+    
+    # Check who made calls today
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    active_today_pipeline = [
+        {"$match": {"user_id": {"$in": team_ids}, "created_at": {"$gte": today_start}}},
+        {"$group": {"_id": "$user_id"}},
+        {"$count": "count"}
+    ]
+    active_result = await db.call_logs.aggregate(active_today_pipeline).to_list(1)
+    active_today = active_result[0]["count"] if active_result else 0
+    
+    return {
+        "period": period,
+        "total_team": len(team_ids),
+        "tls_count": tls_count,
+        "active_today": active_today,
+        "calls": total_calls,
+        "connected": total_connected,
+        "leads": total_leads,
+        "files": total_files,
+        "total_files": total_files,
+        "files_login": total_login,
+        "files_approved": total_approved,
+        "files_disbursed": total_disbursed,
+        "disbursed_amount": total_disbursed_amount,
+        "gp_performance": gp_performance[:20],
+        "gp_call_stats": gp_call_stats[:20]
+    }
+
+
+
 # Health check
 @router.get("/health")
 async def health_check():

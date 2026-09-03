@@ -128,6 +128,26 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 32. **GP Attendance Page** - Monthly matrix with check-in/out
 33. **GP Dashboard Hourly Report** - Vertical hourly report shown directly on Dashboard (C, Co, L, F metrics per hour) with date picker
 
+### Manager Role Enhancement (September 3, 2026)
+34. **Manager Dashboard** (/manager) - Dedicated manager layout with team-scoped stats
+    - Metric tiles: Calls, Connected, Leads, Files with period filters (Today/This Week/This Month)
+    - Team Overview: Total team members, TLs count, Active today
+    - Files Performance table with GP breakdown: Files, Login, Approved, Disbursed, Amount
+    - Call Activity by GP table
+    - Full hierarchy visibility: Direct GPs + TLs under them + GPs under those TLs
+35. **Manager Files Dashboard** - Admin-like access but team-scoped
+    - "Team Dashboard" header with "Manager" badge
+    - All report buttons available: Sales & Ops, Rejected Cases, GP Performance, Quality, Commission
+    - Stats tiles show team-scoped data (not system-wide)
+    - Files list shows GP Name badge next to customer name for easy ownership identification
+    - Delete file capability (like Admin)
+36. **Manager Team Page** (/manager/team)
+    - Team Leads section with member count and stats (Calls, Leads, Files, Disbursed)
+    - Growth Partners section with per-GP stats
+    - Filter by TL (e.g., "Nagulapally's Team")
+    - Search by name or email
+37. **Manager More Menu** - Team Management section with: My Team, Team Data, Team Files, Team Calls
+
 ---
 
 ## September 2026 Update - DATA → FILE WORKFLOW & RBAC
@@ -156,7 +176,8 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 - Historical files display all existing data
 
 **4. GP Role Expansion**
-- Roles now recognized as GP: telecaller, sales_agent, team_leader, partner, manager
+- Roles recognized as GP: telecaller, sales_agent, team_leader, partner, growth_partner
+- Manager role has dedicated routes with team-scoped access (not GP-level filtering)
 - Route protection updated in frontend and backend
 
 **5. Anusha Acceptance Test: PASSED**
@@ -172,7 +193,7 @@ New Role System Implemented:
 |------|-------|-------------|
 | admin | Admin | Full system access - all features |
 | hr | HR | Attendance, Leave, HR reports only - NO CRM data |
-| manager | Manager | Team management, sees only their team's records |
+| manager | Manager | Team management, Admin-like access but scoped to their team hierarchy |
 | ops | Operations | Cross-team CRM operational access |
 | growth_partner | Growth Partner | Own records only (can have TL capability) |
 

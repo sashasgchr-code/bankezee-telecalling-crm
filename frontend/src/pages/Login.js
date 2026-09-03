@@ -24,8 +24,11 @@ const Login = () => {
     setIsLoading(true);
     try {
       const user = await login(email.trim().toLowerCase(), password);
+      // Route based on role
       if (user.role === 'admin') {
         navigate('/admin');
+      } else if (user.role === 'manager') {
+        navigate('/manager');
       } else {
         navigate('/agent');
       }

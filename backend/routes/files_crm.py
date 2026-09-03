@@ -26,7 +26,8 @@ db = client[os.environ.get('DB_NAME', 'bankezee_connect')]
 router = APIRouter(prefix="/api/files", tags=["Files CRM"])
 
 # Growth Partner roles - these roles can edit customer info but NOT bank processing
-GP_ROLES = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'manager']
+# Note: 'manager' is NOT in GP_ROLES - managers have elevated access like admin but scoped to their team
+GP_ROLES = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'growth_partner']
 
 # Ops roles - these can edit bank processing
 OPS_ROLES = ['operations', 'ops']
@@ -230,12 +231,31 @@ async def get_all_files(
     is_team_view = team_view == 'true' and current_user.get("is_tl", False)
     
     # GP role restriction - GPs only see their own files (by source_id)
+    # Manager role sees their team's files (like admin but scoped to their team)
     user_role = current_user.get('role')
+    user_id = current_user.get('id')
+    is_manager_role = user_role == 'manager'
     
-    if is_team_view and is_gp(user_role):
+    if is_manager_role:
+        # Manager sees their full hierarchy (direct GPs + TLs + GPs under TLs)
+        team_members = await db.users.find(
+            {"manager_id": user_id, "is_active": True},
+            {"_id": 0, "id": 1}
+        ).to_list(200)
+        team_ids = [m["id"] for m in team_members if m.get("id")]
+        team_ids.append(user_id)  # Include manager's own files too
+        
+        if team_ids:
+            query["$or"] = [
+                {"assigned_to": {"$in": team_ids}},
+                {"file_assigned_to": {"$in": team_ids}},
+                {"source_id": {"$in": team_ids}}
+            ]
+        # If no team, show empty (manager with no team members)
+    elif is_team_view and is_gp(user_role):
         # TL viewing team's files - get team member IDs
         team_members = await db.users.find(
-            {"tl_id": current_user.get('id'), "is_active": True},
+            {"tl_id": user_id, "is_active": True},
             {"_id": 0, "id": 1}
         ).to_list(100)
         team_ids = [m["id"] for m in team_members if m.get("id")]
@@ -252,7 +272,7 @@ async def get_all_files(
                 "pagination": {"page": page, "limit": limit, "total": 0, "pages": 0}
             }
     elif is_gp(user_role):
-        gp_id_for_filter = current_user.get('id')
+        gp_id_for_filter = user_id
         query["$or"] = [
             {"assigned_to": gp_id_for_filter},
             {"file_assigned_to": gp_id_for_filter},
@@ -436,10 +456,28 @@ async def get_files_reports(
     """Get files reports with disbursement analytics"""
     query = {"status": "file"}
     
-    # GP role restriction - GPs only see their own files
+    # Role-based restriction
     user_role = current_user.get('role')
-    if is_gp(user_role):
-        gp_id = current_user.get('id')
+    user_id = current_user.get('id')
+    
+    # Manager role - see team's files (similar to admin but scoped)
+    if user_role == 'manager':
+        team_members = await db.users.find(
+            {"manager_id": user_id, "is_active": True},
+            {"_id": 0, "id": 1}
+        ).to_list(200)
+        team_ids = [m["id"] for m in team_members if m.get("id")]
+        team_ids.append(user_id)  # Include manager's own files
+        
+        if team_ids:
+            query["$or"] = [
+                {"assigned_to": {"$in": team_ids}},
+                {"file_assigned_to": {"$in": team_ids}},
+                {"source_id": {"$in": team_ids}}
+            ]
+    # GP role restriction - GPs only see their own files
+    elif is_gp(user_role):
+        gp_id = user_id
         query["$or"] = [
             {"assigned_to": gp_id},
             {"file_assigned_to": gp_id},
@@ -623,11 +661,28 @@ async def get_daily_report(
     """
     from datetime import datetime, timezone, timedelta
     
-    # Build base query with GP filtering
+    # Build base query with role-based filtering
     base_query = {"status": "file"}
     user_role = current_user.get('role')
-    if is_gp(user_role):
-        gp_id = current_user.get('id')
+    user_id = current_user.get('id')
+    
+    # Manager role - see team's files
+    if user_role == 'manager':
+        team_members = await db.users.find(
+            {"manager_id": user_id, "is_active": True},
+            {"_id": 0, "id": 1}
+        ).to_list(200)
+        team_ids = [m["id"] for m in team_members if m.get("id")]
+        team_ids.append(user_id)
+        
+        if team_ids:
+            base_query["$or"] = [
+                {"assigned_to": {"$in": team_ids}},
+                {"file_assigned_to": {"$in": team_ids}},
+                {"source_id": {"$in": team_ids}}
+            ]
+    elif is_gp(user_role):
+        gp_id = user_id
         base_query["$or"] = [
             {"assigned_to": gp_id},
             {"file_assigned_to": gp_id},
@@ -2391,10 +2446,28 @@ async def get_files_dashboard_stats(
     # Build query for filtering
     query = {"status": "file"}
     
-    # GP role restriction - GPs only see their own files
+    # Role-based restriction
     user_role = current_user.get('role')
-    if is_gp(user_role):
-        gp_id = current_user.get('id')
+    user_id = current_user.get('id')
+    
+    # Manager role - see team's files (similar to admin but scoped)
+    if user_role == 'manager':
+        team_members = await db.users.find(
+            {"manager_id": user_id, "is_active": True},
+            {"_id": 0, "id": 1}
+        ).to_list(200)
+        team_ids = [m["id"] for m in team_members if m.get("id")]
+        team_ids.append(user_id)  # Include manager's own files
+        
+        if team_ids:
+            query["$or"] = [
+                {"assigned_to": {"$in": team_ids}},
+                {"file_assigned_to": {"$in": team_ids}},
+                {"source_id": {"$in": team_ids}}
+            ]
+    # GP role restriction - GPs only see their own files
+    elif is_gp(user_role):
+        gp_id = user_id
         query["$or"] = [
             {"assigned_to": gp_id},
             {"file_assigned_to": gp_id},

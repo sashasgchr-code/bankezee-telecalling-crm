@@ -143,6 +143,14 @@ const FilesDashboard = () => {
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
+  const isManager = user.role === 'manager';
+  
+  // Helper to get the correct base path for navigation
+  const getBasePath = () => {
+    if (isAdmin) return '/admin';
+    if (isManager) return '/manager';
+    return '/agent';
+  };
   
   // Delete file handler
   const handleDeleteFile = async () => {
@@ -774,22 +782,25 @@ const FilesDashboard = () => {
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div className="flex items-center gap-4">
             <div>
-              {/* GP sees "My Files", Admin sees "Admin Dashboard" */}
-              <h1 className="text-xl font-bold text-gray-900">{isAdmin ? 'Admin' : 'My Files'}</h1>
-              <h2 className="text-2xl font-bold text-gray-900">{isAdmin ? 'Dashboard' : 'Dashboard'}</h2>
+              {/* GP sees "My Files", Admin/Manager sees "Team Files Dashboard" */}
+              <h1 className="text-xl font-bold text-gray-900">{(isAdmin || isManager) ? 'Team' : 'My Files'}</h1>
+              <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
             </div>
             <span className="text-sm text-gray-500 hidden md:inline">Welcome, {user.full_name || user.name || 'User'}</span>
-            {!isAdmin && (
+            {!isAdmin && !isManager && (
               <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Growth Partner</span>
+            )}
+            {isManager && (
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">Manager</span>
             )}
           </div>
           
           {/* Report Buttons - Navigate to separate report pages */}
           <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-2 lg:pb-0">
-            {isAdmin && (
+            {(isAdmin || isManager) && (
               <>
                 <button 
-                  onClick={() => navigate('/admin/files/reports/sales-ops')}
+                  onClick={() => navigate(`${getBasePath()}/files/reports/sales-ops`)}
                   className="px-2 md:px-3 py-1.5 text-xs md:text-sm border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-1 whitespace-nowrap"
                   data-testid="report-sales-ops"
                 >
@@ -798,7 +809,7 @@ const FilesDashboard = () => {
                   <span className="sm:hidden">S&O</span>
                 </button>
                 <button 
-                  onClick={() => navigate('/admin/files/reports/rejected')}
+                  onClick={() => navigate(`${getBasePath()}/files/reports/rejected`)}
                   className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 flex items-center gap-1 whitespace-nowrap"
                   data-testid="report-rejected"
                 >
@@ -807,7 +818,7 @@ const FilesDashboard = () => {
                   <span className="sm:hidden">Rejected</span>
                 </button>
                 <button 
-                  onClick={() => navigate('/admin/files/reports/growth-partner')}
+                  onClick={() => navigate(`${getBasePath()}/files/reports/growth-partner`)}
                   className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 flex items-center gap-1 whitespace-nowrap"
                   data-testid="report-gp"
                 >
@@ -816,7 +827,7 @@ const FilesDashboard = () => {
                   <span className="sm:hidden">GP</span>
                 </button>
                 <button 
-                  onClick={() => navigate('/admin/files/reports/quality')}
+                  onClick={() => navigate(`${getBasePath()}/files/reports/quality`)}
                   className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-amber-50 text-amber-600 border border-amber-200 rounded-lg hover:bg-amber-100 flex items-center gap-1 whitespace-nowrap"
                   data-testid="report-quality"
                 >
@@ -826,13 +837,13 @@ const FilesDashboard = () => {
               </>
             )}
             <button 
-              onClick={() => navigate(isAdmin ? '/admin/files/policies' : '/agent/files/policies')}
+              onClick={() => navigate(`${getBasePath()}/files/policies`)}
               className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-purple-50 text-purple-600 border border-purple-200 rounded-lg hover:bg-purple-100 flex items-center gap-1 whitespace-nowrap"
             >
               <FileText size={14} />
               <span className="hidden sm:inline">Policy</span>
             </button>
-            {isAdmin && (
+            {(isAdmin || isManager) && (
               <>
                 <button 
                   onClick={() => setShowCommissionReport(!showCommissionReport)}
@@ -1483,7 +1494,7 @@ const FilesDashboard = () => {
                   {rejectedFiles.length === 0 ? (
                     <tr><td colSpan="6" className="px-4 py-8 text-center text-gray-500">No rejected files found</td></tr>
                   ) : rejectedFiles.slice(0, 100).map((file) => (
-                    <tr key={file.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(isAdmin ? `/admin/files/${file.id}` : `/agent/files/${file.id}`)}>
+                    <tr key={file.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`${getBasePath()}/files/${file.id}`)}>
                       <td className="px-4 py-2 font-medium text-gray-900">{file.name || '-'}</td>
                       <td className="px-4 py-2 text-gray-600">{file.phone || '-'}</td>
                       <td className="px-4 py-2">
@@ -1939,9 +1950,9 @@ const FilesDashboard = () => {
           {/* List Header */}
           <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h3 className="font-semibold text-gray-900">{isAdmin ? 'Files' : 'My Files'} ({totalFiles})</h3>
+              <h3 className="font-semibold text-gray-900">{(isAdmin || isManager) ? 'Files' : 'My Files'} ({totalFiles})</h3>
               <span className="text-sm text-gray-500">
-                {isAdmin ? 'All files in the system' : 'Files assigned to you'}
+                {(isAdmin || isManager) ? 'All files in the system' : 'Files assigned to you'}
               </span>
             </div>
             <button 
@@ -1981,6 +1992,8 @@ const FilesDashboard = () => {
               {filteredFiles.map((file) => {
                 const statusColor = getStatusColor(file.file_status);
                 const assignee = opsTeam.find(o => o.id === file.file_assigned_to);
+                const sourceGP = growthPartners.find(gp => gp.id === file.source_id) || opsTeam.find(o => o.id === file.source_id);
+                const gpName = sourceGP?.full_name || sourceGP?.name || file.source_name || null;
                 const loanAmount = file.file_details?.loan_amount_required || file.eligibilities?.[0]?.eligible_amount;
                 const rating = file.rating || 0;
                 
@@ -1989,7 +2002,7 @@ const FilesDashboard = () => {
                     key={file.id}
                     className="px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer"
                     data-testid={`file-row-${file.id}`}
-                    onClick={() => navigate(isAdmin ? `/admin/files/${file.id}` : `/agent/files/${file.id}`)}
+                    onClick={() => navigate(`${getBasePath()}/files/${file.id}`)}
                   >
                     <div className="flex items-center gap-4">
                       {/* Checkbox */}
@@ -2003,7 +2016,14 @@ const FilesDashboard = () => {
                       
                       {/* Main Info */}
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-semibold text-gray-900">{file.name || 'Unnamed'}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-gray-900">{file.name || 'Unnamed'}</h4>
+                          {gpName && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
+                              {gpName.split(' ')[0]}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-sm text-gray-500 mt-0.5">
                           <span>{formatPhone(file.phone)}</span>
                           <span className="flex items-center gap-0.5">
@@ -2022,8 +2042,6 @@ const FilesDashboard = () => {
                               <span className="text-green-600">{formatCurrency(loanAmount)}</span>
                             </>
                           )}
-                          <span>•</span>
-                          <span>Assigned</span>
                         </div>
                         {/* Star Rating */}
                         <div className="flex items-center gap-0.5 mt-1">
@@ -2045,13 +2063,13 @@ const FilesDashboard = () => {
                       {/* Actions */}
                       <div className="flex items-center gap-1">
                         <button 
-                          onClick={(e) => { e.stopPropagation(); navigate(isAdmin ? `/admin/files/${file.id}` : `/agent/files/${file.id}`); }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`${getBasePath()}/files/${file.id}`); }}
                           className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded"
                           title="View Details"
                         >
                           <Eye size={18} />
                         </button>
-                        {isAdmin && (
+                        {(isAdmin || isManager) && (
                           <button 
                             className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                             onClick={(e) => { e.stopPropagation(); openDeleteConfirm(file); }}
