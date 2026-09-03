@@ -24,6 +24,8 @@ from routes.data_cleanup import router as data_cleanup_router
 from routes.sheets_sync import router as sheets_sync_router
 from routes.settings import router as settings_router
 from routes.files_crm import router as files_crm_router
+from routes.bank_policies import router as bank_policies_router
+from routes.document_ai import router as document_ai_router
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -51,6 +53,8 @@ app.include_router(data_cleanup_router)
 app.include_router(sheets_sync_router)
 app.include_router(settings_router)
 app.include_router(files_crm_router)
+app.include_router(bank_policies_router)
+app.include_router(document_ai_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production

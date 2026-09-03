@@ -1,0 +1,35 @@
+{
+  "summary": "Tested Bank Policy Master + Advanced Eligibility Check (Old CRM parity). Backend: 9/9 pytest tests PASS (CRUD, list, get, delete, eligibility check, history, auth guards). 35 seeded bank policies confirmed via API. Frontend: BankPolicyMaster page loads 35 policy cards with data-testid=policy-card-{id}, Add Lender Policy modal opens with form/bank-name-input/save-policy-btn data-testids present, EligibilityCheck page renders customer profile summary (CIBIL 736, Net Salary 45K, Current EMI 97K, FOIR 215.6%, Requested 15L, Moderate Profile). Correct categorization: 5 Eligible / 3 Possibly Eligible / 27 Not Eligible of 35 lenders. Bank Comparison table shows top banks with ROI, Tenure, Min Salary, CIBIL, BT, Top-up, Bachelor, Hostel columns. Ranking (BEST MATCH / 2ND BEST / 3RD BEST) works. Print, History, AI Parse Docs buttons visible. Missing Data warning banner shown for DOB, Present Employment Duration, Company Type.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "EligibilityCheck (Bank Comparison table) & AdminDashboard (VerifiedCallStats)", "issues": ["React hydration warnings: <span data-ve-dynamic> wrapper spans inserted as direct children of <select>, <option>, <table>, <tbody>, <tfoot>, <tr> — invalid HTML nesting. Caused by dev instrumentation (x-ve-dynamic tooling). Non-blocking but pollutes console and can cause hydration mismatches. Same issue also flagged in iteration_37."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter38_bank_policies.py",
+    "/app/test_reports/pytest/iter38.xml"
+  ],
+  "action_items": [
+    "(Optional) Fix hydration warning source — the <span data-ve-dynamic='true' style='display:contents'> wrappers around <tr>/<option>/<tfoot> are inserted by dev tooling and produce invalid HTML nesting. Not blocking eligibility feature."
+  ],
+  "critical_code_review_comments": [
+    "bank_policies.py file is 660 lines and mixes CRUD + eligibility engine + historical aggregation — consider splitting eligibility logic into services/eligibility_engine.py for maintainability.",
+    "check_eligibility route has a nested `check_rule` closure defined inside a for-loop (created N times per policy) — refactor to module-level helper accepting mutable lists.",
+    "document_ai.py extract_document_data is a placeholder returning error='AI_NOT_CONFIGURED' — the /parse-document and /auto-parse-all endpoints return 200 with error payload rather than a proper 501/503. The frontend AI Parse Docs button will therefore silently no-op. Wire an LLM (per problem statement: AI document parsing capability) or return 501 Not Implemented until wired.",
+    "check_eligibility: eligible_amount rough multiplier `max_tenure * 0.75` is not a real EMI-to-principal conversion; use standard PV = EMI * (1-(1+r)^-n)/r formula for accuracy.",
+    "MongoDB client is instantiated at module import in both bank_policies.py and document_ai.py — should reuse the shared db client from server.py to avoid multiple connection pools.",
+    "check_eligibility inserts full check_result (including large results array) into eligibility_checks then updates the lead — no TTL/cleanup strategy; could grow unbounded.",
+    "profile.age is derived only when dob is present as YYYY-MM-DD; DD/MM/YYYY or ISO+timezone inputs are silently ignored."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter38_bank_policies.py"],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% (all acceptance criteria met)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!!  (used); lead 7217c29e-9f4c-47ce-8e73-2f73203a57f6",
+  "seed_data_creation": "Created and deleted 1 TEST_Bank_Iter38 policy during CRUD test. No residual data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All 11 acceptance criteria for iteration 38 verified. Bank Policy CRUD endpoints and eligibility engine are functional and integrated with UI. Note that document_ai endpoints are placeholders — if that feature is scoped for testing next, be aware they return {error:'AI_NOT_CONFIGURED'} rather than performing real extraction. 35 bank policies are seeded in MongoDB.",
+  "rca of the issue": "N/A — all tested features working as expected."
+}

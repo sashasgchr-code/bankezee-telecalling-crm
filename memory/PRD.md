@@ -79,10 +79,29 @@ All reports now open as SEPARATE PAGES (not toggle panels) matching OLD CRM form
 14. **Quality Report** - Data quality scoring
 15. **GP File Mapping Audit** - Admin view of GP vs File count matrix
 
-### Policy & Eligibility
-16. **Policy Master** - 27 banks with 40+ fields each
-17. **Eligibility Check** - Auto-check against bank policies
-18. **Multi-bank Processing** - Login/Approval/Decline/Disbursal per bank
+### Policy & Eligibility (OLD CRM Parity - September 3, 2026)
+16. **Bank Policy Master** (/admin/files/bank-policies) - 35 bank policies with complete criteria
+    - Min Salary, Min CIBIL, Max FOIR, ROI range, Max Loan, Tenure
+    - BT allowed/count, App Loan BT, CC BT, Top-up allowed
+    - Bachelor/Hostel accommodation restrictions
+    - Company categories, Employment requirements
+    - CRUD operations for Admins
+17. **Advanced Eligibility Check** (/files/:leadId/check-eligibility) - OLD CRM parity
+    - Customer Profile Summary: CIBIL, Net Salary, Current EMI, FOIR, Requested Amount
+    - Profile Strength calculation (Strong/Moderate/Fair/Weak/Not Eligible)
+    - Bank categorization: Eligible / Possibly Eligible / Not Eligible
+    - Bank Comparison table with top matches and ranking (BEST MATCH, 2ND BEST, 3RD BEST)
+    - Detailed pass/fail/warning reasons per criterion per bank
+    - Historical case data (approval rates, disbursed amounts)
+    - Print functionality for eligibility reports
+    - Eligibility history tracking
+    - Missing Data warnings for incomplete profiles
+18. **Document AI Parser** (Placeholder) - AI-powered document extraction
+    - CRIF/Credit Bureau report parsing
+    - Salary slip extraction
+    - Bank statement analysis
+    - Auto-fill capability
+19. **Multi-bank Processing** - Login/Approval/Decline/Disbursal per bank
 
 ### Documents & Activities
 19. **Document Workflow** - 19 document types (Required/Pending/Uploaded)
@@ -421,6 +440,47 @@ Teja (Manager)
 - **G Saikiran**: No CRM account - uses Connect only
 
 **Connect is now the ONLY operational login system.**
+
+---
+
+### Advanced Bank Eligibility Check - OLD CRM Parity ✅ (September 3, 2026)
+
+Implemented comprehensive bank eligibility checking with full feature parity from the OLD CRM system.
+
+**New Files Created:**
+- `/app/backend/routes/bank_policies.py` - Bank policy CRUD + advanced eligibility engine
+- `/app/backend/routes/document_ai.py` - AI document parsing (placeholder for LLM integration)
+- `/app/backend/scripts/seed_policies.py` - Seeds 12 major bank policies
+- `/app/frontend/src/pages/admin/BankPolicyMaster.js` - Admin policy management page
+- `/app/frontend/src/pages/files/EligibilityCheck.js` - Advanced eligibility check UI
+
+**Features:**
+1. **Bank Policy Master** (/admin/files/bank-policies)
+   - 35 bank policies with 30+ criteria fields each
+   - CRUD operations for Admins
+   - Active/Inactive status toggling
+   - Profile type badges (Salaried, Self-employed)
+
+2. **Advanced Eligibility Check** (/files/:leadId/check-eligibility)
+   - Customer Profile Summary with CIBIL, Net Salary, EMI, FOIR, Loan Amount
+   - Profile Strength calculation algorithm
+   - Categorization: Eligible / Possibly Eligible / Not Eligible
+   - Bank Comparison table with ranking (BEST MATCH, 2ND BEST, 3RD BEST)
+   - Detailed pass/fail/warning reasons per criterion
+   - Historical case data aggregation
+   - Print functionality
+   - Eligibility history tracking
+   - Missing Data warnings
+
+3. **API Endpoints:**
+   - `GET /api/bank-policies/policies` - List all policies
+   - `POST /api/bank-policies/policies` - Create policy (Admin only)
+   - `PUT /api/bank-policies/policies/{id}` - Update policy (Admin only)
+   - `DELETE /api/bank-policies/policies/{id}` - Delete policy (Admin only)
+   - `POST /api/bank-policies/check-eligibility/{lead_id}` - Run eligibility analysis
+   - `GET /api/bank-policies/eligibility-history/{lead_id}` - Get check history
+
+**Test Results:** Backend 100% (9/9 tests), Frontend 100% (all criteria met)
 
 ---
 

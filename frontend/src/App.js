@@ -22,8 +22,10 @@ import { TeamMembers, TeamData, TeamFiles, TeamCalls } from "./pages/telecaller/
 import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
 import BankEligibilityAnalysis from "./pages/files/BankEligibilityAnalysis";
+import EligibilityCheck from "./pages/files/EligibilityCheck";
 import DataMigration from "./pages/files/DataMigration";
 import PolicyMaster from "./pages/files/PolicyMaster";
+import BankPolicyMaster from "./pages/admin/BankPolicyMaster";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
 import TelecallerLayout from "./layouts/TelecallerLayout";
@@ -126,8 +128,10 @@ function App() {
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
+          <Route path="files/:leadId/check-eligibility" element={<EligibilityCheck />} />
           <Route path="files/migrate" element={<DataMigration />} />
           <Route path="files/policies" element={<PolicyMaster />} />
+          <Route path="files/bank-policies" element={<BankPolicyMaster />} />
           <Route path="files/reports/rejected" element={<RejectedCasesReport />} />
           <Route path="files/reports/growth-partner" element={<GrowthPartnerReport />} />
           <Route path="files/reports/quality" element={<QualityReport />} />
@@ -155,6 +159,7 @@ function App() {
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
+          <Route path="files/:leadId/check-eligibility" element={<EligibilityCheck />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="followups" element={<TelecallerFollowUps />} />
           <Route path="attendance" element={<TelecallerAttendance />} />
