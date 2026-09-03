@@ -4,6 +4,7 @@ Authentication routes
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 from bson import ObjectId
+import uuid
 
 from models.schemas import UserRegister, UserLogin, ChangePassword
 from utils.database import db
@@ -53,15 +54,18 @@ async def register_growth_partner(data: dict):
     partner_code = generate_partner_code(data['name'])
     
     # Create user document with all details
+    user_id = str(uuid.uuid4())
     user_doc = {
+        "id": user_id,
         "email": data['email'].lower(),
-        "password": get_password_hash(data['password']),
+        "password_hash": get_password_hash(data['password']),
         "plain_password": data['password'],  # Store for admin visibility
         "name": data['name'].strip(),
         "phone": data['phone'].strip(),
         "city": data['city'],
         "partner_code": partner_code,
         "role": "telecaller",
+        "source": "connect",  # Registered through Connect app
         
         # KYC Details
         "pan_number": data['pan_number'].upper(),
@@ -94,7 +98,6 @@ async def register_growth_partner(data: dict):
     
     result = await db.users.insert_one(user_doc)
     user_doc["_id"] = result.inserted_id
-    user_doc["id"] = str(result.inserted_id)
     
     # Update with ID
     await db.users.update_one(
@@ -120,14 +123,16 @@ async def register(user: UserRegister):
     allowed_role = user.role if user.role == "telecaller" else "telecaller"
     
     user_doc = {
+        "id": str(uuid.uuid4()),
         "email": user.email.lower(),
-        "password": get_password_hash(user.password),
+        "password_hash": get_password_hash(user.password),
         "name": user.name,
         "role": allowed_role,
         "phone": None,
         "is_active": False,  # Inactive until approved
         "is_approved": False,  # Requires admin approval
         "approval_status": "pending",  # pending, approved, rejected
+        "source": "connect",  # Registered through Connect app
         "created_at": datetime.now(timezone.utc),
         "last_login": None,
         "last_activity": None

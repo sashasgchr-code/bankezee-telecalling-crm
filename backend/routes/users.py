@@ -99,8 +99,12 @@ async def list_users(
         
         # Detect source: has password = Connect native, no password = CRM import
         has_password = bool(user.get("password_hash"))
-        user_data["source"] = "connect" if has_password else "crm_import"
+        user_data["source"] = user.get("source") or ("connect" if has_password else "crm_import")
         user_data["can_login"] = has_password
+        
+        # Add last_login for activity tracking
+        user_data["last_login"] = user.get("last_login")
+        user_data["last_activity"] = user.get("last_activity")
         
         enriched_users.append(user_data)
     
@@ -1404,6 +1408,136 @@ async def auto_merge_all_duplicates(current_user: dict = Depends(require_admin))
         "message": f"Auto-merged {total_merged} duplicate users",
         "total_files_transferred": total_files_transferred,
         "merged_groups": merged_groups
+    }
+
+
+@router.get("/users/inactive-stats")
+async def get_inactive_user_stats(current_user: dict = Depends(require_admin)):
+    """
+    Get statistics about inactive/dormant users.
+    Returns counts of users with no files and no recent login.
+    """
+    # Users with 0 files
+    all_users = await db.users.find({}, {"_id": 0, "id": 1}).to_list(2000)
+    zero_files_count = 0
+    zero_files_users = []
+    
+    for user in all_users:
+        user_id = user.get("id")
+        if not user_id:
+            continue
+        file_count = await db.leads.count_documents({
+            "$or": [{"source_id": user_id}, {"assigned_to": user_id}]
+        })
+        if file_count == 0:
+            zero_files_count += 1
+            zero_files_users.append(user_id)
+    
+    # Users who have never logged in
+    never_logged_in = await db.users.count_documents({
+        "$or": [
+            {"last_login": None},
+            {"last_login": {"$exists": False}}
+        ]
+    })
+    
+    # Users inactive for 30+ days
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    inactive_30_days = await db.users.count_documents({
+        "$or": [
+            {"last_login": None},
+            {"last_login": {"$exists": False}},
+            {"last_login": {"$lt": thirty_days_ago}}
+        ]
+    })
+    
+    # Users with 0 files AND never logged in (safe to deactivate)
+    safe_to_deactivate = await db.users.count_documents({
+        "id": {"$in": zero_files_users},
+        "role": {"$ne": "admin"},
+        "is_active": {"$ne": False},
+        "$or": [
+            {"last_login": None},
+            {"last_login": {"$exists": False}}
+        ]
+    })
+    
+    return {
+        "zero_files_count": zero_files_count,
+        "never_logged_in": never_logged_in,
+        "inactive_30_days": inactive_30_days,
+        "safe_to_deactivate": safe_to_deactivate
+    }
+
+
+@router.post("/users/bulk-deactivate-inactive")
+async def bulk_deactivate_inactive_users(current_user: dict = Depends(require_admin)):
+    """
+    Bulk deactivate users who have:
+    - 0 files assigned
+    - Never logged in
+    - Not an admin
+    
+    This is a safe operation as these users have no data and have never used the system.
+    """
+    # Find all users first
+    all_users = await db.users.find(
+        {"role": {"$ne": "admin"}, "is_active": {"$ne": False}},
+        {"_id": 1, "id": 1, "name": 1, "email": 1, "last_login": 1}
+    ).to_list(2000)
+    
+    users_to_deactivate = []
+    
+    for user in all_users:
+        user_id = user.get("id")
+        if not user_id:
+            continue
+        
+        # Check file count
+        file_count = await db.leads.count_documents({
+            "$or": [{"source_id": user_id}, {"assigned_to": user_id}]
+        })
+        
+        # Skip if has files
+        if file_count > 0:
+            continue
+        
+        # Check if never logged in
+        if user.get("last_login") is not None:
+            continue
+        
+        users_to_deactivate.append({
+            "_id": user["_id"],
+            "id": user_id,
+            "name": user.get("name"),
+            "email": user.get("email")
+        })
+    
+    # Deactivate all matching users
+    if users_to_deactivate:
+        user_ids = [u["_id"] for u in users_to_deactivate]
+        result = await db.users.update_many(
+            {"_id": {"$in": user_ids}},
+            {
+                "$set": {
+                    "is_active": False,
+                    "deactivated_at": datetime.now(timezone.utc).isoformat(),
+                    "deactivated_by": current_user.get("id"),
+                    "deactivation_reason": "bulk_inactive_cleanup"
+                }
+            }
+        )
+        
+        return {
+            "message": f"Deactivated {result.modified_count} inactive users",
+            "deactivated_count": result.modified_count,
+            "deactivated_users": [{"name": u["name"], "email": u["email"]} for u in users_to_deactivate[:20]]
+        }
+    
+    return {
+        "message": "No users found matching the criteria for deactivation",
+        "deactivated_count": 0,
+        "deactivated_users": []
     }
 
 

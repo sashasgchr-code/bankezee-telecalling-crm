@@ -71,6 +71,9 @@ const AdminUsers = () => {
   const [duplicates, setDuplicates] = useState([]);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
   const [isLoadingDuplicates, setIsLoadingDuplicates] = useState(false);
+  const [inactiveStats, setInactiveStats] = useState(null);
+  const [showInactiveModal, setShowInactiveModal] = useState(false);
+  const [isLoadingInactive, setIsLoadingInactive] = useState(false);
   const pageSize = 15;
 
   const fetchUsers = async () => {
@@ -334,6 +337,50 @@ const AdminUsers = () => {
     }
   };
 
+  const fetchInactiveStats = async () => {
+    setIsLoadingInactive(true);
+    try {
+      const response = await api.get('/users/inactive-stats');
+      setInactiveStats(response.data);
+      setShowInactiveModal(true);
+    } catch (error) {
+      toast.error('Failed to fetch inactive user stats');
+    } finally {
+      setIsLoadingInactive(false);
+    }
+  };
+
+  const handleBulkDeactivateInactive = async () => {
+    if (!window.confirm('This will deactivate all users with 0 files who have never logged in. Continue?')) {
+      return;
+    }
+    
+    try {
+      const response = await api.post('/users/bulk-deactivate-inactive');
+      toast.success(response.data.message);
+      setShowInactiveModal(false);
+      fetchUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to deactivate users');
+    }
+  };
+
+  const formatLastLogin = (lastLogin) => {
+    if (!lastLogin) return 'Never';
+    
+    const date = new Date(lastLogin);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} weeks ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)} months ago`;
+    return date.toLocaleDateString();
+  };
+
   const handleChangePassword = async () => {
     if (!newPassword || newPassword.length < 6) {
       toast.error('Password must be at least 6 characters');
@@ -537,6 +584,15 @@ const AdminUsers = () => {
                 </button>
               )}
               <button
+                onClick={fetchInactiveStats}
+                disabled={isLoadingInactive}
+                className="px-4 py-2 border border-red-400 text-red-600 rounded-lg font-medium hover:bg-red-50 flex items-center gap-2"
+                data-testid="cleanup-inactive-btn"
+              >
+                {isLoadingInactive ? <Loader2 size={18} className="animate-spin" /> : <Trash2 size={18} />}
+                Bulk Clean Inactive
+              </button>
+              <button
                 onClick={fetchDuplicates}
                 disabled={isLoadingDuplicates}
                 className="px-4 py-2 border border-purple-500 text-purple-600 rounded-lg font-medium hover:bg-purple-50 flex items-center gap-2"
@@ -605,8 +661,8 @@ const AdminUsers = () => {
           {/* Users Table */}
           <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             {/* Table Header */}
-            <div className="min-w-[1100px]">
-              <div className="grid gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-600" style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto auto 1fr 1fr auto 120px' }}>
+            <div className="min-w-[1200px]">
+              <div className="grid gap-2 px-4 py-3 bg-gray-50 border-b border-gray-200 text-sm font-medium text-gray-600" style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto auto auto auto auto auto' : '1fr 1.5fr auto auto auto auto auto auto 100px' }}>
                 {activeTab === 'approvals' && (
                   <div className="flex items-center">
                     <input
@@ -622,8 +678,7 @@ const AdminUsers = () => {
                 <div>Role</div>
                 <div>Source</div>
                 <div>Files</div>
-                <div>Manager</div>
-                <div>Team Lead</div>
+                <div>Last Login</div>
                 <div>Status</div>
                 <div>Actions</div>
               </div>
@@ -649,7 +704,7 @@ const AdminUsers = () => {
                       <div 
                         key={user.id} 
                         className={`grid gap-2 px-4 py-3 items-center hover:bg-gray-50 transition-colors ${isSelected ? 'bg-green-50' : ''}`}
-                        style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto auto 1fr 1fr auto auto' : '1fr 1.5fr auto auto auto 1fr 1fr auto 120px' }}
+                        style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto auto auto auto auto auto' : '1fr 1.5fr auto auto auto auto auto auto 100px' }}
                       >
                         {activeTab === 'approvals' && (
                           <div>
@@ -688,22 +743,9 @@ const AdminUsers = () => {
                           </span>
                         </div>
                         <div>
-                          <p className="text-sm text-gray-600 truncate">
-                            {user.manager_name || user.manager_id ? (
-                              user.manager_name || 'Assigned'
-                            ) : (
-                              <span className="text-amber-600">Unassigned</span>
-                            )}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600 truncate">
-                            {user.tl_name || user.tl_id ? (
-                              user.tl_name || 'Assigned'
-                            ) : (
-                              <span className="text-gray-400">—</span>
-                            )}
-                          </p>
+                          <span className={`text-xs ${user.last_login ? 'text-gray-600' : 'text-red-500'}`}>
+                            {formatLastLogin(user.last_login)}
+                          </span>
                         </div>
                         <div>
                           {isPending ? (
@@ -1425,6 +1467,91 @@ const AdminUsers = () => {
           <div className="flex gap-3 mt-6">
             <button
               onClick={() => setShowDuplicatesModal(false)}
+              className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Bulk Clean Inactive Modal */}
+      <Modal
+        isOpen={showInactiveModal}
+        onClose={() => setShowInactiveModal(false)}
+        title="Bulk Clean Inactive Users"
+      >
+        <div className="p-6">
+          {inactiveStats ? (
+            <>
+              <div className="mb-6">
+                <p className="text-gray-600 mb-4">
+                  Review inactive user statistics and optionally deactivate users who have never used the system.
+                </p>
+                
+                {/* Stats Cards */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-2xl font-bold text-blue-800">{inactiveStats.zero_files_count}</p>
+                    <p className="text-sm text-blue-600">Users with 0 files</p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <p className="text-2xl font-bold text-amber-800">{inactiveStats.never_logged_in}</p>
+                    <p className="text-sm text-amber-600">Never logged in</p>
+                  </div>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-2xl font-bold text-gray-800">{inactiveStats.inactive_30_days}</p>
+                    <p className="text-sm text-gray-600">Inactive 30+ days</p>
+                  </div>
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <p className="text-2xl font-bold text-red-800">{inactiveStats.safe_to_deactivate}</p>
+                    <p className="text-sm text-red-600">Safe to deactivate</p>
+                  </div>
+                </div>
+
+                {/* Explanation */}
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <p className="text-sm font-medium text-gray-700 mb-2">Safe to Deactivate Criteria:</p>
+                  <ul className="text-sm text-gray-600 space-y-1">
+                    <li className="flex items-center gap-2">
+                      <Check size={14} className="text-green-500" /> Has 0 files assigned
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={14} className="text-green-500" /> Has never logged in
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={14} className="text-green-500" /> Not an admin user
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <Check size={14} className="text-green-500" /> Currently active (not already deactivated)
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              {inactiveStats.safe_to_deactivate > 0 ? (
+                <button
+                  onClick={handleBulkDeactivateInactive}
+                  className="w-full px-4 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 flex items-center justify-center gap-2"
+                >
+                  <Power size={18} /> Deactivate {inactiveStats.safe_to_deactivate} Inactive Users
+                </button>
+              ) : (
+                <div className="text-center py-4">
+                  <Check size={48} className="mx-auto text-green-500 mb-2" />
+                  <p className="text-gray-600">No users match the safe deactivation criteria.</p>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+            </div>
+          )}
+
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={() => setShowInactiveModal(false)}
               className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg font-medium hover:bg-gray-50"
             >
               Close
