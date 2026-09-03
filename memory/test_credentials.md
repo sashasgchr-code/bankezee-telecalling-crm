@@ -23,25 +23,27 @@
 | pinkynagulapally@gmail.com | Pinky@1234 | growth_partner + is_tl=true | TL with 5 team members, reports to Teja. CRM account: akshaya03302023@gmail.com |
 
 ## Growth Partners (Active - from @users spreadsheet)
-| Email | Password | TL | Manager | Legacy CRM Email |
-|-------|----------|-----|---------|-----------------|
-| mohammadwameez607@gmail.com | C865cLzckips4yC | Pinky | Teja | Same |
-| regurivijayendra@gmail.com | vijay@12345 | Pinky | Teja | Same |
-| jkavithabhai@gmail.com | vishnu404 | Pinky | Teja | Same |
-| gujjarisaikiran13@gmail.com | Gujjari@21 | Pinky | Teja | No CRM account |
-| pushparajbha911@gmail.com | ragini | Anusha | Saikiran | Same |
-| gosangideevenadevaswamy@gmail.com | Divi@8074 | Anusha | Saikiran | No CRM account |
-| srivallisiri537@gmail.com | santhi | Anusha | Saikiran | No CRM account |
-| lellachandana24@gmail.com | mahi@123 | Pinky | Teja | No CRM account |
-| nani9346480@gmail.com | Anil@123 | Anusha | Saikiran | Same |
-| banothunithinnaik@gmail.com | Nithin@123 | Anusha | Saikiran | Same |
-| nalavonilakshmipriya@gmail.com | ammu@2006 | Anusha | Saikiran | Same |
-| kemidiraju134@gmail.com | rajuking@225 | Anusha | Saikiran | Same |
-| meghanaaaa.36@gmail.com | Meghana@0260 | Anusha | Saikiran | Same |
-| mivimivi51@gmail.com | Rishi@7650 | Anusha | Saikiran | No CRM account |
-| masoommd7472@gmai.com | masoom@123 | Anusha | Saikiran | masoommd7472@gmail.com (typo in Connect) |
-| pillalamarrishivasai@gmail.com | Shivasai939@ | Pinky | Teja | Same |
-| asma.sultana0r@gmail.com | Asma@0309 | Anusha | Saikiran | Same |
+| Email | Password | TL | Manager | Files |
+|-------|----------|-----|---------|-------|
+| pinkynagulapally@gmail.com | Pinky@1234 | (TL) | Teja | 32 |
+| banothunithinnaik@gmail.com | Nithin@123 | Anusha | Saikiran | 15 |
+| yarragondaanusha@gmail.com | 9063023292 | (TL) | Saikiran | 14 |
+| nani9346480@gmail.com | Anil@123 | Anusha | Saikiran | 8 |
+| pillalamarrishivasai@gmail.com | Shivasai939@ | Pinky | Teja | 6 |
+| jkavithabhai@gmail.com | vishnu404 | Pinky | Teja | 6 |
+| nalavonilakshmipriya@gmail.com | ammu@2006 | Anusha | Saikiran | 5 |
+| meghanaaaa.36@gmail.com | Meghana@0260 | Anusha | Saikiran | 4 |
+| asma.sultana0r@gmail.com | Asma@0309 | Anusha | Saikiran | 4 |
+| mohammadwameez607@gmail.com | C865cLzckips4yC | Pinky | Teja | 2 |
+| masoommd7472@gmai.com | masoom@123 | Anusha | Saikiran | 2 |
+| regurivijayendra@gmail.com | vijay@12345 | Pinky | Teja | 0 |
+| gujjarisaikiran13@gmail.com | Gujjari@21 | Pinky | Teja | 0 |
+| pushparajbha911@gmail.com | ragini | Anusha | Saikiran | 0 |
+| gosangideevenadevaswamy@gmail.com | Divi@8074 | Anusha | Saikiran | 0 |
+| srivallisiri537@gmail.com | santhi | Anusha | Saikiran | 0 |
+| lellachandana24@gmail.com | mahi@123 | Pinky | Teja | 0 |
+| kemidiraju134@gmail.com | rajuking@225 | Anusha | Saikiran | 0 |
+| mivimivi51@gmail.com | Rishi@7650 | Anusha | Saikiran | 0 |
 
 ## HR Account
 | Email | Password | Role | Notes |
@@ -77,6 +79,11 @@ Admin (admin@bankezee.com)
 - **97 users deactivated** (not in @users list)
 - **1 CRM-to-Connect mapping**: Pinky (akshaya03302023@gmail.com → pinkynagulapally@gmail.com)
 - All GP passwords updated to match Connect column in @users
+
+## File Assignment Summary (September 3, 2026)
+- **98 files** assigned to active GPs based on source_id
+- **416 files** kept with Operations (deactivated GP owners)
+- Top file holders: Pinky (32), Nithin (15), Anusha (14), Anil (8)
 
 ## Notes
 - Connect is now the ONLY operational login system
