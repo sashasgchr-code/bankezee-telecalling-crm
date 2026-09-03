@@ -18,6 +18,13 @@ from utils.helpers import serialize_doc, serialize_docs
 
 router = APIRouter(prefix="/api", tags=["Leads"])
 
+# GP roles - users who access the agent/telecaller portal and see only their own data
+GP_ROLES = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'growth_partner']
+
+def is_gp_role(role: str) -> bool:
+    """Check if role is a Growth Partner role (should see only own data)"""
+    return role in GP_ROLES
+
 # Call outcome normalization map - maps variants to standard values
 CALL_OUTCOME_NORMALIZATION = {
     # Connected variants
@@ -114,7 +121,8 @@ def build_leads_query(
     if team_view and team_ids:
         # Team Lead viewing their team's data
         query["assigned_to"] = {"$in": team_ids}
-    elif current_user["role"] == "telecaller":
+    elif is_gp_role(current_user.get("role", "")):
+        # GP roles only see their own data
         query["assigned_to"] = current_user["id"]
     elif assigned_to:
         if assigned_to == "unassigned":
@@ -401,7 +409,7 @@ async def get_leads_count(
     """Get count of leads matching filters - for 'X matching leads' display"""
     query = {}
     
-    if current_user["role"] == "telecaller":
+    if is_gp_role(current_user.get("role", "")):
         query["assigned_to"] = current_user["id"]
     elif assigned_to:
         if assigned_to == "unassigned":
@@ -630,7 +638,7 @@ async def get_lead(lead_id: str, current_user: dict = Depends(get_current_user))
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
-    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
+    if is_gp_role(current_user.get("role", "")) and lead.get("assigned_to") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     
     lead_data = serialize_doc(lead)
@@ -699,7 +707,7 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
-    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
+    if is_gp_role(current_user.get("role", "")) and lead.get("assigned_to") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     
     update_data = {k: v for k, v in update.dict().items() if v is not None}
@@ -784,7 +792,7 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
         }
         await db.activities.insert_one(activity)
     
-    if current_user["role"] == "telecaller":
+    if is_gp_role(current_user.get("role", "")):
         today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         await db.daily_sessions.update_one(
             {"user_id": current_user["id"], "date": today},
@@ -892,7 +900,7 @@ async def convert_lead_to_file(lead_id: str, current_user: dict = Depends(get_cu
         raise HTTPException(status_code=404, detail="Lead not found")
     
     # RBAC: GP can only convert leads assigned to them
-    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
+    if is_gp_role(current_user.get("role", "")) and lead.get("assigned_to") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     
     # Get the canonical ID
@@ -1070,7 +1078,8 @@ async def import_leads(
         async for entry in suppression_cursor:
             suppressed_phones.add(entry.get("normalized_phone", ""))
         
-        telecallers = await db.users.find({"role": "telecaller", "is_active": True}).to_list(1000)
+        # Get all GP roles that can be assigned leads
+        telecallers = await db.users.find({"role": {"$in": GP_ROLES}, "is_active": True}).to_list(1000)
         telecaller_map = {}
         for tc in telecallers:
             telecaller_map[tc["name"].lower().strip()] = tc
@@ -1337,7 +1346,7 @@ async def auto_distribute_leads(data: AutoDistribute, current_user: dict = Depen
     CRITICAL: Files (status='file') are excluded from distribution - they cannot be reassigned.
     """
     telecallers = await db.users.find({
-        "role": "telecaller",
+        "role": {"$in": GP_ROLES},
         "is_active": True
     }).to_list(100)
     

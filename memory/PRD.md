@@ -485,5 +485,20 @@ Implemented comprehensive bank eligibility checking with full feature parity fro
 
 ---
 
+### GP Data Isolation Bug Fix (September 3, 2026)
+
+**Issue**: GPs were seeing all users' data instead of only their own assigned data.
+
+**Root Cause**: The `leads.py` routes were checking only for `role == "telecaller"` but the system now has multiple GP roles: `telecaller`, `sales_agent`, `growth_partner`, `partner`, `team_leader`.
+
+**Fix Applied**:
+- Added `GP_ROLES` constant and `is_gp_role()` function to `/app/backend/routes/leads.py`
+- Updated all role checks from `current_user["role"] == "telecaller"` to `is_gp_role(current_user.get("role", ""))`
+- Fixed 7 locations: `build_leads_query()`, `get_leads_count()`, `get_lead()`, `update_lead()`, `convert_lead_to_file()`, CSV import, and auto-distribute
+
+**Verification**: SHIVASAI (sales_agent) now correctly sees only his 6 files/leads, not all 600+ in the system.
+
+---
+
 *Last Updated: September 3, 2026*
 *Status: PRODUCTION LIVE*
