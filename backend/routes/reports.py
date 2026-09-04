@@ -21,6 +21,23 @@ from utils.hierarchy import load_user_index
 # are matched through identity resolution rather than a single identifier.
 AGENT_ROLE_FILTER = {"$in": GP_ROLES}
 
+# This is an India-based CRM: all "day" boundaries and date buckets are IST, not UTC.
+# Timestamps are stored in UTC, so an IST calendar day maps to a UTC window shifted by +5:30.
+IST = timezone(IST_OFFSET)
+IST_OFFSET_MS = int(IST_OFFSET.total_seconds() * 1000)
+
+
+def _ist_midnight_utc(y, m, d):
+    """UTC datetime corresponding to IST 00:00 of the given calendar day."""
+    return datetime(y, m, d, tzinfo=IST).astimezone(timezone.utc)
+
+
+def _ist_day_bounds_utc(date_str):
+    """(start_utc, end_utc) covering the IST calendar day for an ISO 'YYYY-MM-DD' string."""
+    d = datetime.fromisoformat(date_str.replace('Z', '').replace('+00:00', ''))
+    start = _ist_midnight_utc(d.year, d.month, d.day)
+    return start, start + timedelta(days=1)
+
 
 def _as_date(field: str):
     """Coerce a timestamp field to a date. Legacy File records store ISO strings."""
@@ -136,31 +153,36 @@ async def get_statuses(current_user: dict = Depends(get_current_user)):
 
 # Helper to get date range
 def get_date_range(period: str, from_date: str = None, to_date: str = None):
+    # All boundaries are computed on the IST calendar, then returned as UTC datetimes.
     now = datetime.now(timezone.utc)
-    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    
+    now_ist = now.astimezone(IST)
+    today_ist = now_ist.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    def u(dt_ist):
+        return dt_ist.astimezone(timezone.utc)
+
     if from_date and to_date:
-        start_date = datetime.fromisoformat(from_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc)
-        end_date = datetime.fromisoformat(to_date.replace('Z', '+00:00')).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        start_date, _ = _ist_day_bounds_utc(from_date)
+        _, end_date = _ist_day_bounds_utc(to_date)
         return start_date, end_date, "custom"
     elif period == "today":
-        return today, today + timedelta(days=1), period
+        return u(today_ist), u(today_ist + timedelta(days=1)), period
     elif period == "this_week":
-        start = today - timedelta(days=today.weekday())
-        return start, now + timedelta(days=1), period
+        start = today_ist - timedelta(days=today_ist.weekday())
+        return u(start), u(now_ist + timedelta(days=1)), period
     elif period == "this_month":
-        return today.replace(day=1), now + timedelta(days=1), period
+        return u(today_ist.replace(day=1)), u(now_ist + timedelta(days=1)), period
     elif period == "last_month":
-        first_of_this_month = today.replace(day=1)
+        first_of_this_month = today_ist.replace(day=1)
         last_month = first_of_this_month - timedelta(days=1)
-        return last_month.replace(day=1), first_of_this_month, period
+        return u(last_month.replace(day=1)), u(first_of_this_month), period
     elif period == "three_months":
-        start = now - timedelta(days=90)
-        return start.replace(hour=0, minute=0, second=0, microsecond=0), now + timedelta(days=1), period
+        start = now_ist - timedelta(days=90)
+        return u(start.replace(hour=0, minute=0, second=0, microsecond=0)), u(now_ist + timedelta(days=1)), period
     elif period in ["all_time", "lifetime"]:
         return None, None, period
     else:
-        return today, today + timedelta(days=1), "today"
+        return u(today_ist), u(today_ist + timedelta(days=1)), "today"
 
 # ===================== DASHBOARD =====================
 
@@ -907,14 +929,16 @@ async def get_hourly_report(
     - GP: See only their own data
     """
     now = datetime.now(timezone.utc)
-    
+
+    # India CRM: bucket by IST calendar day. Timestamps are UTC, so the day window is shifted.
     if date:
-        target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+        d = datetime.fromisoformat(date.replace('Z', '').replace('+00:00', ''))
+        start_of_day = _ist_midnight_utc(d.year, d.month, d.day)
     else:
-        target_date = now
-    
-    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        now_ist = now.astimezone(IST)
+        start_of_day = _ist_midnight_utc(now_ist.year, now_ist.month, now_ist.day)
     end_of_day = start_of_day + timedelta(days=1)
+    target_date = start_of_day + IST_OFFSET  # wall-clock IST for the response label
     
     user_role = current_user.get("role", "").lower()
     # Handle different user ID formats
@@ -1120,14 +1144,16 @@ async def get_my_hourly_report(
     Only shows the current user's data.
     """
     now = datetime.now(timezone.utc)
-    
+
+    # India CRM: bucket by IST calendar day. Timestamps are UTC, so the day window is shifted.
     if date:
-        target_date = datetime.fromisoformat(date).replace(tzinfo=timezone.utc)
+        d = datetime.fromisoformat(date.replace('Z', '').replace('+00:00', ''))
+        start_of_day = _ist_midnight_utc(d.year, d.month, d.day)
     else:
-        target_date = now
-    
-    start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        now_ist = now.astimezone(IST)
+        start_of_day = _ist_midnight_utc(now_ist.year, now_ist.month, now_ist.day)
     end_of_day = start_of_day + timedelta(days=1)
+    target_date = start_of_day + IST_OFFSET  # wall-clock IST for the response label
     
     user_id = current_user["id"]
     user_name = current_user.get("name", current_user.get("email", "Unknown"))
@@ -1377,14 +1403,14 @@ async def get_daily_tracking_sheet(
         month = now.month
     
     if start_date and end_date:
-        range_start = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
-        range_end = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc) + timedelta(days=1)
+        range_start, _ = _ist_day_bounds_utc(start_date)
+        _, range_end = _ist_day_bounds_utc(end_date)
     else:
-        range_start = datetime(year, month, 1, tzinfo=timezone.utc)
+        range_start = _ist_midnight_utc(year, month, 1)
         if month == 12:
-            range_end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+            range_end = _ist_midnight_utc(year + 1, 1, 1)
         else:
-            range_end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+            range_end = _ist_midnight_utc(year, month + 1, 1)
     
     query, _aliases = await resolve_agent_query(user_id, active_only=False, scope_ids=scope_ids)
     if query is None:
@@ -1409,7 +1435,7 @@ async def get_daily_tracking_sheet(
     # Aggregation for call logs by date
     call_pipeline = [
         {"$match": {"user_id": {"$in": telecaller_ids}, "created_at": {"$gte": range_start, "$lt": range_end}}},
-        {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}}}},
+        {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": {"$add": ["$created_at", 19800000]}}}}},
         {"$group": {
             "_id": {"user_id": "$user_id", "date": "$date_str"},
             "calls": {"$sum": 1},
@@ -1421,7 +1447,7 @@ async def get_daily_tracking_sheet(
     # Aggregation for leads by date (status=leads only; Files handled separately)
     lead_pipeline = [
         {"$match": {"assigned_to": {"$in": telecaller_ids}, "status": "leads", **lead_created_match(range_start, range_end)}},
-        {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": _lead_created_date()}}}},
+        {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": {"$add": [_lead_created_date(), 19800000]}}}}},
         {"$group": {
             "_id": {"user_id": "$assigned_to", "date": "$date_str"},
             "count": {"$sum": 1}
@@ -1433,7 +1459,7 @@ async def get_daily_tracking_sheet(
         {"$match": {"status": "file", **file_created_match(range_start, range_end)}},
         {"$addFields": {
             "owner": FILE_OWNER,
-            "date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": _file_created_date()}}
+            "date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": {"$add": [_file_created_date(), 19800000]}}}
         }},
         {"$group": {"_id": {"user_id": "$owner", "date": "$date_str"}, "count": {"$sum": 1}}}
     ]
