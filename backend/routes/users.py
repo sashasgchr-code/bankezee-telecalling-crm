@@ -382,14 +382,34 @@ async def get_manager_team_members(current_user: dict = Depends(get_current_user
     if role not in ["manager", "admin", "ops"]:
         raise HTTPException(status_code=403, detail="Only Managers can access this endpoint")
     
-    # Get all team members for this manager
+    # Same shared resolver as Admin User Management and the Files scope
+    index = await load_user_index(db)
     if role == "manager":
-        team_query = {"manager_id": user_id, "is_active": True}
+        # Full recursive subtree (direct GPs + TLs + GPs under TLs + sub-managers and below),
+        # one row per person, resolved across every identity alias.
+        members = index.subtree_members(user_id, include_self=False)
+        member_ids = [m.get("id") or str(m["_id"]) for m in members]
+        team_members = await db.users.find(
+            {"$or": [{"id": {"$in": member_ids}},
+                     {"_id": {"$in": [m["_id"] for m in members]}}]}
+        ).to_list(1000)
+        # keep one FULL document per person - the canonical one
+        by_mongo_id = {str(m["_id"]): m for m in team_members}
+        seen, deduped = set(), []
+        for m in team_members:
+            key = m.get("id") or str(m["_id"])
+            person = index.root_for(key)
+            if person in seen:
+                continue
+            seen.add(person)
+            canonical = index.canonical_doc(key)
+            deduped.append(by_mongo_id.get(str(canonical["_id"]), m) if canonical else m)
+        team_members = deduped
     else:
         # Admin/Ops see all GP users
-        team_query = {"is_active": True, "role": {"$nin": ["admin", "ops", "hr"]}}
-    
-    team_members = await db.users.find(team_query).to_list(500)
+        team_members = await db.users.find(
+            {"is_active": True, "role": {"$nin": ["admin", "ops", "hr"]}}
+        ).to_list(500)
     
     # Get today's date for active today calculation
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)

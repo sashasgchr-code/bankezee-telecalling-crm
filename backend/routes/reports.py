@@ -1373,14 +1373,14 @@ async def get_manager_team_stats(
     # Get date range (supports a custom from_date/to_date range)
     start_date, end_date, period = get_date_range(period, from_date, to_date)
     
+    index = await load_user_index(db)
+    
     # Get team IDs for this manager
     if user_role == "manager":
-        team_users = await db.users.find(
-            {"manager_id": user_id, "is_active": True},
-            {"_id": 0, "id": 1, "name": 1, "full_name": 1, "email": 1, "is_tl": 1, "tl_id": 1}
-        ).to_list(500)
-        team_ids = [u["id"] for u in team_users if u.get("id")]
-        team_ids.append(user_id)  # Include manager's own data
+        # Shared resolver (utils.hierarchy) - identical to Admin User Management and the Files
+        # scope: full recursive subtree, all identity aliases, one row per person.
+        team_users = index.subtree_members(user_id, include_self=False)
+        team_ids = sorted(index.descendants(user_id))  # subtree aliases + the manager's own
     else:
         # Admin/Ops see all
         team_users = await db.users.find(
@@ -1389,16 +1389,20 @@ async def get_manager_team_stats(
         ).to_list(500)
         team_ids = [u["id"] for u in team_users if u.get("id")]
     
-    # Build user name map
+    # Keyed by EVERY alias so historical activity recorded under a legacy identifier
+    # still resolves to the current team member.
     user_map = {}
     for u in team_users:
-        uid = u.get("id")
-        if uid:
-            user_map[uid] = {
-                "name": u.get("full_name") or u.get("name") or u.get("email", "").split("@")[0],
-                "is_tl": u.get("is_tl", False),
-                "tl_id": u.get("tl_id")
-            }
+        uid = u.get("id") or str(u.get("_id") or "")
+        if not uid:
+            continue
+        entry = {
+            "name": u.get("full_name") or u.get("name") or u.get("email", "").split("@")[0],
+            "is_tl": u.get("is_tl", False),
+            "tl_id": u.get("tl_id")
+        }
+        for alias in (index.aliases(uid) or {uid}):
+            user_map[alias] = entry
     
     # Build time filter for calls
     calls_time_filter = {}
@@ -1564,7 +1568,7 @@ async def get_manager_team_stats(
     
     return {
         "period": period,
-        "total_team": len(team_ids),
+        "total_team": len(team_users),
         "tls_count": tls_count,
         "active_today": active_today,
         "calls": total_calls,

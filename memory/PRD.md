@@ -824,3 +824,44 @@ Gates: `user_mgmt_audit.py` 10/10 + persistence PASS for 2 GPs (incl. after re-l
 and Nithin/Meghana hierarchy links restored after the write tests.
 
 *Last Updated: September 4, 2026*
+
+---
+
+## MANAGER DASHBOARD HIERARCHY (September 4, 2026) — Preview: UM and Dashboard now MATCH exactly
+
+ROOT CAUSE: the Manager dashboard was the last place still resolving the team on its own.
+`/api/reports/manager-team-stats` and `/api/users/manager-team-members` both ran
+`db.users.find({"manager_id": user_id, "is_active": True})`:
+  - only ONE Teja id, not his alias set
+  - only DIRECT reports - `tl_id` edges and sub-manager subtrees never traversed
+  - activity maps keyed by a single `id`, so history recorded under a legacy alias was dropped
+  - duplicate documents could yield the same person twice
+No cache was involved; the values were wrong on every request, not stale.
+
+FIX: both endpoints now use the shared resolver (`utils.hierarchy`) - the SAME one used by Admin
+User Management, the Files list/stats, Track Report and Reports:
+  - members  = `index.subtree_members(user_id, include_self=False)`  (recursive, cycle-safe,
+    person-level active, one row per person, canonical document per person)
+  - ownership = `index.descendants(user_id)`  (every alias of the whole subtree + the manager)
+  - `user_map` keyed by EVERY alias, so historical activity under legacy identifiers resolves
+  - Team Members = `len(team_users)` (unique active people below the manager, excluding himself)
+    - previously `len(team_ids)`, which would have counted aliases
+  - Team Leads = unique active TL-capable people in that subtree
+
+TRACE (preview, Teja): session id e37774a4 · canonical e37774a4 · direct reports 8
+(incl. TLs Pinky + inactive anusha@bankezee.com) · recursive descendants 18 active people ·
+active TLs in subtree 1 (Pinky). Chain proven: Teja -> G Saikiran (a role=telecaller GP acting as
+sub-manager) -> his 10 GPs. A role-based traversal would have stopped at him; edge-based traversal
+does not.
+User Management descendants 18 == Manager Dashboard members 18 == total_team 18. MATCH: YES.
+Dashboard `files` (94) now equals the Manager Files list total (94).
+
+MANDATORY TEST (preview writes only, restored afterwards): assigning TL Anusha under Teja moved
+Team 18->19, Team Leads 1->2, Files 94->108 (+14, her own files), members 18->19; identical on
+re-fetch (no caching); restored to 18/1/94. PASS.
+
+Gates after the change: `verify_hierarchy.py` 34/34 · `user_mgmt_audit.py` 10/10 loads +
+Manager/TL persistence PASS · preview restored to 128 users / 518 leads with Nithin/Meghana links
+back under G Saikiran / Anusha.
+
+*Last Updated: September 4, 2026*
