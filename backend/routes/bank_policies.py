@@ -205,6 +205,48 @@ def calculate_foir(net_salary, existing_emi):
     return round((emi / net_salary) * 100, 1)
 
 
+UNSECURED_LOAN_TYPES = ("personal", "credit card", "overdraft", "business", "consumer")
+HIGH_COST_ROI = 20.0
+
+
+def summarize_existing_loans(file_details):
+    """Roll up the structured `existing_loans` entries captured on the file.
+
+    Each entry: bank, loan_type, loan_amount, sanction_date, outstanding, roi, emi.
+    Used by the eligibility engine so obligations/FOIR and balance-transfer rules are
+    driven by the actual loan book instead of a single typed-in EMI figure.
+    """
+    def as_float(val):
+        try:
+            return float(str(val).replace(",", "").strip())
+        except (ValueError, TypeError, AttributeError):
+            return 0.0
+
+    raw = file_details.get("existing_loans")
+    loans = [loan for loan in raw if isinstance(loan, dict)] if isinstance(raw, list) else []
+
+    total_emi = sum(as_float(loan.get("emi")) for loan in loans)
+    total_outstanding = sum(as_float(loan.get("outstanding")) for loan in loans)
+    total_sanctioned = sum(as_float(loan.get("loan_amount")) for loan in loans)
+    rois = [as_float(loan.get("roi")) for loan in loans if as_float(loan.get("roi")) > 0]
+
+    unsecured = [loan for loan in loans
+                 if any(t in str(loan.get("loan_type", "")).lower() for t in UNSECURED_LOAN_TYPES)]
+    high_cost = [loan for loan in loans if as_float(loan.get("roi")) >= HIGH_COST_ROI]
+
+    return {
+        "count": len(loans),
+        "unsecured_count": len(unsecured),
+        "high_cost_count": len(high_cost),
+        "total_emi": round(total_emi, 2),
+        "total_outstanding": round(total_outstanding, 2),
+        "total_sanctioned": round(total_sanctioned, 2),
+        "max_roi": max(rois) if rois else None,
+        "banks": [str(loan.get("bank")) for loan in loans if loan.get("bank")],
+        "loans": loans,
+    }
+
+
 @router.post("/check-eligibility/{lead_id}")
 async def check_eligibility(lead_id: str, current_user: dict = Depends(get_current_user)):
     """
@@ -240,6 +282,12 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
     gross_salary = safe_float(file_details.get("gross_salary"))
     existing_emi = safe_float(file_details.get("obligations_emi") or file_details.get("existing_emi"))
     loan_amount_required = safe_float(file_details.get("loan_amount_required"))
+
+    # Structured existing loans drive the obligations figure when they are captured
+    loans_summary = summarize_existing_loans(file_details)
+    declared_emi = existing_emi or 0
+    if loans_summary["total_emi"] > 0:
+        existing_emi = max(loans_summary["total_emi"], declared_emi)
     
     # Calculate FOIR
     foir = calculate_foir(net_salary, existing_emi) if net_salary else None
@@ -291,7 +339,15 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
         missing_info.append("Company Type/Category")
     
     # EMI source tracking
-    emi_source = "CRM Data" if existing_emi else "Not Available"
+    if loans_summary["total_emi"] > 0 and loans_summary["total_emi"] >= declared_emi:
+        emi_source = f"Existing Loans ({loans_summary['count']})"
+    elif existing_emi:
+        emi_source = "CRM Data"
+    else:
+        emi_source = "Not Available"
+
+    if loans_summary["count"] == 0:
+        missing_info.append("Existing Loan Details (bank, ROI, EMI, outstanding)")
     
     # Check eligibility against each policy
     results = []
@@ -437,6 +493,45 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
             if not check_rule("Hostel Accommodation", "Hostel", "Not Allowed", False,
                              "", "Hostel accommodation not allowed"):
                 is_eligible = False
+
+        # 10. Existing loan book (balance transfer / takeover rules)
+        if loans_summary["count"] > 0:
+            max_bt_count = policy.get("max_bt_count")
+            if max_bt_count and loans_summary["unsecured_count"] > max_bt_count:
+                if not check_rule("Balance Transfer Count",
+                                  f"{loans_summary['unsecured_count']} unsecured loans",
+                                  f"Max {max_bt_count}", False, "",
+                                  f"{loans_summary['unsecured_count']} unsecured loans exceed max BT count {max_bt_count}",
+                                  source="Existing Loans"):
+                    is_eligible = False
+            elif max_bt_count:
+                check_rule("Balance Transfer Count", f"{loans_summary['unsecured_count']} unsecured loans",
+                           f"Max {max_bt_count}", True, "Within bank's BT limit", "", source="Existing Loans")
+
+            if policy.get("bt_allowed") is False:
+                reasons_warning.append({
+                    "rule": "Balance Transfer",
+                    "customer": f"{loans_summary['count']} existing loan(s)",
+                    "required": "BT not allowed",
+                    "result": "WARN",
+                    "source": "Existing Loans"
+                })
+            if loans_summary["high_cost_count"] and policy.get("app_loan_bt") is False:
+                reasons_warning.append({
+                    "rule": "High-cost / App Loan Takeover",
+                    "customer": f"{loans_summary['high_cost_count']} loan(s) at up to {loans_summary['max_roi']}% ROI",
+                    "required": "App loan BT not allowed",
+                    "result": "WARN",
+                    "source": "Existing Loans"
+                })
+            if loan_amount_required and loans_summary["total_outstanding"] > loan_amount_required:
+                reasons_warning.append({
+                    "rule": "Consolidation Cover",
+                    "customer": f"₹{loans_summary['total_outstanding']:,.0f} outstanding",
+                    "required": f"₹{loan_amount_required:,.0f} requested",
+                    "result": "WARN",
+                    "source": "Existing Loans"
+                })
         
         # Calculate eligible amount
         eligible_amount = None
@@ -552,6 +647,11 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
             "cibil_score": cibil_score,
             "net_salary": net_salary,
             "existing_emi": existing_emi,
+            "existing_loans_count": loans_summary["count"],
+            "existing_loans_emi": loans_summary["total_emi"],
+            "existing_loans_outstanding": loans_summary["total_outstanding"],
+            "existing_loans_max_roi": loans_summary["max_roi"],
+            "existing_loans": loans_summary["loans"],
             "foir": foir,
             "emi_source": emi_source,
             "loan_amount_required": loan_amount_required,

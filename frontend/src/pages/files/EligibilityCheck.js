@@ -363,6 +363,48 @@ export default function EligibilityCheck() {
                 </div>
                 <span className="text-xs text-slate-400 ml-auto">of {data.total_policies} lenders checked</span>
               </div>
+
+              {p.existing_loans_count > 0 && (
+                <div className="mt-3 border-t pt-3" data-testid="eligibility-existing-loans">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
+                    <span className="text-xs font-semibold text-slate-700">
+                      Existing Loans ({p.existing_loans_count})
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      EMI ₹{Number(p.existing_loans_emi || 0).toLocaleString()} · Outstanding ₹{Number(p.existing_loans_outstanding || 0).toLocaleString()}
+                      {p.existing_loans_max_roi ? ` · Highest ROI ${p.existing_loans_max_roi}%` : ''}
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-400 text-left">
+                          <th className="py-1 pr-3 font-medium">Bank</th>
+                          <th className="py-1 pr-3 font-medium">Type</th>
+                          <th className="py-1 pr-3 font-medium">Amount</th>
+                          <th className="py-1 pr-3 font-medium">Sanctioned</th>
+                          <th className="py-1 pr-3 font-medium">Outstanding</th>
+                          <th className="py-1 pr-3 font-medium">ROI</th>
+                          <th className="py-1 font-medium">EMI</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(p.existing_loans || []).map((loan, i) => (
+                          <tr key={i} className="border-t border-slate-100 text-slate-700">
+                            <td className="py-1 pr-3">{loan.bank || '—'}</td>
+                            <td className="py-1 pr-3">{loan.loan_type || '—'}</td>
+                            <td className="py-1 pr-3">{loan.loan_amount ? `₹${Number(loan.loan_amount).toLocaleString()}` : '—'}</td>
+                            <td className="py-1 pr-3">{loan.sanction_date || '—'}</td>
+                            <td className="py-1 pr-3">{loan.outstanding ? `₹${Number(loan.outstanding).toLocaleString()}` : '—'}</td>
+                            <td className="py-1 pr-3">{loan.roi ? `${loan.roi}%` : '—'}</td>
+                            <td className="py-1">{loan.emi ? `₹${Number(loan.emi).toLocaleString()}` : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 

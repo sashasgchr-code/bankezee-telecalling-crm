@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
+import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
 
 // Format currency
 const formatCurrency = (amount) => {
@@ -155,6 +156,7 @@ const FileDetailsPage = () => {
         existing_loan_1: fd.existing_loan_1 || '',
         existing_loan_2: fd.existing_loan_2 || '',
         existing_loan_3: fd.existing_loan_3 || '',
+        existing_loans: Array.isArray(fd.existing_loans) ? fd.existing_loans : [],
         type_of_loan: fd.type_of_loan || data.requirement || '',
         cibil_score: fd.cibil_score || '',
         loan_amount_required: fd.loan_amount_required || '',
@@ -533,7 +535,7 @@ const FileDetailsPage = () => {
               {/* Existing Loans & Obligations */}
               <div className="mb-6 pt-4 border-t border-gray-100">
                 <h3 className="text-sm font-semibold text-green-600 mb-3">Existing Loans & Obligations</h3>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">Monthly EMI Obligations (₹)</label>
                     {isEditingDetails ? (
@@ -547,47 +549,13 @@ const FileDetailsPage = () => {
                       <p className="font-medium text-gray-900">{fd.monthly_emi_obligations || fd.obligations_emi || '0'}</p>
                     )}
                   </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Existing Loan 1</label>
-                    {isEditingDetails ? (
-                      <input
-                        type="text"
-                        value={editedDetails.existing_loan_1}
-                        onChange={(e) => setEditedDetails({...editedDetails, existing_loan_1: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                        placeholder="e.g., SBI 14839 emi pl"
-                      />
-                    ) : (
-                      <p className="font-medium text-gray-900">{fd.existing_loan_1 || '-'}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Existing Loan 2</label>
-                    {isEditingDetails ? (
-                      <input
-                        type="text"
-                        value={editedDetails.existing_loan_2}
-                        onChange={(e) => setEditedDetails({...editedDetails, existing_loan_2: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                      />
-                    ) : (
-                      <p className="font-medium text-gray-900">{fd.existing_loan_2 || '-'}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Existing Loan 3</label>
-                    {isEditingDetails ? (
-                      <input
-                        type="text"
-                        value={editedDetails.existing_loan_3}
-                        onChange={(e) => setEditedDetails({...editedDetails, existing_loan_3: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
-                      />
-                    ) : (
-                      <p className="font-medium text-gray-900">{fd.existing_loan_3 || '-'}</p>
-                    )}
-                  </div>
                 </div>
+                <ExistingLoansEditor
+                  loans={editedDetails.existing_loans}
+                  legacyLoans={[fd.existing_loan_1, fd.existing_loan_2, fd.existing_loan_3]}
+                  isEditing={isEditingDetails}
+                  onChange={(loans) => setEditedDetails({...editedDetails, existing_loans: loans})}
+                />
               </div>
 
               {/* Loan Requirements */}

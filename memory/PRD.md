@@ -949,3 +949,32 @@ to be applied only AFTER this build is published and verified in production.
   Admin Data (/admin/leads), so both lists get it from the one component.
 - Verified in preview: GP Nithin /agent/leads -> 15 WhatsApp + 15 Call buttons; lead detail opens
   `https://api.whatsapp.com/send/?phone=919705380465&text=Hi+Domala+naveen+kumar...`.
+
+## STRUCTURED EXISTING LOANS (up to 5) + ELIGIBILITY INPUT (September 4, 2026) — Preview, verified
+
+Replaced the three free-text "Existing Loan 1/2/3" boxes in File Details with a structured,
+repeatable loan block (max 5): **Bank/Lender · Type of Loan · Loan Amount · Sanction Date ·
+Outstanding · ROI % · EMI**, with "Add Loan" (hidden at 5) and per-row delete.
+- NEW `components/file-detail/ExistingLoansEditor.js` (`data-testid="existing-loans-editor"`,
+  `add-existing-loan-btn`, `existing-loan-{n}-{field}`, `remove-existing-loan-{n}`).
+  Shows live Total EMI / Total Outstanding; read-only view renders formatted values.
+- Stored as `file_details.existing_loans` (array) via the existing
+  `PUT /api/files/{id}/details` -> `additional_data` merge. Legacy `existing_loan_1..3` strings are
+  never deleted - they render as "Legacy CRM notes (read-only)".
+- NOTE: `components/file-detail/ExistingLoansSection.js` was dead code (never imported by the live
+  page) - left untouched.
+
+Eligibility calculator now consumes the loan book (`routes/bank_policies.py`):
+- `summarize_existing_loans()` rolls up count, unsecured count, total EMI / outstanding /
+  sanctioned, highest ROI, high-cost (ROI >= 20%) count.
+- Obligations: `existing_emi = max(sum of loan EMIs, declared obligations_emi)`, so FOIR and
+  profile strength follow the real loan book. `emi_source` reports "Existing Loans (N)".
+- New per-bank rules (source = "Existing Loans"): BT count vs `max_bt_count` (FAIL when exceeded,
+  PASS when within), WARN when `bt_allowed` is false, WARN on high-cost/app-loan takeover when
+  `app_loan_bt` is false, WARN when total outstanding exceeds the requested amount.
+- `profile` now returns `existing_loans_count/_emi/_outstanding/_max_roi/existing_loans`, rendered
+  as a loan table in `EligibilityCheck.js` (`data-testid="eligibility-existing-loans"`).
+- Verified on preview file 6d194952: 2 loans -> EMI 13,000 / outstanding 2,40,000 / max ROI 36%,
+  51 existing-loan-driven rule hits; 5 loans with 4 unsecured -> `emi_source="Existing Loans (5)"`,
+  FOIR 28.7, and 5 banks FAIL on BT count (HDFC max 2, IDFC max 3, Kotak max 2...).
+  UI: add 2 loans -> save -> reload shows both rows, totals and legacy note. Test data removed.
