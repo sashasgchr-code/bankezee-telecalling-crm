@@ -23,3 +23,9 @@
 - FIX A (indexes, server.py background startup): added leads.id, leads.source_id, leads.file_created_at, leads.lead_created_at, leads.updated_at, (status,source_id); verified_call_logs (user_id,call_timestamp) + call_timestamp. Critical: leads.id (Call Log $lookup joined on it → collection scan per call).
 - FIX B (Call Log /reports/detailed-calls rewrite): removed the per-row $lookup over up to 25000 rows. Now: totals via cheap count/sum aggregations over full dataset; fetch only page*page_size rows (no lookup); attach lead/customer fields with ONE batched leads query for the current page only. Server-side pagination preserved.
 - Verified in preview: Call Log returns rows + correct totals; dashboard/telecallers/hourly/daily-tracking all 200.
+
+## 2026-09-04 (d) — Daily Tracking dropdown = Call Log filter (final web fix)
+- Issue: Daily Tracking "Select Growth Partner" applied a client-side dedup-by-email that picked a different (CRM-duplicate) user record for some GPs (e.g., Nagulapally Pinky -> akshaya03302023), whose id had no tracking data => "Select an agent" blank sheet.
+- Fix (frontend only, DailyTrackingSheet.js): dropdown now uses the RAW /users/growth-partners list exactly like the Call Log filter (Reports.js), no client-side dedup. Selected GP id now matches a record with tracking data. Nothing else changed.
+- Note: "Compiled with problems" preview overlay is an internal visual-edits dev babel plugin error on BankEligibilityRow.js (pre-existing, dev-only, not touched); production build compiles/deploys fine.
+- Requires a Republish to take effect on connect.bankezee.com.
