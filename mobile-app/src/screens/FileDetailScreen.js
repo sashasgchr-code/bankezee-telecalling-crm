@@ -55,6 +55,15 @@ const LOAN_TYPES = [
   { value: 'balance_transfer', label: 'Balance Transfer' },
 ];
 
+// Structured existing-loans editor (matches the web app's existing_loans array)
+const EXISTING_LOAN_TYPES = [
+  'Personal Loan', 'Home Loan', 'Car Loan', 'Two Wheeler Loan', 'Education Loan',
+  'Business Loan', 'Credit Card', 'Overdraft', 'Loan Against Property', 'Gold Loan', 'Other'
+];
+const EMPTY_EXISTING_LOAN = { bank: '', loan_type: '', loan_amount: '', sanction_date: '', outstanding: '', roi: '', emi: '' };
+const loanNum = (v) => (v === '' || v === null || v === undefined || isNaN(Number(v)) ? 0 : Number(v));
+const loanMoney = (v) => (loanNum(v) ? `₹${loanNum(v).toLocaleString('en-IN')}` : '-');
+
 const FileDetailScreen = ({ route, navigation }) => {
   const { fileId } = route.params;
   const [file, setFile] = useState(null);
@@ -86,6 +95,7 @@ const FileDetailScreen = ({ route, navigation }) => {
     loan_amount_required: '',
     tenure_required: '',
   });
+  const [existingLoans, setExistingLoans] = useState([]);
 
   useEffect(() => {
     loadFileDetails();
@@ -120,6 +130,7 @@ const FileDetailScreen = ({ route, navigation }) => {
         loan_amount_required: fd.loan_amount_required?.toString() || '',
         tenure_required: fd.tenure_required?.toString() || '',
       });
+      setExistingLoans(Array.isArray(fd.existing_loans) ? fd.existing_loans : []);
     } catch (error) {
       console.error('Error loading file:', error);
       Alert.alert('Error', 'Failed to load file details');
@@ -155,6 +166,7 @@ const FileDetailScreen = ({ route, navigation }) => {
           existing_loan_1: details.existing_loan_1,
           existing_loan_2: details.existing_loan_2,
           existing_loan_3: details.existing_loan_3,
+          existing_loans: existingLoans,
           type_of_loan: details.type_of_loan,
           cibil_score: details.cibil_score,
           loan_amount_required: details.loan_amount_required,
@@ -208,6 +220,12 @@ const FileDetailScreen = ({ route, navigation }) => {
       Alert.alert('Error', 'Failed to add note');
     }
   };
+
+  const setLoanField = (index, key, value) => {
+    setExistingLoans(prev => prev.map((l, i) => (i === index ? { ...l, [key]: value } : l)));
+  };
+  const addLoan = () => setExistingLoans(prev => [...prev, { ...EMPTY_EXISTING_LOAN }]);
+  const removeLoan = (index) => setExistingLoans(prev => prev.filter((_, i) => i !== index));
 
   const renderField = (label, field, keyboardType = 'default', multiline = false) => (
     <View style={styles.fieldContainer}>
@@ -318,11 +336,81 @@ const FileDetailScreen = ({ route, navigation }) => {
 
           {/* Existing Loans */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📊 Existing Loans</Text>
+            <View style={styles.loansHeader}>
+              <Text style={styles.sectionTitle}>📊 Existing Loans ({existingLoans.length})</Text>
+              {isEditing && (
+                <TouchableOpacity onPress={addLoan} style={styles.addLoanBtn} data-testid="add-existing-loan-btn">
+                  <Text style={styles.addLoanText}>+ Add Loan</Text>
+                </TouchableOpacity>
+              )}
+            </View>
             {renderField('Monthly EMI (₹)', 'obligations_emi', 'numeric')}
-            {renderField('Existing Loan 1', 'existing_loan_1')}
-            {renderField('Existing Loan 2', 'existing_loan_2')}
-            {renderField('Existing Loan 3', 'existing_loan_3')}
+            {existingLoans.length > 0 && (
+              <Text style={styles.loansSummary}>
+                Total EMI {loanMoney(existingLoans.reduce((s, l) => s + loanNum(l.emi), 0))} · Total Outstanding {loanMoney(existingLoans.reduce((s, l) => s + loanNum(l.outstanding), 0))}
+              </Text>
+            )}
+            {existingLoans.length === 0 && !isEditing && (
+              <Text style={styles.noLoansText}>No existing loans recorded</Text>
+            )}
+            {existingLoans.map((loan, index) => (
+              <View key={index} style={styles.loanCard}>
+                <View style={styles.loanCardHeader}>
+                  <Text style={styles.loanCardTitle}>Loan {index + 1}</Text>
+                  {isEditing && (
+                    <TouchableOpacity onPress={() => removeLoan(index)}>
+                      <Text style={styles.removeLoanText}>🗑 Remove</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Bank / Lender</Text>
+                  {isEditing ? (
+                    <TextInput style={styles.input} value={loan.bank || ''} onChangeText={(t) => setLoanField(index, 'bank', t)} placeholder="e.g., HDFC Bank" placeholderTextColor="#9CA3AF" />
+                  ) : (<Text style={styles.fieldValue}>{loan.bank || '-'}</Text>)}
+                </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Type of Loan</Text>
+                  {isEditing ? (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.selectContainer}>
+                      {EXISTING_LOAN_TYPES.map(opt => (
+                        <TouchableOpacity key={opt} style={[styles.selectOption, loan.loan_type === opt && styles.selectOptionActive]} onPress={() => setLoanField(index, 'loan_type', opt)}>
+                          <Text style={[styles.selectOptionText, loan.loan_type === opt && styles.selectOptionTextActive]}>{opt}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  ) : (<Text style={styles.fieldValue}>{loan.loan_type || '-'}</Text>)}
+                </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Loan Amount (₹)</Text>
+                  {isEditing ? (<TextInput style={styles.input} value={String(loan.loan_amount || '')} onChangeText={(t) => setLoanField(index, 'loan_amount', t)} keyboardType="numeric" placeholderTextColor="#9CA3AF" />) : (<Text style={styles.fieldValue}>{loanMoney(loan.loan_amount)}</Text>)}
+                </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Sanction Date</Text>
+                  {isEditing ? (<TextInput style={styles.input} value={loan.sanction_date || ''} onChangeText={(t) => setLoanField(index, 'sanction_date', t)} placeholder="YYYY-MM-DD" placeholderTextColor="#9CA3AF" />) : (<Text style={styles.fieldValue}>{loan.sanction_date || '-'}</Text>)}
+                </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>Outstanding (₹)</Text>
+                  {isEditing ? (<TextInput style={styles.input} value={String(loan.outstanding || '')} onChangeText={(t) => setLoanField(index, 'outstanding', t)} keyboardType="numeric" placeholderTextColor="#9CA3AF" />) : (<Text style={styles.fieldValue}>{loanMoney(loan.outstanding)}</Text>)}
+                </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>ROI (%)</Text>
+                  {isEditing ? (<TextInput style={styles.input} value={String(loan.roi || '')} onChangeText={(t) => setLoanField(index, 'roi', t)} keyboardType="numeric" placeholderTextColor="#9CA3AF" />) : (<Text style={styles.fieldValue}>{loan.roi ? `${loan.roi}%` : '-'}</Text>)}
+                </View>
+                <View style={styles.fieldContainer}>
+                  <Text style={styles.fieldLabel}>EMI (₹)</Text>
+                  {isEditing ? (<TextInput style={styles.input} value={String(loan.emi || '')} onChangeText={(t) => setLoanField(index, 'emi', t)} keyboardType="numeric" placeholderTextColor="#9CA3AF" />) : (<Text style={styles.fieldValue}>{loanMoney(loan.emi)}</Text>)}
+                </View>
+              </View>
+            ))}
+            {[details.existing_loan_1, details.existing_loan_2, details.existing_loan_3].filter(Boolean).length > 0 && (
+              <View style={styles.legacyBox}>
+                <Text style={styles.legacyTitle}>Legacy CRM notes (read-only)</Text>
+                {[details.existing_loan_1, details.existing_loan_2, details.existing_loan_3].filter(Boolean).map((t, i) => (
+                  <Text key={i} style={styles.legacyText}>• {t}</Text>
+                ))}
+              </View>
+            )}
           </View>
 
           {/* Loan Requirements */}
@@ -521,6 +609,76 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#16a34a',
     marginBottom: 16,
+  },
+  loansHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  addLoanBtn: {
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  addLoanText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  loansSummary: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  noLoansText: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    fontStyle: 'italic',
+  },
+  loanCard: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+  },
+  loanCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  loanCardTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  removeLoanText: {
+    fontSize: 13,
+    color: '#ef4444',
+    fontWeight: '600',
+  },
+  legacyBox: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 10,
+    padding: 12,
+    marginTop: 4,
+  },
+  legacyTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#b45309',
+    marginBottom: 4,
+  },
+  legacyText: {
+    fontSize: 13,
+    color: '#374151',
   },
   fieldContainer: {
     marginBottom: 16,

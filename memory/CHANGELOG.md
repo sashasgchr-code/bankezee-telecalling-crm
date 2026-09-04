@@ -29,3 +29,7 @@
 - Fix (frontend only, DailyTrackingSheet.js): dropdown now uses the RAW /users/growth-partners list exactly like the Call Log filter (Reports.js), no client-side dedup. Selected GP id now matches a record with tracking data. Nothing else changed.
 - Note: "Compiled with problems" preview overlay is an internal visual-edits dev babel plugin error on BankEligibilityRow.js (pre-existing, dev-only, not touched); production build compiles/deploys fine.
 - Requires a Republish to take effect on connect.bankezee.com.
+
+## 2026-09-04 (e) — Mobile APK: structured unlimited Existing Loans editor
+- mobile-app FileDetailScreen.js: replaced the 3 fixed loan text fields with the web-parity structured existing_loans array editor (bank, loan_type, loan_amount, sanction_date, outstanding, roi, emi), unlimited Add/Remove, totals, legacy loans read-only. Wired into load + save (additional_data.existing_loans). Babel parse OK.
+- app.json already at version 2.4.1 / versionCode 13 (APK profile, production backend) — folds this change in; no rebuild bump needed as no APK was built yet.
