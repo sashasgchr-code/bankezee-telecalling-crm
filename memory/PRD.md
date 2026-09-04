@@ -1298,3 +1298,61 @@ ONLY and are excluded from the proposed update, because Connect already recalcul
 same old-CRM formula (importing the old values would freeze stale scores).
 
 STOPPED HERE as instructed - no import, no file creation, no database write. Awaiting approval.
+
+---
+
+## OLD CRM DATA MIGRATION EXECUTED ON PREVIEW (September 4, 2026) — PASS WITH DOCUMENTED EXCLUSIONS
+
+Scripts: `/app/scripts/crm_migration_apply.py` (dry-run default, `--apply` writes),
+`crm_migration_metrics.py`, `crm_migration_reconcile.py`, `crm_migration_spotcheck.py`.
+Source: `/app/memory/crm_migration_export.json` (454 old-CRM files, 1728 eligibility rows).
+Backup taken first: `/app/memory/leads_backup_pre_migration.json` = 518 records = 518 live leads.
+Audit (per-file before/after): `/app/memory/crm_migration_audit.json`.
+
+### Matching defect found and fixed BEFORE writing
+The approved dry run used `legacy_crm_id` as a match key. 73 Connect files carry a
+`legacy_crm_id` that belongs to a DIFFERENT export record, so records resolved to the WRONG
+document (it proposed 372 row inserts vs the correct 224). Matching now uses the file's own
+`id`/`_id`, then mobile+name -> mobile -> email; name-only is never used.
+Result: 446 matched, 0 unmatched, 8 ambiguous.
+
+### Applied (preview `test_database`)
+446 processed · 146 updated · 300 already identical · 0 failed · 0 new files · 0 deletes ·
+224 eligibility rows appended · 8 skipped (ambiguous) · 7 files flagged (duplicate bank names,
+rows left untouched) · 11 status conflicts where the newer Connect status was KEPT.
+Re-run is a no-op (0 updates) -> idempotent. Star fields never imported, no commission
+recomputation, no new timestamps, `file_activities` untouched.
+
+| metric | OLD CRM export | Connect BEFORE | EXPECTED | Connect AFTER | match |
+|---|---|---|---|---|---|
+| Files | 454 | 446 | 446 | 446 | YES |
+| Files with eligibilities | 376 | 369 | 369 | 369 | YES |
+| Eligibility rows | 1728 | 1230 | 1454 | 1454 | YES |
+| Files with logins | 287 | 251 | 284 | 284 | YES |
+| Files with approvals | 97 | 86 | 97 | 97 | YES |
+| Total approved | Rs 11,85,12,089 | Rs 10,64,75,455 | Rs 11,76,88,464 | Rs 11,76,88,464 | YES |
+| Files with disbursals | 79 | 69 | 78 | 78 | YES |
+| Total disbursed | Rs 10,24,74,557 | Rs 9,13,57,790 | Rs 10,09,50,932 | Rs 10,09,50,932 | YES |
+
+Residual gap is 100% attributable to the intentional exclusions: 8 ambiguous duplicate old-CRM
+records (31 rows, 0 approvals, 0 disbursals) and 13 duplicate-bank rows on 7 flagged files - the
+only file with an amount delta is Neelam upendhra (approved 8,23,625 / disbursed 15,23,625,
+duplicate IDFC rows). 0 per-field mismatches vs the expected merge.
+The 8 ambiguous pairs are documented in `/app/memory/crm_migration_ambiguous_8.md` for a
+per-case decision by the user.
+
+### Verification
+- `crm_migration_reconcile.py`: 0 per-field mismatches -> PASS WITH DOCUMENTED EXCLUSIONS
+- `crm_migration_spotcheck.py`: 10 files (disbursed x2, approved x2, declined x2, login x2,
+  eligibility-only, multi-bank) -> PASS
+- testing agent iteration_46 (File Details UI): 8/8 PASS - renders, all migrated fields/timestamps
+  visible, numeric typing keeps focus, per-bank Save and Save All persist without data loss, no
+  ObjectId/NaN/serialization crash, dashboard fine
+- Commission integrity: 83 stored commission rows, 0 differ from disbursed x pct/100 (the UI
+  computes this value, so no display divergence on this dataset)
+
+### NOT done (user instruction)
+Production migration (awaiting user go-ahead + prod MONGO_URL), bank-name cleanup, publish/mobile
+build, and the 8 ambiguous cases.
+
+*Last Updated: September 4, 2026*

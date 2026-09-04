@@ -1,0 +1,25 @@
+{
+ "label": "after",
+ "export": {
+  "files": 454,
+  "with_elig": 376,
+  "elig_rows": 1728,
+  "with_login": 287,
+  "with_appr": 97,
+  "with_disb": 79,
+  "approved": 118512089.0,
+  "disbursed": 102474557.0
+ },
+ "connect": {
+  "files": 511,
+  "with_elig": 394,
+  "elig_rows": 1500,
+  "with_login": 300,
+  "with_appr": 105,
+  "with_disb": 85,
+  "approved": 128266701.0,
+  "disbursed": 111229169.0
+ },
+ "connect_docs_found": 511,
+ "total_leads": 518
+}

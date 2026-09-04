@@ -1,0 +1,67 @@
+{
+  "summary": "Frontend-only regression for migrated Old-CRM operational data on File Details UI. All 8 review items PASSED. Login as admin, verified 3 target files render fully with all migrated bank eligibility fields, timestamps, application IDs, declined reasons, approved/disbursed amounts and computed commission. Focus preservation during multi-digit typing on KOTAK verified. Per-bank Save + full-page reload persists edits and leaves every other migrated field intact. Save All on file1 with no edits preserves all migrated values byte-for-byte. Edited KOTAK value was restored to original (300000) so migrated dataset stays faithful.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "detailed_results": {
+    "dashboard_/admin/files": "PASS - page renders, no crash",
+    "file1_f5f434d8_APPROVED_DISBURSED": {
+      "customer_Thotapola_jagadeesh": "PASS",
+      "bank_row_count_5": "PASS",
+      "ICICI_approved_amount_1200000": "PASS",
+      "ICICI_disbursed_amount_1200000": "PASS",
+      "ICICI_commission_amount_12000_readonly": "PASS (computed from 1200000*1% = 12000)",
+      "ICICI_application_id_US0003433728": "PASS",
+      "ICICI_login_done_yes_approval_approved_disbursed_yes": "PASS",
+      "historical_timestamps_shown": "PASS (logged on / approved on / disbursed on visible)",
+      "no_NaN_Infinity_ObjectId_serialization_errors": "PASS",
+      "no_500_from_details_api": "PASS (no /api/files/.../details 4xx or 5xx captured)"
+    },
+    "file2_41b8689a_MIX": {
+      "customer_Lonavath_Kishan": "PASS",
+      "bank_row_count_7": "PASS",
+      "HDFC_declined_long_reason": "PASS (66-char reason 'rejected due to ext cc bad repayment with high dpd... 90-110% HIGH RISK PROFILE')",
+      "HDFC_rejected_at_timestamp_visible": "PASS ('rejected on' stamp present)",
+      "ICICI_approved_1300000_disbursed_1300000": "PASS",
+      "ICICI_commission_12870": "PASS (1300000 * 0.99% = 12870)"
+    },
+    "file3_d7c961d2_LOGIN_DECLINED": {
+      "customer_Patamata_Vijay": "PASS",
+      "bank_row_count_7": "PASS",
+      "AXIS_BANK_login_done_yes": "PASS",
+      "AXIS_BANK_declined_reason_SECURED_LIVE_LOANS_90_DAYS_DPDS": "PASS",
+      "AXIS_BANK_login_done_at_and_rejected_at_stamps": "PASS"
+    },
+    "per_bank_save_focus_and_persistence_file3_KOTAK": {
+      "typed_multi_digit_987654_char_by_char": "PASS",
+      "focus_NOT_lost_after_each_keystroke": "PASS (document.activeElement still on the KOTAK eligible_amount input after typing 6 digits)",
+      "value_persisted_after_full_reload": "PASS (reloaded page still shows 987654)",
+      "other_migrated_fields_intact_after_save": "PASS (AXIS BANK declined_reason still 'SECURED LIVE LOANS 90 DAYS DPDS', 7 bank rows still present)",
+      "restored_to_original_300000": "PASS"
+    },
+    "save_all_no_edit_file1": {
+      "before_ICICI_snapshot": "approved=1200000, disbursed=1200000, commission=12000, appid=US0003433728, commission_pct=1",
+      "after_ICICI_snapshot_after_reload": "approved=1200000, disbursed=1200000, commission=12000, appid=US0003433728, commission_pct=1",
+      "identical_no_data_loss": "PASS - migrated data untouched by Save All"
+    },
+    "connect_only_fields_survive": "PASS - customer name, employment details, star rating, current status ('disbursed' badge on file1, 'rejected' on file3) all render after saves"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "commission_amount is stored in DB (migrated 12000/12870) but the input is bound to commissionAmount(bank) which recomputes from disbursed_amount * commission_percentage. This coincidentally matches the migrated numbers because commission_percentage was set to 1 and 0.99 respectively. If any migrated file has a stored commission_amount that does NOT equal disbursed_amount*commission_percentage/100 (e.g. rounded or manually adjusted in old CRM), the UI will silently display a DIFFERENT number than what is stored. Recommend either (a) render stored value if present else compute, or (b) reconcile the two on migration so they always agree. Not a regression from this migration run, but worth flagging.",
+    "Hydration warnings appear in console ('In HTML, <span> cannot be a child of <select>/<option>') - these are caused by the Emergent VE editor overlay injecting <span data-ve-dynamic> wrappers, NOT application code. Harmless in preview but noisy.",
+    "Non-blocking: Save All button on FileDetailsPage.js line 858 has no data-testid; consider adding save-eligibilities-btn as the description mentions."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped as instructed)", "frontend": "100% (8/8 review items PASS)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None. KOTAK eligible_amount on file3 was temporarily changed 300000 -> 987654 -> restored to 300000. Migrated dataset is unchanged.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Migration UI regression passed cleanly. If retesting, note that (a) file1 has 5 banks, file2 has 7, file3 has 7 (bank_names on file3 in order: HDFC BANK, ICICI, AXIS BANK, IDFC, KOTAK, AXIS FINANCE, POONAWALA), (b) commission_amount field is READ-ONLY and computed client-side from disbursed_amount * commission_percentage / 100, (c) after Save All the eligibilities array is fully rewritten server-side but values are preserved verbatim.",
+  "rca of the issue": "No issues found."
+}
