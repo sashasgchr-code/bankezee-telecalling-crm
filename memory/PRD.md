@@ -1038,3 +1038,36 @@ REPORTS
   marked safe to delete). Run against production with
   `MONGO_URL=<prod> DB_NAME=<prod> python3 scripts/user_mgmt_report.py`.
 - NO production data was modified. No merge/delete executed anywhere.
+
+## FINAL USER MANAGEMENT ACCEPTANCE (September 4, 2026) — 12/12 PASS on preview
+
+New suite `/app/scripts/user_mgmt_acceptance.py` (fixtures created + deleted, no production data
+touched) covers the user's exact 12 acceptance lines; all PASS:
+one row per person · manager filter switching (A->B->A->B->clear x3 rounds + 10 rapid switches) ·
+exact-account deactivate/activate/edit/delete (each reporting account_key + matched/deleted_count=1) ·
+Manager & TL assignment persistence · Connect login unaffected · historical alias ownership
+unaffected · no false 0-user loads (10/10) · performance (list 0.16-0.35s, filter 0.11-0.20s, UI
+first render 2.1s - the old 1-2 minute load is gone).
+
+Two extra fixes made during this acceptance run:
+1. **Login hardening** (`routes/auth.py`) - `find_one({"email": ...})` could return the DORMANT
+   legacy document when two documents share an email (KeyError on the missing `password`, or a
+   bogus "Account is deactivated"). Login now fetches all case-insensitive email matches,
+   authenticates against the document whose stored credential actually verifies the password and
+   prefers the active one. Proven: fixture Connect login always lands on the Connect `_id`, even
+   after the legacy sibling is deactivated; admin/manager/GP logins unaffected.
+   (integration_expert consulted before touching auth, per policy.)
+2. **Edit Role & Hierarchy modal** showed "Unassigned" / "No Team Lead" for anyone whose parent is
+   an acting manager (e.g. Asma -> Gujjari Sai kiran, a telecaller acting as sub-manager) because
+   the dropdown only listed role=manager accounts, and `fetchTeamLeads` cleared a valid tl_id on
+   load. The modal now injects the current Manager/TL as an option ("- current (acting)") with an
+   explanatory note, and no longer wipes tl_id on load. Verified: reopening Edit twice shows
+   "Gujjari Sai kiran - current (acting)" and "Yarragonda Anusha - current".
+
+Read-only duplicate report regenerated: `/app/memory/user_mgmt_duplicates_report.md`
+(1 duplicated person in this dataset - Asma Sultana; her dormant legacy doc owns 0 leads/files/calls
+and is marked SAFE TO DELETE in the DRY RUN only). Production run requires the prod connection:
+`MONGO_URL=<prod-uri> DB_NAME=<prod-db> python3 scripts/user_mgmt_report.py`.
+
+Regression after these fixes: user_mgmt_gate 28/28, verify_hierarchy 34/34, track_report_gate 15/15,
+acceptance_matrix 30/30. NO cleanup, NO merge, NO production writes performed.

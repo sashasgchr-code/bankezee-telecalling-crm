@@ -4,6 +4,7 @@ Authentication routes
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 from bson import ObjectId
+import re
 import uuid
 
 from models.schemas import UserRegister, UserLogin, ChangePassword
@@ -148,12 +149,25 @@ async def register(user: UserRegister):
 
 @router.post("/login")
 async def login(credentials: UserLogin):
-    user = await db.users.find_one({"email": credentials.email.lower()})
-    if not user:
+    # A person can own several documents with the same email (legacy CRM import + current Connect
+    # account). Authenticate against the account whose stored credential actually verifies the
+    # supplied password, preferring the active one, so a dormant legacy document can never be
+    # selected. Email is matched case-insensitively because legacy imports vary in letter case.
+    email = credentials.email.strip().lower()
+    candidates = await db.users.find(
+        {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
+    ).to_list(20)
+    if not candidates:
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    if not verify_password(credentials.password, user["password"]):
+
+    verified = [
+        doc for doc in candidates
+        if doc.get("password") and verify_password(credentials.password, doc["password"])
+    ]
+    if not verified:
         raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    user = next((doc for doc in verified if doc.get("is_active", True)), verified[0])
     
     if not user.get("is_active", True):
         # Check if pending approval

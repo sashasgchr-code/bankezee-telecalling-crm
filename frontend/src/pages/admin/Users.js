@@ -131,12 +131,8 @@ const AdminUsers = () => {
       const response = await api.get(url);
       const leads = response.data || [];
       setTeamLeads(leads);
-      // Clear a stale TL selection that does not belong under the newly selected Manager
-      setRoleEditData(prev => (
-        prev.tl_id && !leads.some(tl => tl.id === prev.tl_id)
-          ? { ...prev, tl_id: null }
-          : prev
-      ));
+      // No stale-clearing here: changing the Manager already resets tl_id in the select's
+      // onChange. Clearing on load would wipe a valid TL whose manager is an acting manager.
     } catch (error) {
       console.error('Error fetching team leads:', error);
     }
@@ -435,6 +431,28 @@ const AdminUsers = () => {
   };
 
   const isGpRole = (role) => GP_ROLES.includes(role);
+
+  // The Edit modal must always show the user's CURRENT manager/TL, even when that parent is not a
+  // role=manager / flagged-TL account (legacy hierarchies have acting managers). Otherwise the
+  // dropdown silently reads "Unassigned" and the real assignment looks lost.
+  const managerOptions = (() => {
+    const list = managers.filter(m => m.id);
+    const current = roleEditData.manager_id;
+    if (current && !list.some(m => m.id === current)) {
+      return [...list, { id: current, name: selectedUser?.manager_name || 'Current manager', acting: true }];
+    }
+    return list;
+  })();
+  const currentManagerIsActing = managerOptions.some(m => m.acting);
+
+  const tlOptions = (() => {
+    const list = teamLeads.filter(tl => tl.id);
+    const current = roleEditData.tl_id;
+    if (current && !list.some(tl => tl.id === current)) {
+      return [...list, { id: current, name: selectedUser?.tl_name || 'Current Team Lead', acting: true }];
+    }
+    return list;
+  })();
 
   // Filter users based on tab and search
   const pendingUsers = users.filter(u => u.approval_status === 'pending');
@@ -1233,10 +1251,18 @@ const AdminUsers = () => {
                 className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
               >
                 <option value="">Unassigned</option>
-                {managers.filter(m => m.id).map(manager => (
-                  <option key={manager.id} value={manager.id}>{manager.name} ({manager.email?.split('@')[0]})</option>
+                {managerOptions.map(manager => (
+                  <option key={manager.id} value={manager.id}>
+                    {manager.name}{manager.email ? ` (${manager.email.split('@')[0]})` : ''}{manager.acting ? ' - current (acting)' : ''}
+                  </option>
                 ))}
               </select>
+              {currentManagerIsActing && (
+                <p className="text-xs text-amber-600 mt-1">
+                  This user reports to {selectedUser?.manager_name}, who is not a Manager-role account.
+                  Kept as-is unless you pick a different Manager.
+                </p>
+              )}
             </div>
 
             {/* TL Assignment (only for GPs, not TLs themselves) */}
@@ -1250,14 +1276,16 @@ const AdminUsers = () => {
                   disabled={!roleEditData.manager_id}
                 >
                   <option value="">No Team Lead (Direct to Manager)</option>
-                  {teamLeads.filter(tl => tl.id).map(tl => (
-                    <option key={tl.id} value={tl.id}>{tl.name} ({tl.email?.split('@')[0] || ''})</option>
+                  {tlOptions.map(tl => (
+                    <option key={tl.id} value={tl.id}>
+                      {tl.name}{tl.email ? ` (${tl.email.split('@')[0]})` : ''}{tl.acting ? ' - current' : ''}
+                    </option>
                   ))}
                 </select>
                 {!roleEditData.manager_id && (
                   <p className="text-xs text-amber-600 mt-1">Select a manager first to see available Team Leads</p>
                 )}
-                {roleEditData.manager_id && teamLeads.filter(tl => tl.id).length === 0 && (
+                {roleEditData.manager_id && tlOptions.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">No Team Leads available under this manager</p>
                 )}
               </div>
