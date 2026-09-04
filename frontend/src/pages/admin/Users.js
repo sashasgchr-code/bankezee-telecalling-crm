@@ -44,6 +44,7 @@ const AdminUsers = () => {
   const [managers, setManagers] = useState([]);
   const [teamLeads, setTeamLeads] = useState([]);
   const [loadError, setLoadError] = useState('');
+  const [rosterCounts, setRosterCounts] = useState({ active: 0, inactive: 0 });
   const usersRequestRef = useRef(0);
   const [hierarchyStats, setHierarchyStats] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,13 +78,28 @@ const AdminUsers = () => {
   const [showPassword, setShowPassword] = useState({});
   const pageSize = 15;
 
-  const fetchUsers = async () => {
+  // Every filter change is a fresh server query; only the newest response may render.
+  const fetchUsers = async (filters = {}) => {
     const requestId = ++usersRequestRef.current;
     try {
-      const response = await api.get('/users');
+      const params = new URLSearchParams();
+      if (filters.role === 'team_lead') params.set('role', 'team_lead');
+      else if (filters.role) params.set('role', filters.role);
+      if (filters.manager_id) params.set('manager_id', filters.manager_id);
+      if (filters.status === 'active') params.set('is_active', 'true');
+      if (filters.status === 'inactive') params.set('is_active', 'false');
+      const query = params.toString();
+      const response = await api.get(query ? `/users?${query}` : '/users');
       // Ignore a stale response that a newer request has already superseded
       if (requestId !== usersRequestRef.current) return;
       setUsers(response.data);
+      if (!filters.status) {
+        const roster = response.data.filter(u => u.approval_status !== 'pending' || u.is_active);
+        setRosterCounts({
+          active: roster.filter(u => u.is_active).length,
+          inactive: roster.filter(u => !u.is_active).length,
+        });
+      }
       setLoadError('');
     } catch (error) {
       if (requestId !== usersRequestRef.current) return;
@@ -136,11 +152,26 @@ const AdminUsers = () => {
   };
 
   useEffect(() => {
-    fetchUsers();
     fetchManagers();
     fetchTeamLeads();
     fetchHierarchyStats();
   }, []);
+
+  // Filters are resolved by the backend (manager matching is alias-aware), so each change
+  // replaces the result set instead of filtering the previous one. Page resets to 1.
+  const activeFilters = activeTab === 'approvals'
+    ? {}
+    : { role: filterRole, manager_id: filterManager, status: filterStatus };
+
+  useEffect(() => {
+    setCurrentPage(1);
+    fetchUsers(activeTab === 'approvals'
+      ? {}
+      : { role: filterRole, manager_id: filterManager, status: filterStatus });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterRole, filterManager, filterStatus, activeTab]);
+
+  const reloadUsers = () => fetchUsers(activeFilters);
 
   // When manager changes in edit modal, fetch relevant TLs
   // Only trigger when modal is open to avoid overwriting during initial load
@@ -173,7 +204,7 @@ const AdminUsers = () => {
       await api.post('/users', newUser);
       setShowAddModal(false);
       setNewUser({ name: '', email: '', password: '', role: 'growth_partner', phone: '' });
-      fetchUsers();
+      reloadUsers();
       fetchHierarchyStats();
       toast.success('User created successfully');
     } catch (error) {
@@ -190,7 +221,7 @@ const AdminUsers = () => {
         manager_id: managerId,
         tl_id: tlId
       });
-      fetchUsers();
+      reloadUsers();
       fetchHierarchyStats();
       toast.success('User approved! Email notification sent.');
       setShowUserModal(false);
@@ -207,7 +238,7 @@ const AdminUsers = () => {
     setIsSubmitting(true);
     try {
       await api.post(`/users/${userId}/reject`, { reason });
-      fetchUsers();
+      reloadUsers();
       fetchHierarchyStats();
       toast.success('User rejected. Email notification sent.');
       setShowUserModal(false);
@@ -231,7 +262,7 @@ const AdminUsers = () => {
         manager_id: selectedManagerId,
         tl_id: selectedTlId
       });
-      fetchUsers();
+      reloadUsers();
       fetchHierarchyStats();
       toast.success(`Approved ${response.data.approved_count} users! ${response.data.emails_sent} emails sent.`);
       setShowBulkApprovalModal(false);
@@ -280,8 +311,8 @@ const AdminUsers = () => {
         return;
       }
       
-      await api.put(`/users/${selectedUser.id}/role-hierarchy`, payload);
-      fetchUsers();
+      await api.put(`/users/${selectedUser.account_key || selectedUser.id}/role-hierarchy`, payload);
+      reloadUsers();
       fetchHierarchyStats();
       toast.success('User role and hierarchy updated');
       setShowEditRoleModal(false);
@@ -293,11 +324,12 @@ const AdminUsers = () => {
     }
   };
 
-  const handleToggleActive = async (userId, currentStatus, e) => {
+  // `accountKey` is the exact Mongo document of the clicked row/account - never an alias
+  const handleToggleActive = async (accountKey, currentStatus, e) => {
     e?.stopPropagation();
     try {
-      await api.put(`/users/${userId}/toggle-active`);
-      fetchUsers();
+      await api.put(`/users/${accountKey}/toggle-active`);
+      reloadUsers();
       toast.success(currentStatus ? 'User deactivated' : 'User activated');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to update user');
@@ -313,8 +345,8 @@ const AdminUsers = () => {
     }
     
     try {
-      await api.delete(`/users/${user.id}`);
-      fetchUsers();
+      await api.delete(`/users/${user.account_key || user.id}`);
+      reloadUsers();
       toast.success(`User "${user.name}" deleted successfully`);
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to delete user');
@@ -344,10 +376,10 @@ const AdminUsers = () => {
     }
     setIsSubmitting(true);
     try {
-      await api.put(`/users/${selectedUser.id}/change-password`, { new_password: newPassword });
+      await api.put(`/users/${selectedUser.account_key || selectedUser.id}/change-password`, { new_password: newPassword });
       setShowPasswordModal(false);
       setNewPassword('');
-      fetchUsers();
+      reloadUsers();
       toast.success('Password changed successfully');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to change password');
@@ -409,7 +441,7 @@ const AdminUsers = () => {
   const approvedUsers = users.filter(u => u.approval_status !== 'pending' || u.is_active);
   
   const filteredUsers = (activeTab === 'approvals' ? pendingUsers : approvedUsers).filter(user => {
-    // Search filter
+    // Search filter (role / manager / status are resolved server-side)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       const matchesSearch = (
@@ -420,28 +452,6 @@ const AdminUsers = () => {
       if (!matchesSearch) return false;
     }
     
-    // Role filter
-    if (filterRole) {
-      if (filterRole === 'growth_partner') {
-        // Show GPs who are NOT TLs
-        if (!isGpRole(user.role) || user.is_tl) return false;
-      } else if (filterRole === 'team_lead') {
-        // Show only users with is_tl=true
-        if (!user.is_tl) return false;
-      } else if (user.role !== filterRole) {
-        return false;
-      }
-    }
-    
-    // Manager filter
-    if (filterManager && user.manager_id !== filterManager) {
-      return false;
-    }
-    
-    // Status filter (active/inactive)
-    if (filterStatus === 'active' && !user.is_active) return false;
-    if (filterStatus === 'inactive' && user.is_active) return false;
-    
     return true;
   }).sort((a, b) => {
     // Sort: Active users first, then inactive
@@ -451,9 +461,9 @@ const AdminUsers = () => {
     return (a.name || '').localeCompare(b.name || '');
   });
 
-  // Count active and inactive for display
-  const activeCount = approvedUsers.filter(u => u.is_active).length;
-  const inactiveCount = approvedUsers.filter(u => !u.is_active).length;
+  // Roster-wide counts: kept from an unfiltered load so the labels don't change with the filter
+  const activeCount = filterStatus ? rosterCounts.active : approvedUsers.filter(u => u.is_active).length;
+  const inactiveCount = filterStatus ? rosterCounts.inactive : approvedUsers.filter(u => !u.is_active).length;
 
   // Pagination
   const totalPages = Math.ceil(filteredUsers.length / pageSize);
@@ -526,7 +536,7 @@ const AdminUsers = () => {
           
           <div className="flex gap-3">
             <button
-              onClick={() => { fetchUsers(); fetchHierarchyStats(); toast.success('Data refreshed'); }}
+              onClick={() => { reloadUsers(); fetchHierarchyStats(); toast.success('Data refreshed'); }}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 flex items-center gap-2"
             >
               <RefreshCw size={16} /> Refresh
@@ -652,7 +662,7 @@ const AdminUsers = () => {
                 <div className="text-center py-12" data-testid="users-load-error">
                   <p className="text-red-600 text-sm mb-3">{loadError}</p>
                   <button
-                    onClick={() => { setIsLoading(true); fetchUsers(); }}
+                    onClick={() => { setIsLoading(true); reloadUsers(); }}
                     className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700"
                     data-testid="users-retry-button"
                   >
@@ -673,7 +683,8 @@ const AdminUsers = () => {
                     
                     return (
                       <div 
-                        key={user.id} 
+                        key={user.account_key || user.id} 
+                        data-testid={`user-row-${user.account_key || user.id}`}
                         className={`grid gap-2 px-4 py-3 items-center hover:bg-gray-50 transition-colors ${isSelected ? 'bg-green-50' : ''}`}
                         style={{ gridTemplateColumns: activeTab === 'approvals' ? 'auto 1fr 1.5fr auto auto auto auto auto auto auto' : '1fr 1.5fr auto auto auto auto auto auto 100px' }}
                       >
@@ -690,6 +701,26 @@ const AdminUsers = () => {
                         <div>
                           <p className="font-medium text-gray-900 truncate">{user.name || 'Unnamed'}</p>
                           {user.phone && <p className="text-xs text-gray-500">{user.phone}</p>}
+                          {user.account_count > 1 && (
+                            <button
+                              onClick={(e) => openUserDetail(user, e)}
+                              className="text-[11px] text-amber-600 hover:text-amber-700 underline"
+                              title="This person has more than one account document"
+                              data-testid={`linked-accounts-${user.account_key}`}
+                            >
+                              {user.account_count} linked accounts
+                            </button>
+                          )}
+                          {user.possible_duplicates?.length > 0 && (
+                            <button
+                              onClick={(e) => openUserDetail(user, e)}
+                              className="block text-[11px] text-orange-600 hover:text-orange-700 underline"
+                              title="Another account uses the same name with a different email"
+                              data-testid={`possible-duplicate-${user.account_key}`}
+                            >
+                              possible duplicate ({user.possible_duplicates.length})
+                            </button>
+                          )}
                         </div>
                         <div>
                           <p className="text-gray-600 truncate text-sm">{user.email}</p>
@@ -753,7 +784,8 @@ const AdminUsers = () => {
                               {/* Toggle Active/Inactive - not for admins */}
                               {user.role !== 'admin' && (
                                 <button
-                                  onClick={(e) => handleToggleActive(user.id, user.is_active !== false, e)}
+                                  onClick={(e) => handleToggleActive(user.account_key || user.id, user.is_active !== false, e)}
+                                  data-testid={`toggle-active-${user.account_key || user.id}`}
                                   className={`p-1.5 rounded ${
                                     user.is_active !== false 
                                       ? 'text-amber-500 hover:text-amber-700 hover:bg-amber-50' 
@@ -768,6 +800,7 @@ const AdminUsers = () => {
                               {user.role !== 'admin' && (
                                 <button
                                   onClick={(e) => handleDeleteUser(user, e)}
+                                  data-testid={`delete-user-${user.account_key || user.id}`}
                                   className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded"
                                   title="Delete user"
                                 >
@@ -950,6 +983,108 @@ const AdminUsers = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Linked account documents - each administered independently */}
+              {selectedUser.accounts?.length > 1 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-6" data-testid="linked-accounts-panel">
+                  <p className="font-medium text-amber-800 mb-1">
+                    {selectedUser.accounts.length} account documents for this person
+                  </p>
+                  <p className="text-xs text-amber-700 mb-3">
+                    The row above shows the current account. Activate, deactivate or delete each
+                    document separately - actions never touch the other documents.
+                  </p>
+                  <div className="space-y-2">
+                    {selectedUser.accounts.map((acct) => (
+                      <div key={acct.account_key} className="flex items-center justify-between bg-white border border-amber-100 rounded-lg px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 truncate">
+                            {acct.email}
+                            {acct.is_primary && <span className="ml-2 text-[11px] px-1.5 py-0.5 rounded bg-green-100 text-green-700">Current</span>}
+                            <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded ${acct.source === 'connect' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {acct.source === 'connect' ? 'Connect' : 'CRM'}
+                            </span>
+                            <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded ${acct.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {acct.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-gray-500 font-mono truncate">
+                            _id {acct.account_key}{acct.can_login ? ' · has login' : ' · no login'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={(e) => handleToggleActive(acct.account_key, acct.is_active, e)}
+                            className={`p-1.5 rounded ${acct.is_active ? 'text-amber-600 hover:bg-amber-100' : 'text-green-600 hover:bg-green-100'}`}
+                            title={acct.is_active ? 'Deactivate this account only' : 'Activate this account only'}
+                            data-testid={`account-toggle-${acct.account_key}`}
+                          >
+                            <Power size={15} />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteUser({ ...acct, name: acct.name || acct.email }, e)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                            title="Delete this account only"
+                            data-testid={`account-delete-${acct.account_key}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Same name, different email - separate accounts, never merged silently */}
+              {selectedUser.possible_duplicates?.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-6" data-testid="possible-duplicates-panel">
+                  <p className="font-medium text-orange-800 mb-1">
+                    Possible duplicate: same name, different email
+                  </p>
+                  <p className="text-xs text-orange-700 mb-3">
+                    These are separate accounts with no shared email or ID, so they are kept
+                    separately administrable. Deactivate or delete the stale one here, or link them
+                    deliberately if they really are the same person.
+                  </p>
+                  <div className="space-y-2">
+                    {selectedUser.possible_duplicates.map((acct) => (
+                      <div key={acct.account_key} className="flex items-center justify-between bg-white border border-orange-100 rounded-lg px-3 py-2 text-sm">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 truncate">
+                            {acct.email}
+                            <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded ${acct.source === 'connect' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {acct.source === 'connect' ? 'Connect' : 'CRM'}
+                            </span>
+                            <span className={`ml-2 text-[11px] px-1.5 py-0.5 rounded ${acct.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {acct.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                          </p>
+                          <p className="text-xs text-gray-500 font-mono truncate">_id {acct.account_key}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={(e) => handleToggleActive(acct.account_key, acct.is_active, e)}
+                            className={`p-1.5 rounded ${acct.is_active ? 'text-amber-600 hover:bg-amber-100' : 'text-green-600 hover:bg-green-100'}`}
+                            title={acct.is_active ? 'Deactivate this account only' : 'Activate this account only'}
+                            data-testid={`duplicate-toggle-${acct.account_key}`}
+                          >
+                            <Power size={15} />
+                          </button>
+                          <button
+                            onClick={(e) => handleDeleteUser({ ...acct, name: acct.email }, e)}
+                            className="p-1.5 text-red-500 hover:bg-red-50 rounded"
+                            title="Delete this account only"
+                            data-testid={`duplicate-delete-${acct.account_key}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Manager/TL Assignment (for pending users) */}
               {selectedUser.approval_status === 'pending' && (

@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 43 - Frontend-only regression for the Admin User Management contained fix on PREVIEW. Verified: (1) Person-collapsed list - Asma Sultana renders exactly ONE row with '2 linked accounts' link; the row shows the active Connect account (Growth Partner/Connect/Active). (2) Linked-accounts panel (data-testid=linked-accounts-panel) opens from the detail modal and lists both documents with _id, Current/CRM/Connect and Active/Inactive badges, plus per-account power and trash buttons (2 account-toggle + 2 account-delete). (3) Manager filter switching: Teja(e37774a4)->8 rows, Manmith Karyada->0 rows (fresh GET with manager_id fired each time, 1 request per change, no stale/append), back to Teja->same 8 rows, clear->full roster 125. (4) Status filter labels stay non-zero ('Active Only (31)', 'Inactive Only (94)'); combined Active+Teja=7. (5) CRUD isolation - toggled Asma CRM(legacy) account: only that document flipped (Connect stayed Active); restored back to Inactive. (6) Delete on Asma (4 files) returned HTTP 400 with 'Cannot delete user - has 4 associated files. Deactivate instead.'; row remained. DELETE bogus id returned 404 (no silent success). (7) Regression: Teja /api/users/manager-team-members returns total=18, tls_count=1; Teja /api/reports/daily-tracking-sheet=200 (18 rows); Teja files=94; GP Nithin daily-tracking=403. (8) Admin Dashboard, Data, Files, Users pages all load with no real console errors (only pre-existing x-ve-dynamic hydration/option-complex-children warnings from iter_40+).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Files", "issues": ["React warning: 'Cannot infer the option value of complex children' - <option> children include x-ve-dynamic <span>. Pre-existing dev instrumentation noise, not user-visible."]},
+      {"screen": "Admin (all pages)", "issues": ["Persistent x-ve-dynamic hydration warnings around option/tr/tbody/tfoot/table wrappers - already flagged iter_40..iter_42."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_42.json",
+    "/app/scripts/user_mgmt_gate.py"
+  ],
+  "action_items": [
+    "(Carry-over) Scope out x-ve-dynamic span injector from production bundle to eliminate hydration console noise.",
+    "(Carry-over from iter_41) FileDetailsPage.js ~L1319: activities.slice(0,10) still hides newest notes on files with >10 activities."
+  ],
+  "critical_code_review_comments": [
+    "User Management contained-fix behavior verified end-to-end from the browser: person-collapsed list read model, resolve_account CRUD isolation (activate/deactivate does not bleed across the sibling document), server-filtered manager switching with request-sequence guard (single fresh GET fires per change, results REPLACE not append), and correct HTTP semantics (400 with associated-files message, 404 on unknown _id).",
+    "Alias resolver stays independent: Teja's Manager scope still returns 18 team members and 94 files, while the Admin manager dropdown value uses Teja's exact _id and shows only the 8 accounts whose manager_id === that _id (this is the intended separation between Person Resolution and User-Account CRUD).",
+    "GP RBAC unchanged: banothunithinnaik@gmail.com still gets 403 on /api/reports/daily-tracking-sheet.",
+    "Admin Users list header count (125) parity with /api/users list; Active/Inactive status labels remain populated (31/94) when a status filter is applied."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "100% - all 11 review-request features PASS"},
+  "test_credentials": "All credentials in /app/memory/test_credentials.md work; used admin, teja, banothunithinnaik.",
+  "seed_data_creation": "None. Toggled Asma CRM legacy account active->inactive during CRUD-isolation test and restored to original Inactive state. Verified via API after each toggle.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Contained-fix acceptance for Admin User Management is green in the browser. Key data-testids present and reliable: user-row-<account_key>, linked-accounts-<account_key>, linked-accounts-panel, account-toggle-<account_key>, account-delete-<account_key>, delete-user-<account_key>, possible-duplicate-<account_key>. Manager dropdown is the 3rd <select>. Asma's Connect account_key=6a96f82aaf607d4f8688f293, CRM account_key=6a97e7d876f42c7795c2eaeb. Teja backend team endpoint: GET /api/users/manager-team-members (returns {members,total=18,tls_count=1}); /api/manager/team is 404 (does not exist). Delete rejection message pattern: 'Cannot delete user - has N associated files. Deactivate instead.'",
+  "rca of the issue": "All 4 reported production bugs are fixed as designed: (A) duplicate rows collapsed via list_users person collapser -> single row + '2 linked accounts' link; (B) manager switching now cancels stale in-flight requests and resets to page 1 -> each switch fires exactly one GET with manager_id and REPLACES the list; (C) delete now uses resolve_account so it targets a single _id (matched_count==1) -> file-owning delete returns 400 message and unknown _id returns 404 instead of silent success; (D) toggle_user_active uses resolve_account -> deactivating the CRM legacy doc leaves the Connect doc untouched and vice versa, confirmed via API before/after state comparison."
+}

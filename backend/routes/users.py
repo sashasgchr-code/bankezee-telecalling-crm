@@ -16,11 +16,30 @@ from utils.auth import (
 )
 from utils.helpers import serialize_doc, serialize_docs, classify_source, has_login_credential
 from utils.hierarchy import load_user_index
+from utils.accounts import account_key, resolve_account, own_identifiers
 
 router = APIRouter(prefix="/api", tags=["Users"])
 
 
 # ===================== HELPER FUNCTIONS =====================
+
+def _primary_account(docs):
+    """The person's current account - the one User Management shows as their row.
+
+    Evidence-based and deterministic (same ordering as utils.hierarchy._primary_doc):
+    active with a real login credential > active > has connect_id > oldest _id.
+    """
+    ordered = sorted(docs, key=lambda d: str(d.get("_id")))
+    for doc in ordered:
+        if doc.get("is_active") and has_login_credential(doc):
+            return doc
+    for doc in ordered:
+        if doc.get("is_active"):
+            return doc
+    for doc in ordered:
+        if doc.get("connect_id"):
+            return doc
+    return ordered[0]
 
 async def find_user_by_id(user_id: str):
     """
@@ -59,27 +78,19 @@ async def list_users(
     current_user: dict = Depends(require_admin)
 ):
     """
-    List all users with optional filters.
-    Admin only - sees all users.
+    List users - one row per PERSON (Admin only).
+
+    A person can exist as several documents (legacy CRM import + Connect login account, often
+    sharing an email). Emitting every document is what made the same employee appear twice, so
+    the row shown is the person's current/canonical account and the remaining documents are
+    returned in `accounts` (each with its own immutable `account_key`) so Admin can still
+    administer a specific legacy account explicitly.
+
+    Filters are resolved server-side. `manager_id` is matched through the identity resolver, so
+    a legacy document pointing at another alias of the same Manager still matches, and an
+    unknown manager returns nothing instead of the full roster.
     """
-    query = {}
-    
-    if role:
-        query["role"] = role
-    if manager_id:
-        query["manager_id"] = manager_id
-    if is_tl is not None:
-        query["is_tl"] = is_tl
-    if is_active is not None:
-        query["is_active"] = is_active
-    if search:
-        query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"email": {"$regex": search, "$options": "i"}},
-            {"partner_code": {"$regex": search, "$options": "i"}}
-        ]
-    
-    users = await db.users.find(query).sort("name", 1).to_list(1000)
+    all_docs = await db.users.find({}).sort("name", 1).to_list(5000)
     
     # One pass over leads instead of 2 count_documents per user (was 400+ queries on prod).
     # Grouped by the owner SET so a lead is counted once per PERSON even when source_id and
@@ -107,51 +118,113 @@ async def list_users(
             if row["_id"]["is_file"]:
                 files_by_person[root] = files_by_person.get(root, 0) + row["n"]
     
-    # Enrich with manager/TL names, file counts, and source detection
-    enriched_users = []
-    for user in users:
-        # Classify BEFORE serialize_doc, which strips the credential fields
-        account_source = classify_source(user)
-        login_ok = has_login_credential(user)
-        has_pwd = bool(user.get("password"))
-        has_pwd_hash = bool(user.get("password_hash"))
-        has_connect_id = bool(user.get("connect_id"))
-        user_data = serialize_doc(user)
-        row_id = user_data.get("id")
-        
-        # Editable state always comes from this person's ONE canonical document, so a duplicate
-        # row can never display or save a different document than the one Admin edits.
-        canonical = index.canonical_doc(row_id) or user
-        user_data["canonical_id"] = index.canonical_id(row_id) or row_id
-        user_data["is_canonical"] = user_data["canonical_id"] == row_id
-        for field in ("role", "is_active", "is_tl", "manager_id", "tl_id"):
-            user_data[field] = canonical.get(field)
-        
-        user_data["manager_name"] = index.display_name(canonical.get("manager_id")) or (
-            "Unknown" if canonical.get("manager_id") else None)
-        user_data["tl_name"] = index.display_name(canonical.get("tl_id")) or (
-            "Unknown" if canonical.get("tl_id") else None)
-        
+    # Group documents by PERSON so one employee produces exactly one row
+    persons = {}
+    for doc in all_docs:
+        key = str(doc["_id"])
+        root = index.root_for(key) or key
+        persons.setdefault(root, []).append(doc)
+
+    manager_root = index.root_for(manager_id) if manager_id else None
+    search_term = (search or "").strip().lower()
+    gp_roles = set(GP_ROLES)
+
+    rows = []
+    for root, docs in persons.items():
+        primary = _primary_account(docs)
+        primary_key = account_key(primary)
+
+        # ---- filters, evaluated once per person against the current account ----
+        person_role = primary.get("role")
+        if role:
+            if role == "team_lead":
+                if not primary.get("is_tl"):
+                    continue
+            elif role == "growth_partner":
+                if person_role not in gp_roles or primary.get("is_tl"):
+                    continue
+            elif person_role != role:
+                continue
+        if is_tl is not None and bool(primary.get("is_tl")) != is_tl:
+            continue
+        if is_active is not None and bool(primary.get("is_active")) != is_active:
+            continue
+        if manager_id:
+            # fail closed: an unresolvable manager filter matches nobody
+            if not manager_root or index.root_for(primary.get("manager_id")) != manager_root:
+                continue
+        if search_term and not any(
+            search_term in str(doc.get(field) or "").lower()
+            for doc in docs for field in ("name", "email", "partner_code")
+        ):
+            continue
+
+        user_data = serialize_doc(dict(primary))
+        user_data["account_key"] = primary_key
+        user_data["canonical_id"] = user_data.get("id") or primary_key
+        user_data["is_canonical"] = True
+
+        user_data["manager_name"] = index.display_name(primary.get("manager_id")) or (
+            "Unknown" if primary.get("manager_id") else None)
+        user_data["tl_name"] = index.display_name(primary.get("tl_id")) or (
+            "Unknown" if primary.get("tl_id") else None)
+
         # Files = old CRM records with status='file' only, counted per PERSON so the number
         # reconciles exactly with /api/files?gp_id= (which resolves identity aliases).
-        person = index.root_for(row_id) or row_id
-        user_data["files_count"] = files_by_person.get(person, 0)
-        user_data["leads_count"] = leads_by_person.get(person, 0)
-        
+        user_data["files_count"] = files_by_person.get(root, 0)
+        user_data["leads_count"] = leads_by_person.get(root, 0)
+
         # Source badge = current account capability (see utils.helpers.classify_source)
-        user_data["source"] = account_source
-        user_data["can_login"] = login_ok
-        user_data["has_password"] = has_pwd
-        user_data["has_password_hash"] = has_pwd_hash
-        user_data["has_connect_id"] = has_connect_id
-        
-        # Add last_login for activity tracking
-        user_data["last_login"] = user.get("last_login")
-        user_data["last_activity"] = user.get("last_activity")
-        
-        enriched_users.append(user_data)
-    
-    return enriched_users
+        user_data["source"] = classify_source(primary)
+        user_data["can_login"] = has_login_credential(primary)
+        user_data["has_password"] = bool(primary.get("password"))
+        user_data["has_password_hash"] = bool(primary.get("password_hash"))
+        user_data["has_connect_id"] = bool(primary.get("connect_id"))
+        user_data["last_login"] = primary.get("last_login")
+        user_data["last_activity"] = primary.get("last_activity")
+
+        # Every document of this person, each independently administrable by account_key
+        user_data["accounts"] = [{
+            "account_key": account_key(doc),
+            "id": doc.get("id"),
+            "connect_id": doc.get("connect_id"),
+            "legacy_user_id": doc.get("legacy_user_id"),
+            "name": doc.get("name") or doc.get("full_name"),
+            "email": doc.get("email"),
+            "role": doc.get("role"),
+            "is_active": bool(doc.get("is_active")),
+            "can_login": has_login_credential(doc),
+            "source": classify_source(doc),
+            "created_at": doc.get("created_at"),
+            "is_primary": account_key(doc) == primary_key,
+        } for doc in sorted(docs, key=lambda d: (account_key(d) != primary_key, str(d.get("_id"))))]
+        user_data["account_count"] = len(docs)
+
+        rows.append(user_data)
+
+    rows.sort(key=lambda r: str(r.get("name") or "").lower())
+
+    # Same name but no shared email/id evidence = SEPARATE people to the resolver. They are never
+    # merged silently; each row is flagged so Admin can link or clean them up deliberately.
+    by_name = {}
+    for row in rows:
+        norm = " ".join(str(row.get("name") or "").lower().split())
+        if norm:
+            by_name.setdefault(norm, []).append(row)
+    for group in by_name.values():
+        if len(group) < 2:
+            continue
+        for row in group:
+            row["possible_duplicates"] = [{
+                "account_key": other["account_key"],
+                "email": other.get("email"),
+                "role": other.get("role"),
+                "is_active": bool(other.get("is_active")),
+                "source": other.get("source"),
+                "can_login": other.get("can_login"),
+            } for other in group if other["account_key"] != row["account_key"]]
+
+    return rows
 
 
 @router.get("/users/growth-partners")
@@ -556,20 +629,19 @@ async def create_user(user: UserRegister, current_user: dict = Depends(require_a
 
 @router.put("/users/{user_id}")
 async def update_user(user_id: str, update: UserUpdate, current_user: dict = Depends(require_admin)):
-    """Update basic user info (Admin only)"""
+    """Update basic user info (Admin only). Writes the exact selected account only."""
     update_data = {k: v for k, v in update.dict().items() if v is not None}
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
     
-    # Find user using helper
-    user = await find_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await resolve_account(db, user_id)
     
-    await db.users.update_one(
+    result = await db.users.update_one(
         {"_id": user["_id"]},
         {"$set": update_data}
     )
+    if result.matched_count != 1:
+        raise HTTPException(status_code=500, detail="Update did not match exactly one account")
     
     updated_user = await db.users.find_one({"_id": user["_id"]})
     return serialize_doc(updated_user)
@@ -588,12 +660,11 @@ async def update_user_role_hierarchy(
     - Manager assignment
     - TL assignment (for GPs only)
     - TL capability toggle (for GPs only)
+
+    Writes the exact selected account (`user_id` = account_key). Manager/TL *references* are
+    still resolved to the canonical identity so reads and writes agree on one parent id.
     """
-    # Find user using helper
-    user = await find_user_by_id(user_id)
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await resolve_account(db, user_id)
     
     update_data = {}
     current_role = user.get("role", "growth_partner")
@@ -684,7 +755,9 @@ async def update_user_role_hierarchy(
     update_data["updated_at"] = datetime.now(timezone.utc)
     update_data["updated_by"] = current_user.get("id")
     
-    await db.users.update_one({"_id": user["_id"]}, {"$set": update_data})
+    result = await db.users.update_one({"_id": user["_id"]}, {"$set": update_data})
+    if result.matched_count != 1:
+        raise HTTPException(status_code=500, detail="Update did not match exactly one account")
     
     # Return updated user
     updated_user = await db.users.find_one({"_id": user["_id"]})
@@ -693,16 +766,12 @@ async def update_user_role_hierarchy(
 
 @router.put("/users/{user_id}/change-password")
 async def change_user_password(user_id: str, password_data: dict, current_user: dict = Depends(require_admin)):
-    """Admin can change any user's password"""
+    """Admin can change the password of the exact selected account"""
     new_password = password_data.get("new_password")
     if not new_password or len(new_password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
     
-    # Find user using helper
-    user = await find_user_by_id(user_id)
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await resolve_account(db, user_id)
     
     # Update password
     update_result = await db.users.update_one(
@@ -715,10 +784,10 @@ async def change_user_password(user_id: str, password_data: dict, current_user: 
         }}
     )
     
-    if update_result.modified_count == 0:
-        raise HTTPException(status_code=500, detail="Failed to update password")
+    if update_result.matched_count != 1:
+        raise HTTPException(status_code=500, detail="Password update did not match exactly one account")
     
-    return {"message": "Password changed successfully", "user_id": user_id}
+    return {"message": "Password changed successfully", "user_id": user_id, "account_key": str(user["_id"])}
 
 
 # ===================== ACTIVITY & STATS =====================
@@ -829,15 +898,7 @@ async def approve_user(
     
     role = normalize_role(current_user.get("role", ""))
     
-    # Find user by ObjectId or UUID
-    user = None
-    try:
-        user = await db.users.find_one({"_id": ObjectId(user_id)})
-    except Exception:
-        user = await db.users.find_one({"id": user_id})
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await resolve_account(db, user_id)
     
     # Get manager/TL info
     manager_id = approval_data.get("manager_id")
@@ -898,15 +959,7 @@ async def reject_user(user_id: str, rejection_data: dict, current_user: dict = D
     """Reject a pending user registration"""
     from utils.email_service import send_registration_rejection_notification
     
-    # Find user by ObjectId or UUID
-    user = None
-    try:
-        user = await db.users.find_one({"_id": ObjectId(user_id)})
-    except Exception:
-        user = await db.users.find_one({"id": user_id})
-    
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    user = await resolve_account(db, user_id)
     
     rejection_reason = rejection_data.get("reason", "")
     
@@ -1029,30 +1082,27 @@ async def bulk_approve_users(data: dict, current_user: dict = Depends(require_ma
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str, current_user: dict = Depends(require_admin)):
     """
-    Delete a single user - Admin only.
+    Delete the exact selected account - Admin only (physical delete of ONE document).
     Cannot delete:
     - Admin users
     - Your own account
-    - Users with associated files (must deactivate instead)
+    - Accounts that own leads/files (must deactivate instead)
     """
-    if current_user["id"] == user_id:
-        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    user = await resolve_account(db, user_id)
+    own_keys = own_identifiers(user)
     
-    # Find user
-    user = await find_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    if current_user.get("id") in own_keys or str(current_user.get("id")) == str(user["_id"]):
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
     
     # Cannot delete admins
     if user.get("role") == "admin":
         raise HTTPException(status_code=400, detail="Cannot delete admin users")
     
-    # Check for associated files
-    user_id_str = user.get("id") or str(user.get("_id"))
+    # Records owned by THIS account only (no person-wide alias expansion)
     file_count = await db.leads.count_documents({
         "$or": [
-            {"source_id": user_id_str},
-            {"assigned_to": user_id_str}
+            {"source_id": {"$in": list(own_keys)}},
+            {"assigned_to": {"$in": list(own_keys)}}
         ]
     })
     
@@ -1064,39 +1114,41 @@ async def delete_user(user_id: str, current_user: dict = Depends(require_admin))
     
     # Check if TL with assigned GPs
     if user.get("is_tl"):
-        assigned_gps = await db.users.count_documents({"tl_id": user_id_str})
+        assigned_gps = await db.users.count_documents({"tl_id": {"$in": list(own_keys)}})
         if assigned_gps > 0:
             raise HTTPException(
                 status_code=400,
                 detail=f"Cannot delete TL - has {assigned_gps} GPs assigned. Reassign them first."
             )
     
-    # Delete user
     result = await db.users.delete_one({"_id": user["_id"]})
     
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=500, detail="Failed to delete user")
+    if result.deleted_count != 1:
+        raise HTTPException(status_code=500, detail="Delete did not remove exactly one account")
     
-    return {"message": f"User {user.get('name', 'Unknown')} deleted successfully"}
+    return {
+        "message": f"User {user.get('name', 'Unknown')} deleted successfully",
+        "account_key": str(user["_id"]),
+        "deleted_count": result.deleted_count,
+    }
 
 
 @router.put("/users/{user_id}/toggle-active")
 async def toggle_user_active(user_id: str, current_user: dict = Depends(require_admin)):
     """
-    Toggle user active/inactive status - Admin only.
-    Cannot deactivate your own account.
+    Activate/deactivate the exact selected account - Admin only.
+
+    Never expands to the person's other documents: deactivating a legacy CRM account must
+    leave that person's Connect login account untouched, and vice versa.
     """
-    if current_user["id"] == user_id:
+    user = await resolve_account(db, user_id)
+    own_keys = own_identifiers(user)
+    
+    if current_user.get("id") in own_keys or str(current_user.get("id")) == str(user["_id"]):
         raise HTTPException(status_code=400, detail="Cannot deactivate your own account")
     
-    user = await find_user_by_id(user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
-    # Toggle status
     new_status = not user.get("is_active", True)
     
-    # Update
     result = await db.users.update_one(
         {"_id": user["_id"]},
         {
@@ -1107,11 +1159,16 @@ async def toggle_user_active(user_id: str, current_user: dict = Depends(require_
         }
     )
     
-    if result.modified_count == 0:
-        raise HTTPException(status_code=500, detail="Failed to update user status")
+    if result.matched_count != 1:
+        raise HTTPException(status_code=500, detail="Status update did not match exactly one account")
     
     status_text = "activated" if new_status else "deactivated"
-    return {"message": f"User {user.get('name', 'Unknown')} {status_text}", "is_active": new_status}
+    return {
+        "message": f"User {user.get('name', 'Unknown')} {status_text}",
+        "is_active": new_status,
+        "account_key": str(user["_id"]),
+        "matched_count": result.matched_count,
+    }
 
 
 # ===================== LEGACY CRM USER MAPPING =====================
