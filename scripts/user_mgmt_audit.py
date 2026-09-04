@@ -5,6 +5,21 @@ BASE = sys.argv[1].rstrip('/')
 UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
 
+def restore_links_direct(email, before):
+    """Write manager_id/tl_id straight back to Mongo (the API rejects non-manager manager_ids)."""
+    import asyncio, os
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from dotenv import load_dotenv
+    load_dotenv('/app/backend/.env')
+
+    async def run():
+        client = AsyncIOMotorClient(os.environ['MONGO_URL'])
+        db = client[os.environ['DB_NAME']]
+        res = await db.users.update_many({'email': email}, {'$set': before})
+        return res.modified_count
+    return asyncio.run(run()) > 0
+
+
 def req(p, t=None, m='GET', b=None):
     r = urllib.request.Request(BASE + p, method=m)
     r.add_header('Content-Type', 'application/json')
@@ -86,6 +101,20 @@ for email in TARGETS:
     print(f"    persisted on reopen    : {persisted}")
     print(f"    persisted after re-login: {after_relogin}")
     ok = ok and persisted and after_relogin
+
+    # restore the original links so the preview hierarchy is left exactly as it was
+    before = {'manager_id': row.get('manager_id'), 'tl_id': row.get('tl_id')}
+    s, res, _ = req(f"/api/users/{row['id']}/role-hierarchy", A2, 'PUT', before)
+    s, users4, _ = req('/api/users', A2)
+    rows4 = [u for u in users4 if u['email'] == email]
+    restored = all(r.get('manager_id') == before['manager_id'] and r.get('tl_id') == before['tl_id'] for r in rows4)
+    print(f"    restored to BEFORE     : {restored} (HTTP {s} on PUT {json.dumps(before)})")
+    if not restored:
+        # role-hierarchy PUT drops a manager_id whose document is not role=manager
+        # (G Saikiran is a telecaller acting as sub-manager), so restore directly.
+        restored = restore_links_direct(email, before)
+        print(f"    restored directly in DB: {restored}")
+    ok = ok and restored
 
 print(f"\n  Manager/TL persistence: {'PASS' if ok else 'FAIL'}")
 print(f"\n10-load stability: {stability}   Manager/TL persistence: {'PASS' if ok else 'FAIL'}")

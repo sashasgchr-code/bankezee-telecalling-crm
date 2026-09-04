@@ -2,14 +2,17 @@
 Optimized Reports and dashboard routes
 Using MongoDB aggregation pipelines for better performance
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from bson import ObjectId
 import asyncio
 
 from utils.database import db
-from utils.auth import get_current_user, require_admin, require_crm_access, GP_ROLES
+from utils.auth import (
+    get_current_user, require_admin, require_crm_access, GP_ROLES,
+    normalize_role, is_gp_role, get_user_team_ids,
+)
 from utils.helpers import serialize_doc, serialize_docs, format_duration, convert_to_ist, IST_OFFSET
 from utils.hierarchy import load_user_index
 
@@ -19,20 +22,48 @@ from utils.hierarchy import load_user_index
 AGENT_ROLE_FILTER = {"$in": GP_ROLES}
 
 
-async def resolve_agent_query(user_id: Optional[str], active_only: bool = True):
-    """Build the users query for reporting agents, resolving all identities of `user_id`."""
+async def resolve_report_scope(current_user: dict):
+    """Agent identifiers this user may see in reports. `None` = full scope (Admin/Ops).
+
+    Reuses the shared scoping helper (`utils.auth.get_user_team_ids` -> `utils.hierarchy`),
+    the same resolver behind the Manager Dashboard, Files list and Team Leaderboard, so a
+    Manager/TL sees exactly their recursive subtree. HR and regular GPs are blocked.
+    """
+    role = normalize_role(current_user.get("role", ""))
+    if role in ("admin", "ops"):
+        return None
+    if role == "manager" or (current_user.get("is_tl") and is_gp_role(role)):
+        return set(await get_user_team_ids(current_user) or [])
+    raise HTTPException(status_code=403, detail="Admin, Operations, Manager or Team Lead access required")
+
+
+async def resolve_agent_query(user_id: Optional[str], active_only: bool = True, scope_ids=None):
+    """Build the users query for reporting agents, resolving all identities of `user_id`.
+
+    `scope_ids` (None = unrestricted) is the caller's permitted identifier set. Any requested
+    `user_id` is intersected with it, so a scoped caller can never widen their scope through
+    query parameters. Returns `None` for the query to signal FAIL CLOSED (0 rows).
+    """
     query = {"role": AGENT_ROLE_FILTER}
     if active_only:
         query["is_active"] = True
-    if not user_id:
-        return query, None
-    index = await load_user_index(db)
-    aliases = index.aliases(user_id) or {user_id}
-    or_clauses = [{"id": {"$in": sorted(aliases)}}]
-    object_ids = [ObjectId(a) for a in aliases if ObjectId.is_valid(a)]
-    if object_ids:
-        or_clauses.append({"_id": {"$in": object_ids}})
-    query["$or"] = or_clauses
+    aliases = None
+    if user_id:
+        index = await load_user_index(db)
+        aliases = index.aliases(user_id) or {user_id}
+    if scope_ids is not None:
+        allowed = set(scope_ids)
+        if aliases is not None:
+            allowed &= aliases
+        if not allowed:
+            return None, set()
+        aliases = allowed
+    if aliases is not None:
+        or_clauses = [{"id": {"$in": sorted(aliases)}}]
+        object_ids = [ObjectId(a) for a in aliases if ObjectId.is_valid(a)]
+        if object_ids:
+            or_clauses.append({"_id": {"$in": object_ids}})
+        query["$or"] = or_clauses
     return query, aliases
 
 router = APIRouter(prefix="/api", tags=["Reports"])
@@ -1142,9 +1173,13 @@ async def get_daily_tracking_sheet(
     year: int = None,
     start_date: str = None,
     end_date: str = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(get_current_user)
 ):
-    """Optimized daily tracking sheet using aggregation"""
+    """Optimized daily tracking sheet using aggregation.
+
+    Admin/Ops see every agent; Manager/TL are restricted to their recursive subtree.
+    """
+    scope_ids = await resolve_report_scope(current_user)
     now = datetime.now(timezone.utc)
     
     if not year:
@@ -1162,7 +1197,9 @@ async def get_daily_tracking_sheet(
         else:
             range_end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
     
-    query, _aliases = await resolve_agent_query(user_id)
+    query, _aliases = await resolve_agent_query(user_id, scope_ids=scope_ids)
+    if query is None:
+        return []  # requested agent is outside the caller's permitted scope
     
     telecallers = await db.users.find(query).to_list(2000)
     # Activity records reference either str(_id) or the `id` field - match both, deduplicated
@@ -1550,6 +1587,24 @@ async def get_manager_team_stats(
         })
     
     # Sort by total_files descending
+    def merge_by_person(rows, numeric_fields):
+        """Collapse alias rows into one row per person - legacy duplicates must not appear twice."""
+        merged = {}
+        for row in rows:
+            key = index.root_for(row["id"]) or row["id"]
+            if key not in merged:
+                row = dict(row)
+                row["id"] = index.canonical_id(row["id"]) or row["id"]
+                merged[key] = row
+            else:
+                for field in numeric_fields:
+                    merged[key][field] = merged[key].get(field, 0) + row.get(field, 0)
+        return list(merged.values())
+    
+    gp_performance = merge_by_person(
+        gp_performance, ["total_files", "login", "approved", "disbursed", "disbursed_amount"])
+    gp_call_stats = merge_by_person(gp_call_stats, ["calls", "connected", "leads", "files"])
+    
     gp_performance.sort(key=lambda x: -x["total_files"])
     gp_call_stats.sort(key=lambda x: -x["calls"])
     

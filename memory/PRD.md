@@ -865,3 +865,73 @@ Manager/TL persistence PASS · preview restored to 128 users / 518 leads with Ni
 back under G Saikiran / Anusha.
 
 *Last Updated: September 4, 2026*
+
+---
+
+## TEAM LEADERBOARD (September 4, 2026) — Preview, frontend-only + duplicate merge
+
+- New "Team Leaderboard" section on the Manager dashboard, ranked by files converted in the
+  selected period (ties broken by disbursed, then calls). Medal styling for top 3, TL badge,
+  per-row "N calls · N connected · N disbursed", `data-testid="team-leaderboard"` /
+  `leaderboard-row-{n}` / `leaderboard-files-{n}`.
+- No new endpoint and no duplicate reporting logic: it reuses `gp_performance` + `gp_call_stats`
+  already returned by `/api/reports/manager-team-stats`, so it follows the same period filter
+  (verified: this_month vs 2026-09-03 give different rankings).
+- Backend `merge_by_person()` added in that endpoint: `gp_performance` / `gp_call_stats` were
+  emitted PER ALIAS, so people with a legacy duplicate appeared twice (Shivasai 6+3, Anil 8+2).
+  Rows are now merged by person root and carry the canonical id.
+  Result: 18 rows for 18 team members, no duplicate names, and the per-row files sum (92) equals
+  the team total (92).
+- Gates: `verify_hierarchy.py` 34/34 · UM vs dashboard MATCH: YES (18 = 18 = 18).
+
+### Blocked on user input
+C hierarchy link repair (16 production writes) - still needs the two confirmations in
+`C_dryrun_hierarchy_repair.md`: G Saikiran's role, and whether saikiran@bankezee.com is still in
+use. NOT applied. Note: `role-hierarchy` PUT validates `manager_id` belongs to a role=manager
+user, so 10 of the 16 links cannot be written through the API while G Saikiran is a telecaller.
+
+*Last Updated: September 4, 2026*
+
+---
+
+## TRACK REPORT (DAILY TRACKING SHEET) RBAC (September 4, 2026) — Preview, all gates green
+
+ROOT CAUSE of the Manager 403: `/api/reports/daily-tracking-sheet` was `Depends(require_admin)`,
+while "Track Report" is a primary Manager navigation tab.
+
+FIX (backend only, no frontend change needed — the GP dropdown already uses the scoped
+`/api/users/growth-partners`):
+- Dependency swapped to `get_current_user` + new `resolve_report_scope(current_user)` in
+  `routes/reports.py`, which delegates to `utils.auth.get_user_team_ids` -> `utils.hierarchy`
+  (the SAME resolver behind Manager Dashboard, Files list/stats and Team Leaderboard).
+  Admin/Ops -> full scope (None) · Manager/TL -> own recursive subtree · HR/regular GP -> 403.
+- `resolve_agent_query(user_id, scope_ids=...)` now intersects any requested `user_id` with the
+  caller's permitted identifier set and returns `None` to FAIL CLOSED; the endpoint then
+  returns `[]`. Scope is never derived from a client-supplied id.
+- No separate scoping logic inside the endpoint; alias dedupe / person-level active handling
+  unchanged (one row per person).
+
+GATES (preview)
+- NEW `/app/scripts/track_report_gate.py` 15/15: admin 19 agents · ops == admin · manager 200
+  with 18 people == dashboard members 18 == UM subtree 18 · strict subset of admin · no dupes ·
+  in-scope user_id -> 1 row · out-of-scope user_id -> 0 rows · invalid id -> 0 rows (admin too) ·
+  TL 12 rows and 0 for out-of-scope · HR 403 · GP 403.
+- NEW `/app/scripts/track_report_dynamic_scope.py`: TL Anusha moved under Teja -> track 18->19
+  and dashboard 18->19; restored -> 18/18. PASS.
+- `verify_hierarchy.py` 34/34 · `fixture_gate.py` 15/15 (preview back to 128 users / 518 leads) ·
+  `user_mgmt_audit.py` 10/10 loads + Manager/TL persistence PASS · `acceptance_matrix.py` 30/30 ·
+  `files_rbac_matrix.py` green · `trace_manager_scope.py` MATCH: YES (18 = 18 = 18).
+- `user_mgmt_audit.py` now RESTORES the original manager_id/tl_id after its write test (it used to
+  leave Nithin/Meghana under saikiran@bankezee.com, which silently shrank Teja's subtree 18->16).
+  The API drops a manager_id whose document is not role=manager, so the restore falls back to a
+  direct Mongo write.
+- UI smoke: Manager Teja -> /manager/tracking renders (no 403), GP dropdown scoped to his team.
+
+STATUS: READY TO PUBLISH (everything above plus the earlier A+B / UUID / Manager UI /
+User Management / Manager Dashboard hierarchy / Team Leaderboard work is still Preview-only).
+
+### Still blocked on user input
+C hierarchy link repair (16 production writes) — `/app/memory/C_dryrun_hierarchy_repair.md`,
+to be applied only AFTER this build is published and verified in production.
+
+*Last Updated: September 4, 2026*

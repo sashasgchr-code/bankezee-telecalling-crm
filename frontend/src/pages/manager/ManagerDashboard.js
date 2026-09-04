@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Phone, PhoneIncoming, Users, FileText, TrendingUp, Loader2, RefreshCw, Calendar, ChevronRight, CheckCircle, Clock, IndianRupee, ArrowUp, ArrowDown } from 'lucide-react';
+import { Phone, PhoneIncoming, Users, FileText, TrendingUp, Loader2, RefreshCw, Calendar, ChevronRight, CheckCircle, Clock, IndianRupee, ArrowUp, ArrowDown, Trophy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
@@ -91,6 +91,24 @@ const ManagerDashboard = () => {
     { id: 'this_week', label: 'This Week' },
     { id: 'this_month', label: 'This Month' },
   ];
+
+  // Leaderboard reuses the per-GP figures the dashboard already returns - no separate source
+  const leaderboard = React.useMemo(() => {
+    const calls = {};
+    (stats?.gp_call_stats || []).forEach((g) => { calls[g.id] = g; });
+    return (stats?.gp_performance || [])
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        is_tl: g.is_tl,
+        files: g.total_files || 0,
+        disbursed: g.disbursed || 0,
+        calls: calls[g.id]?.calls || 0,
+        connected: calls[g.id]?.connected || 0,
+      }))
+      .filter((g) => g.files > 0 || g.calls > 0)
+      .sort((a, b) => b.files - a.files || b.disbursed - a.disbursed || b.calls - a.calls);
+  }, [stats]);
 
   const metrics = [
     { id: 'calls', label: 'Calls', icon: Phone, color: 'blue', bgColor: 'bg-blue-50', textColor: 'text-blue-600' },
@@ -247,6 +265,58 @@ const ManagerDashboard = () => {
                 <div className="text-xs text-gray-500">Active Today</div>
               </div>
             </div>
+          </div>
+
+          {/* Team Leaderboard - ranked by files converted in the selected period */}
+          <div className="bg-white rounded-xl border border-gray-200 mb-4" data-testid="team-leaderboard">
+            <div className="p-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                <Trophy size={18} className="text-amber-500" />
+                Team Leaderboard
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">Ranked by files converted this period</p>
+            </div>
+            {leaderboard.length === 0 ? (
+              <p className="text-center text-gray-400 py-8 text-sm" data-testid="leaderboard-empty">
+                No team activity in this period
+              </p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {leaderboard.map((m, i) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 px-4 py-3"
+                    data-testid={`leaderboard-row-${i + 1}`}
+                  >
+                    <span
+                      className={`w-7 h-7 shrink-0 rounded-full grid place-items-center text-xs font-bold ${
+                        i === 0 ? 'bg-amber-100 text-amber-700'
+                        : i === 1 ? 'bg-gray-200 text-gray-700'
+                        : i === 2 ? 'bg-orange-100 text-orange-700'
+                        : 'bg-gray-100 text-gray-500'
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {m.name}
+                        {m.is_tl && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 text-[10px] font-semibold align-middle">TL</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {m.calls} calls · {m.connected} connected · {m.disbursed} disbursed
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-base font-bold text-gray-900" data-testid={`leaderboard-files-${i + 1}`}>{m.files}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-gray-400">files</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Files Performance Table */}
