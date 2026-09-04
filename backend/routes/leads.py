@@ -729,6 +729,9 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
     
     # Check if status is being changed to "file" - trigger File creation/linking
     new_status = update_data.get("status")
+    # Stamp when the lead BECAME a Lead (mirrors file_created_at); never overwritten later
+    if new_status in ("leads", "converted") and lead.get("status") not in ("leads", "converted") and not lead.get("lead_created_at"):
+        update_data["lead_created_at"] = datetime.now(timezone.utc)
     if new_status == "file" and lead.get("status") != "file":
         # ============ DATA → FILE PREFILL - OLD CRM PORT ============
         # When Connect Data becomes File, prefill ALL known information

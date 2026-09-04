@@ -56,6 +56,23 @@ def file_created_match(start, end=None):
     return {"$expr": {"$and": conds}} if len(conds) > 1 else {"$expr": conds[0]}
 
 
+def _lead_created_date():
+    """When the lead actually became a Lead (falls back to updated_at for legacy records)."""
+    return {"$ifNull": [_as_date("lead_created_at"), _as_date("updated_at")]}
+
+
+def lead_created_match(start, end=None):
+    """Leads that became Leads inside the period - never 'leads edited in the period'."""
+    conds = []
+    if start:
+        conds.append({"$gte": [_lead_created_date(), start]})
+    if end:
+        conds.append({"$lt": [_lead_created_date(), end]})
+    if not conds:
+        return {}
+    return {"$expr": {"$and": conds}} if len(conds) > 1 else {"$expr": conds[0]}
+
+
 # A File belongs to the GP who originated it; fall back to the current assignee.
 FILE_OWNER = {"$ifNull": ["$source_id", "$assigned_to"]}
 
@@ -180,17 +197,21 @@ async def get_dashboard_stats(
         else:
             calls_time_query = {}
         
+        # Leads are counted by the day they BECAME a Lead (lead_created_at), never last edit
+        leads_created_at_filter = lead_created_match(start_date, end_date)
+
         # Run all queries in parallel
         queries = [
             db.leads.count_documents({**leads_filter, "status": "new", "created_at": {"$lt": today_naive}}),
             db.leads.count_documents({**leads_filter, **leads_created_filter}) if leads_created_filter else db.leads.count_documents(leads_filter),
             db.call_logs.count_documents({**calls_filter, **calls_time_query}),
-            db.leads.count_documents({**leads_filter, **leads_time_filter, "status": {"$in": ["leads", "converted"]}}),
+            db.leads.count_documents({**leads_filter, **leads_created_at_filter, "status": {"$in": ["leads", "converted"]}}),
             db.leads.count_documents({**leads_filter, **files_created_filter, "status": "file"}),
+            db.leads.count_documents({**leads_filter, **leads_created_at_filter, "status": "leads"}),
         ]
         
         results = await asyncio.gather(*queries)
-        unused_data, total_data, connected, total_leads_generated, total_file = results
+        unused_data, total_data, connected, total_leads_generated, total_file, leads_status_count = results
         
         # Status counts aggregation
         status_match = {**leads_filter, **leads_time_filter} if leads_time_filter else leads_filter
@@ -233,8 +254,9 @@ async def get_dashboard_stats(
         incoming_data = incoming_stats[0] if incoming_stats else {}
         
         leads_by_status = {s["_id"]: s["count"] for s in status_counts}
-        # Files are counted by the day they became a File, not by their last edit
+        # Files and Leads are counted by the day they became one, not by their last edit
         leads_by_status["file"] = total_file
+        leads_by_status["leads"] = leads_status_count
 
         return {
             "total_data": total_data,
@@ -270,12 +292,15 @@ async def get_dashboard_stats(
         else:
             calls_time_filter = {}
         
+        # Leads counted by the day they BECAME a Lead (lead_created_at), never last edit
+        leads_created_at_filter = lead_created_match(start_date, end_date)
+
         # Run all queries in parallel
         queries = [
             db.leads.count_documents({"assigned_to": user_id, "status": "new", "created_at": {"$lt": today_naive}}),
             db.leads.count_documents({"assigned_to": user_id, **leads_created_filter}) if leads_created_filter else db.leads.count_documents({"assigned_to": user_id}),
             db.leads.count_documents({"assigned_to": user_id, "status": "file", **files_created_filter}),
-            db.leads.count_documents({"assigned_to": user_id, "status": {"$in": ["leads", "converted"]}, **leads_time_filter}),
+            db.leads.count_documents({"assigned_to": user_id, "status": {"$in": ["leads", "converted"]}, **leads_created_at_filter}),
             db.leads.aggregate([{"$match": {"assigned_to": user_id, **leads_time_filter}}, {"$group": {"_id": "$status", "count": {"$sum": 1}}}]).to_list(20),
             db.call_logs.aggregate([
                 {"$match": {"user_id": user_id, **calls_time_filter}},
@@ -290,11 +315,12 @@ async def get_dashboard_stats(
                     "voicemail": {"$sum": {"$cond": [{"$eq": ["$outcome", "voicemail"]}, 1, 0]}}
                 }}
             ]).to_list(1),
-            db.daily_sessions.find_one({"user_id": user_id, "date": today})
+            db.daily_sessions.find_one({"user_id": user_id, "date": today}),
+            db.leads.count_documents({"assigned_to": user_id, "status": "leads", **leads_created_at_filter})
         ]
         
         results = await asyncio.gather(*queries)
-        my_unused_data, my_data, my_file, my_leads_generated, status_counts, call_stats, session = results
+        my_unused_data, my_data, my_file, my_leads_generated, status_counts, call_stats, session, my_leads_only = results
         
         call_outcomes = call_stats[0] if call_stats else {"total": 0, "connected": 0, "not_connecting": 0, "no_answer": 0, "wrong_number": 0, "busy": 0, "voicemail": 0}
         
@@ -303,13 +329,17 @@ async def get_dashboard_stats(
         verified_incoming_time = session.get("verified_incoming_time_seconds", 0) if session else 0
         verified_talk_time = session.get("verified_talk_time_seconds", 0) if session else 0
         
+        my_leads_by_status = {s["_id"]: s["count"] for s in status_counts if s["_id"]}
+        my_leads_by_status["leads"] = my_leads_only
+        my_leads_by_status["file"] = my_file
+
         return {
             "my_data": my_data,
             "my_unused_data": my_unused_data,
             "my_connected": call_outcomes.get("total", 0),
             "my_file": my_file,
             "my_leads_generated": my_leads_generated,
-            "leads_by_status": {s["_id"]: s["count"] for s in status_counts if s["_id"]},
+            "leads_by_status": my_leads_by_status,
             "call_outcomes": {
                 "connected": call_outcomes.get("connected", 0),
                 "not_connecting": call_outcomes.get("not_connecting", 0),
@@ -626,7 +656,9 @@ async def get_telecaller_reports(
     # Build time filters (tolerant of legacy ISO-string timestamps on File records)
     lead_time_filter = date_range_match("updated_at", start_date, end_date)
     lead_created_filter = date_range_match("created_at", start_date, end_date)
+    lead_became_filter = lead_created_match(start_date, end_date)  # counted by the day it BECAME a Lead
     file_created_filter = file_created_match(start_date, end_date)
+    index = await load_user_index(db)
     if start_date and end_date:
         call_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
         session_time_filter = {"date": {"$gte": start_date, "$lt": end_date}}
@@ -654,9 +686,9 @@ async def get_telecaller_reports(
         }}
     ]
     
-    # Aggregation for lead stats per user (current assignments)
+    # Aggregation for lead stats per user (current assignments) - by day it BECAME a Lead
     lead_pipeline = [
-        {"$match": {"assigned_to": {"$in": telecaller_ids}, **lead_time_filter}},
+        {"$match": {"assigned_to": {"$in": telecaller_ids}, **lead_became_filter}},
         {"$group": {
             "_id": {"user_id": "$assigned_to", "status": "$status"},
             "count": {"$sum": 1}
@@ -768,6 +800,7 @@ async def get_telecaller_reports(
     total_call_seconds = 0
     total_idle_seconds = 0
     total_form_filling_seconds = 0
+    consumed_file_ids = set()  # each file's owner-id credited once (alias/duplicate-safe)
     
     for tc in telecallers:
         user_id = str(tc["_id"])
@@ -783,7 +816,13 @@ async def get_telecaller_reports(
         user_break_seconds = sessions.get("total_break_seconds", 0)
         user_idle_seconds = max(0, user_login_seconds - user_call_seconds - user_break_seconds)
         
-        user_file = file_map.get(user_id, 0) or file_map.get(tc.get("id"), 0)
+        # Files credited by the originating GP, resolving every legacy identifier
+        owner_ids = {user_id} | ({tc.get("id")} if tc.get("id") else set()) | (index.aliases(user_id) or set())
+        user_file = 0
+        for oid in owner_ids:
+            if oid in file_map and oid not in consumed_file_ids:
+                user_file += file_map[oid]
+                consumed_file_ids.add(oid)
         user_leads_generated = leads.get("leads", 0) + leads.get("converted", 0)
         user_presentations = leads.get("presentation", 0)
         
@@ -952,12 +991,12 @@ async def get_hourly_report(
         }}
     ]
     
-    # Aggregation for lead status updates by hour per user
+    # Aggregation for lead status updates by hour per user - by the day/hour it BECAME a Lead
     lead_pipeline = [
         {"$match": {"assigned_to": {"$in": telecaller_ids},
-                    **date_range_match("updated_at", start_of_day, end_of_day)}},
+                    **lead_created_match(start_of_day, end_of_day)}},
         {"$addFields": {
-            "hour": {"$hour": {"$add": [_as_date("updated_at"), 19800000]}}
+            "hour": {"$hour": {"$add": [_lead_created_date(), 19800000]}}
         }},
         {"$group": {
             "_id": {"user_id": "$assigned_to", "hour": "$hour", "status": "$status"},
@@ -1108,9 +1147,9 @@ async def get_my_hourly_report(
     
     # Aggregation for lead status updates by hour (leads only; Files handled separately)
     lead_pipeline = [
-        {"$match": {"assigned_to": user_id, "updated_at": {"$gte": start_of_day, "$lt": end_of_day}}},
+        {"$match": {"assigned_to": user_id, **lead_created_match(start_of_day, end_of_day)}},
         {"$addFields": {
-            "hour": {"$hour": {"$add": ["$updated_at", 19800000]}}
+            "hour": {"$hour": {"$add": [_lead_created_date(), 19800000]}}
         }},
         {"$group": {
             "_id": {"hour": "$hour", "status": "$status"},
@@ -1381,8 +1420,8 @@ async def get_daily_tracking_sheet(
     
     # Aggregation for leads by date (status=leads only; Files handled separately)
     lead_pipeline = [
-        {"$match": {"assigned_to": {"$in": telecaller_ids}, "updated_at": {"$gte": range_start, "$lt": range_end}, "status": "leads"}},
-        {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": "$updated_at"}}}},
+        {"$match": {"assigned_to": {"$in": telecaller_ids}, "status": "leads", **lead_created_match(range_start, range_end)}},
+        {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": _lead_created_date()}}}},
         {"$group": {
             "_id": {"user_id": "$assigned_to", "date": "$date_str"},
             "count": {"$sum": 1}
@@ -1612,12 +1651,11 @@ async def get_manager_team_stats(
     
     # Build time filter for calls
     calls_time_filter = {}
-    leads_time_filter = {}
-    # Files are counted ONLY by file_created_at (fallback created_at), never by updated_at
+    # Files by file_created_at, Leads by lead_created_at (never last-edit updated_at)
     files_time_filter = file_created_match(start_date, end_date)
+    leads_time_filter = lead_created_match(start_date, end_date)
     if start_date and end_date:
         calls_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
-        leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
     
     # Aggregation: Calls by user
     call_pipeline = [
