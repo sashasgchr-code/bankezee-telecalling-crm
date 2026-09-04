@@ -101,7 +101,7 @@ async def build_files_query(
     user_key = current_user.get("id") or str(current_user.get("_id") or "")
 
     # ---- role scope ----
-    if role in ("admin", "ops"):
+    if role in ("admin", "ops", "hr"):
         pass
     elif role == "manager":
         # Full recursive downward subtree (direct GPs, TLs, GPs under TLs, sub-managers and below)

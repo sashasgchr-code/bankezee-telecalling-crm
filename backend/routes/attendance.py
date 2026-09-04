@@ -10,7 +10,7 @@ import math
 from zoneinfo import ZoneInfo
 
 from utils.database import db
-from utils.auth import get_current_user, require_admin
+from utils.auth import get_current_user, require_admin, require_hr_or_admin
 from utils.helpers import serialize_doc
 from models.attendance_schemas import (
     AttendanceCheckIn, AttendanceCheckOut, WFHRequest, 
@@ -536,7 +536,7 @@ async def admin_get_today_attendance(
     work_mode: Optional[str] = None,
     status: Optional[str] = None,
     target_date: Optional[str] = Query(None, alias="date"),
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Get attendance for a specific date (defaults to today) for all users (Admin only)"""
     # Parse target date or use today in IST
@@ -586,7 +586,7 @@ async def admin_get_today_attendance(
 @router.get("/admin/summary")
 async def admin_get_attendance_summary(
     target_date_str: Optional[str] = Query(None, alias="date"),
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Get attendance summary for a date (Admin only)"""
     ist_now = get_ist_now()
@@ -668,7 +668,7 @@ async def admin_get_monthly_attendance(
     user_id: Optional[str] = None,
     month: Optional[int] = None,
     year: Optional[int] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Get monthly attendance report (Admin only)"""
     ist_now = get_ist_now()
@@ -764,7 +764,7 @@ async def admin_get_monthly_attendance(
 async def admin_get_monthly_matrix(
     month: Optional[int] = None,
     year: Optional[int] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """
     Get monthly attendance matrix for all employees (Admin only).
@@ -1016,7 +1016,7 @@ async def get_my_monthly_matrix(
 async def admin_correct_attendance(
     attendance_id: str,
     data: AttendanceCorrection,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Manually correct an attendance record (Admin only)"""
     if not data.reason:
@@ -1091,7 +1091,7 @@ async def admin_correct_attendance(
     return serialize_doc(updated)
 
 @router.get("/admin/audit/{attendance_id}")
-async def admin_get_audit_log(attendance_id: str, current_user: dict = Depends(require_admin)):
+async def admin_get_audit_log(attendance_id: str, current_user: dict = Depends(require_hr_or_admin)):
     """Get audit history for an attendance record (Admin only)"""
     cursor = db.attendance_audit.find({"attendance_id": attendance_id}).sort("changed_at", -1)
     logs = await cursor.to_list(length=100)
@@ -1106,7 +1106,7 @@ async def admin_get_audit_log(attendance_id: str, current_user: dict = Depends(r
 # ===================== OFFICE MANAGEMENT =====================
 
 @router.get("/admin/offices")
-async def admin_get_offices(current_user: dict = Depends(require_admin)):
+async def admin_get_offices(current_user: dict = Depends(require_hr_or_admin)):
     """Get all office locations (Admin only)"""
     cursor = db.offices.find().sort("created_at", -1)
     offices = await cursor.to_list(length=50)
@@ -1169,7 +1169,7 @@ async def admin_update_office(
 @router.get("/admin/wfh-requests")
 async def admin_get_wfh_requests(
     status: Optional[str] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Get all WFH requests (Admin only)"""
     query = {}
@@ -1184,7 +1184,7 @@ async def admin_get_wfh_requests(
 async def admin_handle_wfh_request(
     request_id: str,
     data: WFHApproval,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Approve or reject a WFH request (Admin only)"""
     request = await db.wfh_requests.find_one({"_id": ObjectId(request_id)})
@@ -1219,7 +1219,7 @@ async def admin_handle_wfh_request(
     return serialize_doc(updated)
 
 @router.post("/admin/wfh-assign")
-async def admin_assign_wfh(data: WFHApproval, current_user: dict = Depends(require_admin)):
+async def admin_assign_wfh(data: WFHApproval, current_user: dict = Depends(require_hr_or_admin)):
     """Directly assign WFH to an employee for a date (Admin only)"""
     now = datetime.now(timezone.utc)
     
@@ -1260,7 +1260,7 @@ async def admin_assign_wfh(data: WFHApproval, current_user: dict = Depends(requi
     return serialize_doc(approval_doc)
 
 @router.post("/admin/leave-assign")
-async def admin_assign_leave(data: LeaveApproval, current_user: dict = Depends(require_admin)):
+async def admin_assign_leave(data: LeaveApproval, current_user: dict = Depends(require_hr_or_admin)):
     """Assign leave to an employee (Admin only)"""
     now = datetime.now(timezone.utc)
     
@@ -1317,7 +1317,7 @@ async def admin_assign_leave(data: LeaveApproval, current_user: dict = Depends(r
 # ===================== SETTINGS =====================
 
 @router.get("/admin/settings")
-async def admin_get_settings(current_user: dict = Depends(require_admin)):
+async def admin_get_settings(current_user: dict = Depends(require_hr_or_admin)):
     """Get attendance settings (Admin only)"""
     return await get_attendance_settings()
 
@@ -1361,7 +1361,7 @@ async def admin_export_attendance(
     start_date: str,
     end_date: str,
     user_id: Optional[str] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Export attendance data (Admin only)"""
     try:
@@ -1405,7 +1405,7 @@ async def admin_export_attendance(
 @router.get("/admin/weekly-summary")
 async def admin_get_weekly_attendance_summary(
     start_date: Optional[str] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Get weekly attendance summary for all employees (Admin only)"""
     ist_now = get_ist_now()
@@ -1516,7 +1516,7 @@ async def admin_get_weekly_attendance_summary(
 async def admin_get_monthly_attendance_summary(
     month: Optional[int] = None,
     year: Optional[int] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Get monthly attendance summary for all employees (Admin only)"""
     ist_now = get_ist_now()
@@ -1745,7 +1745,7 @@ async def get_user_monthly_attendance_summary(
     user_id: str,
     month: Optional[int] = None,
     year: Optional[int] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """Admin: Get monthly attendance summary for a specific user."""
     from calendar import monthrange

@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import logging
-from utils.auth import get_current_user, require_admin
+from utils.auth import get_current_user, require_admin, require_file_write
 from utils.json_safe import json_safe
 from utils.helpers import doc_ref_filter
 from utils.bank_names import canonical_bank_name
@@ -233,65 +233,54 @@ class BulkFileAssignment(BaseModel):
     assigned_to: str
 
 
-# File statuses for CRM processing - Complete OLD CRM workflow preserved
-# All 24 statuses from old CRM mapped here
+# File statuses accepted for CRM processing.
+# The first block is the current 22-status workflow offered in the File Details dropdown.
+# The legacy block is kept so historical records stay valid and keep displaying correctly.
 FILE_STATUSES = [
-    # Initial Stages
     "new", "contacted",
-    # Document Collection
-    "documents_pending", "documents_collected",
-    # Eligibility & Processing
-    "sent_for_eligibility", "not_eligible", "query_hold",
-    # Bank Submission
-    "sent_to_bank", "sent_for_login", "login", "not_login",
-    # Underwriting & FI
-    "underwriting", "fi", "fi_reinitiated", "fi_negative",
-    # Approval/Decline
-    "approved", "sanctioned", "declined",
-    # Disbursal
-    "disbursed", "not_disbursed",
-    # Final States
-    "rejected", "customer_not_interested", "customer_not_supporting", "supporting"
+    "documents_collected", "documents_pending",
+    "sent_for_eligibility", "sent_for_login", "login", "sent_for_approval",
+    "underwriting", "fi", "fi_negative", "fi_reinitiated", "query_hold",
+    "customer_not_interested", "customer_not_supporting",
+    "approved", "disbursed",
+    "not_eligible", "not_login", "declined", "not_disbursed", "rejected",
+    # Legacy values - historical only, not offered in the dropdown
+    "sent_to_bank", "sanctioned", "supporting",
+]
+
+# The 22 statuses offered in File Details -> Update Status, in the exact business order.
+FILE_STATUS_OPTIONS = [
+    {"id": "new", "label": "New", "category": "initial"},
+    {"id": "contacted", "label": "Contacted", "category": "initial"},
+    {"id": "documents_collected", "label": "Documents Collected", "category": "documents"},
+    {"id": "documents_pending", "label": "Documents Pending", "category": "documents"},
+    {"id": "sent_for_eligibility", "label": "Sent for Eligibility", "category": "processing"},
+    {"id": "sent_for_login", "label": "Sent for Login", "category": "bank"},
+    {"id": "login", "label": "Login Done", "category": "bank"},
+    {"id": "sent_for_approval", "label": "Sent for Approval", "category": "approval"},
+    {"id": "underwriting", "label": "Underwriting", "category": "underwriting"},
+    {"id": "fi", "label": "FI (Field Investigation)", "category": "underwriting"},
+    {"id": "fi_negative", "label": "FI Negative", "category": "underwriting"},
+    {"id": "fi_reinitiated", "label": "FI Reinitiated", "category": "underwriting"},
+    {"id": "query_hold", "label": "Query/Hold", "category": "processing"},
+    {"id": "customer_not_interested",
+     "label": "Customer Not Interested - Need Help from MIT & Manager", "category": "rejection"},
+    {"id": "customer_not_supporting",
+     "label": "Customer Not Supporting - Need Help from MIT & Manager", "category": "rejection"},
+    {"id": "approved", "label": "Approved", "category": "approval"},
+    {"id": "disbursed", "label": "Disbursed", "category": "disbursal"},
+    {"id": "not_eligible", "label": "Not Eligible", "category": "rejection"},
+    {"id": "not_login", "label": "Not Login", "category": "rejection"},
+    {"id": "declined", "label": "Declined", "category": "rejection"},
+    {"id": "not_disbursed", "label": "Not Disbursed", "category": "rejection"},
+    {"id": "rejected", "label": "Rejected", "category": "rejection"},
 ]
 
 
 @router.get("/statuses")
 async def get_file_statuses():
-    """Get list of available file statuses for CRM processing - Complete OLD CRM workflow"""
-    return [
-        # Initial Stages
-        {"id": "new", "label": "New", "category": "initial"},
-        {"id": "contacted", "label": "Contacted", "category": "initial"},
-        # Document Collection
-        {"id": "documents_pending", "label": "Documents Pending", "category": "documents"},
-        {"id": "documents_collected", "label": "Documents Collected", "category": "documents"},
-        # Eligibility & Processing
-        {"id": "sent_for_eligibility", "label": "Sent for Eligibility", "category": "processing"},
-        {"id": "not_eligible", "label": "Not Eligible", "category": "rejection"},
-        {"id": "query_hold", "label": "Query/Hold", "category": "processing"},
-        # Bank Submission
-        {"id": "sent_to_bank", "label": "Sent to Bank", "category": "bank"},
-        {"id": "sent_for_login", "label": "Sent for Login", "category": "bank"},
-        {"id": "login", "label": "Login", "category": "bank"},
-        {"id": "not_login", "label": "Not Login", "category": "rejection"},
-        # Underwriting & FI
-        {"id": "underwriting", "label": "Underwriting", "category": "underwriting"},
-        {"id": "fi", "label": "FI", "category": "underwriting"},
-        {"id": "fi_reinitiated", "label": "FI Reinitiated", "category": "underwriting"},
-        {"id": "fi_negative", "label": "FI Negative", "category": "rejection"},
-        # Approval/Decline
-        {"id": "approved", "label": "Approved", "category": "approval"},
-        {"id": "sanctioned", "label": "Sanctioned", "category": "approval"},
-        {"id": "declined", "label": "Declined", "category": "rejection"},
-        # Disbursal
-        {"id": "disbursed", "label": "Disbursed", "category": "disbursal"},
-        {"id": "not_disbursed", "label": "Not Disbursed", "category": "rejection"},
-        # Final States
-        {"id": "rejected", "label": "Rejected", "category": "rejection"},
-        {"id": "customer_not_interested", "label": "Customer Not Interested", "category": "rejection"},
-        {"id": "customer_not_supporting", "label": "Customer Not Supporting", "category": "rejection"},
-        {"id": "supporting", "label": "Supporting", "category": "other"}
-    ]
+    """The 22 File statuses offered for CRM processing, in business order."""
+    return FILE_STATUS_OPTIONS
 
 
 @router.get("/operations-team")
@@ -1996,7 +1985,7 @@ async def get_file_details(file_id: str, current_user: dict = Depends(get_curren
 
 
 @router.put("/{file_id}/details")
-async def update_file_details(file_id: str, update_data: FileDetailsUpdate, current_user: dict = Depends(get_current_user)):
+async def update_file_details(file_id: str, update_data: FileDetailsUpdate, current_user: dict = Depends(require_file_write)):
     """Update file customer details"""
     file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0})
     if not file_doc:
@@ -2053,7 +2042,7 @@ async def update_file_details(file_id: str, update_data: FileDetailsUpdate, curr
 
 
 @router.put("/{file_id}/file-status")
-async def update_file_status(file_id: str, status_update: FileStatusUpdate, current_user: dict = Depends(get_current_user)):
+async def update_file_status(file_id: str, status_update: FileStatusUpdate, current_user: dict = Depends(require_file_write)):
     """Update file CRM status"""
     if status_update.file_status not in FILE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Valid: {', '.join(FILE_STATUSES)}")
@@ -2083,7 +2072,7 @@ async def update_file_status(file_id: str, status_update: FileStatusUpdate, curr
 
 
 @router.post("/{file_id}/notes")
-async def add_file_note(file_id: str, note_data: NoteAdd, current_user: dict = Depends(get_current_user)):
+async def add_file_note(file_id: str, note_data: NoteAdd, current_user: dict = Depends(require_file_write)):
     """Add a note to a file"""
     result = await db.leads.update_one(
         lead_filter(file_id),
@@ -2106,7 +2095,7 @@ async def add_file_note(file_id: str, note_data: NoteAdd, current_user: dict = D
 
 
 @router.put("/{file_id}/assign")
-async def assign_file(file_id: str, assignment: FileAssignment, current_user: dict = Depends(get_current_user)):
+async def assign_file(file_id: str, assignment: FileAssignment, current_user: dict = Depends(require_file_write)):
     """Assign a file to an operations team member"""
     assignee = await db.users.find_one({"id": assignment.assigned_to}, {"_id": 0})
     if not assignee:
@@ -2175,7 +2164,7 @@ async def bulk_assign_files(assignment: BulkFileAssignment, current_user: dict =
 
 
 @router.put("/{file_id}/eligibilities")
-async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpdate, current_user: dict = Depends(get_current_user)):
+async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpdate, current_user: dict = Depends(require_file_write)):
     """Update file bank eligibilities (up to 7 banks) - Admin/Ops only, GPs cannot modify"""
     # GP role restriction - GPs cannot update eligibilities (bank processing is Admin/Ops only)
     user_role = current_user.get('role')
@@ -2297,7 +2286,7 @@ async def upload_document(
     file_id: str,
     file: UploadFile = File(...),
     document_type: str = "general",
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_file_write)
 ):
     """Upload a document for a file - stored in MongoDB GridFS"""
     file_ext = Path(file.filename).suffix.lower()
@@ -2361,7 +2350,7 @@ async def upload_documents(
     file_id: str,
     files: List[UploadFile] = File(...),
     category: str = "general",
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_file_write)
 ):
     """Upload multiple documents for a file - stored in MongoDB GridFS"""
     uploaded = []
@@ -2515,7 +2504,7 @@ async def download_file_document(file_id: str, doc_id: str, current_user: dict =
 
 
 @router.delete("/{file_id}/documents/{doc_id}")
-async def delete_document(file_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
+async def delete_document(file_id: str, doc_id: str, current_user: dict = Depends(require_file_write)):
     """Delete a document"""
     
     file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "file_documents": 1})
@@ -3499,7 +3488,7 @@ async def get_growth_partner_report(
 # ============ ELIGIBILITY CALCULATION - POLICY MASTER INTEGRATION ============
 
 @router.post("/{file_id}/check-eligibility")
-async def check_bank_eligibility(file_id: str, current_user: dict = Depends(get_current_user)):
+async def check_bank_eligibility(file_id: str, current_user: dict = Depends(require_file_write)):
     """
     Automatically check eligibility against all bank policies
     Uses Policy Master rules to calculate eligibility per bank
@@ -4037,7 +4026,7 @@ async def add_eligibility_activity(
     amount: Optional[float] = None,
     reason: Optional[str] = None,
     notes: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_file_write)
 ):
     """
     Add eligibility-related activity with bank details

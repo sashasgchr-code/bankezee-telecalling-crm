@@ -10,6 +10,7 @@ import api from '../../services/api';
 import { toast } from 'sonner';
 import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
+import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 
 // Legacy CRM rows store the decision flags as 'yes'/'no'; some Connect rows stored booleans.
 // The UI works in 'yes'/'no' only, so every row is normalized on load.
@@ -146,6 +147,7 @@ const FileDetailsPage = () => {
   const isAdmin = user.role === 'admin';
   const isOps = user.role === 'ops' || user.role === 'operations';
   const isManager = user.role === 'manager';
+  const isHr = user.role === 'hr';
   const isGP = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'growth_partner'].includes(user.role);
   
   // GP, Admin, Ops, Managers can edit customer details (Image 1)
@@ -466,10 +468,10 @@ const FileDetailsPage = () => {
           </div>
           <button
             onClick={() => {
-              const basePath = isAdmin || isOps || isManager ? '/admin' : '/agent';
+              const basePath = isAdmin || isOps || isManager ? '/admin' : (isHr ? '/hr' : '/agent');
               navigate(`${basePath}/files/${fileId}/check-eligibility`);
             }}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2"
+            className={`px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2 ${isHr ? 'hidden' : ''}`}
           >
             <Building2 size={18} />
             Check Eligibility
@@ -918,22 +920,20 @@ const FileDetailsPage = () => {
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value)}
                     disabled={!canEditBankInfo}
+                    data-testid="file-status-select"
                     className={`flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                   >
-                    <option value="new">New</option>
-                    <option value="contacted">Contacted</option>
-                    <option value="documents_pending">Documents Pending</option>
-                    <option value="documents_collected">Documents Collected</option>
-                    <option value="sent_to_bank">Sent to Bank</option>
-                    <option value="login">Login</option>
-                    <option value="approved">Approved</option>
-                    <option value="disbursed">Disbursed</option>
-                    <option value="rejected">Rejected</option>
-                    <option value="on_hold">On Hold</option>
+                    {FILE_STATUS_OPTIONS.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                    {!FILE_STATUS_OPTIONS.some(opt => opt.value === newStatus) && newStatus && (
+                      <option value={newStatus}>{getFileStatusLabel(newStatus)} (current)</option>
+                    )}
                   </select>
                   {canEditBankInfo && (
                     <button
                       onClick={handleStatusUpdate}
+                      data-testid="file-status-update-btn"
                       className="px-6 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
                     >
                       Update Status

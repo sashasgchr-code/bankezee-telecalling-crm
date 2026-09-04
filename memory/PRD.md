@@ -1409,3 +1409,57 @@ rating, legacy notes and bank data; no crash).
 - Still NOT done (user instruction): bank-name cleanup, mobile/APK build.
 
 *Last Updated: September 4, 2026*
+
+---
+
+## FINAL PRE-MOBILE-BUILD CHANGES (September 4, 2026)
+
+Scope was limited by the user to 3 items; item 3 (mobile call regression) was SKIPPED on the
+user's instruction ("Skip mobile for now, do items 1 and 2 only"). No migration code touched.
+
+### 1. HR UI (DONE)
+- New `/app/frontend/src/layouts/HrLayout.js` and a `/hr` route block in `App.js`:
+  Dashboard | Attendance | Leave Management | Files (+ File Details).
+  Dashboard reuses AdminDashboard, Attendance reuses AdminAttendance, Leave reuses
+  LeaveManagement, Files reuse FilesDashboard / FileDetailsPage.
+- `ProtectedRoute` no longer bounces HR to a dead `/agent/attendance` loop; HR lands on `/hr`.
+- HR permissions:
+  * read: `utils/files_query.py` includes `hr` in the admin/ops read scope; `/api/dashboard/stats`
+    treats hr like admin; `GET /api/users` now `require_hr_or_admin` (hr already has `users_view`);
+    attendance `/admin/*` endpoints opened to `require_hr_or_admin` EXCEPT office create/update and
+    settings update (configuration stays Admin-only).
+  * write: new `require_file_write` dependency in `utils/auth.py` 403s HR on every File write
+    (details, file-status, notes, assign, eligibilities, uploads, documents, check-eligibility,
+    eligibility activities). User Management writes, approvals, reports, Data and Track Report are
+    not in the HR nav at all.
+  * VerifiedCallStats and the Growth-Partner fetch are skipped for HR (no 403 console noise).
+
+### 2. File Details Update Status - exactly 22 options (DONE)
+- `components/file-detail/FileStatusCard.js` is now the single source: `FILE_STATUS_OPTIONS`
+  (the 22, in business order), `LEGACY_STATUS_LABELS` and `getFileStatusLabel()`.
+- `FileDetailsPage` renders the dropdown from that list (was a hardcoded 10-option list that even
+  contained the invalid `on_hold`); `FilesDashboard` uses the same list for its filter and the
+  shared label helper, so legacy stored values (`sent_to_bank`, `sanctioned`, `supporting`,
+  `login_done`, `on_hold`) still display a readable label but are never offered.
+- Backend `FILE_STATUSES` accepts the 22 (added `sent_for_approval`) plus the legacy values so
+  historical records stay valid; `GET /api/files/statuses` returns the 22 in order.
+- "Login Done" intentionally stores the existing `login` value - no duplicate concept created and
+  no historical record rewritten.
+
+### Verification
+- curl: `/api/files/statuses` = 22 unique ids/labels in exact order; status saves persist for
+  `sent_for_approval` / `fi` / `login` / `customer_not_interested`; invalid value -> 400; filters
+  return counts (login 8, fi 1, customer_not_interested 9, disbursed 94).
+- HR: 200 on files list/details, dashboard stats, attendance summary/today, leave pending, users;
+  403 on PUT file-status / details / eligibilities and POST /api/users.
+- testing agent iteration_47: 10/10 PASS (HR nav + all 4 HR pages render with data, HR File
+  Details view-only, 22 options exact order/no duplicates, save+persist, filter works, Admin
+  unaffected).
+
+### Not done
+Mobile call regression (item 3) - skipped by the user. Two real gaps were spotted during the read
+and are NOT fixed: `Connected` is manually tappable in `mobile-app/src/screens/LeadDetailScreen.js`
+(should be auto-only) and `POST /api/call-logs/mobile` has no idempotency, so a double-tap of Save
+can create two records for one call.
+
+*Last Updated: September 4, 2026*

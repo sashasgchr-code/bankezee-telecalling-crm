@@ -8,8 +8,14 @@ const VerifiedCallStats = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [error, setError] = useState(null);
+  // HR has no access to call data - do not render or fetch it
+  const isHr = JSON.parse(localStorage.getItem('user') || '{}').role === 'hr';
 
   const fetchStats = useCallback(async (showRefresh = false) => {
+    if (isHr) {
+      setIsLoading(false);
+      return;
+    }
     try {
       if (showRefresh) {
         setIsRefreshing(true);
@@ -27,11 +33,13 @@ const VerifiedCallStats = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [date]);
+  }, [date, isHr]);
 
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
+
+  if (isHr) return null;
 
   const handleRefresh = () => {
     fetchStats(true);

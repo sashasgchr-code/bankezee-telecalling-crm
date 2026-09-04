@@ -122,7 +122,7 @@ async def get_dashboard_stats(
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today_naive = today.replace(tzinfo=None)
     
-    if current_user["role"] == "admin":
+    if current_user["role"] in ("admin", "hr"):
         # Build filters
         leads_filter = {}
         calls_filter = {}

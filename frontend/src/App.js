@@ -28,6 +28,7 @@ import PolicyMaster from "./pages/files/PolicyMaster";
 import BankPolicyMaster from "./pages/admin/BankPolicyMaster";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
+import HrLayout from "./layouts/HrLayout";
 import TelecallerLayout from "./layouts/TelecallerLayout";
 import ManagerLayout from "./layouts/ManagerLayout";
 import ManagerDashboard from "./pages/manager/ManagerDashboard";
@@ -38,7 +39,7 @@ import "./App.css";
 // Role-neutral File redirect component
 const RoleNeutralFileRedirect = () => {
   const { user } = useAuthStore();
-  const baseRoute = user?.role === 'admin' ? '/admin' : '/agent';
+  const baseRoute = user?.role === 'admin' ? '/admin' : (user?.role === 'hr' ? '/hr' : '/agent');
   // Get the file ID from URL
   const fileId = window.location.pathname.split('/files/')[1];
   return <Navigate to={`${baseRoute}/files/${fileId}`} replace />;
@@ -65,11 +66,13 @@ const ProtectedRoute = ({ children, requiredRole }) => {
   }
 
   const userRole = user?.role;
-  
-  // HR users go to a limited view
-  if (userRole === HR_ROLE) {
-    // HR can only access attendance/leave routes
-    return <Navigate to="/agent/attendance" replace />;
+
+  // HR gets its own limited route set (Dashboard, Attendance, Leave Management, Files - view only)
+  if (userRole === HR_ROLE && requiredRole !== HR_ROLE) {
+    return <Navigate to="/hr" replace />;
+  }
+  if (requiredRole === HR_ROLE && userRole !== HR_ROLE && userRole !== 'admin') {
+    return <Navigate to={userRole === 'manager' ? '/manager' : '/agent'} replace />;
   }
 
   // Manager role gets its own route set
@@ -114,6 +117,7 @@ function App() {
     if (!user) return '/login';
     if (user.role === 'admin') return '/admin';
     if (user.role === 'manager') return '/manager';
+    if (user.role === HR_ROLE) return '/hr';
     return '/agent';
   };
 
@@ -215,6 +219,19 @@ function App() {
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="team" element={<ManagerTeam />} />
           <Route path="team/calls" element={<TeamCalls />} />
+        </Route>
+
+        {/* HR Routes - Dashboard & Files are view only, Attendance & Leave same as Admin */}
+        <Route path="/hr" element={
+          <ProtectedRoute requiredRole="hr">
+            <HrLayout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<AdminDashboard />} />
+          <Route path="attendance" element={<AdminAttendance />} />
+          <Route path="leave" element={<LeaveManagement />} />
+          <Route path="files" element={<FilesDashboard />} />
+          <Route path="files/:fileId" element={<FileDetailsPage />} />
         </Route>
 
         {/* Role-neutral File route - redirects to correct role-based route */}

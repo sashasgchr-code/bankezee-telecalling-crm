@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
-import { FILE_STATUS_OPTIONS } from '../../components/file-detail/FileStatusCard';
+import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -144,11 +144,13 @@ const FilesDashboard = () => {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
   const isManager = user.role === 'manager';
+  const isHr = user.role === 'hr';
   
   // Helper to get the correct base path for navigation
   const getBasePath = () => {
     if (isAdmin) return '/admin';
     if (isManager) return '/manager';
+    if (isHr) return '/hr';
     return '/agent';
   };
   
@@ -596,6 +598,7 @@ const FilesDashboard = () => {
 
   // Fetch Growth Partners
   const fetchGrowthPartners = async () => {
+    if (isHr) return; // HR has no access to Growth Partner data
     try {
       const response = await api.get('/users/growth-partners');
       setGrowthPartners(response.data || []);
@@ -731,10 +734,7 @@ const FilesDashboard = () => {
     });
   }, [files, searchTerm]);
 
-  const getStatusLabel = (status) => {
-    const opt = FILE_STATUS_OPTIONS.find(o => o.value === status);
-    return opt?.label || status || 'New';
-  };
+  const getStatusLabel = (status) => getFileStatusLabel(status);
 
   const getStatusColor = (status) => {
     return FILE_STATUS_COLORS[status] || FILE_STATUS_COLORS.new;

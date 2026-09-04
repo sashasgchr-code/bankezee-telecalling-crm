@@ -175,6 +175,13 @@ async def require_crm_access(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="HR role cannot access CRM data")
     return current_user
 
+async def require_file_write(current_user: dict = Depends(get_current_user)):
+    """Block HR from every File write - HR has view-only access to Files."""
+    role = normalize_role(current_user.get("role", ""))
+    if role == "hr":
+        raise HTTPException(status_code=403, detail="HR has view-only access to Files")
+    return current_user
+
 async def require_bank_processing(current_user: dict = Depends(get_current_user)):
     """
     Require bank processing permission - only Admin and Ops.

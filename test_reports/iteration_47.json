@@ -1,0 +1,69 @@
+{
+  "summary": "Frontend regression: HR role UI + File Details Update Status dropdown (22 statuses). All 10 requested items PASS.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "HR/Admin Dashboard (VerifiedCallStats + telecaller-filter select)", "issues": ["React hydration warning noise from VE wrapper <span> injected inside <table>/<select> (data-ve-dynamic spans wrapping <option>/<tr>/<tbody>/<tfoot>). Functional, but produces many console errors."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional: Suppress the two 403 console errors on HR Dashboard - /api/verified-call-stats and /api/growth-partners return 403 for HR (functionality still works, but red noise in console). Either hide the fetch for HR role or downgrade the error toast.",
+    "Optional: Fix hydration warnings from VE wrapper <span> children inside <select>/<table> (Dashboard telecaller-filter, VerifiedCallStats, FilesDashboard status-filter)."
+  ],
+  "critical_code_review_comments": [
+    "HR access-control on Files page correctly hides destructive UI (Update Status button, Edit Details, Add Bank, Save All, Check Eligibility) and disables the status select with a View Only badge - verified in DOM.",
+    "22 statuses are rendered from a single source (FILE_STATUS_OPTIONS in FileStatusCard.js) and shared with FilesDashboard status-filter, avoiding drift.",
+    "Status persistence verified end-to-end for sent_for_approval and disbursed; file left in original 'disbursed' state as required."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (skipped by request)", "frontend": "100%"},
+  "test_credentials": "HR hr@neosales.in / Hr@BankEzee@$ (works, lands on /hr). Admin admin@bankezee.com / ConnectSasha12!! (works).",
+  "seed_data_creation": "None. Status of file f5f434d8-b952-4fc3-bb0d-48d3e901ca22 was toggled sent_for_approval->disbursed and restored to disbursed. 5 bank eligibility rows unchanged (Bank #1 ICICI Approved Disbursed ₹12,00,000 still visible).",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "evidence": {
+    "hr_nav_present": ["hr-nav-dashboard","hr-nav-attendance","hr-nav-leave","hr-nav-files"],
+    "hr_nav_forbidden_found": [],
+    "hr_dashboard_landed_url": "/hr and rendered stat tiles (Total Data 0, Unused Data 1, Connected 6, Status Breakdown, Today's Call Activity 6 outgoing, Calls by Growth Partner). 403 on verified-call-stats + growth-partners (non-blocking)",
+    "hr_attendance_render": "28 Total / 0 Present / 0 Late / 28 Absent / 0 WFH / 0 On Leave tiles + Pending WFH Requests(1) + monthly table (no attendance records found). No 403 on attendance endpoints",
+    "hr_leave_render": "Accrued 2 / Used 0 / Available 2 / Rewards 0 / Penalties 0 / Net 0. Tabs: My Requests, Pending Approval(2), Monthly Summary, All Employees, Rewards & Penalties. No 403",
+    "hr_files_render": "My Files Dashboard: Total Files 514, New 5, In Progress 28, Login 333, Approved 106, Total Approved 14.28Cr, Disbursed 85, Total Disbursed 12Cr, Interim Rejects 97, Final Rejections 280, Amt in Pipeline 1.95Cr. File Status Distribution + Loans by Type render",
+    "hr_file_detail_view_only": {"selectPresent": true, "selectDisabled": true, "updateBtnPresent": false, "editBtnPresent": false, "addBankBtnPresent": false, "saveBtnPresent": false, "checkEligBtn_display": "none (hidden)", "viewOnlyBadge": true, "visibleButtons": ["Download All ZIP", "Add Note"]},
+    "admin_status_options_count": 22,
+    "admin_status_options_exact_order_match": true,
+    "admin_status_options_duplicates": {"labels": [], "values": []},
+    "admin_status_options_list": [
+      {"value": "new", "label": "New"},
+      {"value": "contacted", "label": "Contacted"},
+      {"value": "documents_collected", "label": "Documents Collected"},
+      {"value": "documents_pending", "label": "Documents Pending"},
+      {"value": "sent_for_eligibility", "label": "Sent for Eligibility"},
+      {"value": "sent_for_login", "label": "Sent for Login"},
+      {"value": "login", "label": "Login Done"},
+      {"value": "sent_for_approval", "label": "Sent for Approval"},
+      {"value": "underwriting", "label": "Underwriting"},
+      {"value": "fi", "label": "FI (Field Investigation)"},
+      {"value": "fi_negative", "label": "FI Negative"},
+      {"value": "fi_reinitiated", "label": "FI Reinitiated"},
+      {"value": "query_hold", "label": "Query/Hold"},
+      {"value": "customer_not_interested", "label": "Customer Not Interested - Need Help from MIT & Manager"},
+      {"value": "customer_not_supporting", "label": "Customer Not Supporting - Need Help from MIT & Manager"},
+      {"value": "approved", "label": "Approved"},
+      {"value": "disbursed", "label": "Disbursed"},
+      {"value": "not_eligible", "label": "Not Eligible"},
+      {"value": "not_login", "label": "Not Login"},
+      {"value": "declined", "label": "Declined"},
+      {"value": "not_disbursed", "label": "Not Disbursed"},
+      {"value": "rejected", "label": "Rejected"}
+    ],
+    "status_persistence": {"sent_for_approval_after_reload": {"value": "sent_for_approval", "label": "Sent for Approval"}, "restored_disbursed_after_reload": {"value": "disbursed", "label": "Disbursed"}},
+    "status_filter_login_done_result": "8 file cards shown; 'Login Done' filter option present and works. Filter dropdown contains 23 options (All Status + 22 statuses)",
+    "admin_bottom_nav_visible": ["Dashboard","Data","Files","Track Report","More"],
+    "admin_file_editable": "Edit Details, Check Eligibility, Update Status button all present on /admin/files/{id}"
+  },
+  "context_for_next_testing_agent": "All 10 items PASS on preview URL. File f5f434d8-... is left with status disbursed and 5 bank eligibilities intact. Minor console noise (403 on HR verified-call-stats/growth-partners and React hydration warnings from data-ve-dynamic <span> wrappers) does not affect functionality but could be cleaned up.",
+  "rca of the issue": "N/A - no defects found in scope."
+}

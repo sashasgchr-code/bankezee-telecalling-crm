@@ -10,7 +10,7 @@ from bson import ObjectId
 from models.schemas import UserRegister, UserUpdate, BulkDeleteUsersRequest, UserRoleUpdate
 from utils.database import db
 from utils.auth import (
-    get_current_user, require_admin, require_manager_or_admin,
+    get_current_user, require_admin, require_manager_or_admin, require_hr_or_admin,
     get_password_hash, normalize_role, is_gp_role, get_user_team_ids,
     validate_tl_manager_match, GP_ROLES, VALID_ROLES
 )
@@ -75,7 +75,7 @@ async def list_users(
     is_tl: Optional[bool] = None,
     is_active: Optional[bool] = None,
     search: Optional[str] = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(require_hr_or_admin)
 ):
     """
     List users - one row per PERSON (Admin only).
