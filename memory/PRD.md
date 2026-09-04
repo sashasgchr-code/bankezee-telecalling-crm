@@ -1071,3 +1071,62 @@ and is marked SAFE TO DELETE in the DRY RUN only). Production run requires the p
 
 Regression after these fixes: user_mgmt_gate 28/28, verify_hierarchy 34/34, track_report_gate 15/15,
 acceptance_matrix 30/30. NO cleanup, NO merge, NO production writes performed.
+
+## OLD-CRM BANK ELIGIBILITY WORKFLOW RESTORED + SAVE FIXED (September 4, 2026) — 17/17 backend, browser verified
+
+### TRACE - why Save appeared to do nothing
+Endpoint/ID/filter were never the problem: `PUT /api/files/{file_id}/eligibilities` ->
+`lead_filter(file_id)` matched 1 document and Mongo was written (HTTP 200). The data loss came from
+the SCHEMA:
+- `EligibilityEntry` was a subset model with BOOLEAN flags. Pydantic v2 ignores unknown fields, so
+  `eligible_roi`, `application_id`, `sm_name`, `sm_number`, `disbursal_date`, `login_done_at`,
+  `approved_at`, `rejected_at`, `disbursed_at`, `tvr_done`, `emi_ok`, `rc_submitted`,
+  `noc_submitted`, `hypothecation` and every `*_reason` were DROPPED from the payload, and the
+  endpoint `$set` the whole array - so a save on a legacy file also wiped the imported values.
+- `"yes"` was coerced to `True`, but the UI only renders the next step when the value `=== 'yes'`,
+  so after reopening a file everything below "Eligible?" disappeared -> "the information is missing".
+Evidence captured: legacy file 6d194952 had 4 banks with the full old schema; one UI-shaped PUT
+returned `{"count":1}` and the GET came back with booleans and 22 fields instead of 44 (the file was
+restored immediately afterwards).
+
+### FIX
+Backend `routes/files_crm.py`:
+- `EligibilityEntry` = full old-CRM schema with `extra='allow'` (nothing can ever be dropped again)
+  and a `model_validator(mode='before')` that normalises yes/no (bool or string) and numerics
+  (`""` -> None), so both legacy and new payloads round-trip unchanged.
+- `update_eligibilities` keys existing rows by bank name and stamps `login_done_at`, `approved_at`,
+  `rejected_at`, `disbursed_at` only on the transition, preserving them when an unrelated field is
+  edited (Reports/TAT depend on them). Commission is computed server-side
+  (`disbursed_amount x commission_percentage / 100`) and cleared when a disbursal is reversed, so a
+  re-save can never double-credit. Response returns `matched_count`, `modified_count` and the
+  persisted array; a non-matching filter now raises instead of reporting success.
+Frontend:
+- NEW `components/file-detail/BankEligibilityRow.js` - the old-CRM progressive card:
+  Step 1 Bank Name + Eligible? (No -> reason only, stop | Yes -> Eligible Amount + Eligible ROI) ->
+  Step 2 Login Done? (No -> rejection reason | Yes -> Login Bank, Application ID, SM Name, SM Number
+  with SM fields Admin/Ops-only) -> Step 3 Approval (Declined -> Declined Bank + reason | Approved ->
+  Approved Bank/Amount/Tenure/ROI) -> Step 3.5 vehicle loans (RC, NOC only for used_vehicle_loan_bt,
+  Hypothecation, each with a not-done reason; disbursement stays closed until they are complete) ->
+  Step 4 Disbursement (No -> rejection reason | Yes -> date, bank, amount, tenure, ROI, commission %
+  and READ-ONLY commission amount). Transition timestamps are shown inline.
+- `FileDetailsPage.js`: `normalizeEligibilities` maps legacy booleans to yes/no (and `roi` ->
+  `eligible_roi`); Save/Save All persist FIRST and then adopt the backend response (no optimistic
+  toast, values retained and an error shown on failure); per-bank Save; delete persists through a
+  save; max 7 enforced on both ends.
+
+### GATES
+- NEW `/app/scripts/eligibility_gate.py` **17/17 PASS**: 5-bank lifecycle (not eligible / login no /
+  declined / approved-not-disbursed / disbursed+commission), 8 banks rejected 400, progressive data,
+  commission 850000 x 1.25% = 10625 then 2% = 17000 and cleared on reversal, vehicle RC+NOC+
+  hypothecation with all three reasons, timestamps only on transitions, individual + Save All +
+  delete persistence via fresh GET and Mongo, a REAL legacy CRM file round-trip that preserved SM /
+  application_id / eligible_roi / login_done_at / rejected_at, and Reports (dashboard stats,
+  bank-performance, tat-metrics) still calculating - the QA disbursal rolled into bank-performance.
+- Browser (testing agent iteration_44 + follow-up): legacy banks render, every conditional branch
+  reveals/hides correctly, per-bank Save survives a reload (SM fields, Application ID, ROI, disbursal
+  date, commission 7500 read-only, timestamps), delete survives a reload, Add Bank disabled at 7,
+  Manager sees SM fields disabled. One CRITICAL bug it found - `onClick={handleSaveEligibilities}`
+  passed the click event as the rows argument so Save All threw `rows.filter is not a function` -
+  is FIXED (`onClick={() => handleSaveEligibilities()}` + defensive `Array.isArray` guard) and
+  re-verified: 2 banks saved with Save All survived a reload, then deleted and the 4 legacy banks
+  restored exactly. GP `PUT` still 403, Manager `GET` 200.

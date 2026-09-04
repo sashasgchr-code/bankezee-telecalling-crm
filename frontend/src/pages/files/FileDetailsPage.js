@@ -9,6 +9,24 @@ import {
 import api from '../../services/api';
 import { toast } from 'sonner';
 import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
+import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
+
+// Legacy CRM rows store the decision flags as 'yes'/'no'; some Connect rows stored booleans.
+// The UI works in 'yes'/'no' only, so every row is normalized on load.
+const YES_NO_FIELDS = ['is_eligible', 'login_done', 'disbursed', 'tvr_done', 'emi_ok',
+  'rc_submitted', 'noc_submitted', 'hypothecation'];
+
+const normalizeEligibilities = (rows) => (Array.isArray(rows) ? rows : []).map(row => {
+  const bank = { ...row };
+  YES_NO_FIELDS.forEach(field => {
+    const value = bank[field];
+    if (typeof value === 'boolean') bank[field] = value ? 'yes' : 'no';
+    else if (value === null || value === undefined) bank[field] = '';
+    else bank[field] = String(value).toLowerCase();
+  });
+  if (!bank.eligible_roi && bank.roi) bank.eligible_roi = bank.roi;
+  return bank;
+});
 
 // Format currency
 const formatCurrency = (amount) => {
@@ -42,19 +60,30 @@ const EMPTY_BANK = {
   bank_name: '',
   is_eligible: '',
   eligible_amount: '',
-  roi: '',
+  eligible_roi: '',
+  not_eligible_reason: '',
   // Login Status
   login_done: '',
   login_bank: '',
   application_id: '',
   sm_name: '',
   sm_number: '',
+  login_rejection_reason: '',
   // Approval Status
   approval_status: '',
   approved_bank: '',
   approved_amount: '',
   approved_tenure: '',
   approved_roi: '',
+  declined_bank: '',
+  declined_reason: '',
+  // Vehicle loan conditions
+  rc_submitted: '',
+  rc_not_submitted_reason: '',
+  noc_submitted: '',
+  noc_not_submitted_reason: '',
+  hypothecation: '',
+  hypothecation_not_done_reason: '',
   // Disbursement
   disbursed: '',
   disbursal_date: '',
@@ -62,6 +91,7 @@ const EMPTY_BANK = {
   disbursed_amount: '',
   disbursed_tenure: '',
   disbursed_roi: '',
+  disbursement_rejection_reason: '',
   // Commission
   commission_percentage: '',
   commission_amount: ''
@@ -120,6 +150,11 @@ const FileDetailsPage = () => {
   
   // Only Admin, Ops, Managers can edit Bank Eligibilities (Image 2 & 3)
   const canEditBankInfo = isAdmin || isOps || isManager;
+  // SM name/number stay Admin/Ops only, as in the old CRM
+  const canEditSmDetails = isAdmin || isOps;
+  const loanType = String(fileData?.file_details?.type_of_loan || fileData?.requirement || '').toLowerCase();
+  const isVehicleLoan = loanType.includes('vehicle') || loanType.includes('car') || loanType.includes('auto');
+  const isUsedVehicleBt = isVehicleLoan && loanType.includes('used') && loanType.includes('bt');
 
   useEffect(() => {
     fetchFileData();
@@ -175,7 +210,7 @@ const FileDetailsPage = () => {
       });
       
       // Bank Eligibilities
-      setEligibilities(data.eligibilities || []);
+      setEligibilities(normalizeEligibilities(data.eligibilities));
       
       // Documents
       setDocuments(data.documents || []);
@@ -228,18 +263,30 @@ const FileDetailsPage = () => {
     }
   };
 
-  const handleSaveEligibilities = async () => {
+  const handleSaveEligibilities = async (rowsInput, successMessage = 'Bank eligibilities saved') => {
+    const rows = Array.isArray(rowsInput) ? rowsInput : eligibilities;
+    const banks = rows.filter(b => (b.bank_name || '').trim());
+    if (banks.length !== rows.length) {
+      toast.error('Every bank needs a name before saving');
+      return false;
+    }
     setSavingEligibilities(true);
     try {
-      await api.put(`/files/${fileId}/eligibilities`, { eligibilities });
-      toast.success('Bank eligibilities saved');
-      fetchFileData();
+      // Persist first, then adopt exactly what the backend stored (no optimistic success)
+      const response = await api.put(`/files/${fileId}/eligibilities`, { eligibilities: banks });
+      setEligibilities(normalizeEligibilities(response.data?.eligibilities || banks));
+      toast.success(successMessage);
+      return true;
     } catch (error) {
-      toast.error('Failed to save eligibilities');
+      toast.error(error.response?.data?.detail || 'Failed to save eligibilities - your entries are still here');
+      return false;
     } finally {
       setSavingEligibilities(false);
     }
   };
+
+  const handleSaveBank = (index) =>
+    handleSaveEligibilities(eligibilities, `Bank #${index + 1} saved`);
 
   const handleAddBank = () => {
     if (eligibilities.length >= 7) {
@@ -249,8 +296,14 @@ const FileDetailsPage = () => {
     setEligibilities([...eligibilities, { ...EMPTY_BANK }]);
   };
 
-  const handleRemoveBank = (index) => {
-    setEligibilities(eligibilities.filter((_, i) => i !== index));
+  const handleRemoveBank = async (index) => {
+    const remaining = eligibilities.filter((_, i) => i !== index);
+    if (!(eligibilities[index]?.bank_name || '').trim()) {
+      setEligibilities(remaining);  // never saved, nothing to persist
+      return;
+    }
+    if (!window.confirm(`Remove Bank #${index + 1}${eligibilities[index].bank_name ? ` (${eligibilities[index].bank_name})` : ''}?`)) return;
+    await handleSaveEligibilities(remaining, `Bank #${index + 1} removed`);
   };
 
   const handleBankChange = (index, field, value) => {
@@ -758,7 +811,7 @@ const FileDetailsPage = () => {
                   {canEditBankInfo && (
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={handleSaveEligibilities}
+                        onClick={() => handleSaveEligibilities()}
                         disabled={savingEligibilities}
                         className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
                       >
@@ -785,338 +838,21 @@ const FileDetailsPage = () => {
                 ) : (
                   <div className="space-y-4">
                     {eligibilities.map((bank, index) => (
-                      <div key={index} className="border border-gray-200 rounded-lg overflow-hidden">
-                        {/* Bank Header */}
-                        <div 
-                          className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer"
-                          onClick={() => toggleBankExpand(index)}
-                        >
-                          <h3 className="font-semibold text-green-600">
-                            Bank #{index + 1} {bank.bank_name ? `- ${bank.bank_name}` : ''}
-                          </h3>
-                          <div className="flex items-center gap-2">
-                            {canEditBankInfo && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleRemoveBank(index); }}
-                                className="p-1 text-red-500 hover:bg-red-50 rounded"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            )}
-                            {expandedBanks[index] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                          </div>
-                        </div>
-
-                        {/* Bank Details - Always show basic info */}
-                        <div className="p-4">
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                            <div>
-                              <label className="text-xs text-gray-500 block mb-1">Bank Name</label>
-                              <input
-                                type="text"
-                                value={bank.bank_name}
-                                onChange={(e) => handleBankChange(index, 'bank_name', e.target.value)}
-                                disabled={!canEditBankInfo}
-                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 block mb-1">Eligible?</label>
-                              <select
-                                value={bank.is_eligible}
-                                onChange={(e) => handleBankChange(index, 'is_eligible', e.target.value)}
-                                disabled={!canEditBankInfo}
-                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                              >
-                                <option value="">Select</option>
-                                <option value="yes">Yes - Eligible</option>
-                                <option value="no">No - Not Eligible</option>
-                                <option value="possible">Possible</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 block mb-1">Eligible Amount (₹)</label>
-                              <input
-                                type="number"
-                                value={bank.eligible_amount}
-                                onChange={(e) => handleBankChange(index, 'eligible_amount', e.target.value)}
-                                disabled={!canEditBankInfo}
-                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                              />
-                            </div>
-                            <div>
-                              <label className="text-xs text-gray-500 block mb-1">ROI (%)</label>
-                              <input
-                                type="text"
-                                value={bank.roi}
-                                onChange={(e) => handleBankChange(index, 'roi', e.target.value)}
-                                disabled={!canEditBankInfo}
-                                placeholder="%"
-                                className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Expanded Details */}
-                          {expandedBanks[index] !== false && (
-                            <>
-                              {/* Login Status */}
-                              <div className="pt-4 border-t border-gray-100">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Login Status</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Login Done?</label>
-                                    <select
-                                      value={bank.login_done}
-                                      onChange={(e) => handleBankChange(index, 'login_done', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    >
-                                      <option value="">Select</option>
-                                      <option value="yes">Yes</option>
-                                      <option value="no">No</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Login Bank</label>
-                                    <input
-                                      type="text"
-                                      value={bank.login_bank}
-                                      onChange={(e) => handleBankChange(index, 'login_bank', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Application ID</label>
-                                    <input
-                                      type="text"
-                                      value={bank.application_id}
-                                      onChange={(e) => handleBankChange(index, 'application_id', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">SM Name</label>
-                                    <input
-                                      type="text"
-                                      value={bank.sm_name}
-                                      onChange={(e) => handleBankChange(index, 'sm_name', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">SM Number</label>
-                                    <input
-                                      type="text"
-                                      value={bank.sm_number}
-                                      onChange={(e) => handleBankChange(index, 'sm_number', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Approval Status */}
-                              <div className="pt-4 mt-4 border-t border-gray-100">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Approval Status</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Status</label>
-                                    <select
-                                      value={bank.approval_status}
-                                      onChange={(e) => handleBankChange(index, 'approval_status', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    >
-                                      <option value="">Select</option>
-                                      <option value="pending">Pending</option>
-                                      <option value="approved">Approved</option>
-                                      <option value="declined">Declined</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Approved Bank</label>
-                                    <input
-                                      type="text"
-                                      value={bank.approved_bank}
-                                      onChange={(e) => handleBankChange(index, 'approved_bank', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Approved Amount (₹)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.approved_amount}
-                                      onChange={(e) => handleBankChange(index, 'approved_amount', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Tenure (months)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.approved_tenure}
-                                      onChange={(e) => handleBankChange(index, 'approved_tenure', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">ROI (%)</label>
-                                    <input
-                                      type="text"
-                                      value={bank.approved_roi}
-                                      onChange={(e) => handleBankChange(index, 'approved_roi', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Disbursement */}
-                              <div className="pt-4 mt-4 border-t border-gray-100">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Disbursement</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Disbursed?</label>
-                                    <select
-                                      value={bank.disbursed}
-                                      onChange={(e) => handleBankChange(index, 'disbursed', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    >
-                                      <option value="">Select</option>
-                                      <option value="yes">Yes</option>
-                                      <option value="no">No</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Disbursal Date</label>
-                                    <input
-                                      type="date"
-                                      value={bank.disbursal_date}
-                                      onChange={(e) => handleBankChange(index, 'disbursal_date', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Disbursed Amount (₹)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.disbursed_amount}
-                                      onChange={(e) => handleBankChange(index, 'disbursed_amount', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">PF (₹)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.pf}
-                                      onChange={(e) => handleBankChange(index, 'pf', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">EMI (₹)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.emi}
-                                      onChange={(e) => handleBankChange(index, 'emi', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">First EMI Date</label>
-                                    <input
-                                      type="date"
-                                      value={bank.first_emi_date}
-                                      onChange={(e) => handleBankChange(index, 'first_emi_date', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Commission */}
-                              <div className="pt-4 mt-4 border-t border-gray-100">
-                                <h4 className="text-sm font-semibold text-gray-700 mb-3">Commission Details</h4>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Commission (₹)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.commission}
-                                      onChange={(e) => handleBankChange(index, 'commission', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Commission Status</label>
-                                    <select
-                                      value={bank.commission_status}
-                                      onChange={(e) => handleBankChange(index, 'commission_status', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    >
-                                      <option value="">Select</option>
-                                      <option value="pending">Pending</option>
-                                      <option value="partial">Partial</option>
-                                      <option value="received">Received</option>
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Commission Received (₹)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.commission_received}
-                                      onChange={(e) => handleBankChange(index, 'commission_received', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                  <div>
-                                    <label className="text-xs text-gray-500 block mb-1">Commission Balance (₹)</label>
-                                    <input
-                                      type="number"
-                                      value={bank.commission_balance}
-                                      onChange={(e) => handleBankChange(index, 'commission_balance', e.target.value)}
-                                      disabled={!canEditBankInfo}
-                                      className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                    />
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Notes */}
-                              <div className="pt-4 mt-4 border-t border-gray-100">
-                                <label className="text-xs text-gray-500 block mb-1">Notes</label>
-                                <textarea
-                                  value={bank.notes}
-                                  onChange={(e) => handleBankChange(index, 'notes', e.target.value)}
-                                  disabled={!canEditBankInfo}
-                                  rows={2}
-                                  className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
-                                />
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
+                      <BankEligibilityRow
+                        key={index}
+                        bank={bank}
+                        index={index}
+                        canEdit={canEditBankInfo}
+                        canEditSm={canEditSmDetails}
+                        isVehicleLoan={isVehicleLoan}
+                        isUsedVehicleBt={isUsedVehicleBt}
+                        expanded={expandedBanks[index] !== false}
+                        onToggle={toggleBankExpand}
+                        onChange={handleBankChange}
+                        onRemove={handleRemoveBank}
+                        onSave={handleSaveBank}
+                        saving={savingEligibilities}
+                      />
                     ))}
                   </div>
                 )}

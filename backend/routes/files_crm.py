@@ -3,7 +3,7 @@ Files CRM Routes - Integrated from BankEzee CRM
 Handles file details, eligibilities, document management for leads with status='file'
 """
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
 from bson import ObjectId
 from dotenv import load_dotenv
@@ -102,30 +102,110 @@ class NoteAdd(BaseModel):
     note: str
 
 
+YES_NO_FIELDS = ("is_eligible", "login_done", "disbursed", "tvr_done", "emi_ok",
+                 "rc_submitted", "noc_submitted", "hypothecation")
+NUMERIC_FIELDS = ("eligible_amount", "eligible_roi", "eligible_tenure", "approved_amount",
+                  "approved_roi", "approved_tenure", "disbursed_amount", "disbursed_roi",
+                  "disbursed_tenure", "commission_percentage", "commission_amount")
+
+
+def yes_no(value):
+    """Old CRM stores the decision flags as 'yes'/'no' strings; accept booleans too."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    text = str(value).strip().lower()
+    if text in ("yes", "true", "1"):
+        return "yes"
+    if text in ("no", "false", "0"):
+        return "no"
+    return None
+
+
+def to_number(value):
+    if value is None or value == "":
+        return None
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (ValueError, TypeError):
+        return None
+
+
 class EligibilityEntry(BaseModel):
+    """Old CRM eligibilities[] entry - schema-compatible, nothing is dropped.
+
+    `extra='allow'` keeps any additional field the legacy import carries, so saving a legacy
+    file can never destroy data the Connect UI does not render yet.
+    """
+    model_config = {"extra": "allow"}
+
     bank_name: str
-    is_eligible: bool
+    # Step 1 - eligibility
+    is_eligible: Optional[str] = None
     eligible_amount: Optional[float] = None
+    eligible_roi: Optional[float] = None
     eligible_tenure: Optional[int] = None
     not_eligible_reason: Optional[str] = None
-    login_done: Optional[bool] = None
+    # Legacy pre-login checks
+    tvr_done: Optional[str] = None
+    tvr_not_done_reason: Optional[str] = None
+    emi_ok: Optional[str] = None
+    emi_not_ok_reason: Optional[str] = None
+    # Step 2 - login
+    login_done: Optional[str] = None
+    login_done_at: Optional[str] = None
     login_bank: Optional[str] = None
+    application_id: Optional[str] = None
+    sm_name: Optional[str] = None
+    sm_number: Optional[str] = None
     login_rejection_reason: Optional[str] = None
+    # Step 3 - approval
     approval_status: Optional[str] = None
+    approved_at: Optional[str] = None
     approved_bank: Optional[str] = None
     approved_amount: Optional[float] = None
     approved_tenure: Optional[int] = None
     approved_roi: Optional[float] = None
     declined_bank: Optional[str] = None
     declined_reason: Optional[str] = None
-    disbursed: Optional[bool] = None
+    rejected_at: Optional[str] = None
+    # Step 3.5 - vehicle loans
+    rc_submitted: Optional[str] = None
+    rc_not_submitted_reason: Optional[str] = None
+    noc_submitted: Optional[str] = None
+    noc_not_submitted_reason: Optional[str] = None
+    hypothecation: Optional[str] = None
+    hypothecation_not_done_reason: Optional[str] = None
+    # Step 4 - disbursement
+    disbursed: Optional[str] = None
+    disbursed_at: Optional[str] = None
+    disbursal_date: Optional[str] = None
     disbursed_bank: Optional[str] = None
     disbursed_amount: Optional[float] = None
     disbursed_tenure: Optional[int] = None
     disbursed_roi: Optional[float] = None
     disbursement_rejection_reason: Optional[str] = None
+    # Commission
     commission_percentage: Optional[float] = None
     commission_amount: Optional[float] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize(cls, data):
+        if not isinstance(data, dict):
+            return data
+        cleaned = dict(data)
+        for field in YES_NO_FIELDS:
+            if field in cleaned:
+                cleaned[field] = yes_no(cleaned[field])
+        for field in NUMERIC_FIELDS:
+            if field in cleaned:
+                cleaned[field] = to_number(cleaned[field])
+        for key, value in list(cleaned.items()):
+            if value == "":
+                cleaned[key] = None
+        return cleaned
 
 
 class EligibilityUpdate(BaseModel):
@@ -2052,17 +2132,54 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
     if not file_doc:
         raise HTTPException(status_code=404, detail="File not found")
     
+    # Existing rows, keyed by bank so a re-order cannot shift timestamps onto another bank
+    existing = {}
+    for row in (file_doc.get("eligibilities") or []):
+        if isinstance(row, dict) and row.get("bank_name"):
+            existing[str(row["bank_name"]).strip().lower()] = row
+    
+    now_iso = datetime.now(timezone.utc).isoformat()
     eligibilities_data = []
     for e in eligibility_update.eligibilities:
-        elig_dict = e.dict()
-        if elig_dict.get('disbursed') and elig_dict.get('disbursed_amount') and elig_dict.get('commission_percentage'):
-            calculated_commission = round(
-                (elig_dict['disbursed_amount'] * elig_dict['commission_percentage']) / 100, 2
-            )
-            elig_dict['commission_amount'] = calculated_commission
+        elig_dict = e.model_dump()
+        previous = existing.get(str(elig_dict.get("bank_name", "")).strip().lower(), {})
+        
+        # Transition timestamps: stamped when the step first reaches its terminal answer and then
+        # preserved, never rewritten because an unrelated field was edited (Reports/TAT rely on them)
+        def stamp(field, reached, previous_reached):
+            kept = elig_dict.get(field) or previous.get(field)
+            if reached and not previous_reached and not kept:
+                return now_iso
+            return kept
+        
+        elig_dict["login_done_at"] = stamp(
+            "login_done_at", elig_dict.get("login_done") == "yes", previous.get("login_done") == "yes")
+        elig_dict["approved_at"] = stamp(
+            "approved_at", elig_dict.get("approval_status") == "approved",
+            previous.get("approval_status") == "approved")
+        rejected_now = (elig_dict.get("approval_status") == "declined"
+                        or elig_dict.get("login_done") == "no"
+                        or elig_dict.get("disbursed") == "no"
+                        or elig_dict.get("is_eligible") == "no")
+        rejected_before = (previous.get("approval_status") == "declined"
+                           or previous.get("login_done") == "no"
+                           or previous.get("disbursed") == "no"
+                           or previous.get("is_eligible") == "no")
+        elig_dict["rejected_at"] = stamp("rejected_at", rejected_now, rejected_before)
+        elig_dict["disbursed_at"] = stamp(
+            "disbursed_at", elig_dict.get("disbursed") == "yes", previous.get("disbursed") == "yes")
+        
+        # Commission is always derived server-side (read-only in the UI)
+        if elig_dict.get("disbursed") == "yes" and elig_dict.get("disbursed_amount") and elig_dict.get("commission_percentage"):
+            elig_dict["commission_amount"] = round(
+                (elig_dict["disbursed_amount"] * elig_dict["commission_percentage"]) / 100, 2)
+        elif elig_dict.get("disbursed") != "yes":
+            # Reversing a disbursal removes its commission credit (old CRM behaviour)
+            elig_dict["commission_amount"] = None
+        
         eligibilities_data.append(elig_dict)
     
-    await db.leads.update_one(
+    result = await db.leads.update_one(
         lead_filter(file_id),
         {
             "$set": {
@@ -2073,13 +2190,24 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
                 "file_activities": {
                     "type": "eligibility_update",
                     "message": f"Eligibilities updated ({len(eligibilities_data)} bank(s))",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "user": current_user.get("name") or current_user.get("email")
                 }
             }
         }
     )
     
-    return {"message": "Eligibilities updated successfully", "count": len(eligibilities_data)}
+    if result.matched_count != 1:
+        raise HTTPException(status_code=500, detail="Eligibility update did not match exactly one file")
+    
+    saved = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "eligibilities": 1})
+    return {
+        "message": "Eligibilities updated successfully",
+        "count": len(eligibilities_data),
+        "matched_count": result.matched_count,
+        "modified_count": result.modified_count,
+        "eligibilities": json_safe((saved or {}).get("eligibilities", []))
+    }
 
 
 @router.get("/{file_id}/eligibilities")
