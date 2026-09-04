@@ -382,6 +382,8 @@ async def get_all_files(
             f['id'] = str(f['_id'])
         # Remove _id from response
         f.pop('_id', None)
+        # Live star rating so newly created Connect files show stars on the card too
+        f.update(calculate_star_rating(f))
         files.append(json_safe(f))
     
     return {

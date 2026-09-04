@@ -1175,3 +1175,22 @@ Frontend:
 GATE: NEW `/app/scripts/file_eligibility_stats_gate.py` **24/24 PASS**. Regression: eligibility_gate
 17/17, acceptance_matrix 30/30, files_rbac_matrix green, verify_hierarchy 34/34, user_mgmt_gate
 28/28. All QA fixtures removed; the legacy file's 4 banks are byte-for-byte intact.
+
+## ELIGIBILITY CHECK ON CONNECT FILES + STARS ON FILE CARDS (September 4, 2026) — verified
+
+ROOT CAUSE of "Check Eligibility does nothing" on Connect-entered files:
+`POST /api/bank-policies/check-eligibility/{lead_id}` looked the file up with
+`db.leads.find_one({"id": lead_id})` while the Files list exposes `str(_id)` as the id for any
+document without an `id` field (which is how several Connect-entered files are stored). The lookup
+missed -> HTTP 404 -> the page rendered its empty "Run Eligibility Check" state forever. Fixed by
+using the shared `doc_ref_filter()` ID-compatibility helper (same logic as `lead_filter`).
+Reproduced with a document keyed only by `_id`: before = 404, after = HTTP 200 with 35 lenders
+evaluated (8 eligible) and the full analysis rendering in the browser.
+
+STAR ON THE FILE CARD: the list card read `file.rating`, a field the API never returns, so every
+card showed 5 empty stars. The Files list now returns a live `star_rating` / `star_score` per row
+(computed with the old-CRM formula, so brand-new Connect files get stars immediately) and the card
+renders the filled stars plus the score. Verified: 179 filled stars across 50 rows, e.g. 90/100.
+
+Gates re-run after the change: file_eligibility_stats_gate 24/24, eligibility_gate 17/17,
+acceptance_matrix 30/30. QA fixture removed.

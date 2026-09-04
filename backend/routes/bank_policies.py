@@ -14,7 +14,7 @@ from typing import Optional, List
 import logging
 
 from utils.auth import get_current_user, require_admin
-
+from utils.helpers import doc_ref_filter
 ROOT_DIR = Path(__file__).parent.parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -254,7 +254,9 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
     Returns detailed analysis with pass/fail reasons per criterion
     """
     # Get lead/file data
-    lead = await db.leads.find_one({"id": lead_id}, {"_id": 0})
+    # Accept the id the Files list exposes: `id` for Connect files, str(_id) for imported CRM
+    # records (this is why "Run Eligibility Check" returned 404/blank on some files).
+    lead = await db.leads.find_one(doc_ref_filter(lead_id), {"_id": 0})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead/File not found")
     

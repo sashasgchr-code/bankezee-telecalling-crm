@@ -2000,7 +2000,7 @@ const FilesDashboard = () => {
                 const sourceGP = growthPartners.find(gp => gp.id === file.source_id) || opsTeam.find(o => o.id === file.source_id);
                 const gpName = sourceGP?.full_name || sourceGP?.name || file.source_name || null;
                 const loanAmount = file.file_details?.loan_amount_required || file.eligibilities?.[0]?.eligible_amount;
-                const rating = file.rating || 0;
+                const rating = file.star_rating || file.rating || 0;
                 
                 return (
                   <div
@@ -2046,7 +2046,8 @@ const FilesDashboard = () => {
                           )}
                         </div>
                         {/* Star Rating */}
-                        <div className="flex items-center gap-0.5 mt-1">
+                        <div className="flex items-center gap-0.5 mt-1" data-testid={`file-stars-${file.id}`}
+                             title={file.star_score ? `Profile score ${file.star_score}/100` : 'Not enough profile data'}>
                           {[1,2,3,4,5].map(star => (
                             <Star 
                               key={star} 
@@ -2054,6 +2055,9 @@ const FilesDashboard = () => {
                               className={star <= rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300'}
                             />
                           ))}
+                          {rating > 0 && (
+                            <span className="ml-1 text-[11px] text-gray-500">{file.star_score}/100</span>
+                          )}
                         </div>
                       </div>
                       
