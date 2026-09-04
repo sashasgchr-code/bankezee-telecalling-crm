@@ -1,0 +1,1069 @@
+{
+"run": "preview_2026_09_04",
+"changed": {
+"dcd5a636-4895-4278-a237-5d46d6787dbd": {
+"fields": [
+"file_details.cibil_score",
+"file_details.company_name",
+"file_details.net_salary",
+"file_details.obligations_emi"
+],
+"name": "Kalyan "
+},
+"d7c961d2-742d-4e3f-9321-4b20d6a7611c": {
+"fields": [
+"elig[poonawala]"
+],
+"name": "Patamata Vijay Kumar "
+},
+"676f2426-3447-4f87-900e-e0c9af46bd68": {
+"fields": [
+"file_details.cibil_score",
+"file_details.loan_amount_required",
+"file_details.net_salary"
+],
+"name": "Atla sreekar "
+},
+"61bf1fde-de1f-45dd-9973-1cb8be0353b7": {
+"fields": [
+"elig[axis]"
+],
+"name": "Sirigadde sai charan "
+},
+"60557281-6601-4328-a8d5-05ec4cb1673a": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Gornakonda srihari"
+},
+"27a5a693-61b3-4e57-b9f7-edd0897d9828": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Jamalpur sunitha "
+},
+"41b8689a-0e53-4ad0-b08d-bf7cf8038542": {
+"fields": [
+"elig[axis]",
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "Lonavath Kishan singh "
+},
+"7417abac-08ee-4318-bd7c-cc46aa4831b3": {
+"fields": [
+"file_details.cibil_score",
+"file_details.company_name",
+"file_details.existing_loan_1",
+"file_details.loan_amount_required",
+"file_details.net_salary"
+],
+"name": "Shaik Aleemoddin "
+},
+"4f5305a5-a8a9-49be-8f90-acfa9be76005": {
+"fields": [
+"elig[chola]"
+],
+"name": "NARSIMHULU B"
+},
+"6a5240e6-13da-4a99-a07c-de98ebed33f3": {
+"fields": [
+"elig[axis]"
+],
+"name": "Umesh Babu "
+},
+"71d55e19-3396-4cd9-8662-c1562ae43723": {
+"fields": [
+"file_details.company_name",
+"file_details.existing_loan_1",
+"file_details.existing_loan_2",
+"file_details.loan_amount_required",
+"file_details.net_salary",
+"file_details.obligations_emi",
+"file_details.type_of_loan"
+],
+"name": "Bondugula rohith "
+},
+"59a38f4d-c896-447a-b1ff-bd3d035e8866": {
+"fields": [
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "K Sandeep "
+},
+"32c05398-01a4-4a40-ba6b-17e933729a36": {
+"fields": [
+"file_details.existing_loan_1"
+],
+"name": "P SATYANARAYANA"
+},
+"9aeb8334-6628-4cb1-9f99-b45e43cf2aaf": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Yarijarla anil kumar "
+},
+"a53d08c5-771a-4dc0-9765-ddcfd409c2ed": {
+"fields": [
+"elig[aditya]"
+],
+"name": "G SRINATH YADAV"
+},
+"ebb49972-fbfa-487c-806a-6be93ff15fcd": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Mohammed Abdul salam"
+},
+"1f8c90b5-effb-4f39-a321-e7fcf53ac4b4": {
+"fields": [
+"elig[axis finance]"
+],
+"name": "Ampolu manohar "
+},
+"11810738-5f1a-4e97-86f6-ec880e321621": {
+"fields": [
+"elig[axis finance]",
+"file_details.cibil_score",
+"file_details.existing_loan_1",
+"file_details.existing_loan_2",
+"file_details.net_salary",
+"file_details.obligations_emi"
+],
+"name": "Sathish"
+},
+"c08e1449-085f-4ce9-852d-0cd410dbdd52": {
+"fields": [
+"elig[icici]"
+],
+"name": "Beela santosh naidu"
+},
+"2106f217-9308-41d9-bd94-9df90519ae4d": {
+"fields": [
+"elig[aditya birla]"
+],
+"name": "T Chandra Shekhar reddy "
+},
+"a4cf280d-36f2-4e83-8965-a9ef4c376cf7": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Palla santosh kumar "
+},
+"d9b6dd43-dbb4-4478-b9ec-f4fefc828d74": {
+"fields": [
+"elig[indusind]"
+],
+"name": "Gaddala sai kumar "
+},
+"1d2e6491-6bd9-40e5-abd2-52854b7912cb": {
+"fields": [
+"elig[kotak]"
+],
+"name": "SK MUSAFIQUE"
+},
+"bebfc183-07e2-4c8d-8ac7-98ef43048c35": {
+"fields": [
+"elig[aditya]",
+"elig[axis]",
+"elig[kotak]"
+],
+"name": "Rajeev k hebrom"
+},
+"d187dcfd-28b5-4b03-a0ac-8d06142482d6": {
+"fields": [
+"elig[aditya brila]",
+"elig[axis]",
+"elig[hdfc]"
+],
+"name": "N ARUNA"
+},
+"3f5dffd8-a8a0-4e07-97ab-73bdeb3781a3": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Malla Nithin kumar"
+},
+"8a4f96a5-ec58-456e-95c5-3979dfe73562": {
+"fields": [
+"elig[axis finance]",
+"elig[fullerton]"
+],
+"name": "Verrapandu muthyala "
+},
+"e132b7af-d85d-4275-aa0b-1da239d03770": {
+"fields": [
+"elig[bandhan]"
+],
+"name": "Challa Thirupathi reddy"
+},
+"8f0e2eb2-1aff-4e65-93b7-4a33eabb7a8e": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Yalla Raja kumar"
+},
+"58657cd0-4532-47a1-9d77-4a3d1be735ed": {
+"fields": [
+"elig[idfc]"
+],
+"name": "Korra parushuram "
+},
+"396439e4-cfb5-4b7e-b227-26fc6078fc91": {
+"fields": [
+"elig[icici]"
+],
+"name": "Dudakula subhani"
+},
+"d13517be-a610-4ad5-8df5-37225f4b2356": {
+"fields": [
+"file_details.existing_loan_1"
+],
+"name": "Jakkula Chandra Shekar "
+},
+"a26a2f70-088c-41e7-ab4c-788980d64a97": {
+"fields": [
+"elig[incred]",
+"elig[tata]"
+],
+"name": "Thasleem"
+},
+"6f04b384-721c-4939-9fdc-ff1e4ff2bf76": {
+"fields": [
+"elig[icici]",
+"elig[kotak]"
+],
+"name": "D Kailash prabhu"
+},
+"11ec198f-76ff-487b-9bcf-c8b948d2affb": {
+"fields": [
+"elig[poonawala]"
+],
+"name": "Pulimamidi Shirisha "
+},
+"559aa68c-38fb-46f5-bb57-3923d0c6de4b": {
+"fields": [
+"elig[indusind]",
+"file_details.existing_loan_1"
+],
+"name": "Barripally sailoo"
+},
+"5028920f-db46-4b4c-857e-cc122f8b5ead": {
+"fields": [
+"elig[aditya birla]",
+"elig[hdfc]",
+"elig[icici]"
+],
+"name": "S PRAVEEN KUMAR"
+},
+"e8b5a6c7-c047-4b45-ae57-12262134f3c4": {
+"fields": [
+"elig[hdfc]",
+"elig[idfc]"
+],
+"name": "Mala Harish "
+},
+"92d5b83a-bfd3-4266-8639-7bf2bd45a109": {
+"fields": [
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "Mahipal"
+},
+"124a0964-918f-4645-be5a-291f53d9a6f6": {
+"fields": [
+"elig[aditya birla]",
+"elig[axis finance]",
+"elig[hdfc]"
+],
+"name": "Mohammed jameel"
+},
+"9e42962a-0d91-4fbc-a495-313a9a85ea00": {
+"fields": [
+"elig[aditya birla]",
+"elig[kotak]",
+"elig[piramal]"
+],
+"name": "Thummalapally amarender"
+},
+"4f6e7648-ec24-447f-a704-098ccccdd046": {
+"fields": [
+"elig[hdfc].application_id",
+"elig[hdfc].eligible_amount",
+"elig[hdfc].eligible_roi",
+"elig[hdfc].is_eligible",
+"elig[hdfc].login_bank",
+"elig[hdfc].login_done",
+"elig[hdfc].login_done_at",
+"elig[hdfc].sm_name",
+"elig[hdfc].sm_number",
+"file_details.cibil_issues",
+"file_details.cibil_score",
+"file_details.company_name",
+"file_details.company_type",
+"file_details.foir",
+"file_details.loan_amount_required",
+"file_details.net_salary",
+"file_details.type_of_loan"
+],
+"name": "Pavan kumar"
+},
+"78a23ec9-b4fd-470c-942c-79969d175667": {
+"fields": [
+"elig[hdfc]",
+"file_details.existing_loan_1"
+],
+"name": "Srinivas "
+},
+"8815bb95-69fb-4900-bc28-1e750e95d626": {
+"fields": [
+"elig[indusind]"
+],
+"name": "Jaladi durga Rao"
+},
+"b5ecc2b7-b305-45fb-95dc-2abbf6c4309f": {
+"fields": [
+"file_details.existing_loan_1"
+],
+"name": "Pappu Ranjith Kumar "
+},
+"bf890688-8f0a-46b9-bd4c-a04ec56c257e": {
+"fields": [
+"elig[axis bank]",
+"elig[icici]",
+"elig[smfg]"
+],
+"name": "Bavirisetty kalyan chakradhar "
+},
+"343a2126-2129-4241-a679-30615c8941d0": {
+"fields": [
+"elig[l&t]",
+"elig[tata]",
+"file_details.existing_loan_1"
+],
+"name": "Kaza Parveena"
+},
+"201284a3-dea0-401b-8797-88d45438578f": {
+"fields": [
+"elig[hdfc]",
+"elig[icici]",
+"file_details.existing_loan_1"
+],
+"name": "SYED AHMED"
+},
+"a2253c57-50d6-422c-9288-3434c0934add": {
+"fields": [
+"elig[axis finance]"
+],
+"name": "Thotapula Ganesh "
+},
+"6bf06405-874a-453d-ae92-c7152ea0d37a": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Goda Nani babu "
+},
+"443f9c89-4bff-431d-8b65-c17007972628": {
+"fields": [
+"elig[axis finance]",
+"elig[fullerton]",
+"file_details.existing_loan_1"
+],
+"name": "Anil Kumar "
+},
+"30eae076-010a-4e4c-a76a-fb7cce5af8cd": {
+"fields": [
+"elig[axis finance]",
+"elig[idfc]"
+],
+"name": "Sanyasi naidu edibilli"
+},
+"ae62a9e3-266a-49a0-a9f9-994b1eff41b4": {
+"fields": [
+"elig[axis bank]"
+],
+"name": "Sujatha"
+},
+"79d3c06b-fc32-4041-a0ce-5827285e5143": {
+"fields": [
+"elig[icici]",
+"elig[kotak]"
+],
+"name": "Peddada rajesh"
+},
+"d9112d2e-d1ed-462c-83c8-12106c750746": {
+"fields": [
+"elig[axis bank]"
+],
+"name": "Pervaiz Hyder "
+},
+"3569cd54-84a9-46c2-84fe-2745d2d54f1d": {
+"fields": [
+"elig[axis bank]",
+"elig[idfc]"
+],
+"name": "Ananthala prem kumar "
+},
+"3d44b446-e6a6-4dc8-96a2-adf7ddaf7d68": {
+"fields": [
+"elig[indusind]"
+],
+"name": "Jangam sindhu "
+},
+"ed706a96-1d08-4634-8806-ba5eb6f4b892": {
+"fields": [
+"elig[idfc]",
+"elig[tata]"
+],
+"name": "Mohan Jadhar "
+},
+"12199bad-983c-4277-ac84-2bf08399521c": {
+"fields": [
+"elig[icici]",
+"elig[smfg]"
+],
+"name": "G PRASHANTI"
+},
+"e64ff871-ab15-44b1-a371-73774a63924b": {
+"fields": [
+"elig[idfc]",
+"elig[indusind]",
+"file_details.existing_loan_1"
+],
+"name": "Vasantha kumar"
+},
+"40972a50-52e0-4f4b-af24-d96688794e0c": {
+"fields": [
+"elig[aditya birla]"
+],
+"name": "Anil Kumar "
+},
+"22fa2113-61e3-4b8e-af99-0aa23c3f5b1b": {
+"fields": [
+"elig[aditya birla]"
+],
+"name": "A UMA REDDY"
+},
+"44c5f399-592f-462c-ac97-a346d6acbc68": {
+"fields": [
+"file_details.existing_loan_1"
+],
+"name": "Louis Francis "
+},
+"b3d8199d-3165-4c19-9815-0fcb7f7fd4a3": {
+"fields": [
+"elig[aditya birla]",
+"elig[indusind bank]",
+"elig[kotak bank]"
+],
+"name": "G sreenivasulu "
+},
+"811282f7-081b-4b20-853a-aa74de049a8c": {
+"fields": [
+"elig[axis bank]",
+"elig[kotak]",
+"elig[piramal]"
+],
+"name": "Konda narsing "
+},
+"d8270332-a67c-4a6c-8bae-9551675b0616": {
+"fields": [
+"elig[axis bank]",
+"elig[axis finance]",
+"elig[hdfc]"
+],
+"name": "Telagamsetti Lokesh Murali Krishna "
+},
+"c1be70a6-a366-4ec8-9f58-f8387d28fd65": {
+"fields": [
+"elig[hdfc]",
+"elig[indusind]",
+"elig[kotak]"
+],
+"name": "Chevuru Rajesh"
+},
+"a6c6a897-2aa6-4273-8b11-770bca6d6c15": {
+"fields": [
+"elig[indusind]",
+"elig[piramal]"
+],
+"name": "K.Sravan kumar"
+},
+"043e7f0e-1e6b-43b4-bae8-fd88fd67f66f": {
+"fields": [
+"elig[axis]",
+"elig[bajaj]",
+"elig[icici]"
+],
+"name": "Sathala avinash"
+},
+"c1ba919e-d167-4b0b-b0b9-7308cdd71d8c": {
+"fields": [
+"elig[aditya birla]",
+"elig[axis bank]"
+],
+"name": "Tulasi ram"
+},
+"3d68e2b7-ab47-4484-a318-d28f8b446b49": {
+"fields": [
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "Pargi yadaiah"
+},
+"46e2e896-7366-4620-8896-829944a4c09a": {
+"fields": [
+"elig[axis]",
+"elig[indusind]",
+"elig[kotak]"
+],
+"name": "Jyothi sravani"
+},
+"ea5b2957-2fee-43cd-9616-0b4a004fe71e": {
+"fields": [
+"elig[aditya birla]",
+"elig[piramal]",
+"elig[poonawala]"
+],
+"name": "Gurugubelli Sasidhar"
+},
+"2cae445e-d229-48db-94ca-d4f9da366df7": {
+"fields": [
+"elig[idfc]",
+"elig[kotak]",
+"elig[piramal]",
+"file_details.cibil_issues",
+"file_details.cibil_score",
+"file_details.company_name",
+"file_details.company_type",
+"file_details.existing_loan_1",
+"file_details.foir",
+"file_details.loan_amount_required",
+"file_details.net_salary",
+"file_details.type_of_loan"
+],
+"name": "Baggam Srikanth"
+},
+"74b01f1e-5848-4640-b520-1a57b65898cc": {
+"fields": [
+"elig[idfc]"
+],
+"name": "Talamanchi Manohar "
+},
+"4229c735-b1df-44ce-938b-60b407a60d7b": {
+"fields": [
+"elig[aditya birla]",
+"elig[idfc]"
+],
+"name": "Ganji kiran kumar"
+},
+"2d5c863e-bc25-4e7e-865a-b559b496d701": {
+"fields": [
+"elig[kotak]"
+],
+"name": "Vemula Naresh"
+},
+"a64ae107-9dde-4e30-bef1-dae620e485ad": {
+"fields": [
+"elig[idfc]"
+],
+"name": "P Dileep"
+},
+"f3f52ccf-9349-409c-b6c6-ff0154180c4c": {
+"fields": [
+"elig[aditya birla]",
+"elig[indusind]",
+"elig[piramal]",
+"file_details.existing_loan_1"
+],
+"name": "Chiruvolu Venkata Narsimha Surya Teja"
+},
+"6f9d16fa-3ae7-40f9-b991-d82d0993b8d5": {
+"fields": [
+"elig[axis finance]",
+"elig[idfc]"
+],
+"name": "Alok Mishra "
+},
+"2c91fa2f-4bcf-4f9b-8617-8fdd063c3403": {
+"fields": [
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "Aruna"
+},
+"f07f06fd-ad3f-45a3-9e77-6e3803a82f34": {
+"fields": [
+"elig[axis bank]",
+"elig[fatak pay]",
+"elig[indusind]"
+],
+"name": "Surya prasad"
+},
+"95d37a28-6b6e-47c8-abd7-9a2023b7f68f": {
+"fields": [
+"elig[chola]",
+"elig[idfc]"
+],
+"name": "Veera venkata manikanta"
+},
+"02f16be5-7914-41dc-97d4-f16eeed19910": {
+"fields": [
+"elig[axis bank]",
+"elig[hdfc]",
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "Dinesh devarakonda"
+},
+"3fc21171-9dca-4299-9e44-fdae2131ae45": {
+"fields": [
+"elig[icici]",
+"elig[idfc]"
+],
+"name": "GOMATTAM GOPINATH"
+},
+"9c7c2d62-10bf-48f6-836c-4a9032382d39": {
+"fields": [
+"elig[incred]",
+"elig[indusind]",
+"elig[piramal]"
+],
+"name": "Papabathini .kiran"
+},
+"fc56c386-09e8-42b2-91c0-2231eeecf5c7": {
+"fields": [
+"elig[finnable]",
+"elig[idfc]",
+"elig[incred]"
+],
+"name": "Mankali shivakumar"
+},
+"becd9eb0-214d-47e0-a035-79ccf436d2ac": {
+"fields": [
+"elig[incred]",
+"elig[piramal]"
+],
+"name": "Alam Pally  Durgabhavani"
+},
+"5bfeab6c-6d87-4e81-9855-12e00c8fa44a": {
+"fields": [
+"elig[chola]"
+],
+"name": "Ganta Rajesh "
+},
+"1f20b964-c83a-4c8f-afd9-390d963437e6": {
+"fields": [
+"elig[axis bank]"
+],
+"name": "Poornima"
+},
+"467bbff9-fc5d-469a-b13e-5ea7628353a6": {
+"fields": [
+"elig[aditya birla]",
+"elig[axis]",
+"elig[hdfc]"
+],
+"name": "KN Kailashnath"
+},
+"ef9cb257-86f1-4510-a31c-fbb4b5568d2d": {
+"fields": [
+"elig[aditya]",
+"elig[hdfc]"
+],
+"name": "Madhavarapu Rajesh "
+},
+"57c931bb-3170-42e2-8351-563d1adcc22f": {
+"fields": [
+"elig[axis]",
+"elig[hdfc]",
+"elig[incred]"
+],
+"name": "Lakshmi Narasu palakurthi Karanam "
+},
+"b15c0fc0-1a27-48d1-9b30-59c9ae7341d9": {
+"fields": [
+"elig[poonawala]"
+],
+"name": "sailesh gupta"
+},
+"0dd69336-56b4-4fca-95a5-1e83b7913d63": {
+"fields": [
+"elig[aditya]",
+"elig[idfc]",
+"elig[incred]"
+],
+"name": "Mallepogu Vijaykumar "
+},
+"883caa44-bfab-4a3c-8ca5-2aa8d15043ea": {
+"fields": [
+"elig[axis bank]"
+],
+"name": "Chandavaram Hari Prasad "
+},
+"b60b2b57-94f2-4e94-8874-126922b6ea66": {
+"fields": [
+"elig[aditya birla]",
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "MD JAWED"
+},
+"34c3c64d-54f4-48ee-8002-d1a7710e4d18": {
+"fields": [
+"elig[aditya birla]"
+],
+"name": "Totapalli Naveen Kumar "
+},
+"750ee0ea-5434-40c1-9ed9-edce75594c07": {
+"fields": [
+"elig[chola]",
+"elig[finnable]",
+"elig[icici]",
+"file_details.existing_loan_1"
+],
+"name": "Jonnada Jagan Kumar"
+},
+"6f3e96f2-29b0-40d9-9945-4566c6f4b4e1": {
+"fields": [
+"elig[axis bank]",
+"elig[indusind]",
+"elig[piramal]"
+],
+"name": "Vada Mohan Suresh "
+},
+"ef083d47-a645-43e9-96fd-8c82996bb207": {
+"fields": [
+"elig[aditya birla]",
+"elig[axis bank]",
+"elig[bajaj]"
+],
+"name": "Ramesh"
+},
+"bf876cf8-ef95-4623-bd19-e693b9b27292": {
+"fields": [
+"elig[indusind]"
+],
+"name": "Butti pavan kumar "
+},
+"1e7dcfcf-17e2-4185-95bc-8123097a9006": {
+"fields": [
+"elig[bandhan]",
+"elig[poonwala]"
+],
+"name": "Manoj "
+},
+"5d056b7e-fcb3-4e91-a6b8-1e887e52f7a8": {
+"fields": [
+"elig[icici]"
+],
+"name": "RAVI BABU"
+},
+"aba4c517-d07a-435d-b2d8-3b945601d31c": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Sarvepalli bhagavan ramakrishna "
+},
+"0f723168-7be9-496a-bdd2-d81ceaebb402": {
+"fields": [
+"elig[icici]"
+],
+"name": "Kannoju ramesh"
+},
+"4958b4a3-5cba-4194-9077-2d0777524316": {
+"fields": [
+"elig[axis bank]",
+"elig[indusind]",
+"file_details.existing_loan_1"
+],
+"name": "P Veera Venkata rao"
+},
+"4222413b-d83f-483d-9c1c-2c406fd86885": {
+"fields": [
+"elig[indusind]"
+],
+"name": "Mahima jaiswal "
+},
+"1973597d-4d96-4c55-88c8-f965a5170491": {
+"fields": [
+"elig[bajaj]",
+"elig[fullerton]",
+"elig[hdfc]"
+],
+"name": "Ganapuram Narahari "
+},
+"60ccde99-fa54-45b2-a77c-fc9d689819d9": {
+"fields": [
+"elig[axis bank]",
+"elig[indusind]",
+"file_details.existing_loan_1",
+"file_details.existing_loan_2"
+],
+"name": "KANTHI YADAGIRI"
+},
+"a20c656d-a20e-4ef5-94ab-345bd0910808": {
+"fields": [
+"file_details.existing_loan_1"
+],
+"name": "BHUKYA KRISHNA"
+},
+"873f234a-1c72-48e3-8c3c-c3247ba46718": {
+"fields": [
+"elig[bajaj]"
+],
+"name": "Vuske vishnu vardhan reddy"
+},
+"48c56f34-504e-4212-a667-6cccb640ade7": {
+"fields": [
+"elig[aditya birla]",
+"elig[axis bank]",
+"elig[chola]"
+],
+"name": "M chandanalekha "
+},
+"0b090f9e-890f-44fb-b5b1-fa8bbd0cf3ec": {
+"fields": [
+"elig[axis finance]"
+],
+"name": "G RAHUL"
+},
+"795bc1ec-67e9-4eaf-9326-7c92f1a2e09a": {
+"fields": [
+"elig[chola]",
+"elig[piramal]"
+],
+"name": "Vasu"
+},
+"422eb9ff-13fe-48b8-ba85-ff6235d36ae3": {
+"fields": [
+"elig[incred]",
+"elig[kotak]"
+],
+"name": "Bantu naresh "
+},
+"d8b02c0b-5e0e-4702-8873-8d2f72d110cf": {
+"fields": [
+"elig[axis]",
+"elig[icici]"
+],
+"name": "Mohammad Afroz "
+},
+"593b523e-e537-4526-bc5d-d99bdadd3414": {
+"fields": [
+"elig[fullerton]",
+"elig[incred]"
+],
+"name": "Syed altaf"
+},
+"d5bd40dd-4ee2-4c13-99bd-6bd7ddf01b8e": {
+"fields": [
+"elig[aditya]"
+],
+"name": "Tippireddy harish reddy"
+},
+"3ea95fd7-290e-43ff-9c44-2501c3d77b08": {
+"fields": [
+"elig[fullerton]"
+],
+"name": "Andugola venkatesu"
+},
+"c2c52e1f-4c15-4b90-ab8a-ab39130447cb": {
+"fields": [
+"elig[axis bank]",
+"elig[hdfc]"
+],
+"name": "Ghanta Pavani "
+},
+"dcc2e45e-3e0a-406a-98d9-bb88dd2a61f9": {
+"fields": [
+"elig[poonawala]"
+],
+"name": "S mainuddin "
+},
+"158ee839-4e87-4239-8d5a-3b5dfac5988f": {
+"fields": [
+"elig[poonawala]"
+],
+"name": "Ramanjula jaya kumar"
+},
+"b200b009-f9cb-4812-a3f8-6e698e6190f7": {
+"fields": [
+"elig[aditya birla]",
+"elig[axis bank]"
+],
+"name": "Kashisis pasha"
+},
+"14c76354-8eca-4246-9faa-757c20bc3b5f": {
+"fields": [
+"elig[bajaj]"
+],
+"name": "Pullela Srinivas "
+},
+"f18550fa-ba20-4da8-8282-5caf3dbfca1b": {
+"fields": [
+"elig[hdfc]"
+],
+"name": "Muhammad nazeer uddin"
+},
+"8227fdae-b34d-420b-adae-b714fc3cae40": {
+"fields": [
+"elig[aditya]",
+"elig[icici]"
+],
+"name": "Harshavardhani"
+},
+"d1358909-026b-4ed1-af11-8a869094e3c3": {
+"fields": [
+"elig[poonawala]",
+"elig[smfg]"
+],
+"name": "Balla Swapna"
+},
+"7faadf14-e103-45cd-8b75-c41ad67c6c2b": {
+"fields": [
+"elig[axis bank]",
+"elig[hdfc]"
+],
+"name": "Sanyasi Naidu "
+},
+"b23cb3e3-5531-427d-8925-e68b48741463": {
+"fields": [
+"elig[axis bank]",
+"elig[hdfc]",
+"elig[piramal]"
+],
+"name": "Manish kumar Singh "
+},
+"2e7b55e5-01d8-4d32-a71c-5022e62a4fb5": {
+"fields": [
+"elig[aditya birla]",
+"elig[icici]"
+],
+"name": "Rajashekar meesala"
+},
+"6d194952-c102-4c4b-89b4-7917c2f1fb02": {
+"fields": [
+"elig[hdfc]",
+"elig[indusind]",
+"file_details.cibil_score",
+"file_details.loan_amount_required",
+"file_details.net_salary"
+],
+"name": "Sucharita Kulkarni"
+},
+"d010f8db-9f3a-43f8-bf14-f37bdfd94427": {
+"fields": [
+"elig[icici]",
+"elig[idfc]"
+],
+"name": "Subramaniam Ranga Rajan "
+},
+"a4ce86f8-d56e-4c32-8810-9832aee637d9": {
+"fields": [
+"elig[axis]"
+],
+"name": "Maragani abhishek"
+},
+"05bb37a6-351d-42d3-873d-a7e7cda6020c": {
+"fields": [
+"elig[icici].approval_status",
+"elig[icici].declined_reason",
+"elig[icici].rejected_at",
+"elig[indusind]"
+],
+"name": "Sugganagoyina Badravathi"
+},
+"761df12e-72d8-41e8-855a-d35c6ce714bf": {
+"fields": [
+"elig[aditya birla]"
+],
+"name": "Dampetla Sreekanth yadav "
+},
+"c81156fd-a45f-421a-a5bf-5ba374b6d084": {
+"fields": [
+"elig[idfc]"
+],
+"name": "Kethavath kiran "
+},
+"398e07b5-05e9-4296-bc10-06eb24651e38": {
+"fields": [
+"elig[axis bank]",
+"elig[idfc]",
+"elig[incred]",
+"file_details.existing_loan_1"
+],
+"name": "Mudavath Sri Krishna Naayak"
+},
+"fec6d91a-986f-4252-a073-20729abddc7c": {
+"fields": [
+"file_details.existing_loan_1",
+"file_details.existing_loan_2",
+"file_details.existing_loan_3"
+],
+"name": "Botsa ashok"
+},
+"70bc728b-4afa-41d9-ab65-c4708d06c52f": {
+"fields": [
+"elig[axis].application_id",
+"elig[axis].login_bank",
+"elig[axis].login_done",
+"elig[axis].login_done_at",
+"elig[axis].sm_name"
+],
+"name": "Nandipati Tulasi"
+},
+"af992e08-be86-4803-a9a9-a72361716191": {
+"fields": [
+"elig[idfc]",
+"elig[piramal]"
+],
+"name": "Cheguru Chandrakanth "
+},
+"13f0f957-4552-4c94-8eeb-5d0d37b1d31a": {
+"fields": [
+"elig[bandhan]",
+"elig[hdfc]",
+"elig[idfc 4]"
+],
+"name": "Varayogula vinil kumar "
+},
+"3780343a-3321-404c-95d5-d0c7cc2a7101": {
+"fields": [
+"elig[hdfc].approval_status",
+"elig[hdfc].declined_reason",
+"elig[hdfc].rejected_at"
+],
+"name": "Karanam srinivas "
+},
+"89eeae3a-5704-4906-8cd5-87ab37bd43f5": {
+"fields": [
+"elig[axis finance].application_id",
+"elig[axis finance].login_bank",
+"elig[axis finance].login_done",
+"elig[axis finance].login_done_at",
+"elig[axis finance].sm_name",
+"elig[axis].approval_status",
+"elig[axis].declined_reason",
+"elig[axis].rejected_at"
+],
+"name": "AGATHAMUDI VINAY"
+},
+"7217c29e-9f4c-47ce-8e73-2f73203a57f6": {
+"fields": [
+"elig[axis finance]",
+"elig[icici]",
+"file_details.obligations_emi"
+],
+"name": "Kurakula Nagaraju"
+},
+"0d8133f3-2f35-40ae-8d08-71c0766b3170": {
+"fields": [
+"file_details.cibil_issues",
+"file_details.company_type",
+"file_details.existing_loan_1"
+],
+"name": "Parishatey sudarshan "
+}
+}
+}
