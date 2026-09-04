@@ -444,11 +444,10 @@ def classify_differences(records, matches, changes, unmatched, ambiguous, review
 
 
 async def create_backup(db, live_count):
+    """Server-side copy of the leads collection ($out) into a timestamped backup, then verify."""
     stamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
     name = f'leads_backup_pre_migration_{stamp}'
-    docs = await db.leads.find({}).to_list(500000)
-    if docs:
-        await db[name].insert_many(docs, ordered=False)
+    await db.leads.aggregate([{'$match': {}}, {'$out': name}], allowDiskUse=True).to_list(1)
     backup_count = await db[name].count_documents({})
     return {'collection': name, 'live_count': live_count, 'backup_count': backup_count,
             'verified': backup_count == live_count}
