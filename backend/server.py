@@ -112,6 +112,12 @@ async def setup_admin_accounts():
         await db.leads.create_index([("assigned_to", 1), ("created_at", -1)])
         await db.leads.create_index([("assigned_to", 1), ("status", 1)])
         await db.leads.create_index("status")
+        await db.leads.create_index("id")
+        await db.leads.create_index("source_id")
+        await db.leads.create_index("file_created_at")
+        await db.leads.create_index("lead_created_at")
+        await db.leads.create_index("updated_at")
+        await db.leads.create_index([("status", 1), ("source_id", 1)])
         
         # Activity logs indexes
         await db.activity_logs.create_index([("user_id", 1), ("timestamp", -1)])
@@ -125,6 +131,8 @@ async def setup_admin_accounts():
         
         # Verified call logs indexes
         await db.verified_call_logs.create_index([("user_id", 1), ("synced_at", -1)])
+        await db.verified_call_logs.create_index([("user_id", 1), ("call_timestamp", -1)])
+        await db.verified_call_logs.create_index("call_timestamp")
         
         # Call recordings indexes
         await db.call_recordings.create_index([("user_id", 1), ("recorded_at", -1)])

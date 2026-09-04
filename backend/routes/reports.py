@@ -459,54 +459,31 @@ async def get_detailed_call_report(
     if owner_ids:
         match_stage["user_id"] = {"$in": owner_ids}
     
-    pipeline = [
+    # Only fetch what the requested page needs (merge window), never the whole dataset.
+    fetch_n = min(page * page_size, MAX_ROWS)
+
+    # Lightweight page fetch (NO lead $lookup - that is done for the page only, below)
+    main_page_pipeline = [
         {"$match": match_stage},
         {"$sort": {"created_at": -1}},
-        {"$limit": limit},
-        {"$addFields": {
-            "lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
-                                      "onError": None, "onNull": None}},
-            "lead_uuid": {"$cond": [{"$and": [{"$ne": ["$lead_id", None]},
-                                              {"$ne": ["$lead_id", ""]}]},
-                                    "$lead_id", "__no_lead__"]}
-        }},
-        {"$lookup": {
-            "from": "leads",
-            "localField": "lead_oid",
-            "foreignField": "_id",
-            "as": "lead_by_oid"
-        }},
-        {"$lookup": {
-            "from": "leads",
-            "localField": "lead_uuid",
-            "foreignField": "id",
-            "as": "lead_by_uuid"
-        }},
-        {"$addFields": {"lead": {"$ifNull": [{"$first": "$lead_by_oid"},
-                                             {"$first": "$lead_by_uuid"}]}}},
+        {"$limit": fetch_n},
         {"$project": {
-            "id": {"$toString": "$_id"},
-            "created_at": 1,
-            "user_name": 1,
-            "user_id": 1,
-            "outcome": 1,
-            "duration": 1,
-            "duration_seconds": 1,
-            "form_filling_seconds": 1,
-            "notes": 1,
-            "source": 1,
-            "is_verified": 1,
-            "lead_name": {"$ifNull": ["$lead.name", "Unknown"]},
-            "lead_phone": {"$ifNull": ["$lead.phone", ""]},
-            "lead_email": {"$ifNull": ["$lead.email", ""]},
-            "lead_city": {"$ifNull": ["$lead.city", ""]},
-            "lead_source": {"$ifNull": ["$lead.source", ""]},
-            "lead_status": {"$ifNull": ["$lead.status", ""]}
+            "id": {"$toString": "$_id"}, "created_at": 1, "user_name": 1, "user_id": 1,
+            "outcome": 1, "duration": 1, "duration_seconds": 1, "form_filling_seconds": 1,
+            "notes": 1, "source": 1, "is_verified": 1, "lead_id": 1
         }}
+    ]
+    # Totals over the FULL matching dataset (counts/sums only - cheap, index-friendly)
+    main_totals_pipeline = [
+        {"$match": match_stage},
+        {"$group": {"_id": None, "n": {"$sum": 1},
+                    "connected": {"$sum": {"$cond": [{"$eq": ["$outcome", "connected"]}, 1, 0]}},
+                    "dur": {"$sum": {"$ifNull": ["$duration_seconds", {"$ifNull": ["$duration", 0]}]}}}}
     ]
     
     # Get calls from main call_logs collection
-    call_logs = await db.call_logs.aggregate(pipeline, allowDiskUse=True).to_list(limit)
+    call_logs = await db.call_logs.aggregate(main_page_pipeline, allowDiskUse=True).to_list(fetch_n)
+    main_tot = await db.call_logs.aggregate(main_totals_pipeline, allowDiskUse=True).to_list(1)
     
     # Also get verified mobile call logs
     verified_match = {}
@@ -521,46 +498,23 @@ async def get_detailed_call_report(
     verified_pipeline = [
         {"$match": verified_match},
         {"$sort": {"call_timestamp": -1}},
-        {"$limit": limit},
-        {"$addFields": {
-            "lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
-                                      "onError": None, "onNull": None}},
-            "lead_uuid": {"$cond": [{"$and": [{"$ne": ["$lead_id", None]},
-                                              {"$ne": ["$lead_id", ""]}]},
-                                    "$lead_id", "__no_lead__"]}
-        }},
-        {"$lookup": {
-            "from": "leads",
-            "localField": "lead_oid",
-            "foreignField": "_id",
-            "as": "lead_by_oid"
-        }},
-        {"$lookup": {
-            "from": "leads",
-            "localField": "lead_uuid",
-            "foreignField": "id",
-            "as": "lead_by_uuid"
-        }},
-        {"$addFields": {"lead": {"$ifNull": [{"$first": "$lead_by_oid"},
-                                             {"$first": "$lead_by_uuid"}]}}},
+        {"$limit": fetch_n},
         {"$project": {
-            "id": {"$toString": "$_id"},
-            "call_timestamp": 1,
-            "user_name": 1,
-            "user_id": 1,
-            "call_type": 1,
-            "duration_seconds": 1,
-            "phone_number": 1,
-            "lead_name": {"$ifNull": ["$lead.name", "Unknown"]},
-            "lead_phone": {"$ifNull": ["$lead.phone", ""]},
-            "lead_email": {"$ifNull": ["$lead.email", ""]},
-            "lead_city": {"$ifNull": ["$lead.city", ""]},
-            "lead_source": {"$ifNull": ["$lead.source", ""]},
-            "lead_status": {"$ifNull": ["$lead.status", ""]}
+            "id": {"$toString": "$_id"}, "call_timestamp": 1, "user_name": 1, "user_id": 1,
+            "call_type": 1, "duration_seconds": 1, "phone_number": 1, "lead_id": 1
         }}
     ]
+    verified_totals_pipeline = [
+        {"$match": verified_match},
+        {"$group": {"_id": None, "n": {"$sum": 1},
+                    "connected": {"$sum": {"$cond": [{"$and": [
+                        {"$in": ["$call_type", ["outgoing", "incoming"]]},
+                        {"$gt": ["$duration_seconds", 0]}]}, 1, 0]}},
+                    "dur": {"$sum": {"$ifNull": ["$duration_seconds", 0]}}}}
+    ]
     
-    verified_logs = await db.verified_call_logs.aggregate(verified_pipeline, allowDiskUse=True).to_list(limit)
+    verified_logs = await db.verified_call_logs.aggregate(verified_pipeline, allowDiskUse=True).to_list(fetch_n)
+    ver_tot = await db.verified_call_logs.aggregate(verified_totals_pipeline, allowDiskUse=True).to_list(1)
     
     detailed_calls = []
     
@@ -573,16 +527,12 @@ async def get_detailed_call_report(
         detailed_calls.append({
             "id": log.get("id", ""),
             "_sort_datetime": call_time.isoformat() if call_time else "",
+            "_lead_id": log.get("lead_id"),
+            "_phone_fallback": "",
             "call_date": call_time_ist.strftime("%Y-%m-%d") if call_time_ist else "",
             "call_time": call_time_ist.strftime("%I:%M %p") if call_time_ist else "",
             "caller_name": log.get("user_name", "Unknown"),
             "caller_id": log.get("user_id", ""),
-            "customer_name": log.get("lead_name", "Unknown"),
-            "customer_phone": log.get("lead_phone", ""),
-            "customer_email": log.get("lead_email", ""),
-            "customer_city": log.get("lead_city", ""),
-            "customer_source": log.get("lead_source", ""),
-            "lead_status": log.get("lead_status", ""),
             "call_outcome": log.get("outcome", ""),
             "call_duration_seconds": duration,
             "call_duration_formatted": format_duration(duration),
@@ -612,16 +562,12 @@ async def get_detailed_call_report(
         detailed_calls.append({
             "id": log.get("id", ""),
             "_sort_datetime": call_time.isoformat() if call_time else "",
+            "_lead_id": log.get("lead_id"),
+            "_phone_fallback": log.get("phone_number", ""),
             "call_date": call_time_ist.strftime("%Y-%m-%d") if call_time_ist else "",
             "call_time": call_time_ist.strftime("%I:%M %p") if call_time_ist else "",
             "caller_name": log.get("user_name", "Unknown"),
             "caller_id": log.get("user_id", ""),
-            "customer_name": log.get("lead_name", "Unknown"),
-            "customer_phone": log.get("lead_phone") or log.get("phone_number", ""),
-            "customer_email": log.get("lead_email", ""),
-            "customer_city": log.get("lead_city", ""),
-            "customer_source": log.get("lead_source", ""),
-            "lead_status": log.get("lead_status", ""),
             "call_outcome": outcome,
             "call_duration_seconds": duration,
             "call_duration_formatted": format_duration(duration),
@@ -635,15 +581,55 @@ async def get_detailed_call_report(
     # Sort all calls by actual datetime descending (not formatted string)
     detailed_calls.sort(key=lambda x: x.get("_sort_datetime", ""), reverse=True)
     
-    # Totals over the FULL matching dataset (not just the page)
-    total_calls = len(detailed_calls)
-    total_connected = sum(1 for c in detailed_calls if c.get("call_outcome") == "connected")
-    total_duration = sum(c.get("call_duration_seconds") or 0 for c in detailed_calls)
+    # Totals over the FULL matching dataset (from cheap aggregations, not the page)
+    mt = main_tot[0] if main_tot else {"n": 0, "connected": 0, "dur": 0}
+    vt = ver_tot[0] if ver_tot else {"n": 0, "connected": 0, "dur": 0}
+    total_calls = mt["n"] + vt["n"]
+    total_connected = mt["connected"] + vt["connected"]
+    total_duration = mt["dur"] + vt["dur"]
     
     start_index = (page - 1) * page_size
     page_calls = detailed_calls[start_index:start_index + page_size]
-    for call in page_calls:
-        call.pop("_sort_datetime", None)
+    
+    # Attach customer/lead details ONLY for the current page (one batched query)
+    lead_oids, lead_uuids = [], []
+    for c in page_calls:
+        lid = c.get("_lead_id")
+        if not lid:
+            continue
+        if isinstance(lid, ObjectId):
+            lead_oids.append(lid)
+        elif isinstance(lid, str) and len(lid) == 24 and ObjectId.is_valid(lid):
+            lead_oids.append(ObjectId(lid))
+        elif isinstance(lid, str):
+            lead_uuids.append(lid)
+    lead_map = {}
+    if lead_oids or lead_uuids:
+        or_clauses = []
+        if lead_oids:
+            or_clauses.append({"_id": {"$in": lead_oids}})
+        if lead_uuids:
+            or_clauses.append({"id": {"$in": lead_uuids}})
+        async for ld in db.leads.find({"$or": or_clauses},
+                                      {"name": 1, "phone": 1, "email": 1, "city": 1, "source": 1, "status": 1, "id": 1}):
+            lead_map[str(ld["_id"])] = ld
+            if ld.get("id"):
+                lead_map[ld["id"]] = ld
+    
+    for c in page_calls:
+        lid = c.pop("_lead_id", None)
+        phone_fb = c.pop("_phone_fallback", "")
+        ld = lead_map.get(str(lid)) if lid is not None else None
+        if ld is None and isinstance(lid, str):
+            ld = lead_map.get(lid)
+        ld = ld or {}
+        c["customer_name"] = ld.get("name", "Unknown")
+        c["customer_phone"] = ld.get("phone") or phone_fb or ""
+        c["customer_email"] = ld.get("email", "")
+        c["customer_city"] = ld.get("city", "")
+        c["customer_source"] = ld.get("source", "")
+        c["lead_status"] = ld.get("status", "")
+        c.pop("_sort_datetime", None)
     
     return {
         "calls": page_calls,
