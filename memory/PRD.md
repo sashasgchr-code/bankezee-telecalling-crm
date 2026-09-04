@@ -1356,3 +1356,56 @@ Production migration (awaiting user go-ahead + prod MONGO_URL), bank-name cleanu
 build, and the 8 ambiguous cases.
 
 *Last Updated: September 4, 2026*
+
+---
+
+## PRODUCTION MIGRATION EXECUTED (September 4, 2026) — PASS
+
+Ran inside the deployed app through a TEMPORARY Admin-only endpoint (now REMOVED from the code;
+publish once to drop it from production):
+  POST /api/admin/crm-migration?mode=dry_run              (sync, read-only)
+  POST /api/admin/crm-migration/start?mode=apply&policy=  (background job, proxy caps at ~30s)
+  GET  /api/admin/crm-migration/status/{job_id}
+Core logic (shared with the CLI): `/app/backend/utils/crm_migration.py`.
+Export shipped at `/app/backend/data/crm_migration_export.json`.
+Reports: `/app/memory/prod_dryrun_report.json`, `prod_dryrun_connectwins.json`,
+`prod_apply_report.json`.
+
+### Production merge policy: `connect_wins` (differs from preview's `export_wins`)
+Production non-blank values are PRESERVED; the old CRM only fills blanks, except that a MISSING
+later operational milestone (login / approval / disbursal) is restored together with the gates it
+implies (`is_eligible`/`login_done` upgraded, never downgraded). Every preserved conflict is
+reported. Status: backfill only.
+
+### Result (db `teleconnect-web-test_database`, 171,306 leads / 513 files)
+Backup: `leads_backup_pre_migration_20260904113756` - 171,306 = 171,306 VERIFIED (keep for rollback).
+447 matched (446 own id + 1 mobile+name) · 0 unmatched · 7 ambiguous skipped · 206 updated ·
+241 already identical · 0 failed · 1,046 eligibility rows appended · 6 duplicate-bank files
+untouched · 12 status conflicts kept Connect · 37 production values preserved across 9 files ·
+1 non-blank change (Dindi pavan kumar Aditya Birla `disbursed` false -> yes, restored disbursal) ·
+0 new files · 0 deletes · 0 UNSAFE. Re-run dry run = 0 updates -> idempotent.
+
+| metric | export (447) | prod BEFORE | EXPECTED | ACTUAL AFTER |
+|---|---|---|---|---|
+| Files with eligibilities | 370 | 180 | 369 | **369** |
+| Eligibility rows | 1697 | 475 | 1521 | **1521** |
+| Files with logins | 283 | 131 | 282 | **282** |
+| Files with approvals | 97 | 48 | 96 | **96** |
+| Total approved | Rs 11,85,12,089 | Rs 6,75,12,840 | Rs 11,67,23,354 | **Rs 11,67,23,354** |
+| Files with disbursals | 79 | 40 | 78 | **78** |
+| Total disbursed | Rs 10,24,74,557 | Rs 6,07,45,711 | Rs 10,09,50,932 | **Rs 10,09,50,932** |
+
+EXPECTED == ACTUAL on every metric. Residual vs export is fully attributed: 12 duplicate-bank rows
+on 6 files (approved Rs 17,88,735 / disbursed Rs 15,23,625) + 1 file whose 7 export rows all have a
+blank bank name (Thripuram sai ram reddy) + the 7 ambiguous records.
+Production File Details UI verified rendering post-migration (Dindi pavan kumar loads with star
+rating, legacy notes and bank data; no crash).
+
+### Open items
+- 7 ambiguous duplicate old-CRM records on production (and 8 on preview) await per-case decisions
+  (`/app/memory/crm_migration_ambiguous_8.md`).
+- 6 duplicate-bank production files await a per-case decision.
+- Temporary migration endpoint deleted in code; publish to remove it from production.
+- Still NOT done (user instruction): bank-name cleanup, mobile/APK build.
+
+*Last Updated: September 4, 2026*
