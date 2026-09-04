@@ -443,14 +443,21 @@ async def get_detailed_call_report(
     page_size = max(1, min(page_size if limit is None else limit, MAX_ROWS))
     limit = MAX_ROWS
     
+    # Resolve the selected GP to ALL of their identities so the filter matches calls
+    # stored under any legacy/duplicate id (canonical GP identity across every report)
+    owner_ids = None
+    if telecaller_id and telecaller_id != "all":
+        _idx = await load_user_index(db)
+        owner_ids = sorted(_idx.aliases(telecaller_id) or {telecaller_id})
+
     match_stage = {}
     if start_date and end_date:
         match_stage["created_at"] = {"$gte": start_date, "$lt": end_date}
     elif start_date:
         match_stage["created_at"] = {"$gte": start_date}
     
-    if telecaller_id and telecaller_id != "all":
-        match_stage["user_id"] = telecaller_id
+    if owner_ids:
+        match_stage["user_id"] = {"$in": owner_ids}
     
     pipeline = [
         {"$match": match_stage},
@@ -509,7 +516,7 @@ async def get_detailed_call_report(
         verified_match["call_timestamp"] = {"$gte": start_date}
     
     if telecaller_id and telecaller_id != "all":
-        verified_match["user_id"] = telecaller_id
+        verified_match["user_id"] = {"$in": owner_ids}
     
     verified_pipeline = [
         {"$match": verified_match},
@@ -1525,8 +1532,9 @@ async def get_daily_tracking_sheet(
         
         current_date = range_start
         while current_date < range_end:
-            date_str = current_date.strftime("%Y-%m-%d")
-            day_name = current_date.strftime("%A")[:3]
+            ist_day = current_date + IST_OFFSET
+            date_str = ist_day.strftime("%Y-%m-%d")
+            day_name = ist_day.strftime("%A")[:3]
             
             # Merge activity recorded under any of this person's identifiers
             activities = []
@@ -1573,15 +1581,16 @@ async def get_daily_tracking_sheet(
             
             current_date += timedelta(days=1)
         
-        # Skip GPs with no activity in the range (the full GP list now includes
-        # inactive/legacy records so every File is counted, but empty rows are hidden)
-        if not daily_data:
+        # In the "all agents" view, hide GPs with no activity (the full list now includes
+        # inactive/legacy records). When a specific agent is requested, ALWAYS return their
+        # sheet (even all-zeros) so the screen loads instead of the empty-state message.
+        if not daily_data and not user_id:
             continue
 
         results.append({
             "user_id": tc_id,
             "user_name": tc_name,
-            "month": range_start.strftime("%B %Y"),
+            "month": (range_start + IST_OFFSET).strftime("%B %Y"),
             "achieved_files": total_files,
             "daily_data": daily_data,
             "totals": {
