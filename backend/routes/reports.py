@@ -338,8 +338,13 @@ async def get_recent_calls(limit: int = 10, current_user: dict = Depends(get_cur
         {"$match": query},
         {"$sort": {"created_at": -1}},
         {"$limit": limit},
-        {"$addFields": {"lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
-                                          "onError": None, "onNull": None}}}},
+        {"$addFields": {
+            "lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
+                                      "onError": None, "onNull": None}},
+            "lead_uuid": {"$cond": [{"$and": [{"$ne": ["$lead_id", None]},
+                                              {"$ne": ["$lead_id", ""]}]},
+                                    "$lead_id", "__no_lead__"]}
+        }},
         {"$lookup": {
             "from": "leads",
             "localField": "lead_oid",
@@ -361,7 +366,7 @@ async def get_recent_calls(limit: int = 10, current_user: dict = Depends(get_cur
         }}
     ]
     
-    calls = await db.call_logs.aggregate(pipeline).to_list(limit)
+    calls = await db.call_logs.aggregate(pipeline, allowDiskUse=True).to_list(limit)
     return serialize_docs(calls)
 
 # ===================== DETAILED REPORTS =====================
@@ -399,8 +404,13 @@ async def get_detailed_call_report(
         {"$match": match_stage},
         {"$sort": {"created_at": -1}},
         {"$limit": limit},
-        {"$addFields": {"lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
-                                          "onError": None, "onNull": None}}}},
+        {"$addFields": {
+            "lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
+                                      "onError": None, "onNull": None}},
+            "lead_uuid": {"$cond": [{"$and": [{"$ne": ["$lead_id", None]},
+                                              {"$ne": ["$lead_id", ""]}]},
+                                    "$lead_id", "__no_lead__"]}
+        }},
         {"$lookup": {
             "from": "leads",
             "localField": "lead_oid",
@@ -409,7 +419,7 @@ async def get_detailed_call_report(
         }},
         {"$lookup": {
             "from": "leads",
-            "localField": "lead_id",
+            "localField": "lead_uuid",
             "foreignField": "id",
             "as": "lead_by_uuid"
         }},
@@ -437,7 +447,7 @@ async def get_detailed_call_report(
     ]
     
     # Get calls from main call_logs collection
-    call_logs = await db.call_logs.aggregate(pipeline).to_list(limit)
+    call_logs = await db.call_logs.aggregate(pipeline, allowDiskUse=True).to_list(limit)
     
     # Also get verified mobile call logs
     verified_match = {}
@@ -453,8 +463,13 @@ async def get_detailed_call_report(
         {"$match": verified_match},
         {"$sort": {"call_timestamp": -1}},
         {"$limit": limit},
-        {"$addFields": {"lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
-                                          "onError": None, "onNull": None}}}},
+        {"$addFields": {
+            "lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
+                                      "onError": None, "onNull": None}},
+            "lead_uuid": {"$cond": [{"$and": [{"$ne": ["$lead_id", None]},
+                                              {"$ne": ["$lead_id", ""]}]},
+                                    "$lead_id", "__no_lead__"]}
+        }},
         {"$lookup": {
             "from": "leads",
             "localField": "lead_oid",
@@ -463,7 +478,7 @@ async def get_detailed_call_report(
         }},
         {"$lookup": {
             "from": "leads",
-            "localField": "lead_id",
+            "localField": "lead_uuid",
             "foreignField": "id",
             "as": "lead_by_uuid"
         }},
@@ -486,7 +501,7 @@ async def get_detailed_call_report(
         }}
     ]
     
-    verified_logs = await db.verified_call_logs.aggregate(verified_pipeline).to_list(limit)
+    verified_logs = await db.verified_call_logs.aggregate(verified_pipeline, allowDiskUse=True).to_list(limit)
     
     detailed_calls = []
     

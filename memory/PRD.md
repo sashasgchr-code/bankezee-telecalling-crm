@@ -1525,3 +1525,36 @@ can create two records for one call.
   IST hour in Hourly and in Dashboard stats, and survives subsequent File edits.
 
 *Last Updated: September 4, 2026*
+
+### Production verification 4 Sep 2026, 14:30 UTC (read-only, no data changed)
+- Live frontend bundle `main.ec4ff6d1.js` DOES contain the latest UI (GP filters, print buttons,
+  Call Log pagination, File Created field); frontend baseURL = `https://connect.bankezee.com`; no
+  preview URL leakage. `/api/admin/file-dates-backfill/start` = 200 (new build present).
+- `GET /api/files?page=1&limit=3` = 513 files, pagination fine -> the Files API/list is NOT the
+  problem.
+- ROOT CAUSE of "Files not showing in reports" on production:
+  1. the backfill has NEVER been applied there (dry run: 513 scanned / 513 to update /
+     already_correct 0, every File has `file_created_at: null`), so the code falls back to the
+     LEAD `created_at` - Chintoju counts on 3 Sep and Ramjee on 27 Aug instead of the day they
+     became Files;
+  2. `leads.py` had TWO conversion paths and the status-update path (the one the UI uses) never
+     stamped `file_created_at` - proof: `Pakyala Giri` (converted 4 Sep 10:16) has null, while
+     `J vishnu vardhan` (other path) shows correctly in production Summary/Hourly at 15:00.
+- Also found: `/api/reports/detailed-calls` returns 500 on production only (works on preview).
+  Cause: with the 25k-row fetch, `call_logs` rows with a null `lead_id` joined against the ~171k
+  `leads` docs that have no `id` field (null matches null) and blew the 100MB aggregation limit.
+
+### Fixes written but NOT yet on production (uncommitted at the time of the user's publish)
+1. `routes/leads.py` - status-update conversion path now stamps `file_created_at` (only when absent)
+2. `routes/reports.py` - null-safe `lead_uuid` join key + `allowDiskUse` (fixes the live 500);
+   verified 200 on preview
+3. `utils/file_dates_backfill.py` - source order is now file_created -> activities.status_change ->
+   earliest file activity -> created_at (moves ~476 migrated files onto their true conversion date)
+
+### PENDING (user-gated)
+Publish -> prove markers live (`detailed-calls` 200 + `activities.status_change` bucket appears in
+the dry run) -> production dry run review -> apply with the full gate (verified backup, pre/post
+lead count 171,306, additive fields + date normalisation only, 0 new docs, 0 deletes).
+User explicitly refused to apply on the stale build.
+
+*Last Updated: September 4, 2026*

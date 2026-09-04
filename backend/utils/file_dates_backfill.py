@@ -35,14 +35,14 @@ def conversion_time(doc, activity_by_lead):
             when = to_datetime(entry.get("timestamp"))
             if when:
                 return when, "file_activities.file_created"
-    stamps = [to_datetime(e.get("timestamp")) for e in (doc.get("file_activities") or [])]
-    stamps = [s for s in stamps if s]
-    if stamps:
-        return min(stamps), "file_activities.earliest"
     for key in (doc.get("id"), str(doc.get("_id"))):
         when = to_datetime((activity_by_lead.get(key) or {}).get("timestamp"))
         if when:
             return when, "activities.status_change"
+    stamps = [to_datetime(e.get("timestamp")) for e in (doc.get("file_activities") or [])]
+    stamps = [s for s in stamps if s]
+    if stamps:
+        return min(stamps), "file_activities.earliest"
     when = to_datetime(doc.get("created_at"))
     if when:
         return when, "created_at"

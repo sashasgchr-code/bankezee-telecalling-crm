@@ -785,6 +785,8 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
         update_data["source_id"] = lead.get("assigned_to") or lead.get("source_id") or current_user["id"]
         update_data["source_name"] = lead.get("telecaller_name") or lead.get("source_name") or current_user.get("name", "Unknown")
         
+        if not lead.get("file_created_at"):
+            update_data["file_created_at"] = datetime.now(timezone.utc)
         update_data["file_activities"] = [{
             "type": "file_created",
             "message": "Lead converted to File - Application form opened for completion",
