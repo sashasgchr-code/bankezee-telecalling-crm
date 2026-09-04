@@ -1218,3 +1218,29 @@ Declined Bank, Disbursed Bank) are now pickers backed by that list while still a
 name. Verified: 35 options offered on each row.
 
 Gates after the change: file_eligibility_stats_gate 24/24, eligibility_gate 17/17.
+
+## BANK NAME CLEANUP (September 4, 2026) — reporting fixed, data rewrite is opt-in
+
+NEW `backend/utils/bank_names.py` - `canonical_bank_name()` maps every observed free-text lender
+spelling onto one canonical name (explicit alias table + punctuation/case normalisation). Values
+that are not lenders at all ("NOT ELIGIBLE", "NOT SENT", "ALL BANKS", "no eligibility") are never
+mapped, and an unknown lender is returned as typed.
+
+- Bank Performance now GROUPS by the canonical name, so reporting is correct WITHOUT touching
+  history: 72 free-text variants collapsed to 36 rows (e.g. ICICI/ICICI BANK/icici -> ICICI Bank
+  256+17+1; INDUSIND / INDUS / INUSIND / INUDISND / INDUSND BANK / "INDUSIND - VPL" /
+  "INDUSIND OD, PL BT" -> IndusInd Bank; AXI SBANK / AXIS bank -> Axis Bank; AIDTYA BIRLA /
+  ADITYA BRILA -> Aditya Birla; FULLERTON -> SMFG India Credit).
+- NEW `/app/scripts/bank_name_cleanup.py` - DRY RUN by default, prints the full
+  "count | stored -> canonical | in policy master?" table across all five bank fields
+  (bank_name, login_bank, approved_bank, declined_bank, disbursed_bank). Current preview report:
+  390 documents / 1,885 values would be rewritten, 4 left as typed (ICICI HFC and one row where a
+  phone number was typed into the bank field), 6 non-lender values kept.
+  Run with `--apply` to persist, and with a production MONGO_URL/DB_NAME for the production report.
+  NOT applied anywhere - awaiting explicit approval.
+- 11 lenders that appear in files but are missing from the bank-policy master are listed in the
+  report ("NOT in master": Hero FinCorp, SMFG India Credit, Muthoot Finance, Protium, NeoGrowth,
+  KreditBee, Lendingkart, Flexiloans, Mahindra Finance, DCB Bank, ICICI HFC) - worth adding to the
+  master so the picker offers them.
+
+Gates after the change: file_eligibility_stats_gate 24/24, eligibility_gate 17/17.

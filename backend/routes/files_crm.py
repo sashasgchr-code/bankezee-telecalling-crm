@@ -16,6 +16,7 @@ import logging
 from utils.auth import get_current_user, require_admin
 from utils.json_safe import json_safe
 from utils.helpers import doc_ref_filter
+from utils.bank_names import canonical_bank_name
 from utils.files_query import build_files_query
 
 ROOT_DIR = Path(__file__).parent.parent
@@ -2970,7 +2971,7 @@ async def get_bank_performance(
     
     for f in all_files:
         for elig in (f.get('eligibilities') or []):
-            bank_name = elig.get('bank_name')
+            bank_name = canonical_bank_name(elig.get('bank_name'))
             if not bank_name:
                 continue
             
