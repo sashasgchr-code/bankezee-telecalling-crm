@@ -1244,3 +1244,25 @@ mapped, and an unknown lender is returned as typed.
   master so the picker offers them.
 
 Gates after the change: file_eligibility_stats_gate 24/24, eligibility_gate 17/17.
+
+## HR LOGIN BUG - NON-IDEMPOTENT ROLE SEEDING (September 4, 2026) — FIXED, verified by testing agent (iteration_45)
+
+REPORTED: hr@neosales.in / Hr@BankEzee@$ could not log in.
+ROOT CAUSE: `setup_admin_accounts()` in `backend/server.py` looped over the hard-coded
+`ROLE_ACCOUNTS` list (admin, HR, 2 managers, 2 ops) and on EVERY startup ran
+`update_one({email}, {$set: {password: hash(hardcoded), plain_password: ...}})`. Any password an
+Admin changed inside the app was therefore reverted to the seed value on the next restart/deploy -
+HR's real password was being reset back to the seeded `HrNeo12!!`, locking them out. The same
+hazard applied to admin/manager/ops accounts.
+FIX (integration_expert consulted first, per the auth policy): seeding is now idempotent - it still
+creates a missing account and reconciles `role/is_active/is_approved/approval_status`, but it only
+writes the password when the account is new, has no credential at all, or `RESEED_ROLE_PASSWORDS=true`
+is set in the environment. It also targets `_id` instead of the email. HR's password was then set to
+`Hr@BankEzee@$` through the Admin change-password endpoint.
+VERIFIED (testing agent iteration_45, backend + UI, 100%): HR logs in through the form and lands on
+the HR area; the old seeded password now returns 401; HR still logs in after
+`supervisorctl restart backend` (persistence proven); admin / teja / rama / saikiran / GP Nithin all
+still log in; wrong and unknown credentials still return 401. New regression suite:
+`/app/backend/tests/test_login_regression.py`. `/app/memory/test_credentials.md` updated.
+BACKLOG from the review: `plain_password` (cleartext) is still stored for freshly seeded accounts and
+ROLE_ACCOUNTS credentials are hard-coded in source - both worth moving to env/removing later.

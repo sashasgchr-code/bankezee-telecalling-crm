@@ -5,6 +5,7 @@ Refactored modular structure
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
+import os
 
 from utils.database import db, client
 from utils.auth import pwd_context
@@ -145,31 +146,36 @@ async def setup_admin_accounts():
         print(f"⚠️ Index creation warning: {e}")
     
     # Setup role-based accounts (upsert by email)
+    reseed_passwords = os.environ.get("RESEED_ROLE_PASSWORDS", "").lower() == "true"
     for account in ROLE_ACCOUNTS:
         email = account["email"].lower()
         existing = await db.users.find_one({"email": email})
-        hashed_password = pwd_context.hash(account["password"])
         
         if existing:
-            # Update existing account with new role and password
+            # Reconcile role/access only. The password is NEVER re-written on boot: doing that
+            # reverted every password an Admin changed in the app on the next restart/deploy
+            # (this is why HR could not log in). Set RESEED_ROLE_PASSWORDS=true to force a reset.
             update_data = {
-                "password": hashed_password,
-                "plain_password": account["password"],
                 "role": account["role"],
                 "is_active": True,
                 "is_approved": True,
                 "approval_status": "approved"
             }
+            if reseed_passwords or not (existing.get("password") or existing.get("password_hash")):
+                update_data["password"] = pwd_context.hash(account["password"])
+                update_data["plain_password"] = account["password"]
             # Don't overwrite is_tl if it exists
             if "is_tl" not in existing:
                 update_data["is_tl"] = False
             
             await db.users.update_one(
-                {"email": email},
+                {"_id": existing["_id"]},
                 {"$set": update_data}
             )
-            print(f"  ✓ Updated: {email} ({account['role']})")
+            print(f"  ✓ Updated: {email} ({account['role']})"
+                  f"{' [password reseeded]' if 'password' in update_data else ''}")
         else:
+            hashed_password = pwd_context.hash(account["password"])
             # Create new account
             user_doc = {
                 "email": email,

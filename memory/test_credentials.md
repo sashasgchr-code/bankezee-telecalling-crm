@@ -48,7 +48,7 @@
 ## HR Account
 | Email | Password | Role | Notes |
 |-------|----------|------|-------|
-| hr@neosales.in | HrNeo12!! | hr | HR access for attendance/leave (seeded in server.py) |
+| hr@neosales.in | Hr@BankEzee@$ | hr | HR access for attendance/leave (password set by Admin on 4 Sep 2026; startup seeding no longer overwrites it) |
 
 ## Application URLs
 - **Preview URL**: https://responsive-crm-app-1.preview.emergentagent.com

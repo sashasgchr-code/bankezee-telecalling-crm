@@ -1,0 +1,24 @@
+{
+  "summary": "Verified the HR login bug fix. Idempotent startup seeding in server.py no longer overwrites existing role-account passwords. Backend regression (pytest, 10 tests) passes 100%: HR logs in with new password 'Hr@BankEzee@$', old seeded 'HrNeo12!!' is rejected, admin/manager/ops/GP still log in, wrong/unknown creds return 401, and HR still logs in after a fresh `sudo supervisorctl restart backend` (persistence proven). UI test at /login for HR redirected to /agent/attendance successfully.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_login_regression.py",
+    "/app/test_reports/pytest/iter45_login.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still writes `plain_password` (cleartext) for freshly-seeded/reseeded role accounts. Storing plaintext passwords alongside the bcrypt hash is a security smell; consider removing the `plain_password` field entirely and relying only on the hash + Admin change-password flow.",
+    "The seeding loop uses hard-coded credentials in ROLE_ACCOUNTS in source. Move to environment variables (or a one-time bootstrap script) so secrets are not committed."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_login_regression.py"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Used credentials from /app/memory/test_credentials.md; HR = hr@neosales.in / Hr@BankEzee@$ (new). No credentials modified during testing.",
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The login regression suite at /app/backend/tests/test_login_regression.py covers HR bug + role-account logins + negative cases. Reuse it after any auth/seeding changes. Backend was restarted once during testing to prove password persistence.",
+  "rca of the issue": "RCA (confirmed): setup_admin_accounts() startup hook previously did unconditional update_one($set password=hash(hardcoded), plain_password=...) for every ROLE_ACCOUNTS entry, so any Admin-driven password change was reverted on every restart. Fix: password fields are only written when the account is missing entirely, has no credential, or RESEED_ROLE_PASSWORDS=true is set. Verified idempotency by restarting backend and confirming HR still authenticates with the new password while the old seed value returns 401."
+}
