@@ -42,7 +42,7 @@ const ExistingLoansEditor = ({ loans = [], legacyLoans = [], isEditing, onChange
     <div data-testid="existing-loans-editor">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs text-gray-500">
-          Existing Loans ({rows.length}/{MAX_EXISTING_LOANS})
+          Existing Loans ({rows.length})
           {rows.length > 0 && (
             <span className="ml-2 text-gray-700">
               · Total EMI <span className="font-semibold">{money(totalEmi)}</span>
@@ -50,7 +50,7 @@ const ExistingLoansEditor = ({ loans = [], legacyLoans = [], isEditing, onChange
             </span>
           )}
         </p>
-        {isEditing && rows.length < MAX_EXISTING_LOANS && (
+        {isEditing && (
           <button
             type="button"
             onClick={() => onChange([...rows, { ...EMPTY_LOAN }])}
