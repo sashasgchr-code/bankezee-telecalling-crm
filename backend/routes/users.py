@@ -250,7 +250,7 @@ async def list_growth_partners(
         query["is_active"] = is_active
     
     # Apply hierarchy-based filtering
-    if role == "admin" or role == "ops":
+    if role in ("admin", "ops", "hr"):
         # Admin/Ops can see all, but respect explicit filters
         if manager_id:
             query["manager_id"] = manager_id

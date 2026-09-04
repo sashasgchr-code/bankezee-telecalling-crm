@@ -24,7 +24,7 @@ from calendar import monthrange
 import base64
 
 from utils.database import db
-from utils.auth import get_current_user, require_admin, require_hr_or_admin
+from utils.auth import get_current_user, require_admin, require_hr_or_admin, ACTIVE_GP_QUERY
 from utils.helpers import serialize_doc, serialize_docs
 from utils.email_service import send_leave_request_notification, send_leave_approval_notification
 from models.schemas import LeaveRequest, LeaveRequestApproval, WFHRequestCreate, WFHRequestApproval
@@ -667,7 +667,7 @@ async def handle_wfh_request(
 async def get_all_leave_balances(current_user: dict = Depends(require_hr_or_admin)):
     """Get leave balances for all employees (HR/Admin only)"""
     # Get all active users (exclude admins)
-    users = await db.users.find({"is_active": True, "role": {"$nin": ["admin"]}}).to_list(200)
+    users = await db.users.find(ACTIVE_GP_QUERY).to_list(500)
     
     balances = []
     for user in users:
@@ -924,10 +924,7 @@ async def get_all_employees_palme_summary(
     target_month = month or now.month
     
     # Get all active users (exclude admins)
-    users = await db.users.find({
-        "is_active": True, 
-        "role": {"$nin": ["admin"]}
-    }).to_list(200)
+    users = await db.users.find(ACTIVE_GP_QUERY).to_list(500)
     
     accrual_start = SPECIAL_YEAR_ACCRUAL_START.get(target_year, 1)
     year_start = datetime(target_year, accrual_start, 1, 0, 0, 0, tzinfo=IST)
@@ -1188,10 +1185,7 @@ async def get_monthly_leave_summary(
         month_end = datetime(target_year, target_month + 1, 1, 0, 0, 0, tzinfo=IST)
     
     # Get all active users
-    users = await db.users.find({
-        "is_active": True,
-        "role": {"$nin": ["admin"]}
-    }).to_list(200)
+    users = await db.users.find(ACTIVE_GP_QUERY).to_list(500)
     
     # Calculate working days in month
     working_days = 0

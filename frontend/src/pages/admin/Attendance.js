@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { GrowthPartnerFilter, EmployeeSearch, matchesGpFilters, useActiveGrowthPartners } from '../../components/GrowthPartnerFilter';
+import { PrintReportButton } from '../../components/PrintReportButton';
 import { 
   Users, Clock, MapPin, Calendar, Building2, Home, Palmtree, 
   AlertCircle, CheckCircle, XCircle, ChevronLeft, ChevronRight,
@@ -27,6 +29,9 @@ const AdminAttendanceDashboard = () => {
   const [settings, setSettings] = useState(null);
   const [wfhRequests, setWfhRequests] = useState([]);
   const [users, setUsers] = useState([]);
+  const [gpSelection, setGpSelection] = useState([]);
+  const [gpSearch, setGpSearch] = useState('');
+  const { mobileById } = useActiveGrowthPartners();
   
   // Modal states
   const [showOfficeModal, setShowOfficeModal] = useState(false);
@@ -270,8 +275,12 @@ const AdminAttendanceDashboard = () => {
     if (filters.workMode && record.work_mode !== filters.workMode) return false;
     if (filters.status && record.attendance_status !== filters.status) return false;
     if (filters.search && !record.user_name?.toLowerCase().includes(filters.search.toLowerCase())) return false;
-    return true;
+    return matchesGpFilters(record, { selectedIds: gpSelection, search: gpSearch, mobileById });
   });
+
+  const filteredMatrix = (matrixData?.matrix || []).filter(row =>
+    matchesGpFilters(row, { selectedIds: gpSelection, search: gpSearch, mobileById })
+  );
 
   return (
     <div className="space-y-6" data-testid="admin-attendance-dashboard">
@@ -391,6 +400,8 @@ const AdminAttendanceDashboard = () => {
           <Palmtree size={18} />
           Assign Leave
         </button>
+        <GrowthPartnerFilter selected={gpSelection} onChange={setGpSelection} testId="attendance-gp-filter" />
+        <EmployeeSearch value={gpSearch} onChange={setGpSearch} testId="attendance-gp-search" />
         <button
           onClick={() => setShowMatrixView(!showMatrixView)}
           className={`btn-secondary flex items-center gap-2 ${showMatrixView ? 'bg-green-100 text-green-700' : ''}`}
@@ -403,13 +414,19 @@ const AdminAttendanceDashboard = () => {
 
       {/* Monthly Matrix View */}
       {showMatrixView && (
-        <div className="card p-4" data-testid="monthly-matrix-view">
+        <div className="card p-4 print-root" data-testid="monthly-matrix-view" id="attendance-matrix-report">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2 print-hide">
               <Grid3X3 size={18} className="text-green-600" />
               Monthly Attendance Matrix
             </h3>
             <div className="flex items-center gap-2 flex-wrap">
+              <PrintReportButton
+                title="Monthly Attendance Matrix"
+                subtitle={`${new Date(matrixYear, matrixMonth - 1).toLocaleString('en-IN', { month: 'long' })} ${matrixYear} \u00b7 ${filteredMatrix.length} Growth Partner(s)${gpSearch ? ` \u00b7 search: "${gpSearch}"` : ''}${gpSelection.length ? ' \u00b7 filtered selection' : ' \u00b7 all active Growth Partners'}`}
+                targetId="attendance-matrix-report"
+                testId="print-attendance-matrix-btn"
+              />
               <button 
                 onClick={() => {
                   if (matrixMonth === 1) {
@@ -502,7 +519,7 @@ const AdminAttendanceDashboard = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {matrixData.matrix?.map((row, idx) => (
+                  {filteredMatrix.map((row, idx) => (
                     <tr key={row.user_id || idx} className="hover:bg-gray-50/50">
                       <td className="sticky left-0 z-10 bg-white px-3 py-2 font-medium text-gray-800 border-r border-gray-200 whitespace-nowrap">
                         {row.user_name}

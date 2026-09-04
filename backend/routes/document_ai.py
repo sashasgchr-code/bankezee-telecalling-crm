@@ -136,7 +136,7 @@ async def auto_parse_all_documents(lead_id: str, current_user: dict = Depends(ge
             {
                 "$set": {
                     "file_details": file_details,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "updated_at": datetime.now(timezone.utc)
                 },
                 "$push": {
                     "file_activities": {
@@ -177,7 +177,7 @@ async def auto_fill_from_parse(lead_id: str, request: AutoFillRequest, current_u
             {
                 "$set": {
                     "file_details": file_details,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "updated_at": datetime.now(timezone.utc)
                 },
                 "$push": {
                     "file_activities": {

@@ -736,6 +736,7 @@ async def update_lead(lead_id: str, update: LeadUpdate, current_user: dict = Dep
         
         # Initialize file-specific fields
         update_data["file_status"] = "new"  # Initial file status
+        update_data["file_created_at"] = datetime.now(timezone.utc)  # when it BECAME a File
         update_data["file_assigned_to"] = lead.get("assigned_to") or current_user["id"]
         update_data["eligibilities"] = lead.get("eligibilities") or []
         
@@ -988,6 +989,7 @@ async def convert_lead_to_file(lead_id: str, current_user: dict = Depends(get_cu
         "source_id": source_id,  # Originating GP
         "source_name": source_name,
         "source_system": "connect",  # New files from Connect
+        "file_created_at": datetime.now(timezone.utc),  # when the lead BECAME a File
         "file_activities": [{
             "type": "file_created",
             "message": f"Lead converted to File by {current_user.get('name', 'Unknown')}",

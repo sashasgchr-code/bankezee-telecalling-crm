@@ -1,0 +1,165 @@
+/* A4 print / Save-as-PDF layout. Screen UI is untouched: everything here is print-only. */
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide chrome: navigation, buttons, filters, search boxes, toasts */
+  nav,
+  header,
+  .print-hide,
+  button:not(.print-keep),
+  [data-testid$='-toggle'],
+  [class*='fixed'],
+  [role='dialog'],
+  .toaster,
+  [data-sonner-toaster],
+  select,
+  input,
+  .print-area select,
+  .print-area input {
+    display: none !important;
+  }
+
+  /* Only the report itself is printed: hide everything, then reveal the report */
+  body.printing-report * {
+    visibility: hidden;
+  }
+  body.printing-report .print-area,
+  body.printing-report .print-area *,
+  body.printing-report .print-header,
+  body.printing-report .print-header * {
+    visibility: visible !important;
+  }
+  body.printing-report .print-area .print-hide,
+  body.printing-report .print-area .print-hide * {
+    visibility: hidden !important;
+    display: none !important;
+  }
+  body.printing-report .print-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+  body.printing-report .print-area {
+    position: absolute;
+    top: 24mm;
+    left: 0;
+    width: 100%;
+  }
+
+  .print-area,
+  .print-area * {
+    overflow: visible !important;
+    max-height: none !important;
+    box-shadow: none !important;
+  }
+
+  .print-area {
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+  }
+
+  /* Print-only report header (title, month, applied filters) */
+  .print-header {
+    display: block !important;
+    margin-bottom: 4mm;
+    border-bottom: 1pt solid #111;
+    padding-bottom: 2mm;
+  }
+  .print-header h1 {
+    font-size: 13pt;
+    font-weight: 700;
+    margin: 0;
+  }
+  .print-header p {
+    font-size: 8pt;
+    margin: 1mm 0 0;
+    color: #333;
+  }
+
+  /* Dense, legible A4 tables that never get cut mid-column */
+  .print-area table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    font-size: 6.6pt !important;
+    page-break-inside: auto;
+  }
+  .print-area thead {
+    display: table-header-group;
+  }
+  .print-area tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  .print-area th,
+  .print-area td {
+    border: 0.4pt solid #999 !important;
+    padding: 0.6mm 0.8mm !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    color: #111 !important;
+    background: #fff !important;
+  }
+  .print-area thead th {
+    background: #eee !important;
+    font-weight: 700;
+  }
+  /* Employee name column keeps enough room to stay readable */
+  .print-area td:first-child,
+  .print-area th:first-child {
+    width: 34mm !important;
+    white-space: normal !important;
+    font-size: 6.8pt !important;
+  }
+  /* Status letters / counts stay visible without colour fills */
+  .print-area td span,
+  .print-area td div {
+    background: transparent !important;
+    color: #111 !important;
+    font-size: 6.4pt !important;
+  }
+  .print-area .sticky {
+    position: static !important;
+  }
+  /* Summary tiles print as a compact single row */
+  .print-area .grid {
+    display: flex !important;
+    gap: 3mm !important;
+  }
+  .print-area .grid > * {
+    flex: 1 1 0;
+    border: 0.4pt solid #999 !important;
+    padding: 1.5mm !important;
+  }
+  .print-area .text-2xl {
+    font-size: 10pt !important;
+  }
+}
+
+/* Portrait for narrower reports */
+@media print {
+  body.print-portrait {
+    /* handled by the @page rule below */
+  }
+}
+@page portrait {
+  size: A4 portrait;
+}
+
+.print-header {
+  display: none;
+}

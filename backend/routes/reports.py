@@ -22,6 +22,44 @@ from utils.hierarchy import load_user_index
 AGENT_ROLE_FILTER = {"$in": GP_ROLES}
 
 
+def _as_date(field: str):
+    """Coerce a timestamp field to a date. Legacy File records store ISO strings."""
+    return {"$convert": {"input": f"${field}", "to": "date", "onError": None, "onNull": None}}
+
+
+def date_range_match(field: str, start, end=None):
+    """Range match on a timestamp that may be stored as a BSON date OR an ISO string."""
+    conds = []
+    if start:
+        conds.append({"$gte": [_as_date(field), start]})
+    if end:
+        conds.append({"$lt": [_as_date(field), end]})
+    if not conds:
+        return {}
+    return {"$expr": {"$and": conds}} if len(conds) > 1 else {"$expr": conds[0]}
+
+
+def _file_created_date():
+    """When the lead actually became a File (falls back to created_at for legacy records)."""
+    return {"$ifNull": [_as_date("file_created_at"), _as_date("created_at")]}
+
+
+def file_created_match(start, end=None):
+    """Files that became Files inside the period - never 'files edited in the period'."""
+    conds = []
+    if start:
+        conds.append({"$gte": [_file_created_date(), start]})
+    if end:
+        conds.append({"$lt": [_file_created_date(), end]})
+    if not conds:
+        return {}
+    return {"$expr": {"$and": conds}} if len(conds) > 1 else {"$expr": conds[0]}
+
+
+# A File belongs to the GP who originated it; fall back to the current assignee.
+FILE_OWNER = {"$ifNull": ["$source_id", "$assigned_to"]}
+
+
 async def resolve_report_scope(current_user: dict):
     """Agent identifiers this user may see in reports. `None` = full scope (Admin/Ops).
 
@@ -131,18 +169,15 @@ async def get_dashboard_stats(
             leads_filter["assigned_to"] = telecaller_id
             calls_filter["user_id"] = telecaller_id
         
-        # Build time filters
+        # Build time filters (tolerant of legacy ISO-string timestamps on File records)
+        leads_time_filter = date_range_match("updated_at", start_date, end_date)
+        leads_created_filter = date_range_match("created_at", start_date, end_date)
+        files_created_filter = file_created_match(start_date, end_date)
         if start_date and end_date:
-            leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
-            leads_created_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
             calls_time_query = {"created_at": {"$gte": start_date, "$lt": end_date}}
         elif start_date:
-            leads_time_filter = {"updated_at": {"$gte": start_date}}
-            leads_created_filter = {"created_at": {"$gte": start_date}}
             calls_time_query = {"created_at": {"$gte": start_date}}
         else:
-            leads_time_filter = {}
-            leads_created_filter = {}
             calls_time_query = {}
         
         # Run all queries in parallel
@@ -151,7 +186,7 @@ async def get_dashboard_stats(
             db.leads.count_documents({**leads_filter, **leads_created_filter}) if leads_created_filter else db.leads.count_documents(leads_filter),
             db.call_logs.count_documents({**calls_filter, **calls_time_query}),
             db.leads.count_documents({**leads_filter, **leads_time_filter, "status": {"$in": ["leads", "converted"]}}),
-            db.leads.count_documents({**leads_filter, **leads_time_filter, "status": "file"}),
+            db.leads.count_documents({**leads_filter, **files_created_filter, "status": "file"}),
         ]
         
         results = await asyncio.gather(*queries)
@@ -197,13 +232,17 @@ async def get_dashboard_stats(
         # Extract incoming call stats
         incoming_data = incoming_stats[0] if incoming_stats else {}
         
+        leads_by_status = {s["_id"]: s["count"] for s in status_counts}
+        # Files are counted by the day they became a File, not by their last edit
+        leads_by_status["file"] = total_file
+
         return {
             "total_data": total_data,
             "unused_data": unused_data,
             "connected": connected,
             "total_leads_generated": total_leads_generated,
             "total_file": total_file,
-            "leads_by_status": {s["_id"]: s["count"] for s in status_counts},
+            "leads_by_status": leads_by_status,
             "calls_per_user": {c["_id"]: c["count"] for c in calls_per_user},
             "active_telecallers": active_telecallers,
             "incoming_calls": {
@@ -221,24 +260,21 @@ async def get_dashboard_stats(
         # Telecaller view - optimized with parallel queries
         user_id = current_user["id"]
         
+        leads_time_filter = date_range_match("updated_at", start_date, end_date)
+        leads_created_filter = date_range_match("created_at", start_date, end_date)
+        files_created_filter = file_created_match(start_date, end_date)
         if start_date and end_date:
-            leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
-            leads_created_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
             calls_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
         elif start_date:
-            leads_time_filter = {"updated_at": {"$gte": start_date}}
-            leads_created_filter = {"created_at": {"$gte": start_date}}
             calls_time_filter = {"created_at": {"$gte": start_date}}
         else:
-            leads_time_filter = {}
-            leads_created_filter = {}
             calls_time_filter = {}
         
         # Run all queries in parallel
         queries = [
             db.leads.count_documents({"assigned_to": user_id, "status": "new", "created_at": {"$lt": today_naive}}),
             db.leads.count_documents({"assigned_to": user_id, **leads_created_filter}) if leads_created_filter else db.leads.count_documents({"assigned_to": user_id}),
-            db.leads.count_documents({"assigned_to": user_id, "status": "file", **leads_time_filter}),
+            db.leads.count_documents({"assigned_to": user_id, "status": "file", **files_created_filter}),
             db.leads.count_documents({"assigned_to": user_id, "status": {"$in": ["leads", "converted"]}, **leads_time_filter}),
             db.leads.aggregate([{"$match": {"assigned_to": user_id, **leads_time_filter}}, {"$group": {"_id": "$status", "count": {"$sum": 1}}}]).to_list(20),
             db.call_logs.aggregate([
@@ -302,7 +338,8 @@ async def get_recent_calls(limit: int = 10, current_user: dict = Depends(get_cur
         {"$match": query},
         {"$sort": {"created_at": -1}},
         {"$limit": limit},
-        {"$addFields": {"lead_oid": {"$toObjectId": "$lead_id"}}},
+        {"$addFields": {"lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
+                                          "onError": None, "onNull": None}}}},
         {"$lookup": {
             "from": "leads",
             "localField": "lead_oid",
@@ -334,11 +371,20 @@ async def get_detailed_call_report(
     from_date: str = None,
     to_date: str = None,
     telecaller_id: str = None,
-    limit: int = 500,
+    page: int = 1,
+    page_size: int = 500,
+    limit: int = None,
     current_user: dict = Depends(require_admin)
 ):
-    """Get detailed call report - includes both manual call logs and verified mobile call logs"""
+    """Detailed call report (manual + verified mobile calls), server-side paginated.
+
+    Totals are always computed over the full matching dataset, never over the current page.
+    """
     start_date, end_date, _ = get_date_range("today", from_date, to_date)
+    MAX_ROWS = 25000
+    page = max(1, page)
+    page_size = max(1, min(page_size if limit is None else limit, MAX_ROWS))
+    limit = MAX_ROWS
     
     match_stage = {}
     if start_date and end_date:
@@ -353,14 +399,22 @@ async def get_detailed_call_report(
         {"$match": match_stage},
         {"$sort": {"created_at": -1}},
         {"$limit": limit},
-        {"$addFields": {"lead_oid": {"$toObjectId": "$lead_id"}}},
+        {"$addFields": {"lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
+                                          "onError": None, "onNull": None}}}},
         {"$lookup": {
             "from": "leads",
             "localField": "lead_oid",
             "foreignField": "_id",
-            "as": "lead"
+            "as": "lead_by_oid"
         }},
-        {"$unwind": {"path": "$lead", "preserveNullAndEmptyArrays": True}},
+        {"$lookup": {
+            "from": "leads",
+            "localField": "lead_id",
+            "foreignField": "id",
+            "as": "lead_by_uuid"
+        }},
+        {"$addFields": {"lead": {"$ifNull": [{"$first": "$lead_by_oid"},
+                                             {"$first": "$lead_by_uuid"}]}}},
         {"$project": {
             "id": {"$toString": "$_id"},
             "created_at": 1,
@@ -399,14 +453,22 @@ async def get_detailed_call_report(
         {"$match": verified_match},
         {"$sort": {"call_timestamp": -1}},
         {"$limit": limit},
-        {"$addFields": {"lead_oid": {"$toObjectId": "$lead_id"}}},
+        {"$addFields": {"lead_oid": {"$convert": {"input": "$lead_id", "to": "objectId",
+                                          "onError": None, "onNull": None}}}},
         {"$lookup": {
             "from": "leads",
             "localField": "lead_oid",
             "foreignField": "_id",
-            "as": "lead"
+            "as": "lead_by_oid"
         }},
-        {"$unwind": {"path": "$lead", "preserveNullAndEmptyArrays": True}},
+        {"$lookup": {
+            "from": "leads",
+            "localField": "lead_id",
+            "foreignField": "id",
+            "as": "lead_by_uuid"
+        }},
+        {"$addFields": {"lead": {"$ifNull": [{"$first": "$lead_by_oid"},
+                                             {"$first": "$lead_by_uuid"}]}}},
         {"$project": {
             "id": {"$toString": "$_id"},
             "call_timestamp": 1,
@@ -499,14 +561,29 @@ async def get_detailed_call_report(
     # Sort all calls by actual datetime descending (not formatted string)
     detailed_calls.sort(key=lambda x: x.get("_sort_datetime", ""), reverse=True)
     
-    # Limit total results and remove internal sort field
-    detailed_calls = detailed_calls[:limit]
-    for call in detailed_calls:
+    # Totals over the FULL matching dataset (not just the page)
+    total_calls = len(detailed_calls)
+    total_connected = sum(1 for c in detailed_calls if c.get("call_outcome") == "connected")
+    total_duration = sum(c.get("call_duration_seconds") or 0 for c in detailed_calls)
+    
+    start_index = (page - 1) * page_size
+    page_calls = detailed_calls[start_index:start_index + page_size]
+    for call in page_calls:
         call.pop("_sort_datetime", None)
     
     return {
-        "calls": detailed_calls,
-        "total_count": len(detailed_calls),
+        "calls": page_calls,
+        "total_count": total_calls,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": max(1, (total_calls + page_size - 1) // page_size),
+        "has_more": start_index + len(page_calls) < total_calls,
+        "totals": {
+            "calls": total_calls,
+            "connected": total_connected,
+            "talk_time_seconds": total_duration,
+            "talk_time_formatted": format_duration(total_duration)
+        },
         "from_date": from_date,
         "to_date": to_date
     }
@@ -531,21 +608,18 @@ async def get_telecaller_reports(
         if isinstance(tc.get("id"), str):
             telecaller_map.setdefault(tc["id"], tc)
     
-    # Build time filters
+    # Build time filters (tolerant of legacy ISO-string timestamps on File records)
+    lead_time_filter = date_range_match("updated_at", start_date, end_date)
+    lead_created_filter = date_range_match("created_at", start_date, end_date)
+    file_created_filter = file_created_match(start_date, end_date)
     if start_date and end_date:
         call_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
-        lead_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
-        lead_created_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
         session_time_filter = {"date": {"$gte": start_date, "$lt": end_date}}
     elif start_date:
         call_time_filter = {"created_at": {"$gte": start_date}}
-        lead_time_filter = {"updated_at": {"$gte": start_date}}
-        lead_created_filter = {"created_at": {"$gte": start_date}}
         session_time_filter = {"date": {"$gte": start_date}}
     else:
         call_time_filter = {}
-        lead_time_filter = {}
-        lead_created_filter = {}
         session_time_filter = {}
     
     # Aggregation for call stats per user
@@ -602,6 +676,12 @@ async def get_telecaller_reports(
         }}
     ]
     
+    # Files counted by the day the lead BECAME a File, credited to the originating GP
+    file_pipeline = [
+        {"$match": {"status": "file", **file_created_filter}},
+        {"$group": {"_id": FILE_OWNER, "count": {"$sum": 1}}}
+    ]
+    
     # Aggregation for sessions per user
     session_pipeline = [
         {"$match": {"user_id": {"$in": telecaller_ids}, **session_time_filter}},
@@ -619,10 +699,12 @@ async def get_telecaller_reports(
         db.leads.aggregate(lead_created_pipeline).to_list(100),
         db.follow_ups.aggregate(followup_pipeline).to_list(200),
         db.daily_sessions.aggregate(session_pipeline).to_list(100),
-        db.lead_assignment_history.aggregate(historical_lead_pipeline).to_list(500)
+        db.lead_assignment_history.aggregate(historical_lead_pipeline).to_list(500),
+        db.leads.aggregate(file_pipeline).to_list(2000)
     )
     
-    call_stats, lead_stats, lead_created_stats, followup_stats, session_stats, historical_lead_stats = results
+    call_stats, lead_stats, lead_created_stats, followup_stats, session_stats, historical_lead_stats, file_stats = results
+    file_map = {f["_id"]: f["count"] for f in file_stats if f.get("_id")}
     
     # Build lookup maps
     call_map = {c["_id"]: c for c in call_stats}
@@ -686,7 +768,7 @@ async def get_telecaller_reports(
         user_break_seconds = sessions.get("total_break_seconds", 0)
         user_idle_seconds = max(0, user_login_seconds - user_call_seconds - user_break_seconds)
         
-        user_file = leads.get("file", 0)
+        user_file = file_map.get(user_id, 0) or file_map.get(tc.get("id"), 0)
         user_leads_generated = leads.get("leads", 0) + leads.get("converted", 0)
         user_presentations = leads.get("presentation", 0)
         
@@ -720,7 +802,7 @@ async def get_telecaller_reports(
             "total_form_filling_seconds": user_form_filling,
             "avg_call_time_seconds": avg_call_time,
             "avg_form_filling_seconds": avg_form_filling,
-            "status_counts": leads
+            "status_counts": {**leads, "file": user_file}
         })
         
         total_calls += user_total_calls
@@ -859,9 +941,10 @@ async def get_hourly_report(
     
     # Aggregation for lead status updates by hour per user
     lead_pipeline = [
-        {"$match": {"assigned_to": {"$in": telecaller_ids}, "updated_at": {"$gte": start_of_day, "$lt": end_of_day}}},
+        {"$match": {"assigned_to": {"$in": telecaller_ids},
+                    **date_range_match("updated_at", start_of_day, end_of_day)}},
         {"$addFields": {
-            "hour": {"$hour": {"$add": ["$updated_at", 19800000]}}
+            "hour": {"$hour": {"$add": [_as_date("updated_at"), 19800000]}}
         }},
         {"$group": {
             "_id": {"user_id": "$assigned_to", "hour": "$hour", "status": "$status"},
@@ -869,9 +952,18 @@ async def get_hourly_report(
         }}
     ]
     
-    call_stats, lead_stats = await asyncio.gather(
+    # Files by the hour they became Files (IST), credited to the originating GP
+    file_pipeline = [
+        {"$match": {"status": "file", **file_created_match(start_of_day, end_of_day)}},
+        {"$addFields": {"hour": {"$hour": {"$add": [_file_created_date(), 19800000]}},
+                        "owner": FILE_OWNER}},
+        {"$group": {"_id": {"user_id": "$owner", "hour": "$hour"}, "count": {"$sum": 1}}}
+    ]
+    
+    call_stats, lead_stats, file_stats = await asyncio.gather(
         db.call_logs.aggregate(call_pipeline).to_list(2400),
-        db.leads.aggregate(lead_pipeline).to_list(2400)
+        db.leads.aggregate(lead_pipeline).to_list(2400),
+        db.leads.aggregate(file_pipeline).to_list(2400)
     )
     
     # Build hourly data per user
@@ -900,8 +992,11 @@ async def get_hourly_report(
                     hours[hour]["presentations"] = ls["count"]
                 elif status in ["leads", "converted"]:
                     hours[hour]["leads"] += ls["count"]
-                elif status == "file":
-                    hours[hour]["file"] = ls["count"]
+        
+        # File counts come from the conversion timestamp, not the last edit
+        for fs in file_stats:
+            if fs["_id"]["user_id"] in (user_id, tc.get("id")):
+                hours[fs["_id"]["hour"]]["file"] += fs["count"]
         
         # Build hourly breakdown
         hourly_breakdown = []
@@ -928,7 +1023,9 @@ async def get_hourly_report(
     
     overall_hourly = [
         {"hour": h, "hour_label": f"{h:02d}:00", **overall_hours[h]}
-        for h in range(24) if overall_hours[h]["calls"] > 0 or overall_hours[h]["presentations"] > 0 or overall_hours[h]["leads"] > 0
+        for h in range(24)
+        if overall_hours[h]["calls"] > 0 or overall_hours[h]["presentations"] > 0
+        or overall_hours[h]["leads"] > 0 or overall_hours[h]["file"] > 0
     ]
     
     return {

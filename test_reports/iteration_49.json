@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only regression for the Active-Growth-Partner scope + GP checkbox/search filters + A4 print layout. 13/14 scenarios PASS. Attendance /admin/attendance: Total=19, Present=0, Late=0, Absent=19, WFH=0, On Leave=0 (matches active GP population - previous 28 total no longer appears). attendance-gp-filter-toggle default reads 'All Growth Partners (19)'; 19 options; search 'anu' narrows to exactly 1 -> 'Yarragonda Anusha' (case-insensitive partial name); Select All/Clear All present and functional; attendance-gp-search and print-attendance-matrix-btn present. Monthly Matrix renders with expected rows and window.print is triggered (intercepted). Leave Management /admin/leave: Monthly Summary tab -> leave-monthly-employee-count='19', 19 body rows, leave-monthly-gp-filter-toggle + leave-monthly-gp-search + print-leave-monthly-btn all present; print fires window.print. All Employees tab -> leave-all-employee-count='19', leave-all-gp-filter-toggle + leave-all-gp-search present. Reports > Call Log: calllog-gp-filter-toggle opens, 19 options + option-all, calllog-gp-filter-search 'anu' narrows to 'Yarragonda Anusha'; picking that GP triggers reload; picking calllog-gp-filter-option-all restores the full log and call-log-summary reads 'Showing 1-6 of 6 calls from 2026-09-04 to 2026-09-04 · 6 connected · 0s talk time' (unchanged); pagination testids (call-log-summary, call-log-page-size, call-log-next-page) still present. Reports > Hourly: print-hourly-report-btn fires window.print. window.print was stubbed via add_init_script; every print button incremented the stub counter by 1. HR login was not fully re-verified in this run (login form did not appear before timeout after cookie clear); iteration_47 already covers HR 4-item nav so treated as non-regression.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "GrowthPartnerFilter (multi-select)",
+        "issue": "After clicking Clear All and then ticking 2 GPs the label reads '17 of 19 selected' and the Monthly Matrix shows 18 rows, instead of the required '2 of 19 selected' with only those 2 rows. Root cause in /app/frontend/src/components/GrowthPartnerFilter.js `toggle()`: when `selected` is empty (Clear All state) it falls back to `base = allIds`, so every checkbox appears already checked and clicking one REMOVES it instead of adding. The `effective` value used to render `checked={effective.includes(p.id)}` uses the same `selected.length ? selected : allIds` fallback, so the UI cannot distinguish 'default = all' from 'explicitly cleared = none'. Fix suggestion: represent 'all' as a sentinel (e.g. `selected=null` for default and `[]` for explicitly cleared), or gate the fallback in `toggle` on an `isDefault` flag - so that after Clear All, ticking an option produces `[id]` (i.e. '1 of 19 selected'). Default state (no Clear All) still works correctly because users are not expected to un-tick every partner manually.",
+        "selector": "[data-testid=attendance-gp-filter-clear-all] + [data-testid=attendance-gp-filter-option] input",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Fix GrowthPartnerFilter multi-select toggle so that after Clear All, ticking N options yields 'N of 19 selected' (and drives the matrix to those N rows). Same fix applies to leave-monthly-gp-filter and leave-all-gp-filter which share the component."
+  ],
+  "critical_code_review_comments": [
+    "GrowthPartnerFilter conflates 'default (all)' and 'cleared (none)' as the same empty array, so Clear All + individual ticks becomes an unusable 'un-tick everything else' workflow.",
+    "Mobile search inside the filter requires a digit in the term (`/\\d/.test(term)` guard); a purely alphabetic query never triggers the mobile branch. That's correct today, but note the operator precedence: `String(p.mobile).includes(digits) && /\\d/.test(term)` - keep the parentheses explicit for clarity."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped as instructed)", "frontend": "13/14 scenarios pass (~93%)"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (working). HR: hr@neosales.in / Hr@BankEzee@$ (not re-verified this run, covered in iteration_47).",
+  "seed_data_creation": "None.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "All GP-scoping counts are now correctly 19 across Attendance (Total tile) and Leave (Monthly and All Employees). Filter/search/print testids are wired everywhere. The only real defect is the Clear-All + tick-N behaviour of GrowthPartnerFilter multi-mode; single-mode (Call Log) is unaffected. window.print stub pattern (add_init_script('window.print = () => { window.__printCalled = (window.__printCalled||0) + 1; };')) worked cleanly for all three print buttons.",
+  "rca of the issue": "GrowthPartnerFilter uses selected=[] to mean 'all selected' AND as the target of Clear All. toggle() falls back to allIds when selected is empty, so a click on a checkbox that appears checked (because effective=allIds) subtracts that id from allIds instead of appending to an empty selection. UX-level fix: make Clear All set an explicit empty-state marker distinct from default, or make toggle() branch: `if (!selected.length) onChange([id])` else the current behaviour."
+}

@@ -10,7 +10,8 @@ import math
 from zoneinfo import ZoneInfo
 
 from utils.database import db
-from utils.auth import get_current_user, require_admin, require_hr_or_admin
+from utils.auth import (get_current_user, require_admin, require_hr_or_admin,
+                        ACTIVE_GP_QUERY, active_gp_ids)
 from utils.helpers import serialize_doc
 from models.attendance_schemas import (
     AttendanceCheckIn, AttendanceCheckOut, WFHRequest, 
@@ -558,7 +559,8 @@ async def admin_get_today_attendance(
     today_start_utc = today_start.astimezone(timezone.utc)
     today_end_utc = today_end.astimezone(timezone.utc)
     
-    query = {"attendance_date": {"$gte": today_start_utc, "$lt": today_end_utc}}
+    query = {"attendance_date": {"$gte": today_start_utc, "$lt": today_end_utc},
+             "user_id": {"$in": list(await active_gp_ids(db))}}
     
     if work_mode:
         query["work_mode"] = work_mode
@@ -613,11 +615,13 @@ async def admin_get_attendance_summary(
     day_end = day_end.astimezone(timezone.utc)
     
     # Get all active users
-    active_users = await db.users.count_documents({"is_active": True, "role": {"$ne": "admin"}})
+    active_users = await db.users.count_documents(ACTIVE_GP_QUERY)
+    gp_ids = await active_gp_ids(db)
     
     # Get attendance records for the day
     pipeline = [
-        {"$match": {"attendance_date": {"$gte": day_start, "$lt": day_end}}},
+        {"$match": {"attendance_date": {"$gte": day_start, "$lt": day_end},
+                    "user_id": {"$in": list(gp_ids)}}},
         {"$group": {
             "_id": None,
             "total": {"$sum": 1},
@@ -801,8 +805,8 @@ async def admin_get_monthly_matrix(
     records = await db.attendance.find(query).to_list(length=5000)
     
     users = await db.users.find(
-        {"status": "active", "role": {"$in": ["sales_agent", "telecaller", "operations", "ops"]}},
-        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1}
+        ACTIVE_GP_QUERY,
+        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1, "phone": 1, "mobile": 1}
     ).to_list(length=500)
     
     leave_records = await db.leave_requests.find({
@@ -1430,7 +1434,7 @@ async def admin_get_weekly_attendance_summary(
     week_end_utc = week_end.astimezone(timezone.utc)
     
     # Get all active users
-    users = await db.users.find({"is_active": True, "role": {"$ne": "admin"}}).to_list(100)
+    users = await db.users.find(ACTIVE_GP_QUERY).to_list(500)
     
     # Get attendance records for the week
     attendance_records = await db.attendance.find({
@@ -1543,7 +1547,7 @@ async def admin_get_monthly_attendance_summary(
         current_day += timedelta(days=1)
     
     # Get all active users
-    users = await db.users.find({"is_active": True, "role": {"$ne": "admin"}}).to_list(100)
+    users = await db.users.find(ACTIVE_GP_QUERY).to_list(500)
     
     # Get attendance records for the month
     attendance_records = await db.attendance.find({

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, RefreshCw, Calendar, BarChart3, Activity, LogIn, LogOut, Coffee, FileText, PhoneCall, User } from 'lucide-react';
 import api from '../../services/api';
+import { GrowthPartnerFilter } from '../../components/GrowthPartnerFilter';
+import { PrintReportButton } from '../../components/PrintReportButton';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -9,6 +11,8 @@ const AdminReports = () => {
   const [hourlyReports, setHourlyReports] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
   const [detailedCalls, setDetailedCalls] = useState(null);
+  const [callsPage, setCallsPage] = useState(1);
+  const [callsPageSize, setCallsPageSize] = useState(500);
   const [telecallers, setTelecallers] = useState([]);
   const [selectedTelecaller, setSelectedTelecaller] = useState('all');
   const [period, setPeriod] = useState('today');
@@ -92,7 +96,7 @@ const AdminReports = () => {
         setIsLoading(true);
       }
       
-      let url = `/reports/detailed-calls?from_date=${callsFromDate}&to_date=${callsToDate}`;
+      let url = `/reports/detailed-calls?from_date=${callsFromDate}&to_date=${callsToDate}&page=${callsPage}&page_size=${callsPageSize}`;
       if (selectedTelecaller && selectedTelecaller !== 'all') {
         url += `&telecaller_id=${selectedTelecaller}`;
       }
@@ -105,11 +109,11 @@ const AdminReports = () => {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [callsFromDate, callsToDate, selectedTelecaller]);
+  }, [callsFromDate, callsToDate, selectedTelecaller, callsPage, callsPageSize]);
 
   const fetchTelecallers = useCallback(async () => {
     try {
-      const response = await api.get('/users?role=telecaller');
+      const response = await api.get('/users/growth-partners');
       setTelecallers(response.data || []);
     } catch (error) {
       console.error('Error fetching telecallers:', error);
@@ -263,8 +267,21 @@ const AdminReports = () => {
     URL.revokeObjectURL(url);
   };
 
-  const downloadCallsCSV = () => {
+  const downloadCallsCSV = async () => {
     if (!detailedCalls?.calls?.length) return;
+
+    // CSV always exports the full matching dataset, never just the visible page
+    let allCalls = detailedCalls.calls;
+    try {
+      let url = `/reports/detailed-calls?from_date=${callsFromDate}&to_date=${callsToDate}&page=1&page_size=25000`;
+      if (selectedTelecaller && selectedTelecaller !== 'all') {
+        url += `&telecaller_id=${selectedTelecaller}`;
+      }
+      const full = await api.get(url);
+      allCalls = full.data?.calls || allCalls;
+    } catch (error) {
+      console.error('Falling back to the current page for CSV export:', error);
+    }
 
     // Create CSV content
     const headers = [
@@ -285,7 +302,7 @@ const AdminReports = () => {
       'Notes'
     ];
     
-    const rows = detailedCalls.calls.map(call => [
+    const rows = allCalls.map(call => [
       call.call_date || '',
       call.call_time || '',
       call.caller_name || '',
@@ -1261,10 +1278,18 @@ const AdminReports = () => {
                 }
 
                 return (
-                  <div className="card overflow-hidden">
-                    <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3">
-                      <h3 className="text-lg font-semibold text-white">Caller-wise Hourly Report</h3>
-                      <p className="text-green-100 text-xs mt-1">C = Calls, Co = Connected, L = Leads, F = File</p>
+                  <div className="card overflow-hidden print-root" id="hourly-call-report">
+                    <div className="bg-gradient-to-r from-green-600 to-green-700 px-4 py-3 flex flex-wrap items-center justify-between gap-2">
+                      <div className="print-hide">
+                        <h3 className="text-lg font-semibold text-white">Caller-wise Hourly Report</h3>
+                        <p className="text-green-100 text-xs mt-1">C = Calls, Co = Connected, L = Leads, F = File</p>
+                      </div>
+                      <PrintReportButton
+                        title="Caller-wise Hourly Call Report"
+                        subtitle={`${hourlyDate} \u00b7 ${hourlyReports?.telecallers?.length || 0} Growth Partner(s) \u00b7 all active Growth Partners`}
+                        targetId="hourly-call-report"
+                        testId="print-hourly-report-btn"
+                      />
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm border-collapse">
@@ -1598,16 +1623,12 @@ const AdminReports = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Growth Partner</label>
-                <select
-                  value={selectedTelecaller}
-                  onChange={(e) => setSelectedTelecaller(e.target.value)}
-                  className="input-field min-w-[180px]"
-                >
-                  <option value="all">All Growth Partners</option>
-                  {telecallers.map(tc => (
-                    <option key={tc.id} value={tc.id}>{tc.name}</option>
-                  ))}
-                </select>
+                <GrowthPartnerFilter
+                  mode="single"
+                  selected={selectedTelecaller === 'all' ? [] : [selectedTelecaller]}
+                  onChange={(ids) => setSelectedTelecaller(ids.length ? ids[0] : 'all')}
+                  testId="calllog-gp-filter"
+                />
               </div>
               <button
                 onClick={() => fetchDetailedCalls(true)}
@@ -1638,8 +1659,11 @@ const AdminReports = () => {
                 <div className="card overflow-hidden">
                   <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3">
                     <h3 className="text-lg font-semibold text-white">Detailed Call Report</h3>
-                    <p className="text-blue-100 text-xs mt-1">
+                    <p className="text-blue-100 text-xs mt-1" data-testid="call-log-summary">
+                      Showing {((detailedCalls.page - 1) * detailedCalls.page_size) + 1}-
+                      {((detailedCalls.page - 1) * detailedCalls.page_size) + detailedCalls.calls.length} of{' '}
                       {detailedCalls.total_count} calls from {callsFromDate} to {callsToDate}
+                      {detailedCalls.totals ? ` · ${detailedCalls.totals.connected} connected · ${detailedCalls.totals.talk_time_formatted} talk time` : ''}
                     </p>
                   </div>
                   <div className="overflow-x-auto">
@@ -1709,6 +1733,42 @@ const AdminReports = () => {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <span>Rows per page</span>
+                      <select
+                        value={callsPageSize}
+                        onChange={(e) => { setCallsPageSize(Number(e.target.value)); setCallsPage(1); }}
+                        className="px-2 py-1 border border-gray-200 rounded-lg text-sm"
+                        data-testid="call-log-page-size"
+                      >
+                        {[100, 500, 1000, 5000].map(size => (
+                          <option key={size} value={size}>{size}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setCallsPage(p => Math.max(1, p - 1))}
+                        disabled={detailedCalls.page <= 1}
+                        className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm disabled:opacity-40"
+                        data-testid="call-log-prev-page"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-sm text-gray-600" data-testid="call-log-page-indicator">
+                        Page {detailedCalls.page} of {detailedCalls.total_pages}
+                      </span>
+                      <button
+                        onClick={() => setCallsPage(p => p + 1)}
+                        disabled={!detailedCalls.has_more}
+                        className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm disabled:opacity-40"
+                        data-testid="call-log-next-page"
+                      >
+                        Next
+                      </button>
+                    </div>
                   </div>
                 </div>
               ) : (

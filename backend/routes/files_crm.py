@@ -1160,7 +1160,7 @@ async def update_file_rating(file_id: str, current_user: dict = Depends(get_curr
             "$set": {
                 "star_rating": rating['star_rating'],
                 "star_score": rating['star_score'],
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(timezone.utc)
             }
         }
     )
@@ -1336,7 +1336,7 @@ async def import_crm_data(migration_data: MigrationData, current_user: dict = De
                 update_data = {
                     "status": "file",
                     "file_status": transformed["file_status"],
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc),
                     "import_source": migration_data.source
                 }
                 
@@ -1392,7 +1392,7 @@ async def import_crm_data(migration_data: MigrationData, current_user: dict = De
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }],
                     "created_at": transformed["created_at"],
-                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc),
                     "import_source": migration_data.source
                 }
                 await db.leads.insert_one(new_lead)
@@ -1502,8 +1502,8 @@ async def create_policy(policy_data: dict, current_user: dict = Depends(require_
     import uuid
     
     policy_data["id"] = str(uuid.uuid4())
-    policy_data["created_at"] = datetime.now(timezone.utc).isoformat()
-    policy_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    policy_data["created_at"] = datetime.now(timezone.utc)
+    policy_data["updated_at"] = datetime.now(timezone.utc)
     policy_data["is_active"] = policy_data.get("is_active", True)
     
     await db.bank_policies.insert_one(policy_data)
@@ -1518,7 +1518,7 @@ async def update_policy(policy_id: str, policy_data: dict, current_user: dict = 
     if not existing:
         raise HTTPException(status_code=404, detail="Policy not found")
     
-    policy_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    policy_data["updated_at"] = datetime.now(timezone.utc)
     policy_data.pop("id", None)
     policy_data.pop("_id", None)
     
@@ -1780,7 +1780,7 @@ async def create_commission(commission: CommissionCreate, current_user: dict = D
         **commission.dict(),
         "source_name": source_name,  # Persisted snapshot
         "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(timezone.utc),
         "created_by": current_user["id"]
     }
     
@@ -1806,7 +1806,7 @@ async def update_commission(commission_id: str, update: CommissionUpdate, curren
     """Update commission record - Admin only"""
     
     update_data = {k: v for k, v in update.dict().items() if v is not None}
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(timezone.utc)
     update_data["updated_by"] = current_user["id"]
     
     result = await db.commissions.update_one(
@@ -1868,7 +1868,7 @@ async def delete_file(file_id: str, current_user: dict = Depends(require_admin))
         "user_id": current_user.get('id'),
         "user_name": current_user.get('full_name', current_user.get('email')),
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc)
     })
     
     return {
@@ -1917,7 +1917,7 @@ async def bulk_delete_files(request: BulkDeleteRequest, current_user: dict = Dep
         "user_id": current_user.get('id'),
         "user_name": current_user.get('full_name', current_user.get('email')),
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(timezone.utc)
     })
     
     return {
@@ -2012,7 +2012,7 @@ async def update_file_details(file_id: str, update_data: FileDetailsUpdate, curr
     if not update_dict:
         return {"message": "No changes to update"}
     
-    update_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_dict["updated_at"] = datetime.now(timezone.utc)
     
     await db.leads.update_one(
         lead_filter(file_id),
@@ -2056,7 +2056,7 @@ async def update_file_status(file_id: str, status_update: FileStatusUpdate, curr
         {
             "$set": {
                 "file_status": status_update.file_status,
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(timezone.utc)
             },
             "$push": {
                 "file_activities": {
@@ -2084,7 +2084,7 @@ async def add_file_note(file_id: str, note_data: NoteAdd, current_user: dict = D
                     "timestamp": datetime.now(timezone.utc).isoformat()
                 }
             },
-            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+            "$set": {"updated_at": datetime.now(timezone.utc)}
         }
     )
     
@@ -2110,7 +2110,7 @@ async def assign_file(file_id: str, assignment: FileAssignment, current_user: di
         {
             "$set": {
                 "file_assigned_to": assignment.assigned_to,
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(timezone.utc)
             },
             "$push": {
                 "file_activities": {
@@ -2142,7 +2142,7 @@ async def bulk_assign_files(assignment: BulkFileAssignment, current_user: dict =
             {
                 "$set": {
                     "file_assigned_to": assignment.assigned_to,
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "updated_at": datetime.now(timezone.utc)
                 },
                 "$push": {
                     "file_activities": {
@@ -2230,7 +2230,7 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
         {
             "$set": {
                 "eligibilities": eligibilities_data,
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(timezone.utc)
             },
             "$push": {
                 "file_activities": {
@@ -2334,7 +2334,7 @@ async def upload_document(
             lead_filter(file_id),
             {
                 "$push": {"file_documents": doc_data},
-                "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+                "$set": {"updated_at": datetime.now(timezone.utc)}
             }
         )
         
@@ -2401,7 +2401,7 @@ async def upload_documents(
                 lead_filter(file_id),
                 {
                     "$push": {"file_documents": doc_data},
-                    "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+                    "$set": {"updated_at": datetime.now(timezone.utc)}
                 }
             )
             
@@ -2531,7 +2531,7 @@ async def delete_document(file_id: str, doc_id: str, current_user: dict = Depend
         lead_filter(file_id),
         {
             "$pull": {"file_documents": {"file_id": doc_id}},
-            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+            "$set": {"updated_at": datetime.now(timezone.utc)}
         }
     )
     
@@ -3702,7 +3702,7 @@ async def check_bank_eligibility(file_id: str, current_user: dict = Depends(requ
         {
             "$set": {
                 "last_eligibility_check": eligibility_check_result,
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(timezone.utc)
             },
             "$push": {
                 "file_activities": {
@@ -4067,7 +4067,7 @@ async def add_eligibility_activity(
         lead_filter(file_id),
         {
             "$push": {"file_activities": activity},
-            "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}
+            "$set": {"updated_at": datetime.now(timezone.utc)}
         }
     )
     

@@ -1463,3 +1463,65 @@ and are NOT fixed: `Connected` is manually tappable in `mobile-app/src/screens/L
 can create two records for one call.
 
 *Last Updated: September 4, 2026*
+
+---
+
+## REPORTING FIX + ACTIVE-GP FILTERS + A4 PRINT (September 4, 2026)
+
+### A. "A File created today does not show in any report" (RCA + fix)
+1. `files_crm.py` (and `document_ai.py`) stored `updated_at` as an ISO **string** while every report
+   filter compares BSON dates - in Mongo a date range never matches a string, so any lead that
+   became a File and was then saved from the Files module silently vanished from Summary, Hourly
+   and Track Report. Verified: 511/511 preview File docs had string dates. Fixed: those writers now
+   store real datetimes, and report filters coerce via `$convert` (`date_range_match`, `_as_date`)
+   so legacy string records match too.
+2. Files are now counted by **`file_created_at`** (stamped in `leads.py` at conversion) instead of
+   `updated_at`, so a File lands on the day it was created and is not re-counted on every edit.
+   `FILE_OWNER` credits the originating GP (`source_id`, falling back to `assigned_to`).
+   Applied to `/api/dashboard/stats`, `/api/reports/telecallers`, `/api/reports/hourly`.
+3. File Details now shows **File Created** (conversion date) next to **Created** (lead date).
+4. Backfill `utils/file_dates_backfill.py` + `scripts/file_dates_backfill.py` (+ TEMPORARY admin job
+   endpoints in `routes/admin_maintenance.py`): adds `file_created_at` and normalises string
+   `created_at`/`updated_at` on File docs. Applied on PREVIEW: 514 files, 0 failures, re-run is a
+   no-op; sources 477 activity log + 37 `created_at`. Backup verified first; the apply path also
+   re-counts leads afterwards and fails unless the count is unchanged.
+   **PRODUCTION BACKFILL STILL PENDING** (needs a publish, then dry run -> user approval -> apply).
+5. Call Log: GP filter was built from `/users?role=telecaller` so every `growth_partner` (e.g.
+   Gujjari Sai kiran) was missing - now `/users/growth-partners`. Call Log was silently capped at
+   500 rows; `/api/reports/detailed-calls` is now server-side paginated (`page`, `page_size`, max
+   25000) with `totals` computed over the FULL matching dataset, and the UI has rows-per-page +
+   Prev/Next + "Showing X-Y of N"; CSV re-fetches the full dataset.
+6. Fixed a pre-existing 500: `$toObjectId` on UUID `lead_id`s - leads are now resolved by `_id`
+   OR `id`.
+
+### B. Active Growth Partner scope + filters (Attendance / Leave)
+- One authoritative rule in `utils/auth.py`: `ACTIVE_GP_QUERY` (`is_active: True` + GP role) and
+  `active_gp_ids(db)`. Applied to attendance `/admin/summary`, `/admin/today`,
+  `/admin/monthly-matrix`, weekly/monthly summaries and the leave employee lists. Preview count
+  went from 28 (mixed roles/inactive) to **19 active GPs**. Display/filtering only - no historical
+  attendance/leave record was touched.
+- New `components/GrowthPartnerFilter.js`: checkbox multi-select (Select All / Clear All, empty
+  selection = no filter = all active GPs), searchable by name or mobile, plus `EmployeeSearch`,
+  `matchesGpFilters` and `useActiveGrowthPartners`. Wired into Attendance (daily + Monthly Matrix),
+  Leave Monthly Summary and Leave All Employees; counts follow the filtered rows.
+- Call Log GP selector reuses the same component in `mode="single"` so it keeps its single-select
+  behaviour but is now searchable.
+- HR can read `/users/growth-partners` (needed to populate its filter); HR still 403 on
+  `POST /api/users` and on attendance settings/offices.
+
+### C. A4 print / Save as PDF
+- `styles/print.css` (print-only; screen UI untouched): A4 landscape, hides everything and reveals
+  only `.print-area` + a `.print-header` carrying title, month/date and the applied GP filter;
+  dense legible tables, repeated header row, no row/column splitting.
+- `components/PrintReportButton.js` added to Monthly Attendance Matrix, Leave Monthly Summary and
+  the Caller-wise Hourly Call Report. Printed figures always match the filtered on-screen data.
+
+### Verification
+- testing agent iteration_48 (9/9 PASS), iteration_49 (13/14 - multi-select default fixed),
+  iteration_50 (9/9 PASS: multi-select semantics, all three A4 prints, name+mobile search,
+  Call Log searchable filter and pagination, HR pages populated, no regressions).
+- curl: attendance summary 19 employees, leave balances 19 rows, Call Log totals unchanged,
+  converting an Aug-dated lead to a File today now shows for that GP in Summary, in the correct
+  IST hour in Hourly and in Dashboard stats, and survives subsequent File edits.
+
+*Last Updated: September 4, 2026*

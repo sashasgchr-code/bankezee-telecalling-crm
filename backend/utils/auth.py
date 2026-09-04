@@ -52,6 +52,22 @@ LEGACY_ROLE_MAP = {
 # GP roles for backwards compatibility
 GP_ROLES = ["growth_partner", "telecaller", "sales_agent", "team_leader", "partner"]
 
+# The single authoritative "employee population" rule for Attendance / Leave employee views:
+# an ACTIVE account whose base role is a Growth Partner role. A GP who also carries Team Lead
+# capability (`is_tl`) still has a GP base role, so they stay included.
+ACTIVE_GP_QUERY = {"is_active": True, "role": {"$in": GP_ROLES}}
+
+
+async def active_gp_ids(db):
+    """Every identifier (str(_id) and `id`) of the active Growth Partner population."""
+    ids = set()
+    async for user in db.users.find(ACTIVE_GP_QUERY, {"_id": 1, "id": 1}):
+        ids.add(str(user["_id"]))
+        if isinstance(user.get("id"), str):
+            ids.add(user["id"])
+    return ids
+
+
 # Role permissions mapping
 ROLE_PERMISSIONS = {
     "admin": ["*"],  # Full system access

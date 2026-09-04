@@ -762,8 +762,16 @@ const FileDetailsPage = () => {
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">Created</label>
-                    <p className="font-medium text-gray-900">
+                    <p className="font-medium text-gray-900" data-testid="lead-created-date">
                       {fileData?.created_at ? new Date(fileData.created_at).toLocaleDateString('en-IN') : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">File Created</label>
+                    <p className="font-medium text-gray-900" data-testid="file-created-date">
+                      {fileData?.file_created_at
+                        ? new Date(fileData.file_created_at).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })
+                        : '-'}
                     </p>
                   </div>
                 </div>

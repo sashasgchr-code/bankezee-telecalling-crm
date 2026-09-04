@@ -5,6 +5,8 @@ import {
   Heart, AlertCircle, ChevronDown, ChevronUp, Eye
 } from 'lucide-react';
 import api from '../../services/api';
+import { GrowthPartnerFilter, EmployeeSearch, matchesGpFilters, useActiveGrowthPartners } from '../../components/GrowthPartnerFilter';
+import { PrintReportButton } from '../../components/PrintReportButton';
 
 const LeaveManagement = () => {
   const [activeTab, setActiveTab] = useState('my-requests');
@@ -26,6 +28,12 @@ const LeaveManagement = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [expandedEmployee, setExpandedEmployee] = useState(null);
+  const [gpSelection, setGpSelection] = useState([]);
+  const [gpSearch, setGpSearch] = useState('');
+  const { mobileById } = useActiveGrowthPartners();
+  const gpArgs = { selectedIds: gpSelection, search: gpSearch, mobileById };
+  const monthlyEmployees = (monthlySummary?.employees || []).filter(e => matchesGpFilters(e, gpArgs));
+  const allEmployees = (allEmployeesSummary?.employees || []).filter(e => matchesGpFilters(e, gpArgs));
 
   // Generate year options
   const currentYear = new Date().getFullYear();
@@ -667,14 +675,26 @@ const LeaveManagement = () => {
 
       {/* Monthly Summary Tab */}
       {activeTab === 'monthly-summary' && isAdminOrHr && monthlySummary && (
-        <div className="space-y-6">
+        <div className="space-y-6 print-root" id="leave-monthly-summary-report">
           <div className="bg-white rounded-xl border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold mb-4">{monthlySummary.month_name} - Team Summary</h3>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <h3 className="text-lg font-semibold print-hide">{monthlySummary.month_name} - Team Summary</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <GrowthPartnerFilter selected={gpSelection} onChange={setGpSelection} testId="leave-monthly-gp-filter" />
+                <EmployeeSearch value={gpSearch} onChange={setGpSearch} testId="leave-monthly-gp-search" />
+                <PrintReportButton
+                  title="Leave Monthly Summary"
+                  subtitle={`${monthlySummary.month_name} \u00b7 ${monthlyEmployees.length} Growth Partner(s)${gpSearch ? ` \u00b7 search: "${gpSearch}"` : ''}${gpSelection.length ? ' \u00b7 filtered selection' : ' \u00b7 all active Growth Partners'}`}
+                  targetId="leave-monthly-summary-report"
+                  testId="print-leave-monthly-btn"
+                />
+              </div>
+            </div>
             
             {/* Team Totals */}
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-6">
               <div className="bg-blue-50 rounded-lg p-3 text-center">
-                <div className="text-2xl font-bold text-blue-600">{monthlySummary.team_totals?.total_employees ?? 0}</div>
+                <div className="text-2xl font-bold text-blue-600" data-testid="leave-monthly-employee-count">{monthlyEmployees.length}</div>
                 <div className="text-xs text-blue-700">Employees</div>
               </div>
               <div className="bg-green-50 rounded-lg p-3 text-center">
@@ -717,7 +737,7 @@ const LeaveManagement = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {monthlySummary.employees?.map((emp) => (
+                  {monthlyEmployees.map((emp) => (
                     <tr key={emp.user_id} className="hover:bg-gray-50">
                       <td className="px-3 py-2 text-sm font-medium">{emp.user_name}</td>
                       <td className="px-3 py-2 text-sm text-center text-green-600">{emp.present_days}</td>
@@ -746,8 +766,18 @@ const LeaveManagement = () => {
 
       {/* All Employees Tab */}
       {activeTab === 'all-employees' && isAdminOrHr && allEmployeesSummary && (
-        <div className="space-y-4">
+        <div className="space-y-4 print-root" id="leave-all-employees-report">
           <div className="bg-white rounded-xl border border-gray-200 p-4">
+            <div className="flex flex-wrap items-center gap-2 mb-4 print-hide">
+              <GrowthPartnerFilter selected={gpSelection} onChange={setGpSelection} testId="leave-all-gp-filter" />
+              <EmployeeSearch value={gpSearch} onChange={setGpSearch} testId="leave-all-gp-search" />
+              <PrintReportButton
+                title="P.A.L.M.E Employee Summary"
+                subtitle={`${selectedYear} \u00b7 ${allEmployees.length} Growth Partner(s)${gpSearch ? ` \u00b7 search: "${gpSearch}"` : ''}${gpSelection.length ? ' \u00b7 filtered selection' : ' \u00b7 all active Growth Partners'}`}
+                targetId="leave-all-employees-report"
+                testId="print-leave-all-btn"
+              />
+            </div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">
                 {selectedYear} P.A.L.M.E Summary
@@ -758,13 +788,13 @@ const LeaveManagement = () => {
                 )}
               </h3>
               <div className="text-sm text-gray-500">
-                {allEmployeesSummary.employees?.length} employees
+                <span data-testid="leave-all-employee-count">{allEmployees.length}</span> employees
               </div>
             </div>
 
             {/* Employee Cards */}
             <div className="space-y-3">
-              {allEmployeesSummary.employees?.map((emp) => (
+              {allEmployees.map((emp) => (
                 <div key={emp.user_id} className="border rounded-lg overflow-hidden">
                   <div 
                     className="flex items-center justify-between p-4 bg-gray-50 cursor-pointer hover:bg-gray-100"
