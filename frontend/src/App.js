@@ -199,8 +199,6 @@ function App() {
           </ProtectedRoute>
         }>
           <Route index element={<ManagerDashboard />} />
-          <Route path="leads" element={<AdminLeads />} />
-          <Route path="leads/:id" element={<LeadDetail />} />
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
@@ -216,8 +214,6 @@ function App() {
           <Route path="attendance" element={<AdminAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="team" element={<ManagerTeam />} />
-          <Route path="team/data" element={<TeamData />} />
-          <Route path="team/files" element={<TeamFiles />} />
           <Route path="team/calls" element={<TeamCalls />} />
         </Route>
 

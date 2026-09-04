@@ -726,3 +726,48 @@ Everything from the A+B release plus these fixes is Preview-only. Production con
 build from earlier today (Files 500 + legacy `_id` fixes only).
 
 *Last Updated: September 3, 2026*
+
+---
+
+## MANAGER UI / NAVIGATION CHANGES (September 4, 2026) — Preview, all gates green
+
+Scope-limited to the Manager experience as requested. No hierarchy/scoping, calling, file
+ownership, assignment or Connect/CRM logic touched.
+
+1. **Custom From/To date range on the Manager Team Dashboard** (`ManagerDashboard.js`)
+   - Kept Today / This Week / This Month; added From Date -> To Date + Clear.
+   - `resolveRange()` mirrors the backend `get_date_range()` so ONE range drives every section:
+     metric cards, Team Overview, Files Performance and Call Activity by GP.
+   - Guard: From cannot be after To (inline error + native min/max on the inputs).
+   - Backend (minimum necessary): `/api/reports/manager-team-stats` now accepts
+     `from_date`/`to_date` and passes them to the existing `get_date_range()`.
+   - The files + disbursement aggregations in that endpoint had NO time filter (Files read 46 for
+     every period). They now use the same window, with a `$or` on datetime AND ISO-string
+     `updated_at` because legacy CRM rows store it as a string.
+     VISIBLE CHANGE: Files on "Today" is now the period figure, not the lifetime figure.
+   - `/files/reports` is now called with `start_date`/`end_date` for every period (it ignored the
+     `period` param entirely, so Files Performance was previously unfiltered).
+   - Verified: today 0 · this_week/this_month/2026 46 · 2026-09-03 only 27 (Pinky 20, Shivasai 4,
+     Vishnu 3) · 2020 0.
+
+2. **Manager navigation**: `Dashboard | Files | Track Report | Reports | More` (Data removed).
+   Reports promoted from More to primary nav (same `AdminReports` page, no duplicate logic).
+
+3. **Manager More menu**: Attendance, Leave, Team Management (My Team, Team Calls), Logout.
+   Removed Team Data, Team Files, Reports.
+
+4. **Manager access path**: removed the `/manager/leads`, `/manager/leads/:id`,
+   `/manager/team/data`, `/manager/team/files` routes from `App.js`. The `TeamData`/`TeamFiles`
+   components and their APIs are untouched and still routed for TL/GP at lines 189-190.
+
+Regression: `verify_hierarchy.py` 34/34 · `fixture_gate.py` 15/15 (preview restored to 128 users /
+518 leads) · only `ManagerLayout.js` changed among layouts · Admin `leads` and Telecaller `leads`
+routes intact.
+
+### Known, unchanged, flagged
+`/api/reports/manager-team-stats` still resolves the team with a direct `{"manager_id": user_id}`
+query, so the Manager DASHBOARD shows direct reports only (Teja: 8 members / 46 files) while the
+Files list uses the recursive identity-resolved subtree (94 files). Left as-is per the explicit
+"do not modify hierarchy/scoping" instruction - needs a decision.
+
+*Last Updated: September 4, 2026*

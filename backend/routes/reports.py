@@ -1352,6 +1352,8 @@ async def migrate_form_filling_time(current_user: dict = Depends(require_admin))
 @router.get("/reports/manager-team-stats")
 async def get_manager_team_stats(
     period: str = "today",
+    from_date: str = None,
+    to_date: str = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -1368,8 +1370,8 @@ async def get_manager_team_stats(
     if user_role not in ["manager", "admin", "ops"]:
         return {"error": "Unauthorized", "message": "This endpoint is for managers only"}
     
-    # Get date range
-    start_date, end_date, _ = get_date_range(period)
+    # Get date range (supports a custom from_date/to_date range)
+    start_date, end_date, period = get_date_range(period, from_date, to_date)
     
     # Get team IDs for this manager
     if user_role == "manager":
@@ -1401,9 +1403,15 @@ async def get_manager_team_stats(
     # Build time filter for calls
     calls_time_filter = {}
     leads_time_filter = {}
+    files_time_filter = {}
     if start_date and end_date:
         calls_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
         leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
+        # Legacy CRM rows store updated_at as an ISO string - match both shapes
+        files_time_filter = {"$or": [
+            {"updated_at": {"$gte": start_date, "$lt": end_date}},
+            {"updated_at": {"$gte": start_date.strftime("%Y-%m-%d"), "$lt": end_date.strftime("%Y-%m-%d")}},
+        ]}
     
     # Aggregation: Calls by user
     call_pipeline = [
@@ -1424,9 +1432,9 @@ async def get_manager_team_stats(
         }}
     ]
     
-    # Aggregation: Files by user (status=file)
+    # Aggregation: Files by user (status=file) - same time window as the other metrics
     files_pipeline = [
-        {"$match": {"source_id": {"$in": team_ids}, "status": "file"}},
+        {"$match": {"source_id": {"$in": team_ids}, "status": "file", **files_time_filter}},
         {"$group": {
             "_id": {"user_id": "$source_id", "file_status": "$file_status"},
             "count": {"$sum": 1}
@@ -1435,7 +1443,7 @@ async def get_manager_team_stats(
     
     # Aggregation: Disbursement amounts
     disbursement_pipeline = [
-        {"$match": {"source_id": {"$in": team_ids}, "status": "file", "eligibilities": {"$exists": True, "$ne": []}}},
+        {"$match": {"source_id": {"$in": team_ids}, "status": "file", "eligibilities": {"$exists": True, "$ne": []}, **files_time_filter}},
         {"$unwind": "$eligibilities"},
         {"$match": {"eligibilities.disbursed": True}},
         {"$group": {

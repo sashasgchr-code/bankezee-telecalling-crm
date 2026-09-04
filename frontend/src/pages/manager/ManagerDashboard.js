@@ -11,9 +11,32 @@ const ManagerDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [period, setPeriod] = useState('today');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [dateError, setDateError] = useState('');
   const [activeMetric, setActiveMetric] = useState('calls'); // calls, connected, leads, files
 
+  // Mirrors the backend get_date_range() so every dashboard section is driven by one range
+  const resolveRange = () => {
+    if (period === 'custom') {
+      return { start: customFrom, end: customTo };
+    }
+    const iso = (d) => d.toISOString().slice(0, 10);
+    const today = new Date();
+    if (period === 'this_week') {
+      const monday = new Date(today);
+      const weekday = (today.getDay() + 6) % 7; // Monday = 0, same as Python weekday()
+      monday.setDate(today.getDate() - weekday);
+      return { start: iso(monday), end: iso(today) };
+    }
+    if (period === 'this_month') {
+      return { start: iso(new Date(today.getFullYear(), today.getMonth(), 1)), end: iso(today) };
+    }
+    return { start: iso(today), end: iso(today) };
+  };
+
   const fetchData = async (showRefresh = false) => {
+    if (period === 'custom' && (!customFrom || !customTo)) return;
     try {
       if (showRefresh) {
         setIsRefreshing(true);
@@ -21,10 +44,15 @@ const ManagerDashboard = () => {
         setIsLoading(true);
       }
       
+      const { start, end } = resolveRange();
+      const statsQuery = period === 'custom'
+        ? `period=custom&from_date=${start}&to_date=${end}`
+        : `period=${period}`;
+      
       const [statsRes, teamRes, filesRes] = await Promise.all([
-        api.get(`/reports/manager-team-stats?period=${period}`),
+        api.get(`/reports/manager-team-stats?${statsQuery}`),
         api.get('/users/manager-team-members'),
-        api.get(`/files/reports?period=${period}`)
+        api.get(`/files/reports?start_date=${start}&end_date=${end}`)
       ]);
       
       setStats(statsRes.data);
@@ -40,10 +68,22 @@ const ManagerDashboard = () => {
 
   useEffect(() => {
     fetchData();
-  }, [period]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, customFrom, customTo]);
 
   const handleRefresh = () => {
     fetchData(true);
+  };
+
+  const applyCustomRange = (from, to) => {
+    if (from && to && from > to) {
+      setDateError('From date cannot be after To date');
+      return;
+    }
+    setDateError('');
+    setCustomFrom(from);
+    setCustomTo(to);
+    if (from && to) setPeriod('custom');
   };
 
   const periods = [
@@ -81,11 +121,11 @@ const ManagerDashboard = () => {
       </div>
 
       {/* Period Filter */}
-      <div className="flex gap-2 mb-4 overflow-x-auto pb-1">
+      <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
         {periods.map((p) => (
           <button
             key={p.id}
-            onClick={() => setPeriod(p.id)}
+            onClick={() => { setPeriod(p.id); setDateError(''); }}
             className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
               period === p.id
                 ? 'bg-blue-600 text-white'
@@ -96,6 +136,51 @@ const ManagerDashboard = () => {
             {p.label}
           </button>
         ))}
+      </div>
+
+      {/* Custom date range */}
+      <div className="mb-4" data-testid="custom-date-range">
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">From Date</label>
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => applyCustomRange(e.target.value, customTo)}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700"
+              data-testid="from-date-input"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">To Date</label>
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => applyCustomRange(customFrom, e.target.value)}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-700"
+              data-testid="to-date-input"
+            />
+          </div>
+          {period === 'custom' && (
+            <button
+              onClick={() => { setCustomFrom(''); setCustomTo(''); setDateError(''); setPeriod('today'); }}
+              className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50"
+              data-testid="clear-date-range"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {dateError && (
+          <p className="text-xs text-red-600 mt-1" data-testid="date-range-error">{dateError}</p>
+        )}
+        {period === 'custom' && !dateError && (
+          <p className="text-xs text-gray-500 mt-1" data-testid="active-date-range">
+            Showing {customFrom} to {customTo}
+          </p>
+        )}
       </div>
 
       {isLoading ? (
