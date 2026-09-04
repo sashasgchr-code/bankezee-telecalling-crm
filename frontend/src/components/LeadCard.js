@@ -1,8 +1,12 @@
 import React from 'react';
 import { Phone, MapPin, PhoneOff } from 'lucide-react';
 import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
+import WhatsAppIcon from './icons/WhatsAppIcon';
+import { openWhatsApp } from '../utils/whatsapp';
+import useAuthStore from '../store/authStore';
 
 const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
+  const { user } = useAuthStore();
   // If there's a call outcome, prioritize showing it
   const hasCallOutcome = lead.last_call_outcome;
   const primaryColor = hasCallOutcome 
@@ -15,6 +19,11 @@ const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
   const handleCall = (e) => {
     e.stopPropagation();
     onCall && onCall();
+  };
+
+  const handleWhatsApp = (e) => {
+    e.stopPropagation();
+    openWhatsApp(lead.phone, lead.name, user?.name || 'Team');
   };
 
   return (
@@ -80,11 +89,23 @@ const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
       </div>
       
       <button
+        onClick={handleWhatsApp}
+        className="w-14 bg-[#25D366] hover:bg-[#1ebe57] flex items-center justify-center transition-colors"
+        title="Message on WhatsApp"
+        aria-label="Message on WhatsApp"
+        data-testid={`whatsapp-btn-${lead.id}`}
+      >
+        <WhatsAppIcon size={22} className="text-white" />
+      </button>
+
+      <button
         onClick={handleCall}
-        className="w-16 bg-green-600 hover:bg-green-700 flex items-center justify-center transition-colors"
+        className="w-14 bg-green-600 hover:bg-green-700 flex items-center justify-center transition-colors"
+        title="Call"
+        aria-label="Call"
         data-testid={`call-btn-${lead.id}`}
       >
-        <Phone size={24} className="text-white" />
+        <Phone size={22} className="text-white" />
       </button>
     </div>
   );

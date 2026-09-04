@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
-import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff, MessageCircle, Wifi, WifiOff, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
+import { ArrowLeft, Phone, Mail, MapPin, Clock, Edit2, Save, X, Loader2, Trash2, Calendar, PhoneOff, Wifi, WifiOff, PhoneIncoming, PhoneOutgoing } from 'lucide-react';
 import api from '../services/api';
 import { StatusColors, StatusLabels, OutcomeColors, OutcomeLabels } from '../constants/colors';
 import { format, parseISO } from 'date-fns';
 import useAuthStore from '../store/authStore';
 import PostCallModal from '../components/PostCallModal';
 import { getPendingCount, isOnline, addSyncListener, syncQueue } from '../services/offlineQueue';
+import WhatsAppIcon from '../components/icons/WhatsAppIcon';
+import { openWhatsApp } from '../utils/whatsapp';
 
 const LeadDetail = () => {
   const { id } = useParams();
@@ -41,45 +43,7 @@ const LeadDetail = () => {
   // Agent can later update status to leads or file
   const statuses = ['not_interested', 'follow_up', 'leads', 'file'];
 
-  // WhatsApp message template
-  const getWhatsAppLink = (phone, customerName) => {
-    const agentName = user?.name || 'Team';
-    const message = `Hi ${customerName || 'there'},
-
-This is ${agentName} from BankEzee.
-
-I'm calling about merging your multiple loans/credit card payments into one single EMI.
-
-We'd like to understand your current EMIs and check whether we can help you reduce your monthly EMI burden and simplify your repayments.
-
-I tried reaching you but couldn't connect. Please call me back or simply reply "CALL ME" here and I'll get in touch with you.
-
-Regards,
-${agentName}
-BankEzee – Loan Consolidation Platform
-www.BankEzee.com`;
-
-    // Clean and normalize phone number for WhatsApp
-    // Handle float numbers like "9705296810.0" by converting to string and removing decimal
-    let cleanPhone = String(phone).split('.')[0].replace(/[^0-9]/g, '');
-    // Remove leading zeros
-    cleanPhone = cleanPhone.replace(/^0+/, '');
-    // Add 91 country code if it's a 10-digit number
-    if (cleanPhone.length === 10) {
-      cleanPhone = '91' + cleanPhone;
-    } else if (!cleanPhone.startsWith('91') && cleanPhone.length > 10) {
-      cleanPhone = '91' + cleanPhone;
-    }
-    
-    return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-  };
-
-  const handleWhatsApp = () => {
-    if (lead?.phone) {
-      const whatsappLink = getWhatsAppLink(lead.phone, lead.name);
-      window.open(whatsappLink, '_blank');
-    }
-  };
+  const handleWhatsApp = () => openWhatsApp(lead?.phone, lead?.name, user?.name || 'Team');
 
   const fetchData = async () => {
     try {
@@ -437,11 +401,11 @@ www.BankEzee.com`;
                   <span className="text-gray-700 flex-1">{lead.phone}</span>
                   <button
                     onClick={handleWhatsApp}
-                    className="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors"
+                    className="p-2 bg-[#25D366] text-white rounded-full hover:bg-[#1ebe57] transition-colors"
                     title="Message on WhatsApp"
                     data-testid="whatsapp-btn"
                   >
-                    <MessageCircle size={18} />
+                    <WhatsAppIcon size={18} />
                   </button>
                 </>
               )}
@@ -628,10 +592,10 @@ www.BankEzee.com`;
               </button>
               <button
                 onClick={handleWhatsApp}
-                className="flex-1 py-3 flex items-center justify-center gap-2 bg-green-500 text-white font-semibold rounded-xl hover:bg-green-600 transition-colors"
+                className="flex-1 py-3 flex items-center justify-center gap-2 bg-[#25D366] text-white font-semibold rounded-xl hover:bg-[#1ebe57] transition-colors"
                 data-testid="whatsapp-lead-btn"
               >
-                <MessageCircle size={20} />
+                <WhatsAppIcon size={20} />
                 WhatsApp
               </button>
             </div>

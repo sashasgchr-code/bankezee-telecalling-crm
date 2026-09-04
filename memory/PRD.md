@@ -935,3 +935,17 @@ C hierarchy link repair (16 production writes) — `/app/memory/C_dryrun_hierarc
 to be applied only AFTER this build is published and verified in production.
 
 *Last Updated: September 4, 2026*
+
+## WHATSAPP ICON + DATA LIST WHATSAPP BUTTON (September 4, 2026) — Preview, verified
+
+- NEW `components/icons/WhatsAppIcon.js` — the real WhatsApp brand glyph (SVG). Replaces the
+  generic `MessageCircle` chat bubble in every place WhatsApp was offered (Lead detail phone row
+  and the Call Now / WhatsApp action pair), brand colour `#25D366`.
+- NEW `utils/whatsapp.js` — single `getWhatsAppLink` / `openWhatsApp` (message template + phone
+  normalisation incl. legacy float phones like "9705296810.0"). LeadDetail no longer owns a
+  private copy.
+- Data list: `LeadCard` now shows a WhatsApp button beside the Call button
+  (`data-testid="whatsapp-btn-{leadId}"`, both 14 wide). Used by GP Data (/agent/leads) and
+  Admin Data (/admin/leads), so both lists get it from the one component.
+- Verified in preview: GP Nithin /agent/leads -> 15 WhatsApp + 15 Call buttons; lead detail opens
+  `https://api.whatsapp.com/send/?phone=919705380465&text=Hi+Domala+naveen+kumar...`.
