@@ -892,11 +892,11 @@ async def get_hourly_report(
     
     # Determine which telecallers to show based on role
     if user_role in ["admin", "ops"]:
-        # Admin/Ops see all growth partners/telecallers
+        # Admin/Ops see all growth partners/telecallers (files are historical records -
+        # count them even if the originating GP is now inactive; empty rows are suppressed below)
         telecallers = await db.users.find({
-            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]},
-            "is_active": {"$ne": False}
-        }).to_list(500)
+            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]}
+        }).to_list(2000)
     elif user_role == "manager":
         # Manager sees GPs assigned to them (directly or via TLs)
         # First, get TLs under this manager
@@ -912,9 +912,8 @@ async def get_hourly_report(
                 {"manager_id": user_id},  # Direct reports
                 {"tl_id": {"$in": tl_ids}}  # Reports via TLs
             ],
-            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]},
-            "is_active": {"$ne": False}
-        }).to_list(500)
+            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]}
+        }).to_list(2000)
     elif is_tl:
         # TL sees their team members - match by both possible ID formats
         telecallers = await db.users.find({
@@ -922,9 +921,8 @@ async def get_hourly_report(
                 {"tl_id": user_id},
                 {"tl_id": user_uuid}
             ],
-            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]},
-            "is_active": {"$ne": False}
-        }).to_list(100)
+            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]}
+        }).to_list(2000)
     else:
         # GP sees only themselves - find by either _id or id field
         try:
@@ -981,61 +979,84 @@ async def get_hourly_report(
         db.leads.aggregate(file_pipeline).to_list(2400)
     )
     
-    # Build hourly data per user
+    # Person-centric aggregation (alias-aware): one person can have several user docs,
+    # and ownership fields may use any legacy identifier. Everything is resolved to a
+    # single canonical person so nothing is lost or double-counted. Files are counted for
+    # EVERY owner (any role) so totals match the Summary/dashboard exactly; managers/TLs
+    # stay scoped to their own team.
+    index = await load_user_index(db)
+    is_admin_ops = user_role in ["admin", "ops"]
+    scope_roots = None if is_admin_ops else {
+        (index.root_for(tid) or f"raw:{tid}") for tid in telecaller_ids
+    }
+
+    def _pkey(raw):
+        return index.root_for(raw) or f"raw:{raw}"
+
+    persons = {}
+
+    def _ensure(pkey, name):
+        if pkey not in persons:
+            persons[pkey] = {
+                "user_id": pkey,
+                "user_name": name or "Unknown",
+                "hours": {h: {"calls": 0, "connected": 0, "presentations": 0, "leads": 0, "file": 0} for h in range(24)},
+            }
+        return persons[pkey]
+
+    for cs in call_stats:
+        pk = _pkey(cs["_id"]["user_id"])
+        p = _ensure(pk, index.display_name(cs["_id"]["user_id"]))
+        p["hours"][cs["_id"]["hour"]]["calls"] += cs["calls"]
+        p["hours"][cs["_id"]["hour"]]["connected"] += cs["connected"]
+
+    for ls in lead_stats:
+        status = ls["_id"]["status"]
+        if status not in ("leads", "converted", "presentation"):
+            continue
+        pk = _pkey(ls["_id"]["user_id"])
+        p = _ensure(pk, index.display_name(ls["_id"]["user_id"]))
+        if status == "presentation":
+            p["hours"][ls["_id"]["hour"]]["presentations"] += ls["count"]
+        else:
+            p["hours"][ls["_id"]["hour"]]["leads"] += ls["count"]
+
+    for fs in file_stats:
+        owner = fs["_id"]["user_id"]
+        pk = _pkey(owner)
+        if scope_roots is not None and pk not in scope_roots:
+            continue  # file owned outside this manager/TL's team
+        p = _ensure(pk, index.display_name(owner))
+        p["hours"][fs["_id"]["hour"]]["file"] += fs["count"]
+
     hourly_data = []
     overall_hours = {h: {"calls": 0, "connected": 0, "presentations": 0, "leads": 0, "file": 0} for h in range(24)}
-    
-    for tc in telecallers:
-        user_id = str(tc["_id"])
-        user_name = tc.get("name", tc.get("email", "Unknown"))
-        
-        hours = {h: {"calls": 0, "connected": 0, "presentations": 0, "leads": 0, "file": 0} for h in range(24)}
-        
-        # Fill call data
-        for cs in call_stats:
-            if cs["_id"]["user_id"] == user_id:
-                hour = cs["_id"]["hour"]
-                hours[hour]["calls"] = cs["calls"]
-                hours[hour]["connected"] = cs["connected"]
-        
-        # Fill lead data
-        for ls in lead_stats:
-            if ls["_id"]["user_id"] == user_id:
-                hour = ls["_id"]["hour"]
-                status = ls["_id"]["status"]
-                if status == "presentation":
-                    hours[hour]["presentations"] = ls["count"]
-                elif status in ["leads", "converted"]:
-                    hours[hour]["leads"] += ls["count"]
-        
-        # File counts come from the conversion timestamp, not the last edit
-        for fs in file_stats:
-            if fs["_id"]["user_id"] in (user_id, tc.get("id")):
-                hours[fs["_id"]["hour"]]["file"] += fs["count"]
-        
-        # Build hourly breakdown
+
+    for p in persons.values():
+        hours = p["hours"]
         hourly_breakdown = []
         for hour in range(24):
             h = hours[hour]
             if h["calls"] > 0 or h["presentations"] > 0 or h["leads"] > 0 or h["file"] > 0:
                 hourly_breakdown.append({"hour": hour, "hour_label": f"{hour:02d}:00", **h})
-                # Update overall
                 for key in ["calls", "connected", "presentations", "leads", "file"]:
                     overall_hours[hour][key] += h[key]
-        
+
+        if not hourly_breakdown:
+            continue
         hourly_data.append({
-            "user_id": user_id,
-            "user_name": user_name,
+            "user_id": p["user_id"],
+            "user_name": p["user_name"],
             "total_calls": sum(h["calls"] for h in hours.values()),
             "total_connected": sum(h["connected"] for h in hours.values()),
             "total_presentations": sum(h["presentations"] for h in hours.values()),
             "total_leads": sum(h["leads"] for h in hours.values()),
             "total_file": sum(h["file"] for h in hours.values()),
-            "hourly_breakdown": hourly_breakdown
+            "hourly_breakdown": hourly_breakdown,
         })
-    
+
     hourly_data.sort(key=lambda x: x["total_calls"], reverse=True)
-    
+
     overall_hourly = [
         {"hour": h, "hour_label": f"{h:02d}:00", **overall_hours[h]}
         for h in range(24)
@@ -1085,7 +1106,7 @@ async def get_my_hourly_report(
         }}
     ]
     
-    # Aggregation for lead status updates by hour
+    # Aggregation for lead status updates by hour (leads only; Files handled separately)
     lead_pipeline = [
         {"$match": {"assigned_to": user_id, "updated_at": {"$gte": start_of_day, "$lt": end_of_day}}},
         {"$addFields": {
@@ -1096,10 +1117,25 @@ async def get_my_hourly_report(
             "count": {"$sum": 1}
         }}
     ]
-    
-    call_stats, lead_stats = await asyncio.gather(
+
+    # Files counted ONLY by the hour the lead BECAME a File (file_created_at), never updated_at
+    owner_ids = [user_id]
+    if current_user.get("_id"):
+        owner_ids.append(str(current_user["_id"]))
+    file_pipeline = [
+        {"$match": {"status": "file", "$expr": {"$and": [
+            {"$in": [FILE_OWNER, owner_ids]},
+            {"$gte": [_file_created_date(), start_of_day]},
+            {"$lt": [_file_created_date(), end_of_day]},
+        ]}}},
+        {"$addFields": {"hour": {"$hour": {"$add": [_file_created_date(), 19800000]}}}},
+        {"$group": {"_id": "$hour", "count": {"$sum": 1}}}
+    ]
+
+    call_stats, lead_stats, file_stats = await asyncio.gather(
         db.call_logs.aggregate(call_pipeline).to_list(24),
-        db.leads.aggregate(lead_pipeline).to_list(100)
+        db.leads.aggregate(lead_pipeline).to_list(100),
+        db.leads.aggregate(file_pipeline).to_list(24)
     )
     
     # Build hourly data
@@ -1115,8 +1151,10 @@ async def get_my_hourly_report(
         status = ls["_id"]["status"]
         if status in ["leads", "converted"]:
             hours[hour]["leads"] += ls["count"]
-        elif status == "file":
-            hours[hour]["file"] = ls["count"]
+
+    # Files by conversion hour (file_created_at), not last-edit hour
+    for fs in file_stats:
+        hours[fs["_id"]]["file"] += fs["count"]
     
     # Build hourly breakdown (only non-empty hours)
     hourly_breakdown = []
@@ -1309,7 +1347,7 @@ async def get_daily_tracking_sheet(
         else:
             range_end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
     
-    query, _aliases = await resolve_agent_query(user_id, scope_ids=scope_ids)
+    query, _aliases = await resolve_agent_query(user_id, active_only=False, scope_ids=scope_ids)
     if query is None:
         return []  # requested agent is outside the caller's permitted scope
     
@@ -1341,20 +1379,31 @@ async def get_daily_tracking_sheet(
         }}
     ]
     
-    # Aggregation for leads by date
+    # Aggregation for leads by date (status=leads only; Files handled separately)
     lead_pipeline = [
-        {"$match": {"assigned_to": {"$in": telecaller_ids}, "updated_at": {"$gte": range_start, "$lt": range_end}, "status": {"$in": ["leads", "file"]}}},
+        {"$match": {"assigned_to": {"$in": telecaller_ids}, "updated_at": {"$gte": range_start, "$lt": range_end}, "status": "leads"}},
         {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": "$updated_at"}}}},
         {"$group": {
-            "_id": {"user_id": "$assigned_to", "date": "$date_str", "status": "$status"},
+            "_id": {"user_id": "$assigned_to", "date": "$date_str"},
             "count": {"$sum": 1}
         }}
     ]
-    
-    activity_stats, call_stats, lead_stats = await asyncio.gather(
+
+    # Files counted ONLY by file_created_at (the day the lead became a File), credited to the originating GP
+    file_pipeline = [
+        {"$match": {"status": "file", **file_created_match(range_start, range_end)}},
+        {"$addFields": {
+            "owner": FILE_OWNER,
+            "date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": _file_created_date()}}
+        }},
+        {"$group": {"_id": {"user_id": "$owner", "date": "$date_str"}, "count": {"$sum": 1}}}
+    ]
+
+    activity_stats, call_stats, lead_stats, file_stats = await asyncio.gather(
         db.activity_logs.aggregate(activity_pipeline).to_list(3100),
         db.call_logs.aggregate(call_pipeline).to_list(3100),
-        db.leads.aggregate(lead_pipeline).to_list(3100)
+        db.leads.aggregate(lead_pipeline).to_list(3100),
+        db.leads.aggregate(file_pipeline).to_list(3100)
     )
     
     # Build lookup maps
@@ -1373,10 +1422,13 @@ async def get_daily_tracking_sheet(
         key = (l["_id"]["user_id"], l["_id"]["date"])
         if key not in lead_map:
             lead_map[key] = {"leads": 0, "files": 0}
-        if l["_id"]["status"] == "leads":
-            lead_map[key]["leads"] = l["count"]
-        elif l["_id"]["status"] == "file":
-            lead_map[key]["files"] = l["count"]
+        lead_map[key]["leads"] = l["count"]
+
+    for f in file_stats:
+        key = (f["_id"]["user_id"], f["_id"]["date"])
+        if key not in lead_map:
+            lead_map[key] = {"leads": 0, "files": 0}
+        lead_map[key]["files"] += f["count"]
     
     results = []
     
@@ -1456,6 +1508,11 @@ async def get_daily_tracking_sheet(
             
             current_date += timedelta(days=1)
         
+        # Skip GPs with no activity in the range (the full GP list now includes
+        # inactive/legacy records so every File is counted, but empty rows are hidden)
+        if not daily_data:
+            continue
+
         results.append({
             "user_id": tc_id,
             "user_name": tc_name,
@@ -1556,15 +1613,11 @@ async def get_manager_team_stats(
     # Build time filter for calls
     calls_time_filter = {}
     leads_time_filter = {}
-    files_time_filter = {}
+    # Files are counted ONLY by file_created_at (fallback created_at), never by updated_at
+    files_time_filter = file_created_match(start_date, end_date)
     if start_date and end_date:
         calls_time_filter = {"created_at": {"$gte": start_date, "$lt": end_date}}
         leads_time_filter = {"updated_at": {"$gte": start_date, "$lt": end_date}}
-        # Legacy CRM rows store updated_at as an ISO string - match both shapes
-        files_time_filter = {"$or": [
-            {"updated_at": {"$gte": start_date, "$lt": end_date}},
-            {"updated_at": {"$gte": start_date.strftime("%Y-%m-%d"), "$lt": end_date.strftime("%Y-%m-%d")}},
-        ]}
     
     # Aggregation: Calls by user
     call_pipeline = [

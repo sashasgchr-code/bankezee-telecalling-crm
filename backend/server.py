@@ -2,6 +2,8 @@
 BANKEZEE Connect API - Main Application
 Refactored modular structure
 """
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
@@ -57,30 +59,47 @@ app.include_router(settings_router)
 app.include_router(files_crm_router)
 app.include_router(bank_policies_router)
 app.include_router(document_ai_router)
+
+
+# Unprefixed health probe for the Kubernetes liveness/readiness check (the platform probe calls
+# GET /health, not /api/health, and a 404 there stops the backend rollout).
+@app.get("/health")
+@app.get("/healthz")
+@app.get("/api/healthz")
+async def health_probe():
+    return {"status": "healthy", "service": "BANKEZEE Connect API"}
+
 app.include_router(admin_maintenance_router)  # TEMPORARY - remove after prod repair
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production
 # These are seeded from environment or secure config
+# Seed passwords come from the environment; the existing values stay as defaults so that a missing
+# variable can never lock anyone out of an already-seeded deployment.
 ROLE_ACCOUNTS = [
-    # Admin
-    {"email": "admin@bankezee.com", "password": "ConnectSasha12!!", "name": "Admin", "role": "admin"},
-    # HR
-    {"email": "hr@neosales.in", "password": "HrNeo12!!", "name": "HR", "role": "hr"},
-    # Managers
-    {"email": "teja@bankezee.com", "password": "tejasme12", "name": "Teja", "role": "manager"},
-    {"email": "saikiran@bankezee.com", "password": "saikiran12", "name": "Saikiran", "role": "manager"},
-    # Operations
-    {"email": "rama@bankezee.com", "password": "rama@bzc12", "name": "Rama", "role": "ops"},
-    {"email": "ops@bankezee.com", "password": "ops@bzc12", "name": "Operations", "role": "ops"},
+    {"email": "admin@bankezee.com", "password": os.environ.get("SEED_ADMIN_PASSWORD", "ConnectSasha12!!"), "name": "Admin", "role": "admin"},
+    {"email": "hr@neosales.in", "password": os.environ.get("SEED_HR_PASSWORD", "HrNeo12!!"), "name": "HR", "role": "hr"},
+    {"email": "teja@bankezee.com", "password": os.environ.get("SEED_MANAGER_TEJA_PASSWORD", "tejasme12"), "name": "Teja", "role": "manager"},
+    {"email": "saikiran@bankezee.com", "password": os.environ.get("SEED_MANAGER_SAIKIRAN_PASSWORD", "saikiran12"), "name": "Saikiran", "role": "manager"},
+    {"email": "rama@bankezee.com", "password": os.environ.get("SEED_OPS_RAMA_PASSWORD", "rama@bzc12"), "name": "Rama", "role": "ops"},
+    {"email": "ops@bankezee.com", "password": os.environ.get("SEED_OPS_PASSWORD", "ops@bzc12"), "name": "Operations", "role": "ops"},
 ]
 
 # Legacy admin accounts to preserve (but update role if needed)
 LEGACY_ADMIN_EMAILS = ["manager@bankezee.com", "manager2@bankezee.com"]
 
 @app.on_event("startup")
+async def schedule_startup_tasks():
+    """Seeding and index creation run in the background so the health probe answers immediately.
+
+    On a managed Atlas cluster index builds and seeding can take longer than the Kubernetes
+    readiness probe allows, which would keep the new revision from rolling out.
+    """
+    asyncio.create_task(setup_admin_accounts())
+
+
 async def setup_admin_accounts():
-    """Create or update predefined role-based accounts and database indexes on startup"""
+    """Create or update predefined role-based accounts and database indexes"""
     # Create indexes for better query performance
     try:
         # Call logs indexes
@@ -236,7 +255,7 @@ async def shutdown_db_client():
 from fastapi import Request, HTTPException
 import json
 
-MIGRATION_SECRET = "BANKEZEE_CRM_MIGRATION_2026_SECRET_KEY"
+MIGRATION_SECRET = os.environ.get("MIGRATION_SECRET", "BANKEZEE_CRM_MIGRATION_2026_SECRET_KEY")
 
 @app.post("/api/admin/migrate-crm-data")
 async def migrate_crm_data(request: Request):
