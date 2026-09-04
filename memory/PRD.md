@@ -771,3 +771,56 @@ Files list uses the recursive identity-resolved subtree (94 files). Left as-is p
 "do not modify hierarchy/scoping" instruction - needs a decision.
 
 *Last Updated: September 4, 2026*
+
+---
+
+## USER MANAGEMENT AUDIT (September 4, 2026) — Preview: 10/10 stable, persistence PASS
+
+### Issue 1 - intermittent "All Users (0)"
+ROOT CAUSE: `/api/users` ran 4 queries PER USER (2 `count_documents` for files/leads + 2 name
+lookups) = 400+ sequential queries on production. Measured on connect.bankezee.com: **46.0s** and
+**27.4s** on consecutive calls. The axios client timeout was **30s** (`services/api.js`), so the
+request aborted on the slow runs, `fetchUsers` hit `catch`, `setUsers` was never called and the
+page rendered its empty state - "All Users (0) / 0 active, 0 inactive / No users found".
+Intermittent purely because the runtime straddled the 30s timeout.
+NOT caused by: fail-closed logic (never applied to /api/users), an empty UserIndex, request
+cancellation, or duplicate fetches.
+
+FIX
+- One `$group` aggregation over `leads` replaces all per-user counting, grouped by the owner SET
+  (`$setUnion` of source_id/assigned_to) so a lead is counted once per PERSON even when the two
+  fields hold two different aliases of the same person.
+- Manager/TL names resolved from the in-memory index; `load_user_index()` built once per request.
+- Frontend: `loadError` state + Retry button; a failed load can never render as 0 users; header
+  shows "All Users (unavailable)"; stale responses discarded via a request-sequence ref.
+- axios timeout 30s -> 120s as a safety net.
+- Preview: 0.14-0.27s, 10/10 loads = 128 users, 0 zero-results.
+
+### Issue 2 - Manager/TL not persisting on reopen
+ROOT CAUSE: `find_user_by_id()` tried `{"_id": ObjectId(user_id)}` FIRST and fell back to
+`{"id": user_id}`. With 72 duplicate people in production (67 pairs sharing the same `id`), both
+lookups are non-deterministic: the save could land on the telecaller duplicate while `/api/users`
+rendered the growth_partner duplicate, so the reopened modal read a document that was never
+written. The modal also initialises from the row object, so it displayed that stale document.
+
+FIX - CANONICAL USER RULE (deterministic, in `utils/hierarchy._primary_doc`):
+  active + login credential > active > has connect_id > lowest `_id`
+- `find_user_by_id()` now resolves through the index and returns the canonical document, so every
+  Admin edit (role, active, manager, TL) reads and writes the same document.
+- `list_users` overlays `role`, `is_active`, `is_tl`, `manager_id`, `tl_id` from the canonical
+  document onto EVERY duplicate row, and exposes `canonical_id` / `is_canonical`. Two rows for the
+  same person can no longer disagree.
+- `role-hierarchy` PUT stores the manager's/TL's CANONICAL id, not the raw id posted.
+- Canonical manager field = `manager_id`. Canonical TL field = `tl_id`. `team_lead_id` does not
+  exist anywhere in the codebase - nothing to normalise.
+- Aliases remain read-only for historical ownership; no document is merged or deleted.
+
+Bonus: Users-page `files_count` is now per-person and reconciles EXACTLY with
+`/api/files?gp_id=` for all 31 active preview users (previously id-only, so alias-owned files
+were missed).
+
+Gates: `user_mgmt_audit.py` 10/10 + persistence PASS for 2 GPs (incl. after re-login) ·
+`verify_hierarchy.py` 34/34 · `fixture_gate.py` 15/15 · preview restored to 128 users / 518 leads
+and Nithin/Meghana hierarchy links restored after the write tests.
+
+*Last Updated: September 4, 2026*

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Eye, Loader2, Search, UserPlus, 
@@ -43,6 +43,8 @@ const AdminUsers = () => {
   const [users, setUsers] = useState([]);
   const [managers, setManagers] = useState([]);
   const [teamLeads, setTeamLeads] = useState([]);
+  const [loadError, setLoadError] = useState('');
+  const usersRequestRef = useRef(0);
   const [hierarchyStats, setHierarchyStats] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -76,14 +78,25 @@ const AdminUsers = () => {
   const pageSize = 15;
 
   const fetchUsers = async () => {
+    const requestId = ++usersRequestRef.current;
     try {
       const response = await api.get('/users');
+      // Ignore a stale response that a newer request has already superseded
+      if (requestId !== usersRequestRef.current) return;
       setUsers(response.data);
+      setLoadError('');
     } catch (error) {
+      if (requestId !== usersRequestRef.current) return;
       console.error('Error fetching users:', error);
+      // A failed load must never be rendered as "0 users"
+      setLoadError(
+        error.code === 'ECONNABORTED'
+          ? 'Loading users timed out. Please retry.'
+          : (error.response?.data?.detail || 'Failed to load users. Please retry.')
+      );
       toast.error('Failed to load users');
     } finally {
-      setIsLoading(false);
+      if (requestId === usersRequestRef.current) setIsLoading(false);
     }
   };
 
@@ -529,7 +542,7 @@ const AdminUsers = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
             <div>
               <h2 className="text-xl font-bold text-gray-900">
-                {activeTab === 'approvals' ? `Pending Approvals (${pendingUsers.length})` : `All Users (${approvedUsers.length})`}
+                {activeTab === 'approvals' ? `Pending Approvals (${pendingUsers.length})` : (loadError ? 'All Users (unavailable)' : `All Users (${approvedUsers.length})`)}
               </h2>
               <p className="text-sm text-gray-500">
                 {activeTab === 'approvals' ? 'New registrations awaiting approval' : 'Manage users, roles, and team hierarchy'}
@@ -575,7 +588,7 @@ const AdminUsers = () => {
                   className="px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                   data-testid="filter-status"
                 >
-                  <option value="">All Status ({activeCount} active, {inactiveCount} inactive)</option>
+                  <option value="">{loadError ? 'All Status' : `All Status (${activeCount} active, ${inactiveCount} inactive)`}</option>
                   <option value="active">Active Only ({activeCount})</option>
                   <option value="inactive">Inactive Only ({inactiveCount})</option>
                 </select>
@@ -634,6 +647,17 @@ const AdminUsers = () => {
               {isLoading ? (
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+                </div>
+              ) : loadError ? (
+                <div className="text-center py-12" data-testid="users-load-error">
+                  <p className="text-red-600 text-sm mb-3">{loadError}</p>
+                  <button
+                    onClick={() => { setIsLoading(true); fetchUsers(); }}
+                    className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-700"
+                    data-testid="users-retry-button"
+                  >
+                    Retry
+                  </button>
                 </div>
               ) : paginatedUsers.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">

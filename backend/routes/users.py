@@ -24,23 +24,28 @@ router = APIRouter(prefix="/api", tags=["Users"])
 
 async def find_user_by_id(user_id: str):
     """
-    Find a user by either ObjectId (_id) or custom id field.
-    Handles both new and legacy users.
+    Resolve a user reference to that person's ONE canonical editable document.
+
+    A person can exist as several documents (legacy CRM import + Connect account), sometimes
+    sharing the same `id`. Looking up by `_id` or `id` alone returns whichever document Mongo
+    happens to yield, so Admin edits could land on a different document than the row displayed.
+    Canonical selection is deterministic - see utils.hierarchy._primary_doc.
     """
-    user = None
+    if not user_id:
+        return None
     
-    # First try ObjectId lookup
-    try:
-        if ObjectId.is_valid(user_id):
-            user = await db.users.find_one({"_id": ObjectId(user_id)})
-    except Exception:
-        pass
+    index = await load_user_index(db)
+    canonical = index.canonical_doc(user_id)
+    if canonical:
+        # The index holds a projection - fetch the full document to edit
+        return await db.users.find_one({"_id": canonical["_id"]})
     
-    # If not found, try custom id field
-    if user is None:
-        user = await db.users.find_one({"id": user_id})
-    
-    return user
+    # Unknown to the index (e.g. created moments ago) - fall back to a direct lookup
+    if ObjectId.is_valid(user_id):
+        user = await db.users.find_one({"_id": ObjectId(user_id)})
+        if user:
+            return user
+    return await db.users.find_one({"id": user_id})
 
 # ===================== LIST ENDPOINTS =====================
 
@@ -76,6 +81,32 @@ async def list_users(
     
     users = await db.users.find(query).sort("name", 1).to_list(1000)
     
+    # One pass over leads instead of 2 count_documents per user (was 400+ queries on prod).
+    # Grouped by the owner SET so a lead is counted once per PERSON even when source_id and
+    # assigned_to hold two different aliases of the same person.
+    owner_counts = await db.leads.aggregate([
+        {"$project": {
+            "is_file": {"$eq": ["$status", "file"]},
+            "owners": {"$setUnion": [
+                {"$cond": [{"$ifNull": ["$source_id", False]}, ["$source_id"], []]},
+                {"$cond": [{"$ifNull": ["$assigned_to", False]}, ["$assigned_to"], []]},
+            ]},
+        }},
+        {"$match": {"owners": {"$ne": []}}},
+        {"$group": {"_id": {"owners": "$owners", "is_file": "$is_file"}, "n": {"$sum": 1}}},
+    ]).to_list(50000)
+    
+    # Built once per request, not per user
+    index = await load_user_index(db)
+    
+    files_by_person, leads_by_person = {}, {}
+    for row in owner_counts:
+        roots = {index.root_for(o) or o for o in row["_id"]["owners"]}
+        for root in roots:
+            leads_by_person[root] = leads_by_person.get(root, 0) + row["n"]
+            if row["_id"]["is_file"]:
+                files_by_person[root] = files_by_person.get(root, 0) + row["n"]
+    
     # Enrich with manager/TL names, file counts, and source detection
     enriched_users = []
     for user in users:
@@ -86,23 +117,26 @@ async def list_users(
         has_pwd_hash = bool(user.get("password_hash"))
         has_connect_id = bool(user.get("connect_id"))
         user_data = serialize_doc(user)
+        row_id = user_data.get("id")
         
-        # Get manager name
-        if user.get("manager_id"):
-            manager = await db.users.find_one({"id": user["manager_id"]}, {"name": 1})
-            user_data["manager_name"] = manager.get("name") if manager else "Unknown"
+        # Editable state always comes from this person's ONE canonical document, so a duplicate
+        # row can never display or save a different document than the one Admin edits.
+        canonical = index.canonical_doc(row_id) or user
+        user_data["canonical_id"] = index.canonical_id(row_id) or row_id
+        user_data["is_canonical"] = user_data["canonical_id"] == row_id
+        for field in ("role", "is_active", "is_tl", "manager_id", "tl_id"):
+            user_data[field] = canonical.get(field)
         
-        # Get TL name
-        if user.get("tl_id"):
-            tl = await db.users.find_one({"id": user["tl_id"]}, {"name": 1})
-            user_data["tl_name"] = tl.get("name") if tl else "Unknown"
+        user_data["manager_name"] = index.display_name(canonical.get("manager_id")) or (
+            "Unknown" if canonical.get("manager_id") else None)
+        user_data["tl_name"] = index.display_name(canonical.get("tl_id")) or (
+            "Unknown" if canonical.get("tl_id") else None)
         
-        # File count for this user - Files = old CRM records with status='file' only.
-        # leads_count = every record (Connect leads + files) owned by / assigned to the user.
-        user_id_str = user.get("id")
-        owner_filter = {"$or": [{"source_id": user_id_str}, {"assigned_to": user_id_str}]}
-        user_data["files_count"] = await db.leads.count_documents({**owner_filter, "status": "file"})
-        user_data["leads_count"] = await db.leads.count_documents(owner_filter)
+        # Files = old CRM records with status='file' only, counted per PERSON so the number
+        # reconciles exactly with /api/files?gp_id= (which resolves identity aliases).
+        person = index.root_for(row_id) or row_id
+        user_data["files_count"] = files_by_person.get(person, 0)
+        user_data["leads_count"] = leads_by_person.get(person, 0)
         
         # Source badge = current account capability (see utils.helpers.classify_source)
         user_data["source"] = account_source
@@ -581,7 +615,8 @@ async def update_user_role_hierarchy(
             manager = await find_user_by_id(update.manager_id)
             if not manager or manager.get("role") != "manager":
                 raise HTTPException(status_code=400, detail="Invalid manager ID or user is not a manager")
-            update_data["manager_id"] = update.manager_id
+            # Store the manager's canonical id so reads and writes always agree
+            update_data["manager_id"] = manager.get("id") or str(manager["_id"])
             update_data["manager_name"] = manager.get("name", "Unknown")
             
             # If manager changed, validate TL assignment
@@ -615,7 +650,7 @@ async def update_user_role_hierarchy(
                         detail="TL must belong to the same manager hierarchy"
                     )
                 
-                update_data["tl_id"] = update.tl_id
+                update_data["tl_id"] = tl.get("id") or str(tl["_id"])
                 update_data["tl_name"] = tl.get("name", "Unknown")
     
     # is_active update

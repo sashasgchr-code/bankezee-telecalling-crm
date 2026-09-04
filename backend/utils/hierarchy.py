@@ -113,6 +113,23 @@ class UserIndex:
         group = self.group_for(key)
         return bool(group and group["active"])
 
+    def canonical_doc(self, key):
+        """The one editable document for this person (see _primary_doc)."""
+        group = self.group_for(key)
+        return _primary_doc(group) if group else None
+
+    def canonical_id(self, key):
+        doc = self.canonical_doc(key)
+        if not doc:
+            return None
+        return doc.get("id") or str(doc["_id"])
+
+    def display_name(self, key):
+        doc = self.canonical_doc(key)
+        if not doc:
+            return None
+        return doc.get("name") or doc.get("full_name") or doc.get("email")
+
     def descendant_roots(self, key, include_self=True):
         """Group roots for the whole subtree below `key`. Cycle-safe."""
         root = self.root_for(key)
@@ -181,22 +198,39 @@ def _lookup_key(value):
 
 
 def _primary_doc(group):
-    """Prefer an active document, then one that can log in, then anything."""
-    docs = group["docs"]
+    """Deterministic canonical document for a person - never varies between requests.
+
+    Order: active + login credential > active > has connect_id > oldest _id.
+    Admin edits (role, active, manager, TL) must always read and write this document;
+    the other documents of the same person are aliases for historical ownership only.
+    """
+    docs = sorted(group["docs"], key=lambda d: str(d.get("_id")))
     for doc in docs:
-        if doc.get("is_active") and (doc.get("password") or doc.get("password_hash")):
+        if doc.get("is_active") and doc.get("has_login"):
             return doc
     for doc in docs:
         if doc.get("is_active"):
+            return doc
+    for doc in docs:
+        if doc.get("connect_id"):
             return doc
     return docs[0]
 
 
 async def load_user_index(db):
-    """Load the users collection once and build the index (collection is small)."""
-    docs = await db.users.find({}, {
-        "_id": 1, "id": 1, "connect_id": 1, "legacy_user_id": 1, "email": 1,
-        "name": 1, "full_name": 1, "role": 1, "is_tl": 1, "is_active": 1,
-        "manager_id": 1, "tl_id": 1,
-    }).to_list(5000)
+    """Load the users collection once and build the index (collection is small).
+
+    Credentials are reduced to a boolean inside Mongo so no hash ever enters the process.
+    """
+    docs = await db.users.aggregate([
+        {"$project": {
+            "id": 1, "connect_id": 1, "legacy_user_id": 1, "email": 1,
+            "name": 1, "full_name": 1, "role": 1, "is_tl": 1, "is_active": 1,
+            "manager_id": 1, "tl_id": 1,
+            "has_login": {"$or": [
+                {"$toBool": {"$ifNull": ["$password", False]}},
+                {"$toBool": {"$ifNull": ["$password_hash", False]}},
+            ]},
+        }}
+    ]).to_list(5000)
     return UserIndex(docs)
