@@ -485,20 +485,33 @@ async def get_leads_count(
 async def get_leads_stats(
     assigned_to: Optional[str] = None,
     search: Optional[str] = None,
+    last_call_outcome: Optional[str] = None,
+    outcomes: Optional[str] = None,
+    never_called: Optional[bool] = None,
+    created_from: Optional[str] = None,
+    created_to: Optional[str] = None,
+    archived: Optional[bool] = None,
+    is_invalid: Optional[bool] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
     Get lead statistics for dashboard.
     Uses the SAME query logic as the leads list to ensure count consistency.
-    Counts shown in badges MUST match the records returned when that filter is applied.
+    Counts shown in badges MUST match the records returned when that filter is applied, so every
+    non-status filter the list is using has to be applied here too (outcome, never_called, dates).
     """
     # Build base query using the same function as list endpoint
     base_query = build_leads_query(
         current_user=current_user,
         assigned_to=assigned_to,
         search=search,
-        archived=False,
-        is_invalid=False
+        last_call_outcome=last_call_outcome,
+        outcomes=outcomes,
+        never_called=never_called,
+        created_from=created_from,
+        created_to=created_to,
+        archived=archived,
+        is_invalid=is_invalid
     )
     
     pipeline = [

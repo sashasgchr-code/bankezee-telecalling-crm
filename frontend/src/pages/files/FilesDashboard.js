@@ -265,7 +265,7 @@ const FilesDashboard = () => {
 
   useEffect(() => {
     fetchAll();
-  }, [page, statusFilter, managerFilter, gpFilter, tlFilter, createdDateFilter, activityDateFilter, customStartDate, customEndDate, loanTypeFilter]);
+  }, [page, statusFilter, managerFilter, gpFilter, tlFilter, starFilter, createdDateFilter, activityDateFilter, customStartDate, customEndDate, loanTypeFilter]);
 
   // Debounced search effect
   useEffect(() => {
@@ -317,6 +317,7 @@ const FilesDashboard = () => {
     if (statusFilter) params.append('file_status', statusFilter);
     if (managerFilter) params.append('manager_id', managerFilter);
     if (gpFilter) params.append('gp_id', gpFilter);
+    if (starFilter) params.append('min_star', starFilter);
     if (tlFilter) params.append('tl_id', tlFilter);
     if (searchTerm) params.append('search', searchTerm);
     if (loanTypeFilter.length > 0) params.append('loan_types', loanTypeFilter.join(','));

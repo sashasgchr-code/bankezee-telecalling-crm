@@ -38,33 +38,35 @@ const BankEligibilityRow = ({
   bank, index, canEdit, canEditSm, isVehicleLoan, isUsedVehicleBt,
   expanded, onToggle, onChange, onRemove, onSave, saving,
 }) => {
-  const cls = (editable = canEdit) =>
-    `w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${editable ? '' : 'bg-gray-50 cursor-not-allowed'}`;
-  const set = (field) => (e) => onChange(index, field, e.target.value);
   const tid = (name) => `bank-${index + 1}-${name}`;
+  const cls = (editable) =>
+    `w-full px-3 py-2 border border-gray-200 rounded-lg text-sm ${editable ? '' : 'bg-gray-50 cursor-not-allowed'}`;
 
-  const Text = ({ field, type = 'text', editable = canEdit, ...rest }) => (
+  // Rendered as plain elements (not nested components) so React keeps the same DOM input across
+  // renders - defining components inline remounted the input and stole focus after each keystroke.
+  const text = (field, { type = 'text', editable = canEdit, step, placeholder } = {}) => (
     <input
       type={type}
+      step={step}
+      placeholder={placeholder}
       value={bank[field] ?? ''}
-      onChange={set(field)}
+      onChange={(e) => onChange(index, field, e.target.value)}
       disabled={!editable}
       className={cls(editable)}
       data-testid={tid(field)}
-      {...rest}
     />
   );
 
-  const Choice = ({ field, options = YES_NO, placeholder = 'Select' }) => (
+  const choice = (field, options = YES_NO, placeholder = 'Select') => (
     <select
       value={bank[field] ?? ''}
-      onChange={set(field)}
+      onChange={(e) => onChange(index, field, e.target.value)}
       disabled={!canEdit}
-      className={cls()}
+      className={cls(canEdit)}
       data-testid={tid(field)}
     >
       <option value="">{placeholder}</option>
-      {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+      {options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
     </select>
   );
 
@@ -109,17 +111,17 @@ const BankEligibilityRow = ({
       <div className="p-4">
         {/* STEP 1 - Bank eligibility */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Field label="Bank Name"><Text field="bank_name" /></Field>
+          <Field label="Bank Name">{text('bank_name')}</Field>
           <Field label="Eligible?">
-            <Choice field="is_eligible" options={[['yes', 'Yes - Eligible'], ['no', 'No - Not Eligible']]} />
+            {choice('is_eligible', [['yes', 'Yes - Eligible'], ['no', 'No - Not Eligible']])}
           </Field>
           {bank.is_eligible === 'no' && (
-            <Field label="Not Eligible Reason" span="col-span-2"><Text field="not_eligible_reason" /></Field>
+            <Field label="Not Eligible Reason" span="col-span-2">{text('not_eligible_reason')}</Field>
           )}
           {eligible && (
             <>
-              <Field label="Eligible Amount (₹)"><Text field="eligible_amount" type="number" /></Field>
-              <Field label="Eligible ROI (%)"><Text field="eligible_roi" type="number" step="0.01" /></Field>
+              <Field label="Eligible Amount (₹)">{text('eligible_amount', { type: 'number' })}</Field>
+              <Field label="Eligible ROI (%)">{text('eligible_roi', { type: 'number', step: '0.01' })}</Field>
             </>
           )}
         </div>
@@ -132,21 +134,21 @@ const BankEligibilityRow = ({
                 Login Status <Stamp label="logged on" value={bank.login_done_at} />
               </h4>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                <Field label="Login Done?"><Choice field="login_done" /></Field>
+                <Field label="Login Done?">{choice('login_done')}</Field>
                 {bank.login_done === 'no' && (
                   <Field label="Login Rejection Reason" span="col-span-2 md:col-span-4">
-                    <Text field="login_rejection_reason" />
+                    {text('login_rejection_reason')}
                   </Field>
                 )}
                 {loginDone && (
                   <>
-                    <Field label="Login Bank"><Text field="login_bank" /></Field>
-                    <Field label="Application ID"><Text field="application_id" /></Field>
+                    <Field label="Login Bank">{text('login_bank')}</Field>
+                    <Field label="Application ID">{text('application_id')}</Field>
                     <Field label={`SM Name${canEditSm ? '' : ' (Admin/Ops)'}`}>
-                      <Text field="sm_name" editable={canEdit && canEditSm} />
+                      {text('sm_name', { editable: canEdit && canEditSm })}
                     </Field>
                     <Field label={`SM Number${canEditSm ? '' : ' (Admin/Ops)'}`}>
-                      <Text field="sm_number" editable={canEdit && canEditSm} />
+                      {text('sm_number', { editable: canEdit && canEditSm })}
                     </Field>
                   </>
                 )}
@@ -161,20 +163,20 @@ const BankEligibilityRow = ({
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                   <Field label="Approval Status">
-                    <Choice field="approval_status" options={[['approved', 'Approved'], ['declined', 'Declined']]} />
+                    {choice('approval_status', [['approved', 'Approved'], ['declined', 'Declined']])}
                   </Field>
                   {bank.approval_status === 'declined' && (
                     <>
-                      <Field label="Declined Bank"><Text field="declined_bank" /></Field>
-                      <Field label="Decline Reason" span="col-span-2 md:col-span-3"><Text field="declined_reason" /></Field>
+                      <Field label="Declined Bank">{text('declined_bank')}</Field>
+                      <Field label="Decline Reason" span="col-span-2 md:col-span-3">{text('declined_reason')}</Field>
                     </>
                   )}
                   {approved && (
                     <>
-                      <Field label="Approved Bank"><Text field="approved_bank" /></Field>
-                      <Field label="Approved Amount (₹)"><Text field="approved_amount" type="number" /></Field>
-                      <Field label="Approved Tenure (months)"><Text field="approved_tenure" type="number" /></Field>
-                      <Field label="Approved ROI (%)"><Text field="approved_roi" type="number" step="0.01" /></Field>
+                      <Field label="Approved Bank">{text('approved_bank')}</Field>
+                      <Field label="Approved Amount (₹)">{text('approved_amount', { type: 'number' })}</Field>
+                      <Field label="Approved Tenure (months)">{text('approved_tenure', { type: 'number' })}</Field>
+                      <Field label="Approved ROI (%)">{text('approved_roi', { type: 'number', step: '0.01' })}</Field>
                     </>
                   )}
                 </div>
@@ -186,26 +188,26 @@ const BankEligibilityRow = ({
               <div className="pt-4 mt-4 border-t border-gray-100">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Vehicle Loan Conditions</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Field label="RC Submitted?"><Choice field="rc_submitted" /></Field>
+                  <Field label="RC Submitted?">{choice('rc_submitted')}</Field>
                   {bank.rc_submitted === 'no' && (
                     <Field label="RC Not Submitted Reason" span="col-span-2 md:col-span-3">
-                      <Text field="rc_not_submitted_reason" />
+                      {text('rc_not_submitted_reason')}
                     </Field>
                   )}
                   {isUsedVehicleBt && (
                     <>
-                      <Field label="NOC Submitted?"><Choice field="noc_submitted" /></Field>
+                      <Field label="NOC Submitted?">{choice('noc_submitted')}</Field>
                       {bank.noc_submitted === 'no' && (
                         <Field label="NOC Not Submitted Reason" span="col-span-2 md:col-span-3">
-                          <Text field="noc_not_submitted_reason" />
+                          {text('noc_not_submitted_reason')}
                         </Field>
                       )}
                     </>
                   )}
-                  <Field label="Hypothecation Done?"><Choice field="hypothecation" /></Field>
+                  <Field label="Hypothecation Done?">{choice('hypothecation')}</Field>
                   {bank.hypothecation === 'no' && (
                     <Field label="Hypothecation Not Done Reason" span="col-span-2 md:col-span-3">
-                      <Text field="hypothecation_not_done_reason" />
+                      {text('hypothecation_not_done_reason')}
                     </Field>
                   )}
                 </div>
@@ -224,20 +226,20 @@ const BankEligibilityRow = ({
                   Disbursement <Stamp label="disbursed on" value={bank.disbursed_at} />
                 </h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <Field label="Disbursed?"><Choice field="disbursed" /></Field>
+                  <Field label="Disbursed?">{choice('disbursed')}</Field>
                   {bank.disbursed === 'no' && (
                     <Field label="Rejection Reason" span="col-span-2 md:col-span-3">
-                      <Text field="disbursement_rejection_reason" />
+                      {text('disbursement_rejection_reason')}
                     </Field>
                   )}
                   {bank.disbursed === 'yes' && (
                     <>
-                      <Field label="Disbursal Date"><Text field="disbursal_date" type="date" /></Field>
-                      <Field label="Disbursed Bank"><Text field="disbursed_bank" /></Field>
-                      <Field label="Disbursed Amount (₹)"><Text field="disbursed_amount" type="number" /></Field>
-                      <Field label="Tenure (months)"><Text field="disbursed_tenure" type="number" /></Field>
-                      <Field label="ROI (%)"><Text field="disbursed_roi" type="number" step="0.01" /></Field>
-                      <Field label="Commission %"><Text field="commission_percentage" type="number" step="0.01" /></Field>
+                      <Field label="Disbursal Date">{text('disbursal_date', { type: 'date' })}</Field>
+                      <Field label="Disbursed Bank">{text('disbursed_bank')}</Field>
+                      <Field label="Disbursed Amount (₹)">{text('disbursed_amount', { type: 'number' })}</Field>
+                      <Field label="Tenure (months)">{text('disbursed_tenure', { type: 'number' })}</Field>
+                      <Field label="ROI (%)">{text('disbursed_roi', { type: 'number', step: '0.01' })}</Field>
+                      <Field label="Commission %">{text('commission_percentage', { type: 'number', step: '0.01' })}</Field>
                       <Field label="Commission Amount (₹)">
                         <input
                           readOnly
@@ -247,9 +249,9 @@ const BankEligibilityRow = ({
                           data-testid={tid('commission_amount')}
                         />
                       </Field>
-                      <Field label="PF (₹)"><Text field="pf" type="number" /></Field>
-                      <Field label="EMI (₹)"><Text field="emi" type="number" /></Field>
-                      <Field label="First EMI Date"><Text field="first_emi_date" type="date" /></Field>
+                      <Field label="PF (₹)">{text('pf', { type: 'number' })}</Field>
+                      <Field label="EMI (₹)">{text('emi', { type: 'number' })}</Field>
+                      <Field label="First EMI Date">{text('first_emi_date', { type: 'date' })}</Field>
                     </>
                   )}
                 </div>
@@ -260,10 +262,10 @@ const BankEligibilityRow = ({
               <Field label="Notes">
                 <textarea
                   value={bank.notes ?? ''}
-                  onChange={set('notes')}
+                  onChange={(e) => onChange(index, 'notes', e.target.value)}
                   disabled={!canEdit}
                   rows={2}
-                  className={cls()}
+                  className={cls(canEdit)}
                   data-testid={tid('notes')}
                 />
               </Field>

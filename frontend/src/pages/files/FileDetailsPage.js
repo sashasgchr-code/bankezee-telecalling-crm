@@ -419,6 +419,22 @@ const FileDetailsPage = () => {
               <ArrowLeft size={20} />
             </button>
             <h1 className="text-xl font-bold text-gray-900">File Details</h1>
+            {fileData?.star_rating > 0 && (
+              <div className="flex items-center gap-2 pl-3 ml-1 border-l border-gray-200" data-testid="file-star-rating">
+                <span className="text-amber-500 text-lg leading-none tracking-tight" aria-hidden="true">
+                  {'★'.repeat(fileData.star_rating)}{'☆'.repeat(5 - fileData.star_rating)}
+                </span>
+                <span className="text-sm font-semibold text-gray-800" data-testid="file-star-label">
+                  {fileData.star_rating} Star Profile
+                </span>
+                <span className="text-xs text-gray-500" data-testid="file-star-score">
+                  Score: {fileData.star_score}/100
+                </span>
+                {fileData.star_manual && (
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">manual</span>
+                )}
+              </div>
+            )}
           </div>
           <button
             onClick={() => {

@@ -667,6 +667,12 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
         "not_eligible_count": not_eligible_count,
         "total_policies": len(results),
         "missing_info": missing_info,
+        # Core inputs the engine cannot work without - the UI shows a clear message instead of
+        # presenting meaningless "eligible" counts for an empty file.
+        "insufficient_data": any(m in ("CIBIL Score", "Net Salary", "Loan Amount Required")
+                                 for m in missing_info),
+        "required_missing": [m for m in missing_info
+                             if m in ("CIBIL Score", "Net Salary", "Loan Amount Required")],
     }
     
     # Store in history

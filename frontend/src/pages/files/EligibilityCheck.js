@@ -319,6 +319,24 @@ export default function EligibilityCheck() {
 
       {data && !loading && (
         <div className="max-w-[1200px] mx-auto px-4 py-4 space-y-4" ref={printRef}>
+          {data.insufficient_data && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4" data-testid="insufficient-data-banner">
+              <p className="font-semibold text-amber-800">
+                This file does not have enough information for a meaningful eligibility check
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                Add the following in File Details, then run the check again. Until then the lender
+                results below are indicative only.
+              </p>
+              <ul className="mt-2 flex flex-wrap gap-2">
+                {data.required_missing.map((m) => (
+                  <li key={m} className="text-xs font-medium bg-white border border-amber-200 text-amber-800 rounded-full px-3 py-1">
+                    {m}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {/* Profile Summary */}
           <Card data-testid="profile-summary" className="border-slate-200">
             <CardContent className="py-4">

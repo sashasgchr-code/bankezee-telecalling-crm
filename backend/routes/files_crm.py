@@ -102,6 +102,17 @@ class NoteAdd(BaseModel):
     note: str
 
 
+def parse_iso(value):
+    """Tolerant ISO parser for the mixed legacy/Connect timestamp formats."""
+    if not value:
+        return None
+    try:
+        moment = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+
+
 YES_NO_FIELDS = ("is_eligible", "login_done", "disbursed", "tvr_done", "emi_ok",
                  "rc_submitted", "noc_submitted", "hypothecation")
 NUMERIC_FIELDS = ("eligible_amount", "eligible_roi", "eligible_tenure", "approved_amount",
@@ -315,6 +326,7 @@ async def get_all_files(
     activity_end_date: Optional[str] = None,
     page: int = 1,
     limit: int = 50,
+    min_star: Optional[int] = None,
     team_view: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
@@ -345,6 +357,7 @@ async def get_all_files(
         end_date=end_date,
         activity_start_date=activity_start_date,
         activity_end_date=activity_end_date,
+        min_star=min_star,
         team_view=(team_view == 'true'),
     )
     if query is None:
@@ -959,153 +972,118 @@ async def get_quality_report(
 # ============ STAR RATING CALCULATION - OLD CRM PORT ============
 
 def calculate_star_rating(file_data: dict) -> dict:
+    """Star Rating and Score - OLD CRM formula (salary, CIBIL, CIBIL issues, FOIR, company type).
+
+    Salary: >=100000 -> 30 | >=80000 -> 25 | >=60000 -> 20 | >=40000 -> 15 | >=30000 -> 10 | >0 -> 5
+    CIBIL:  >=730 -> 25 | >=710 -> 20 | >=701 -> 15 | >=670 -> 10 | >0 -> 5
+    CIBIL issues: no -> 15 | minor -> 8 | major/yes -> 0
+    FOIR:   <=50 -> 15 | <=55 -> 12 | <=60 -> 10 | <=65 -> 8 | >65 -> 5
+    Company type: govt/government/psu -> 20 | listed -> 18 | non-listed -> 10
+    Stars: >=90 -> 5 | >=75 -> 4 | >=60 -> 3 | >=45 -> 2 | else 1
+    An Admin override (star_manual=True) is always respected.
     """
-    Calculate Star Rating and Score for a file - OLD CRM CALCULATION LOGIC
-    
-    Star Rating (1-5 stars) based on:
-    - Data Completeness (20 points)
-    - CIBIL Score (25 points)
-    - Income vs Loan Amount ratio (20 points)
-    - Employment Stability (15 points)
-    - Document Status (10 points)
-    - Existing Obligations (10 points)
-    
-    Total Score: 0-100
-    Stars: 1 (0-20), 2 (21-40), 3 (41-60), 4 (61-80), 5 (81-100)
-    """
-    score = 0
     file_details = file_data.get('file_details') or file_data.get('additional_data') or {}
-    
-    # 1. Data Completeness (25 points) - be more lenient
-    # Check both top-level and file_details for fields
-    def has_field(f_name, fd_name=None):
-        if file_data.get(f_name):
-            return True
-        if fd_name and file_details.get(fd_name):
-            return True
-        if file_details.get(f_name):
-            return True
-        return False
-    
-    basic_fields = [
-        ('name', 'full_name'),
-        ('phone', 'mobile'),
-        ('email', 'email'),
-        ('city', 'city')
-    ]
-    detail_fields = ['company_name', 'net_salary', 'cibil_score', 'loan_amount_required', 'type_of_loan']
-    
-    basic_filled = sum(1 for f, fd in basic_fields if has_field(f, fd))
-    detail_filled = sum(1 for f in detail_fields if file_details.get(f))
-    
-    completeness_score = (basic_filled / 4) * 12.5 + (detail_filled / 5) * 12.5
-    score += completeness_score
-    
-    # 2. CIBIL Score (25 points)
-    try:
-        cibil = int(file_details.get('cibil_score') or 0)
-        if cibil >= 750:
-            score += 25
-        elif cibil >= 700:
-            score += 20
-        elif cibil >= 650:
-            score += 15
-        elif cibil >= 600:
-            score += 10
-        elif cibil > 0:
-            score += 5
-    except (ValueError, TypeError):
-        pass
-    
-    # 3. Income vs Loan Amount Ratio (20 points)
-    try:
-        net_salary = float(str(file_details.get('net_salary', 0)).replace(',', ''))
-        loan_amount = float(str(file_details.get('loan_amount_required', 0)).replace(',', ''))
-        if net_salary > 0 and loan_amount > 0:
-            ratio = loan_amount / (net_salary * 60)
-            if ratio <= 0.5:
-                score += 20
-            elif ratio <= 0.75:
-                score += 15
-            elif ratio <= 1.0:
-                score += 10
-            elif ratio <= 1.5:
-                score += 5
-        elif net_salary > 0:
-            # Has salary but no loan amount - give partial credit
-            score += 8
-    except (ValueError, TypeError):
-        pass
-    
-    # 4. Employment Stability (15 points)
-    try:
-        present_emp = int(file_details.get('present_employment_months') or 0)
-        total_emp = int(file_details.get('total_employment_months') or 0)
-        
-        if present_emp >= 24 and total_emp >= 36:
-            score += 15
-        elif present_emp >= 12 and total_emp >= 24:
-            score += 12
-        elif present_emp >= 6 and total_emp >= 12:
-            score += 8
-        elif present_emp >= 3:
-            score += 5
-        elif file_details.get('company_name'):
-            # Has company name - give partial credit
-            score += 5
-    except (ValueError, TypeError):
-        if file_details.get('company_name'):
-            score += 5
-    
-    # 5. Document Status (10 points) - based on file_status progression
-    file_status = file_data.get('file_status', 'new')
-    if file_status in ['disbursed']:
+    if not isinstance(file_details, dict):
+        file_details = {}
+
+    def number(*keys):
+        for key in keys:
+            raw = file_details.get(key, file_data.get(key))
+            if raw in (None, ''):
+                continue
+            try:
+                return float(str(raw).replace(',', '').strip())
+            except (ValueError, TypeError):
+                continue
+        return 0.0
+
+    score = 0
+
+    salary = number('net_salary', 'monthly_salary', 'salary')
+    if salary >= 100000:
+        score += 30
+    elif salary >= 80000:
+        score += 25
+    elif salary >= 60000:
+        score += 20
+    elif salary >= 40000:
+        score += 15
+    elif salary >= 30000:
         score += 10
-    elif file_status in ['approved', 'sanctioned']:
-        score += 9
-    elif file_status in ['login', 'underwriting', 'fi']:
-        score += 7
-    elif file_status in ['sent_to_bank', 'sent_for_login']:
+    elif salary > 0:
         score += 5
-    elif file_status in ['documents_collected', 'sent_for_eligibility']:
-        score += 3
-    elif file_status in ['documents_pending', 'contacted']:
-        score += 1
-    
-    # 6. Existing Obligations / FOIR (5 points) - reduced weight
-    try:
-        foir = float(file_details.get('foir') or 0)
-        if foir > 0:
-            if foir <= 40:
-                score += 5
-            elif foir <= 50:
-                score += 4
-            elif foir <= 60:
-                score += 2
+
+    cibil = number('cibil_score', 'cibil')
+    if cibil >= 730:
+        score += 25
+    elif cibil >= 710:
+        score += 20
+    elif cibil >= 701:
+        score += 15
+    elif cibil >= 670:
+        score += 10
+    elif cibil > 0:
+        score += 5
+
+    issues = str(file_details.get('cibil_issues') or file_data.get('cibil_issues') or '').strip().lower()
+    if issues in ('no', 'none', 'nil', 'clean'):
+        score += 15
+    elif issues == 'minor':
+        score += 8
+
+    foir = number('foir')
+    if not foir:
+        obligations = number('obligations_emi', 'monthly_emi_obligations', 'existing_emi')
+        if salary > 0 and obligations > 0:
+            foir = round((obligations / salary) * 100, 1)
+    if foir:
+        if foir <= 50:
+            score += 15
+        elif foir <= 55:
+            score += 12
+        elif foir <= 60:
+            score += 10
+        elif foir <= 65:
+            score += 8
         else:
-            # If FOIR not available, give benefit of doubt
-            score += 2
-    except (ValueError, TypeError):
-        score += 2  # Give partial credit if FOIR not available
-    
-    # Calculate star rating
+            score += 5
+
+    company_type = str(file_details.get('company_type') or file_data.get('company_type') or '').strip().lower()
+    if company_type in ('govt', 'government', 'psu'):
+        score += 20
+    elif 'non' in company_type and 'listed' in company_type:
+        score += 10
+    elif 'listed' in company_type:
+        score += 18
+    elif company_type:
+        score += 10
+
     score = min(100, max(0, round(score)))
-    if score >= 81:
+    if score >= 90:
         stars = 5
-    elif score >= 61:
+    elif score >= 75:
         stars = 4
-    elif score >= 41:
+    elif score >= 60:
         stars = 3
-    elif score >= 21:
+    elif score >= 45:
         stars = 2
     else:
         stars = 1
-    
+
+    # Admin manual override wins over the formula
+    manual = file_data.get('star_manual') in (True, 'true', 'True')
+    if manual and file_data.get('star_rating'):
+        try:
+            stars = int(file_data['star_rating'])
+        except (ValueError, TypeError):
+            pass
+
     return {
         'star_rating': stars,
         'star_score': score,
-        'stars': stars,  # Alias for compatibility
-        'score': score   # Alias for compatibility
+        'star_manual': manual,
+        'stars': stars,
+        'score': score
     }
 
 
@@ -1154,6 +1132,8 @@ async def recalculate_all_ratings(current_user: dict = Depends(require_admin)):
     updated = 0
     for f in all_files:
         rating = calculate_star_rating(f)
+        if rating['star_manual']:
+            continue  # never overwrite an Admin override
         await db.leads.update_one(
             {"_id": f["_id"]},
             {
@@ -1911,6 +1891,15 @@ async def get_file_details(file_id: str, current_user: dict = Depends(get_curren
         raise HTTPException(status_code=404, detail="File not found")
     file_doc.pop("_id", None)
     file_doc["id"] = file_doc.get("id") or file_id
+    # Always return a live star rating (formula or Admin override) for the File header
+    rating = calculate_star_rating(file_doc)
+    file_doc.update(rating)
+    if not rating['star_manual'] and file_doc.get('star_score') != rating['star_score']:
+        # Self-heal legacy documents so the All Stars filter can use a stored value
+        await db.leads.update_one(
+            lead_filter(file_id),
+            {"$set": {"star_rating": rating['star_rating'], "star_score": rating['star_score']}}
+        )
     
     # Enrich with GP (source) information
     source_id = file_doc.get("source_id") or file_doc.get("assigned_to")
@@ -1992,7 +1981,17 @@ async def update_file_details(file_id: str, update_data: FileDetailsUpdate, curr
         }
     )
     
-    return {"message": "File details updated successfully"}
+    # Star rating is derived from salary / CIBIL / CIBIL issues / FOIR / company type, so it is
+    # recalculated whenever the details change (an Admin manual override is preserved).
+    updated_doc = await db.leads.find_one(lead_filter(file_id))
+    rating = calculate_star_rating(updated_doc or {})
+    if not rating['star_manual']:
+        await db.leads.update_one(
+            lead_filter(file_id),
+            {"$set": {"star_rating": rating['star_rating'], "star_score": rating['star_score']}}
+        )
+    
+    return {"message": "File details updated successfully", **rating}
 
 
 @router.put("/{file_id}/file-status")
@@ -2556,6 +2555,7 @@ async def get_files_dashboard_stats(
     loan_types: Optional[str] = None,
     activity_start_date: Optional[str] = None,
     activity_end_date: Optional[str] = None,
+    min_star: Optional[int] = None,
     team_view: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
@@ -2579,10 +2579,11 @@ async def get_files_dashboard_stats(
       login_done=yes in eligibilities (HISTORICAL count, not current status)
     - Approved: COUNT files that EVER reached approved status (via activities) OR have 
       approval_status=approved in eligibilities (HISTORICAL count)
-    - Total Approved: SUM of file_details.loan_amount_required for all Approved files
-    - Disbursed: COUNT files that EVER reached disbursed status (via activities) OR have 
-      disbursed=yes in eligibilities (HISTORICAL count)
-    - Total Disbursed: SUM of file_details.loan_amount_required for all Disbursed files
+    - Total Approved: SUM of eligibilities[].approved_amount for rows approved in the window
+      (NEVER file_details.loan_amount_required)
+    - Disbursed: COUNT files with any eligibility row disbursed=yes (one per file)
+    - Total Disbursed: SUM of eligibilities[].disbursed_amount for those rows
+      (NEVER file_details.loan_amount_required)
     - Interim Rejects: COUNT WHERE current status IN [fi_negative, declined, 
       customer_not_interested, customer_not_supporting]
     - Final Rejections: COUNT WHERE current status IN [rejected, not_eligible, not_login, 
@@ -2633,6 +2634,23 @@ async def get_files_dashboard_stats(
         disbursed = elig.get('disbursed')
         return disbursed == True or (isinstance(disbursed, str) and disbursed.lower() in ['yes', 'true'])
     
+    # Approval/disbursal are counted from the eligibility transition timestamps (old CRM rule), so
+    # Dashboard and Reports reconcile from the same data. Without an activity window it is all-time.
+    activity_from = parse_iso(activity_start_date) if activity_start_date else None
+    activity_to = parse_iso(activity_end_date) if activity_end_date else None
+    
+    def stamp_in_range(value):
+        if not activity_from and not activity_to:
+            return True
+        moment = parse_iso(value)
+        if not moment:
+            return False
+        if activity_from and moment < activity_from:
+            return False
+        if activity_to and moment > activity_to:
+            return False
+        return True
+    
     # Same shared builder as the Files list, so identical filters = identical population
     query = await build_files_query(
         db, current_user,
@@ -2647,6 +2665,7 @@ async def get_files_dashboard_stats(
         end_date=end_date,
         activity_start_date=activity_start_date,
         activity_end_date=activity_end_date,
+        min_star=min_star,
         team_view=(team_view == 'true'),
     )
     if query is None:
@@ -2723,27 +2742,29 @@ async def get_files_dashboard_stats(
         if file_logged:
             login_count += 1
         
-        # APPROVED: File ever reached approved status OR has approval_status=approved in eligibilities
-        file_approved = ever_had_status_via_activities(activities, file_status, APPROVED_STATUSES)
-        if not file_approved:
-            for elig in eligibilities:
-                if elig.get('approval_status') == 'approved':
-                    file_approved = True
-                    break
-        if file_approved:
+        # APPROVED: one per FILE when any eligibility row is approved inside the activity window.
+        # Amount is the SUM of those rows' approved_amount - never loan_amount_required (old CRM).
+        approved_rows = [e for e in eligibilities
+                         if e.get('approval_status') == 'approved' and stamp_in_range(e.get('approved_at'))]
+        if approved_rows:
             approved_count += 1
-            total_approved_amount += loan_amount_required  # Use loan_amount_required, not eligibility amount
+            for elig in approved_rows:
+                try:
+                    total_approved_amount += float(elig.get('approved_amount') or 0)
+                except (ValueError, TypeError):
+                    pass
         
-        # DISBURSED: File ever reached disbursed status OR has disbursed=yes in eligibilities
-        file_disbursed = ever_had_status_via_activities(activities, file_status, ['disbursed'])
-        if not file_disbursed:
-            for elig in eligibilities:
-                if is_disbursed_elig(elig):
-                    file_disbursed = True
-                    break
-        if file_disbursed:
+        # DISBURSED: one per FILE when any eligibility row is disbursed inside the activity window.
+        # Amount is the SUM of those rows' disbursed_amount - never loan_amount_required.
+        disbursed_rows = [e for e in eligibilities
+                          if is_disbursed_elig(e) and stamp_in_range(e.get('disbursed_at'))]
+        if disbursed_rows:
             disbursed_count += 1
-            total_disbursed_amount += loan_amount_required  # Use loan_amount_required
+            for elig in disbursed_rows:
+                try:
+                    total_disbursed_amount += float(elig.get('disbursed_amount') or 0)
+                except (ValueError, TypeError):
+                    pass
         
         # INTERIM REJECTS: Current status in INTERIM_REJECTS
         if file_status in INTERIM_REJECTS:
@@ -2753,10 +2774,13 @@ async def get_files_dashboard_stats(
         if file_status in FINAL_REJECTIONS:
             final_rejections += 1
         
-        # PIPELINE: Files with login_done=yes in eligibilities but not yet disbursed and not final rejected
+        # PIPELINE: SUM eligibilities[].eligible_amount where the bank is logged in with an
+        # application id, not yet disbursed, not declined, and the file is not finally rejected
         if file_status not in FINAL_REJECTIONS + ['disbursed']:
             for elig in eligibilities:
-                if is_login_done(elig) and not is_disbursed_elig(elig):
+                if (is_login_done(elig) and elig.get('application_id')
+                        and not is_disbursed_elig(elig)
+                        and elig.get('approval_status') != 'declined'):
                     try:
                         pipeline_amount += float(elig.get('eligible_amount') or 0)
                     except (ValueError, TypeError):
@@ -3693,6 +3717,7 @@ async def export_dashboard_csv(
     end_date: Optional[str] = None,
     activity_start_date: Optional[str] = None,
     activity_end_date: Optional[str] = None,
+    min_star: Optional[int] = None,
     team_view: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):

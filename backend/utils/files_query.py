@@ -83,12 +83,19 @@ async def build_files_query(
     end_date=None,
     activity_start_date=None,
     activity_end_date=None,
+    min_star=None,
     team_view=False,
     index=None,
 ):
     """Return the Mongo query for the requested Files population, or None to fail closed."""
     idx = index or await load_user_index(db)
     clauses = [{"status": "file"}]
+
+    if min_star:
+        try:
+            clauses.append({"star_rating": {"$gte": int(min_star)}})
+        except (ValueError, TypeError):
+            pass
 
     role = normalize_role(current_user.get("role", ""))
     user_key = current_user.get("id") or str(current_user.get("_id") or "")

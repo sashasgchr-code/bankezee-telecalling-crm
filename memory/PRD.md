@@ -1130,3 +1130,48 @@ Frontend:
   is FIXED (`onClick={() => handleSaveEligibilities()}` + defensive `Array.isArray` guard) and
   re-verified: 2 banks saved with Save All survived a reload, then deleted and the 4 legacy banks
   restored exactly. GP `PUT` still 403, Manager `GET` 200.
+
+## CONSOLIDATED FILE / ELIGIBILITY / STATS FIX (September 4, 2026) — 24/24 gate PASS
+
+1. FILE FILTER - the chip count came from `/api/leads/stats` which ignored the active outcome
+   filter and force-set `archived=False, is_invalid=False`, while the list applied the outcome and
+   no archive filter -> chip and list described different populations. `/api/leads/stats` now takes
+   the same non-status filters (outcome, never_called, dates, archived, is_invalid) and the Data
+   page passes the active outcome to it. Verified: chip 515 = list 515 = /leads/count 515, and with
+   an outcome filter active they still match; all 515 (legacy + Connect) paginate out.
+2. ELIGIBILITY CHECK - file `6a98f51d3f236a1e2c7e7cd7` does not exist in preview (production-only
+   record) and returned 404, which the UI rendered as a blank screen. Reproduced with an equivalent
+   sparse Connect file: HTTP 200 but 21 banks reported "eligible" from an empty profile. The engine
+   now returns `insufficient_data` + `required_missing` (CIBIL / Net Salary / Loan Amount) and the
+   UI shows a clear amber "not enough information" banner listing the missing fields.
+3/4. MANUAL ELIGIBILITY + SAVE - already restored in the previous task (full old-CRM progressive
+   flow, 7 banks max, vehicle conditions, PF/EMI/First EMI kept); re-verified end to end here.
+5. FOCUS BUG - `BankEligibilityRow` defined its `Text`/`Choice` inputs as components INSIDE the
+   render, so every keystroke created a new component type and React remounted the input, stealing
+   focus after one digit. They are now plain rendered elements (`text()` / `choice()` helpers) with
+   the row key unchanged (index). Verified in the browser: "1500000" and "10.5" typed continuously,
+   focus retained on the field.
+6/7. STATS - `dashboard/stats` was adding `file_details.loan_amount_required` to
+   total_approved_amount / total_disbursed_amount. It now counts ONE approval/disbursal per file
+   from the eligibility rows (with `approved_at` / `disbursed_at` inside the activity window) and
+   sums `eligibilities[].approved_amount` / `disbursed_amount`. Pipeline sums
+   `eligibilities[].eligible_amount` for rows that are logged in with an application_id, not
+   disbursed and not declined. Fixture 15L required / 12L eligible / 10L approved / 8L disbursed
+   returns Approved 10,00,000, Disbursed 8,00,000, Pipeline 12,00,000 - never 15L.
+8. TIMESTAMPS - unchanged transition-only stamping, re-verified (an unrelated edit does not rewrite
+   login_done_at / approved_at / disbursed_at).
+9. STAR RATING - replaced the ad-hoc scorer with the exact old CRM formula (salary 30/25/20/15/10/5,
+   CIBIL 25/20/15/10/5, CIBIL issues 15/8/0, FOIR 15/12/10/8/5, company type 20/18/10; stars
+   90/75/60/45). FOIR falls back to obligations/salary when not stored. `star_manual` overrides are
+   preserved (including in the bulk recalculation). `GET /api/files/{id}` returns and self-heals the
+   stored rating, details save recalculates it, and the File Details header now shows
+   "★★★★★ 5 Star Profile · Score: 90/100". The previously dead "All Stars" dropdown is wired to a new
+   `min_star` parameter on the shared Files query builder (all 515 -> 4+ 168 -> 5 51).
+10. Dashboard and Reports reconcile from the same eligibility data: approved 12,47,81,130 and
+    disbursed 10,59,03,952 identical in `dashboard/stats` and `reports/bank-performance`.
+11. COMMISSION - unchanged server-side derivation; saving the same row 4x keeps 12,000 and reversing
+    the disbursal clears it.
+
+GATE: NEW `/app/scripts/file_eligibility_stats_gate.py` **24/24 PASS**. Regression: eligibility_gate
+17/17, acceptance_matrix 30/30, files_rbac_matrix green, verify_hierarchy 34/34, user_mgmt_gate
+28/28. All QA fixtures removed; the legacy file's 4 banks are byte-for-byte intact.

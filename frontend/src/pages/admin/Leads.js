@@ -59,13 +59,17 @@ const AdminLeads = () => {
 
   const statuses = ['new', 'not_interested', 'follow_up', 'leads', 'file', 'no_status'];
 
-  // Fetch stats from dedicated endpoint for accurate counts (unfiltered)
+  // Chip counts must reconcile with the filtered list, so every non-status filter the list uses
+  // is applied here too (only the status itself is left out - that is what the chips count).
   const fetchStats = async () => {
     try {
       const params = {};
       if (searchQuery) params.search = searchQuery;
       if (assignedFilter) params.assigned_to = assignedFilter;
-      // Don't filter by status/outcome - we want total counts for each category
+      if (outcomeFilter) {
+        if (outcomeFilter === 'never_called') params.never_called = true;
+        else params.last_call_outcome = outcomeFilter;
+      }
       
       const response = await api.get('/leads/stats', { params });
       setStatusCounts(response.data.by_status || {});
