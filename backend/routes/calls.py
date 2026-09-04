@@ -9,7 +9,7 @@ from bson import ObjectId
 from models.schemas import CallLogCreate, CallSessionStart, CallSessionEnd, CallLogSyncRequest, MobileCallLogCreate
 from utils.database import db
 from utils.auth import get_current_user, require_admin
-from utils.helpers import serialize_doc, serialize_docs, format_duration, convert_to_ist, normalize_phone
+from utils.helpers import serialize_doc, serialize_docs, format_duration, convert_to_ist, normalize_phone, doc_ref_filter
 
 router = APIRouter(prefix="/api", tags=["Calls"])
 
@@ -44,7 +44,7 @@ async def start_call_session(data: CallSessionStart, current_user: dict = Depend
         else:
             raise HTTPException(status_code=400, detail="Already in an active call session")
     
-    lead = await db.leads.find_one({"_id": ObjectId(data.lead_id)})
+    lead = await db.leads.find_one(doc_ref_filter(data.lead_id))
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
@@ -98,7 +98,7 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
-    session = await db.call_sessions.find_one({"_id": ObjectId(data.session_id)})
+    session = await db.call_sessions.find_one(doc_ref_filter(data.session_id))
     if not session:
         raise HTTPException(status_code=404, detail="Call session not found")
     
@@ -116,7 +116,7 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
     form_filling_seconds = data.form_filling_seconds or 0
     
     await db.call_sessions.update_one(
-        {"_id": ObjectId(data.session_id)},
+        {"_id": session["_id"]},
         {
             "$set": {
                 "end_time": now,
@@ -167,7 +167,7 @@ async def end_call_session(data: CallSessionEnd, current_user: dict = Depends(ge
     }
     await db.call_logs.insert_one(call_log)
     
-    session = await db.call_sessions.find_one({"_id": ObjectId(data.session_id)})
+    session = await db.call_sessions.find_one({"_id": session["_id"]})
     return serialize_doc(session)
 
 @router.get("/call-sessions/active")
@@ -289,7 +289,7 @@ async def get_lead_call_logs(lead_id: str, current_user: dict = Depends(get_curr
     For telecallers: Only shows their own calls (hides previous agent's history)
     For admins: Shows all calls with is_previous_agent_history flag
     """
-    lead = await db.leads.find_one({"_id": ObjectId(lead_id)})
+    lead = await db.leads.find_one(doc_ref_filter(lead_id))
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     

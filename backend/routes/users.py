@@ -228,22 +228,33 @@ async def get_team_leads(
         "is_active": True
     }
     
-    tls = await db.users.find(query, {
-        "_id": 0, "id": 1, "name": 1, "email": 1, "manager_id": 1
+    # Keep _id: legacy CRM documents have no `id` field, so the option value must fall
+    # back to str(_id) - otherwise the dropdown renders unselectable options.
+    tl_docs = await db.users.find(query, {
+        "_id": 1, "id": 1, "name": 1, "email": 1, "manager_id": 1
     }).to_list(500)
     
+    index = await load_user_index(db)
+    allowed_roots = None
     if manager_id:
-        # Resolve TLs anywhere in the selected Manager's subtree, through all their identities
-        index = await load_user_index(db)
-        allowed = {
-            lead.get("id") for lead in index.team_leads_under(manager_id) if lead.get("id")
-        }
-        allowed |= {
-            alias
+        # TLs anywhere in the selected Manager's subtree, through all their identities
+        allowed_roots = {
+            index.root_for(lead.get("id") or str(lead.get("_id")))
             for lead in index.team_leads_under(manager_id)
-            for alias in index.aliases(lead.get("id") or str(lead.get("_id")))
         }
-        tls = [tl for tl in tls if tl.get("id") in allowed]
+        allowed_roots.discard(None)
+    
+    tls = []
+    for doc in tl_docs:
+        tl_id = doc.get("id") or str(doc["_id"])
+        if allowed_roots is not None and index.root_for(tl_id) not in allowed_roots:
+            continue
+        tls.append({
+            "id": tl_id,
+            "name": doc.get("name"),
+            "email": doc.get("email"),
+            "manager_id": doc.get("manager_id"),
+        })
     
     # Add default option
     result = [{"id": None, "name": "No Team Lead (Direct to Manager)", "email": "", "manager_id": None}]

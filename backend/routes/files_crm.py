@@ -15,6 +15,7 @@ from typing import Optional, List
 import logging
 from utils.auth import get_current_user, require_admin
 from utils.json_safe import json_safe
+from utils.helpers import doc_ref_filter
 from utils.files_query import build_files_query
 
 ROOT_DIR = Path(__file__).parent.parent
@@ -66,12 +67,7 @@ def lead_filter(file_id: str, **extra) -> dict:
     The files list exposes str(_id) as the id for imported CRM records, so every
     per-file endpoint must accept that value too.
     """
-    if ObjectId.is_valid(file_id):
-        f = {"$or": [{"id": file_id}, {"_id": ObjectId(file_id)}]}
-    else:
-        f = {"id": file_id}
-    f.update(extra)
-    return f
+    return doc_ref_filter(file_id, **extra)
 
 # File storage - using MongoDB GridFS for persistence across deployments
 
@@ -2263,7 +2259,6 @@ async def list_file_documents(file_id: str):
 async def download_document(doc_id: str, current_user: dict = Depends(get_current_user)):
     """Download a document from GridFS"""
     from fastapi.responses import StreamingResponse
-    from bson import ObjectId
     import io
     
     # Find document metadata
@@ -2299,7 +2294,6 @@ async def download_document(doc_id: str, current_user: dict = Depends(get_curren
 async def download_file_document(file_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
     """Download a specific document for a file"""
     from fastapi.responses import StreamingResponse
-    from bson import ObjectId
     import io
     
     # Find document metadata within the file
@@ -2338,7 +2332,6 @@ async def download_file_document(file_id: str, doc_id: str, current_user: dict =
 @router.delete("/{file_id}/documents/{doc_id}")
 async def delete_document(file_id: str, doc_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a document"""
-    from bson import ObjectId
     
     file_doc = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "file_documents": 1})
     if not file_doc:
@@ -2376,7 +2369,6 @@ async def delete_document(file_id: str, doc_id: str, current_user: dict = Depend
 async def download_all_documents(file_id: str, current_user: dict = Depends(get_current_user)):
     """Download all documents for a file as a ZIP archive"""
     from fastapi.responses import StreamingResponse
-    from bson import ObjectId
     import io
     import zipfile
     

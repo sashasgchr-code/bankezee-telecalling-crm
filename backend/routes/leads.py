@@ -14,7 +14,8 @@ import uuid
 from models.schemas import LeadCreate, LeadUpdate, LeadAssign, AutoDistribute, BulkDeleteRequest, BulkOperationByFilter, BulkAssignByFilter, BulkArchiveRequest, SuppressionEntry
 from utils.database import db
 from utils.auth import get_current_user, require_admin, require_not_hr
-from utils.helpers import serialize_doc, serialize_docs
+from utils.helpers import serialize_doc, serialize_docs, object_id_or_none
+from utils.hierarchy import load_user_index
 
 router = APIRouter(prefix="/api", tags=["Leads"])
 
@@ -1228,7 +1229,16 @@ async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(requ
     - Records assignment history for audit trail
     - Historical reports remain immutable - activity ownership is preserved
     """
-    user = await db.users.find_one({"_id": ObjectId(assignment.user_id)})
+    # Resolve the assignee through every identifier they may be referenced by
+    # (UUID `id`, legacy `id`, or `_id`) instead of assuming an ObjectId.
+    index = await load_user_index(db)
+    aliases = index.aliases(assignment.user_id) or {assignment.user_id}
+    or_clauses = [{"id": {"$in": sorted(aliases)}}]
+    object_ids = [oid for oid in (object_id_or_none(a) for a in aliases) if oid]
+    if object_ids:
+        or_clauses.append({"_id": {"$in": object_ids}})
+    user = await db.users.find_one({"$or": or_clauses, "is_active": True}) \
+        or await db.users.find_one({"$or": or_clauses})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     

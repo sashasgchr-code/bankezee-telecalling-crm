@@ -92,3 +92,25 @@ def classify_source(user):
     if has_login_credential(user) or user.get("connect_id"):
         return "connect"
     return "crm_import"
+
+
+# ===================== DOCUMENT REFERENCE RESOLUTION =====================
+# Records carry a UUID `id` when created inside Connect, and only an `_id` when they
+# came from the legacy CRM import. Callers hand back whichever value the API gave them,
+# so every lookup must accept both instead of assuming ObjectId.
+
+def object_id_or_none(value):
+    """ObjectId(value) when that is valid, otherwise None - never raises InvalidId."""
+    if isinstance(value, ObjectId):
+        return value
+    if isinstance(value, str) and ObjectId.is_valid(value):
+        return ObjectId(value)
+    return None
+
+
+def doc_ref_filter(ref, **extra):
+    """Match a document by its `id` field or by `_id`, whichever the reference is."""
+    oid = object_id_or_none(ref)
+    query = {"$or": [{"id": ref}, {"_id": oid}]} if oid else {"id": ref}
+    query.update(extra)
+    return query

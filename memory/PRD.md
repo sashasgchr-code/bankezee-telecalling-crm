@@ -685,3 +685,44 @@ Minimal fix: use GP_ROLES, match `id` OR `_id` with ObjectId.is_valid guard, rai
   `window.open` without a token, so they 401.
 
 *Last Updated: September 3, 2026*
+
+---
+
+## UUID / MISSING-`id` DEFECT FAMILY (September 3, 2026) — fixed on Preview, 15/15 fixture gate
+
+Two user-reported production bugs, same root cause family: code assumed every identifier is a
+Mongo ObjectId, but records created inside Connect carry a UUID `id` while legacy CRM records
+carry no `id` at all.
+
+1. **"Assigning TL still doesn't work"** — `/api/users/team-leads` projected `{"_id": 0, "id": 1}`.
+   Production TL documents have NO `id` field, so the response contained no `id` key at all and
+   the dropdown rendered `<option value={undefined}>`. Proven with the raw production response.
+   NOTE: the A+B version filtered on `tl.get("id")`, which would have made the dropdown come back
+   EMPTY on production. Preview could not catch it - all 128 preview users have an `id`.
+   Fix: keep `_id` in the projection, emit `id = doc.get("id") or str(doc["_id"])`, and scope by
+   `index.root_for()` instead of the raw `id`.
+2. **"Failed to start call"** — `calls.py:47` `ObjectId(data.lead_id)` where the frontend sends
+   `lead.id`; for Connect-created leads that is a UUID -> `InvalidId` -> 500 -> the alert falls
+   back to the generic message. EVERY Connect-created lead was uncallable; legacy leads worked.
+   Nothing to do with the new user account.
+   Fix: `doc_ref_filter()` + real 404.
+
+New shared helper `utils/helpers.doc_ref_filter()` / `object_id_or_none()` - matches a document by
+`id` OR `_id`, never raises InvalidId. Applied to `calls.py` (start / end / log / cancel /
+lead call-logs), `/leads/assign` (now resolves the assignee through `index.aliases()`, fixing the
+500 for the 54 UUID-id production users and the 404 for legacy ids), and `files_crm.lead_filter`
+now delegates to it.
+
+### New permanent gate: `/app/scripts/fixture_gate.py`
+Plants PRODUCTION-SHAPED documents in the preview DB, runs the API against them, then deletes them
+(verified: preview back to exactly 128 users / 518 leads):
+  U1 user with no `id` · U2 user with UUID `id` · U3 user whose `id` != `_id`
+  L1 lead with UUID `id` · L2 legacy file with no `id` + NaN floats + nested ObjectId
+15/15 PASS after the fixes; it reproduces both of today's bugs on the pre-fix code.
+Run this alongside `verify_hierarchy.py` (34/34) and `acceptance_matrix.py` before every publish.
+
+### Still not published
+Everything from the A+B release plus these fixes is Preview-only. Production continues to run the
+build from earlier today (Files 500 + legacy `_id` fixes only).
+
+*Last Updated: September 3, 2026*
