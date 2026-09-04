@@ -36,7 +36,7 @@ const Stamp = ({ label, value }) => (value ? (
 
 const BankEligibilityRow = ({
   bank, index, canEdit, canEditSm, isVehicleLoan, isUsedVehicleBt,
-  expanded, onToggle, onChange, onRemove, onSave, saving,
+  expanded, onToggle, onChange, onRemove, onSave, saving, bankOptions = [],
 }) => {
   const tid = (name) => `bank-${index + 1}-${name}`;
   const cls = (editable) =>
@@ -55,6 +55,26 @@ const BankEligibilityRow = ({
       className={cls(editable)}
       data-testid={tid(field)}
     />
+  );
+
+  // Bank fields use a picker (datalist) so lender names stay consistent, while still allowing a
+  // name that is not in the policy master.
+  const bankPicker = (field) => (
+    <>
+      <input
+        type="text"
+        list={`bank-names-${index}`}
+        value={bank[field] ?? ''}
+        onChange={(e) => onChange(index, field, e.target.value)}
+        disabled={!canEdit}
+        placeholder="Select or type"
+        className={cls(canEdit)}
+        data-testid={tid(field)}
+      />
+      <datalist id={`bank-names-${index}`}>
+        {bankOptions.map((name) => <option key={name} value={name} />)}
+      </datalist>
+    </>
   );
 
   const choice = (field, options = YES_NO, placeholder = 'Select') => (
@@ -111,7 +131,7 @@ const BankEligibilityRow = ({
       <div className="p-4">
         {/* STEP 1 - Bank eligibility */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Field label="Bank Name">{text('bank_name')}</Field>
+          <Field label="Bank Name">{bankPicker('bank_name')}</Field>
           <Field label="Eligible?">
             {choice('is_eligible', [['yes', 'Yes - Eligible'], ['no', 'No - Not Eligible']])}
           </Field>
@@ -142,7 +162,7 @@ const BankEligibilityRow = ({
                 )}
                 {loginDone && (
                   <>
-                    <Field label="Login Bank">{text('login_bank')}</Field>
+                    <Field label="Login Bank">{bankPicker('login_bank')}</Field>
                     <Field label="Application ID">{text('application_id')}</Field>
                     <Field label={`SM Name${canEditSm ? '' : ' (Admin/Ops)'}`}>
                       {text('sm_name', { editable: canEdit && canEditSm })}
@@ -167,13 +187,13 @@ const BankEligibilityRow = ({
                   </Field>
                   {bank.approval_status === 'declined' && (
                     <>
-                      <Field label="Declined Bank">{text('declined_bank')}</Field>
+                      <Field label="Declined Bank">{bankPicker('declined_bank')}</Field>
                       <Field label="Decline Reason" span="col-span-2 md:col-span-3">{text('declined_reason')}</Field>
                     </>
                   )}
                   {approved && (
                     <>
-                      <Field label="Approved Bank">{text('approved_bank')}</Field>
+                      <Field label="Approved Bank">{bankPicker('approved_bank')}</Field>
                       <Field label="Approved Amount (₹)">{text('approved_amount', { type: 'number' })}</Field>
                       <Field label="Approved Tenure (months)">{text('approved_tenure', { type: 'number' })}</Field>
                       <Field label="Approved ROI (%)">{text('approved_roi', { type: 'number', step: '0.01' })}</Field>
@@ -235,7 +255,7 @@ const BankEligibilityRow = ({
                   {bank.disbursed === 'yes' && (
                     <>
                       <Field label="Disbursal Date">{text('disbursal_date', { type: 'date' })}</Field>
-                      <Field label="Disbursed Bank">{text('disbursed_bank')}</Field>
+                      <Field label="Disbursed Bank">{bankPicker('disbursed_bank')}</Field>
                       <Field label="Disbursed Amount (₹)">{text('disbursed_amount', { type: 'number' })}</Field>
                       <Field label="Tenure (months)">{text('disbursed_tenure', { type: 'number' })}</Field>
                       <Field label="ROI (%)">{text('disbursed_roi', { type: 'number', step: '0.01' })}</Field>

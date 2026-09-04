@@ -1194,3 +1194,27 @@ renders the filled stars plus the score. Verified: 179 filled stars across 50 ro
 
 Gates re-run after the change: file_eligibility_stats_gate 24/24, eligibility_gate 17/17,
 acceptance_matrix 30/30. QA fixture removed.
+
+## STAR OVERRIDE + BANK NAME PICKER + FILE FILTER RE-VERIFICATION (September 4, 2026)
+
+FILE FILTER: re-tested in the browser on PREVIEW - clicking the "File (514)" chip fires
+`GET /leads?page=1&page_size=50&status=file` and the page shows "514 total data" with every row
+FILE. The screenshot showing 171,305 with the File chip active is the PRODUCTION build, which does
+not yet contain this fix (published build is older). No further code change was needed.
+
+STAR OVERRIDE (new): `PUT /api/files/{file_id}/star-rating` (Admin only) sets
+`star_manual`, `star_rating`, `star_override_reason`, `star_override_by/at`, or restores the
+automatic score with `{"star_manual": false}`. A reason is mandatory (400 without it) and the rating
+must be 1-5. The File header now has a "Set manually" link opening a star picker + reason modal that
+also shows the calculated score and the current override author. Verified in the browser:
+5 stars (auto, 90/100) -> manual 3 stars with reason -> header shows "3 Star Profile · manual" ->
+"Use automatic score" -> back to 5 stars. The bulk recalculation and the details-save recalculation
+both skip manual files.
+
+BANK NAME PICKER (new): `GET /api/files/bank-names` returns the CLEAN bank-policy master list
+(deliberately not the legacy free-text names, which contain misspellings like "AIDTYA BIRLA" and
+"AXI SBANK"). All five bank fields in the eligibility card (Bank Name, Login Bank, Approved Bank,
+Declined Bank, Disbursed Bank) are now pickers backed by that list while still accepting a typed
+name. Verified: 35 options offered on each row.
+
+Gates after the change: file_eligibility_stats_gate 24/24, eligibility_gate 17/17.

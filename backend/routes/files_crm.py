@@ -397,6 +397,61 @@ async def get_all_files(
     }
 
 
+@router.put("/{file_id}/star-rating")
+async def override_star_rating(file_id: str, payload: dict, current_user: dict = Depends(require_admin)):
+    """Admin manual star override (or clearing it) from the File header.
+
+    `star_manual=True` freezes the rating until the Admin switches back to automatic; the
+    calculated score keeps updating underneath so the reason for the override stays visible.
+    """
+    file_doc = await db.leads.find_one(lead_filter(file_id))
+    if not file_doc:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    if payload.get("star_manual") is False:
+        auto = calculate_star_rating({**file_doc, "star_manual": False})
+        update = {"star_manual": False, "star_rating": auto['star_rating'],
+                  "star_score": auto['star_score'], "star_override_reason": None}
+    else:
+        try:
+            stars = int(payload.get("star_rating"))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="star_rating must be a number between 1 and 5")
+        if stars < 1 or stars > 5:
+            raise HTTPException(status_code=400, detail="star_rating must be between 1 and 5")
+        reason = str(payload.get("reason") or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="A reason is required for a manual star rating")
+        update = {
+            "star_manual": True,
+            "star_rating": stars,
+            "star_override_reason": reason,
+            "star_override_by": current_user.get("name") or current_user.get("email"),
+            "star_override_at": datetime.now(timezone.utc).isoformat(),
+        }
+    
+    result = await db.leads.update_one(lead_filter(file_id), {"$set": update})
+    if result.matched_count != 1:
+        raise HTTPException(status_code=500, detail="Star rating update did not match exactly one file")
+    
+    saved = await db.leads.find_one(lead_filter(file_id))
+    return {"message": "Star rating updated", **calculate_star_rating(saved),
+            "star_override_reason": saved.get("star_override_reason"),
+            "star_override_by": saved.get("star_override_by")}
+
+
+@router.get("/bank-names")
+async def get_bank_names(current_user: dict = Depends(get_current_user)):
+    """Lender names for the eligibility bank picker.
+
+    Only the clean bank-policy master list is offered (legacy files contain many misspellings such
+    as "AIDTYA BIRLA" / "AXI SBANK" - offering those back would keep the inconsistency alive).
+    """
+    policy_banks = await db.bank_policies.distinct("bank_name", {"is_active": True})
+    names = {str(b).strip() for b in policy_banks if str(b or '').strip()}
+    return {"banks": sorted(names, key=lambda n: n.lower())}
+
+
 # ============ FILES REPORTS ============
 # Must be before /{file_id} to avoid route shadowing
 

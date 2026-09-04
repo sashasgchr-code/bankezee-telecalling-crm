@@ -118,6 +118,9 @@ const FileDetailsPage = () => {
   
   // Bank Eligibilities (manual entry)
   const [eligibilities, setEligibilities] = useState([]);
+  const [bankOptions, setBankOptions] = useState([]);
+  const [showStarModal, setShowStarModal] = useState(false);
+  const [starDraft, setStarDraft] = useState({ star_rating: 3, reason: '' });
   const [savingEligibilities, setSavingEligibilities] = useState(false);
   
   // Status update
@@ -226,8 +229,24 @@ const FileDetailsPage = () => {
     }
   };
 
-  const handleSaveDetails = async () => {
-    setSaving(true);
+  useEffect(() => {
+    api.get('/files/bank-names')
+      .then(res => setBankOptions(res.data?.banks || []))
+      .catch(() => setBankOptions([]));
+  }, []);
+
+  const handleStarOverride = async (payload) => {
+    try {
+      await api.put(`/files/${fileId}/star-rating`, payload);
+      await fetchFileData();
+      setShowStarModal(false);
+      toast.success(payload.star_manual === false ? 'Star rating back to automatic' : 'Star rating updated');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to update star rating');
+    }
+  };
+
+  const handleSaveDetails = async () => {    setSaving(true);
     try {
       await api.put(`/files/${fileId}/details`, {
         full_name: editedDetails.full_name,
@@ -432,6 +451,15 @@ const FileDetailsPage = () => {
                 </span>
                 {fileData.star_manual && (
                   <span className="text-[11px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">manual</span>
+                )}
+                {isAdmin && (
+                  <button
+                    onClick={() => { setStarDraft({ star_rating: fileData.star_rating || 3, reason: fileData.star_override_reason || '' }); setShowStarModal(true); }}
+                    className="text-xs text-green-700 underline hover:text-green-800"
+                    data-testid="star-override-btn"
+                  >
+                    Set manually
+                  </button>
                 )}
               </div>
             )}
@@ -868,6 +896,7 @@ const FileDetailsPage = () => {
                         onRemove={handleRemoveBank}
                         onSave={handleSaveBank}
                         saving={savingEligibilities}
+                        bankOptions={bankOptions}
                       />
                     ))}
                   </div>
@@ -1051,6 +1080,73 @@ const FileDetailsPage = () => {
           </div>
         </div>
       </div>
+
+      {/* Admin manual star rating */}
+      {showStarModal && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" data-testid="star-override-modal">
+          <div className="bg-white rounded-xl w-full max-w-md p-5">
+            <h3 className="font-semibold text-gray-900 mb-1">Set star rating manually</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Calculated score: {fileData?.star_score}/100. A manual rating stays until you switch back to automatic.
+            </p>
+            <div className="flex items-center gap-1 mb-4">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setStarDraft({ ...starDraft, star_rating: star })}
+                  className={`text-2xl leading-none ${star <= starDraft.star_rating ? 'text-amber-500' : 'text-gray-300'}`}
+                  data-testid={`star-option-${star}`}
+                >
+                  ★
+                </button>
+              ))}
+              <span className="ml-2 text-sm text-gray-600">{starDraft.star_rating} Star Profile</span>
+            </div>
+            <label className="text-xs text-gray-500 block mb-1">Reason (required)</label>
+            <textarea
+              rows={3}
+              value={starDraft.reason}
+              onChange={(e) => setStarDraft({ ...starDraft, reason: e.target.value })}
+              placeholder="e.g. Strong banking history not captured in the score"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-4"
+              data-testid="star-override-reason"
+            />
+            {fileData?.star_override_reason && (
+              <p className="text-xs text-gray-500 mb-3">
+                Current override: "{fileData.star_override_reason}"
+                {fileData.star_override_by ? ` - ${fileData.star_override_by}` : ''}
+              </p>
+            )}
+            <div className="flex items-center justify-between gap-2">
+              <button
+                onClick={() => handleStarOverride({ star_manual: false })}
+                className="text-sm text-gray-600 hover:text-gray-800 underline"
+                data-testid="star-override-auto"
+              >
+                Use automatic score
+              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowStarModal(false)}
+                  className="px-3 py-2 text-sm border border-gray-200 rounded-lg"
+                  data-testid="star-override-cancel"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleStarOverride({ star_rating: starDraft.star_rating, reason: starDraft.reason })}
+                  disabled={!starDraft.reason.trim()}
+                  className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg disabled:opacity-50"
+                  data-testid="star-override-save"
+                >
+                  Save rating
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
