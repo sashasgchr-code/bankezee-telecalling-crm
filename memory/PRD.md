@@ -1266,3 +1266,35 @@ still log in; wrong and unknown credentials still return 401. New regression sui
 `/app/backend/tests/test_login_regression.py`. `/app/memory/test_credentials.md` updated.
 BACKLOG from the review: `plain_password` (cleartext) is still stored for freshly seeded accounts and
 ROLE_ACCOUNTS credentials are hard-coded in source - both worth moving to env/removing later.
+
+## OLD CRM FILE DATA MIGRATION — DRY RUN ONLY (September 4, 2026) — nothing written
+
+Export: `/app/memory/crm_migration_export.json` (454 Files, 1,728 eligibility rows).
+Script: `/app/scripts/crm_migration_dryrun.py` (READ-ONLY; there is no apply mode yet).
+Run against the preview copy of production (518 lead documents).
+
+RESULT: Old CRM Files 454 | matched 454 (446 by preserved old-CRM id, 8 by mobile - each a single
+unique mobile match) | unmatched 0 | ambiguous 0 | already identical 0 | would update 454 |
+would create new Files 0.
+Note: 11 mobiles are duplicated inside the export itself, but all 11 of those records matched by
+their preserved old-CRM id, so no mobile-based guess was needed for them.
+
+WOULD BE RESTORED (export value present, Connect value different or blank; export blanks are never
+written over Connect data): employment_type 453, 241 eligibility bank rows to add, existing_loan_1/2/3
+41, status 11, net_salary 8, cibil_score 7, loan_amount_required 6, company_name 5, obligations_emi 4,
+type_of_loan 3, cibil_issues 3, company_type 3, foir 2, plus eligibility fields: eligible_amount 7,
+approval_status 6, application_id 6, login_done_at 6, login_done 5, login_bank 5, declined_reason 5,
+eligible_roi 5, sm_name 5, rejected_at 5, sm_number 3, is_eligible 2, declined_bank 1, approved_bank/
+amount/tenure/roi 1 each, approved_at 1, disbursed/bank/amount/tenure/roi 1 each, disbursed_at 1,
+commission_percentage/amount 1 each, not_eligible_reason 1.
+
+The export DOES carry the operational timestamps and login details (login_done_at 364, rejected_at
+216, approved_at 115, disbursed_at 88, eligible_roi 729, sm_name 280, sm_number 204,
+application_id 260 across the 1,728 rows) - all of these are in the migration set.
+NOT in the export (so nothing can or will be invented): disbursal_date, rc_submitted, noc_submitted,
+hypothecation, pf, emi, first_emi_date.
+star_rating / star_score / star_manual differ on 192/114/13 files but are reported as INFORMATIONAL
+ONLY and are excluded from the proposed update, because Connect already recalculates them with the
+same old-CRM formula (importing the old values would freeze stale scores).
+
+STOPPED HERE as instructed - no import, no file creation, no database write. Awaiting approval.
