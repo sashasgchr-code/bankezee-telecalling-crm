@@ -10,4 +10,4 @@ export const CALL_LOG_DAYS_TO_SYNC = 7; // How many days of call history to sync
 
 // App Settings
 export const APP_NAME = 'BANKEZEE Connect';
-export const APP_VERSION = '2.4.0';
+export const APP_VERSION = '2.5.0';

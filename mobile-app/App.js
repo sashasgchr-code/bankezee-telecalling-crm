@@ -15,23 +15,25 @@ import FileDetailScreen from './src/screens/FileDetailScreen';
 import FollowUpsScreen from './src/screens/FollowUpsScreen';
 import TeamScreen from './src/screens/TeamScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
-import TrackingScreen from './src/screens/TrackingScreen';
 import LeaveScreen from './src/screens/LeaveScreen';
+import MoreScreen from './src/screens/MoreScreen';
+import CallLogScreen from './src/screens/CallLogScreen';
+import HourlyReportScreen from './src/screens/HourlyReportScreen';
+import AttendanceScreen from './src/screens/AttendanceScreen';
+import PolicyMasterScreen from './src/screens/PolicyMasterScreen';
+import EligibilityScreen from './src/screens/EligibilityScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
 
 // Tab Icon Component
-const TabIcon = ({ name, focused, color }) => {
+const TabIcon = ({ name, focused }) => {
   const icons = {
     Dashboard: '📊',
     Data: '📋',
     Files: '📁',
     'Follow-ups': '📅',
-    Team: '👥',
-    Reports: '📈',
-    Tracking: '📆',
-    Leave: '🏖️',
+    More: '⋯',
   };
   return (
     <View style={styles.tabIcon}>
@@ -40,14 +42,12 @@ const TabIcon = ({ name, focused, color }) => {
   );
 };
 
-// Telecaller Tabs
-const TelecallerTabs = ({ user, onLogout }) => {
+// Shared tab set for all roles (GP parity). Secondary screens live in "More".
+const MainTabs = ({ user, onLogout }) => {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color }) => (
-          <TabIcon name={route.name} focused={focused} color={color} />
-        ),
+        tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} />,
         tabBarActiveTintColor: '#16a34a',
         tabBarInactiveTintColor: 'gray',
         tabBarStyle: styles.tabBar,
@@ -63,55 +63,12 @@ const TelecallerTabs = ({ user, onLogout }) => {
       </Tab.Screen>
       <Tab.Screen name="Files">
         {props => <FilesScreen {...props} user={user} />}
-      </Tab.Screen>
-      <Tab.Screen name="Team">
-        {props => <TeamScreen {...props} user={user} />}
-      </Tab.Screen>
-      <Tab.Screen name="Reports">
-        {props => <ReportsScreen {...props} user={user} />}
       </Tab.Screen>
       <Tab.Screen name="Follow-ups">
         {props => <FollowUpsScreen {...props} user={user} />}
       </Tab.Screen>
-      <Tab.Screen name="Leave">
-        {props => <LeaveScreen {...props} user={user} />}
-      </Tab.Screen>
-    </Tab.Navigator>
-  );
-};
-
-// Admin Tabs
-const AdminTabs = ({ user, onLogout }) => {
-  return (
-    <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarIcon: ({ focused, color }) => (
-          <TabIcon name={route.name} focused={focused} color={color} />
-        ),
-        tabBarActiveTintColor: '#16a34a',
-        tabBarInactiveTintColor: 'gray',
-        tabBarStyle: styles.tabBar,
-        tabBarLabelStyle: styles.tabBarLabel,
-        headerShown: false,
-      })}
-    >
-      <Tab.Screen name="Dashboard">
-        {props => <DashboardScreen {...props} user={user} onLogout={onLogout} />}
-      </Tab.Screen>
-      <Tab.Screen name="Data">
-        {props => <DataScreen {...props} user={user} />}
-      </Tab.Screen>
-      <Tab.Screen name="Files">
-        {props => <FilesScreen {...props} user={user} />}
-      </Tab.Screen>
-      <Tab.Screen name="Team">
-        {props => <TeamScreen {...props} user={user} />}
-      </Tab.Screen>
-      <Tab.Screen name="Reports">
-        {props => <ReportsScreen {...props} user={user} />}
-      </Tab.Screen>
-      <Tab.Screen name="Leave">
-        {props => <LeaveScreen {...props} user={user} />}
+      <Tab.Screen name="More">
+        {props => <MoreScreen {...props} user={user} onLogout={onLogout} />}
       </Tab.Screen>
     </Tab.Navigator>
   );
@@ -119,23 +76,35 @@ const AdminTabs = ({ user, onLogout }) => {
 
 // Main App Navigator
 const AppNavigator = ({ user, onLogout }) => {
-  const isAdmin = user?.role === 'admin';
-  
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main">
-        {props => isAdmin ? 
-          <AdminTabs {...props} user={user} onLogout={onLogout} /> : 
-          <TelecallerTabs {...props} user={user} onLogout={onLogout} />
-        }
+        {props => <MainTabs {...props} user={user} onLogout={onLogout} />}
       </Stack.Screen>
-      <Stack.Screen 
-        name="LeadDetail" 
+
+      {/* Secondary screens reachable from More or File Detail */}
+      <Stack.Screen name="Team">
+        {props => <TeamScreen {...props} user={user} />}
+      </Stack.Screen>
+      <Stack.Screen name="Reports">
+        {props => <ReportsScreen {...props} user={user} />}
+      </Stack.Screen>
+      <Stack.Screen name="Leave">
+        {props => <LeaveScreen {...props} user={user} />}
+      </Stack.Screen>
+      <Stack.Screen name="CallLog" component={CallLogScreen} />
+      <Stack.Screen name="HourlyReport" component={HourlyReportScreen} />
+      <Stack.Screen name="Attendance" component={AttendanceScreen} />
+      <Stack.Screen name="PolicyMaster" component={PolicyMasterScreen} />
+      <Stack.Screen name="Eligibility" component={EligibilityScreen} />
+
+      <Stack.Screen
+        name="LeadDetail"
         component={LeadDetailScreen}
         options={{ headerShown: true, title: 'Lead Details' }}
       />
-      <Stack.Screen 
-        name="FileDetail" 
+      <Stack.Screen
+        name="FileDetail"
         component={FileDetailScreen}
         options={{ headerShown: false }}
       />

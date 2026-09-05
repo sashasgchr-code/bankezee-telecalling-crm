@@ -422,4 +422,38 @@ export const getFilesReports = async (params = {}) => {
   return response.data;
 };
 
+// ============ GROWTH PARTNER PARITY SCREENS ============
+
+// My own hourly report (C/CO/L/F by hour)
+export const getMyHourlyReport = async (date = null) => {
+  const params = {};
+  if (date) params.date = date;
+  const response = await api.get('/reports/my-hourly', { params });
+  return response.data;
+};
+
+// Bank policies (Policy Master)
+export const getPolicies = async (params = {}) => {
+  const response = await api.get('/files/policies', { params });
+  return response.data;
+};
+
+// Run eligibility analysis against all bank policies for a file/lead
+export const checkFileEligibility = async (leadId) => {
+  const response = await api.post(`/bank-policies/check-eligibility/${leadId}`);
+  return response.data;
+};
+
+// Previous eligibility checks for a file/lead
+export const getEligibilityHistory = async (leadId) => {
+  const response = await api.get(`/bank-policies/eligibility-history/${leadId}`);
+  return response.data;
+};
+
+// My monthly attendance matrix (calendar)
+export const getMyMonthlyMatrix = async (month, year) => {
+  const response = await api.get('/attendance/my/monthly-matrix', { params: { month, year } });
+  return response.data;
+};
+
 export default api;

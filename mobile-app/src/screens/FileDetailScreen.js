@@ -315,6 +315,20 @@ const FileDetailScreen = ({ route, navigation }) => {
         style={styles.content}
       >
         <ScrollView showsVerticalScrollIndicator={false}>
+          {/* Check Eligibility CTA */}
+          <TouchableOpacity
+            style={styles.eligibilityBtn}
+            onPress={() => navigation.navigate('Eligibility', { fileId })}
+            data-testid="check-eligibility-btn"
+          >
+            <Text style={styles.eligibilityBtnIcon}>🏦</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.eligibilityBtnText}>Check Bank Eligibility</Text>
+              <Text style={styles.eligibilityBtnSub}>Analyse this file against all bank policies</Text>
+            </View>
+            <Text style={styles.eligibilityBtnArrow}>›</Text>
+          </TouchableOpacity>
+
           {/* Customer Details */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>👤 Customer Details</Text>
@@ -603,6 +617,35 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     borderRadius: 12,
     padding: 16,
+  },
+  eligibilityBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    marginTop: 12,
+    marginHorizontal: 12,
+    borderRadius: 12,
+    padding: 16,
+  },
+  eligibilityBtnIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  eligibilityBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#15803d',
+  },
+  eligibilityBtnSub: {
+    fontSize: 12,
+    color: '#16a34a',
+    marginTop: 2,
+  },
+  eligibilityBtnArrow: {
+    fontSize: 24,
+    color: '#16a34a',
   },
   sectionTitle: {
     fontSize: 16,

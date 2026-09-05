@@ -39,3 +39,16 @@
 - api.js getTelecallers: /users (role==telecaller only) -> /users/growth-partners (all GP roles), matching web dropdowns. Also used by DataScreen reassignment (reads id/name only - safe) and TrackingScreen dropdown.
 - TrackingScreen: single-agent row now falls back to response[0] so the sheet always loads (alias-safe), matching web.
 - app.json bumped to version 2.4.2 / versionCode 14. Babel parse OK on all edited files.
+
+## 2026-06 — Mobile GP full parity: native screens for missing web features
+- Goal: bring the Expo mobile app to feature parity with the web app for Growth Partners (fully NATIVE screens, no WebViews).
+- New native screens (all use GP-accessible endpoints, no admin-only calls):
+  - CallLogScreen.js — rewritten to use GET /call-logs/unified (auto-filters to own calls for telecaller/GP). Day nav, client-side totals (calls/connected/talk). NOTE: dropped /reports/detailed-calls which is admin-only.
+  - HourlyReportScreen.js — GET /reports/my-hourly. Per-hour C/CO/L/F table + top-level totals (total_calls/total_connected/total_leads/total_file are TOP-LEVEL, not nested).
+  - AttendanceScreen.js — GET /attendance/today + /attendance/my/monthly-matrix, POST check-in/check-out with expo-location. Calendar matrix + summary (P/L/W/A/U) + attendance %.
+  - PolicyMasterScreen.js — GET /files/policies. Search + loan-type filter + expandable policy cards (view; add/edit is backlog).
+  - EligibilityScreen.js — POST /bank-policies/check-eligibility/{fileId} + GET /bank-policies/eligibility-history/{fileId}. Profile summary, eligible/possible/not-eligible groups, per-bank expandable rule tables, history. Mirrors web EligibilityCheck.js.
+  - MoreScreen.js — sidebar-style menu (web parity) linking Team, Reports, Call Log, Hourly Report, Attendance, Policy Master, Leave + Logout.
+- Navigation (App.js) restructured: 5 bottom tabs (Dashboard, Data, Files, Follow-ups, More). Team/Reports/Leave + the 5 new screens registered as Stack screens reachable from More; Eligibility reached from a "Check Bank Eligibility" button added to FileDetailScreen (web parity — button on file detail).
+- Version bumped app.json 2.5.0 / versionCode 16; config.js APP_VERSION 2.5.0.
+- Verification: all 7 new/edited RN files compile under babel-preset-expo; all backend endpoints curl-verified (admin token, same get_current_user path as GP) returning the exact shapes the screens consume (policies have id; check-eligibility returns profile/results/counts; my-hourly top-level totals; unified call logs = flat array). On-device UI NOT visually tested (Expo app can't be rendered by the web screenshot tool) — needs user's Expo/EAS build to confirm visuals.

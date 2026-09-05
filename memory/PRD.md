@@ -1558,3 +1558,10 @@ lead count 171,306, additive fields + date normalisation only, 0 new docs, 0 del
 User explicitly refused to apply on the stale build.
 
 *Last Updated: September 4, 2026*
+
+---
+## Mobile GP Parity — Status (2026-06)
+IMPLEMENTED (native, no WebViews): CallLog, HourlyReport, Attendance (matrix), PolicyMaster (view), Eligibility (button on File Detail), MoreScreen menu. Nav = 5 tabs + More. app 2.5.0/vc16.
+Endpoints used (all GP-accessible via get_current_user): /call-logs/unified, /reports/my-hourly, /attendance/today, /attendance/my/monthly-matrix, /attendance/check-in|check-out, /files/policies, /bank-policies/check-eligibility/{id}, /bank-policies/eligibility-history/{id}.
+Verified: babel compile + live endpoint shapes. NOT visually device-tested.
+BACKLOG (P1/P2): Policy Master add/edit modal (currently view-only); on-device QA of all screens via Expo/EAS build; verify EAS build config for final APK push; Bank Name cleanup script (P3).
