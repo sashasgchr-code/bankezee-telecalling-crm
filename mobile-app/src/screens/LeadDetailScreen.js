@@ -35,6 +35,13 @@ const LeadDetailScreen = ({ route, navigation }) => {
   
   // Quick status modal
   const [showStatusModal, setShowStatusModal] = useState(false);
+
+  // Schedule follow-up modal (Android-safe replacement for Alert.prompt)
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [fuDayOffset, setFuDayOffset] = useState(1);
+  const [fuHour, setFuHour] = useState(10);
+  const [fuNotes, setFuNotes] = useState('');
+  const [savingFollowUp, setSavingFollowUp] = useState(false);
   
   // Track if we're waiting for a call to end
   const pendingCallPhone = useRef(null);
@@ -269,28 +276,39 @@ const LeadDetailScreen = ({ route, navigation }) => {
   };
 
   const handleScheduleFollowUp = () => {
-    Alert.prompt(
-      'Schedule Follow-up',
-      'Enter notes for the follow-up:',
-      async (notes) => {
-        if (notes) {
-          try {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(10, 0, 0, 0);
-            
-            await createFollowUp({
-              lead_id: lead.id,
-              scheduled_at: tomorrow.toISOString(),
-              notes,
-            });
-            Alert.alert('Success', 'Follow-up scheduled for tomorrow');
-          } catch (error) {
-            Alert.alert('Error', 'Failed to schedule follow-up');
-          }
-        }
-      }
-    );
+    setFuDayOffset(1);
+    setFuHour(10);
+    setFuNotes('');
+    setShowFollowUpModal(true);
+  };
+
+  // Build a UTC ISO string for the chosen IST wall-clock day/hour (timezone-independent).
+  const buildIstScheduledAt = (dayOffset, hour) => {
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+    const istWall = new Date(Date.now() + IST_OFFSET_MS);
+    istWall.setUTCDate(istWall.getUTCDate() + dayOffset);
+    istWall.setUTCHours(hour, 0, 0, 0);
+    return new Date(istWall.getTime() - IST_OFFSET_MS).toISOString();
+  };
+
+  const saveFollowUp = async () => {
+    try {
+      setSavingFollowUp(true);
+      await createFollowUp({
+        lead_id: lead.id,
+        scheduled_at: buildIstScheduledAt(fuDayOffset, fuHour),
+        notes: fuNotes || 'Follow-up scheduled',
+      });
+      setShowFollowUpModal(false);
+      setLead(prev => ({ ...prev, status: 'follow_up' }));
+      loadLeadDetails();
+      Alert.alert('Success', 'Follow-up scheduled successfully');
+    } catch (error) {
+      console.error('Error scheduling follow-up:', error);
+      Alert.alert('Error', error.response?.data?.detail || 'Failed to schedule follow-up');
+    } finally {
+      setSavingFollowUp(false);
+    }
   };
 
   const formatDate = (dateString) => {
@@ -455,20 +473,6 @@ const LeadDetailScreen = ({ route, navigation }) => {
 
         <TouchableOpacity style={styles.followUpBtn} onPress={handleScheduleFollowUp}>
           <Text style={styles.followUpBtnText}>📅 Schedule Follow-up</Text>
-        </TouchableOpacity>
-
-        {/* Log Call Button (manual trigger) */}
-        <TouchableOpacity 
-          style={styles.logCallBtn}
-          onPress={() => {
-            setDetectedCallDuration(null);
-            setSelectedOutcome(null);
-            setSelectedStatus(null);
-            setCallNotes('');
-            setShowCallModal(true);
-          }}
-        >
-          <Text style={styles.logCallBtnText}>📋 Log Call Outcome</Text>
         </TouchableOpacity>
 
         {/* Call History */}
@@ -662,6 +666,80 @@ const LeadDetailScreen = ({ route, navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {/* Schedule Follow-up Modal (Android-safe) */}
+      <Modal
+        visible={showFollowUpModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFollowUpModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>📅 Schedule Follow-up</Text>
+
+            <Text style={fuStyles.label}>Day</Text>
+            <View style={fuStyles.chipRow}>
+              {[{ o: 0, l: 'Today' }, { o: 1, l: 'Tomorrow' }, { o: 2, l: 'In 2 days' }, { o: 3, l: 'In 3 days' }, { o: 7, l: 'In a week' }].map(d => (
+                <TouchableOpacity
+                  key={d.o}
+                  style={[fuStyles.chip, fuDayOffset === d.o && fuStyles.chipActive]}
+                  onPress={() => setFuDayOffset(d.o)}
+                  data-testid={`followup-day-${d.o}`}
+                >
+                  <Text style={[fuStyles.chipText, fuDayOffset === d.o && fuStyles.chipTextActive]}>{d.l}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={fuStyles.label}>Time (IST)</Text>
+            <View style={fuStyles.chipRow}>
+              {[9, 10, 11, 12, 14, 15, 16, 17, 18].map(h => (
+                <TouchableOpacity
+                  key={h}
+                  style={[fuStyles.chip, fuHour === h && fuStyles.chipActive]}
+                  onPress={() => setFuHour(h)}
+                  data-testid={`followup-hour-${h}`}
+                >
+                  <Text style={[fuStyles.chipText, fuHour === h && fuStyles.chipTextActive]}>
+                    {h > 12 ? `${h - 12} PM` : h === 12 ? '12 PM' : `${h} AM`}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={fuStyles.label}>Notes (optional)</Text>
+            <TextInput
+              style={fuStyles.notesInput}
+              placeholder="Add a note for this follow-up"
+              placeholderTextColor="#9ca3af"
+              value={fuNotes}
+              onChangeText={setFuNotes}
+              multiline
+              data-testid="followup-notes"
+            />
+
+            <View style={fuStyles.actions}>
+              <TouchableOpacity
+                style={fuStyles.cancelBtn}
+                onPress={() => setShowFollowUpModal(false)}
+                data-testid="followup-cancel"
+              >
+                <Text style={fuStyles.cancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[fuStyles.saveBtn, savingFollowUp && { opacity: 0.6 }]}
+                onPress={saveFollowUp}
+                disabled={savingFollowUp}
+                data-testid="followup-save"
+              >
+                <Text style={fuStyles.saveText}>{savingFollowUp ? 'Saving…' : 'Save Follow-up'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   );
 };
@@ -1039,6 +1117,21 @@ const styles = StyleSheet.create({
     color: '#16a34a',
     fontWeight: '600',
   },
+});
+
+const fuStyles = StyleSheet.create({
+  label: { fontSize: 13, fontWeight: '600', color: '#374151', marginTop: 14, marginBottom: 6 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: '#f3f4f6', marginRight: 8, marginBottom: 8 },
+  chipActive: { backgroundColor: '#16a34a' },
+  chipText: { fontSize: 13, color: '#374151', fontWeight: '500' },
+  chipTextActive: { color: '#fff' },
+  notesInput: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, fontSize: 14, color: '#111827', minHeight: 60, textAlignVertical: 'top', backgroundColor: '#f9fafb' },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 20 },
+  cancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, backgroundColor: '#f3f4f6', alignItems: 'center' },
+  cancelText: { color: '#374151', fontWeight: '600', fontSize: 15 },
+  saveBtn: { flex: 1, paddingVertical: 14, borderRadius: 10, backgroundColor: '#16a34a', alignItems: 'center' },
+  saveText: { color: '#fff', fontWeight: '700', fontSize: 15 },
 });
 
 export default LeadDetailScreen;

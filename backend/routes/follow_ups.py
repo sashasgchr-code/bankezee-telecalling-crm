@@ -15,15 +15,22 @@ router = APIRouter(prefix="/api", tags=["Follow-ups"])
 
 @router.post("/follow-ups")
 async def create_follow_up(follow_up: FollowUpCreate, current_user: dict = Depends(get_current_user)):
-    lead = await db.leads.find_one({"_id": ObjectId(follow_up.lead_id)})
+    from utils.auth import normalize_role, is_gp_role
+    # Resolve lead by UUID `id` first, then ObjectId `_id` (never crash on legacy/imported ids)
+    lead = await db.leads.find_one({"id": follow_up.lead_id})
+    if not lead and ObjectId.is_valid(follow_up.lead_id):
+        lead = await db.leads.find_one({"_id": ObjectId(follow_up.lead_id)})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
-    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
+
+    role = normalize_role(current_user.get("role", ""))
+    user_identities = {current_user.get("id"), str(current_user.get("_id", ""))}
+    if is_gp_role(role) and lead.get("assigned_to") and lead.get("assigned_to") not in user_identities:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
+    resolved_lead_id = lead.get("id") or str(lead["_id"])
     follow_up_doc = {
-        "lead_id": follow_up.lead_id,
+        "lead_id": resolved_lead_id,
         "lead_name": lead.get("name", "Unknown"),
         "lead_phone": lead.get("phone", ""),
         "user_id": current_user["id"],
@@ -32,10 +39,17 @@ async def create_follow_up(follow_up: FollowUpCreate, current_user: dict = Depen
         "is_completed": False,
         "created_at": datetime.now(timezone.utc)
     }
-    
+
     result = await db.follow_ups.insert_one(follow_up_doc)
     follow_up_doc["_id"] = result.inserted_id
-    
+
+    # Mark the lead as follow_up so it reflects in status counts (parity with BankEzee rules)
+    await db.leads.update_one(
+        {"_id": lead["_id"]},
+        {"$set": {"status": "follow_up", "next_follow_up_at": follow_up.scheduled_at,
+                  "updated_at": datetime.now(timezone.utc)}}
+    )
+
     return serialize_doc(follow_up_doc)
 
 @router.get("/follow-ups")
