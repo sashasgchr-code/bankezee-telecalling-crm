@@ -229,6 +229,12 @@ const LeadDetailScreen = ({ route, navigation }) => {
       return;
     }
 
+    // Anti-fraud guard: block "Connected" when there is no talk time.
+    if (selectedOutcome === 'connected' && (detectedCallDuration || 0) === 0) {
+      Alert.alert('Not allowed', 'A call with 0s talk time cannot be logged as Connected. Please select the correct outcome.');
+      return;
+    }
+
     try {
       // Log the call outcome with detected duration to the unified call_logs collection
       await logCallOutcome({
@@ -539,26 +545,40 @@ const LeadDetailScreen = ({ route, navigation }) => {
                 {/* Call Outcome Selection */}
                 <Text style={styles.sectionLabel}>Call Outcome *</Text>
                 <View style={styles.outcomeGrid}>
-                  {callOutcomes.map((outcome) => (
-                    <TouchableOpacity
-                      key={outcome.id}
-                      style={[
-                        styles.outcomeChip,
-                        selectedOutcome === outcome.id && { backgroundColor: outcome.color },
-                      ]}
-                      onPress={() => setSelectedOutcome(outcome.id)}
-                    >
-                      <Text
+                  {callOutcomes.map((outcome) => {
+                    // Anti-fraud: a call with 0s talk time cannot be marked "Connected".
+                    const noTalkTime = (detectedCallDuration || 0) === 0;
+                    const disabled = outcome.id === 'connected' && noTalkTime;
+                    return (
+                      <TouchableOpacity
+                        key={outcome.id}
+                        disabled={disabled}
                         style={[
-                          styles.outcomeChipText,
-                          selectedOutcome === outcome.id && { color: '#fff' },
+                          styles.outcomeChip,
+                          selectedOutcome === outcome.id && { backgroundColor: outcome.color },
+                          disabled && styles.outcomeChipDisabled,
                         ]}
+                        onPress={() => !disabled && setSelectedOutcome(outcome.id)}
+                        data-testid={`outcome-${outcome.id}`}
                       >
-                        {outcome.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.outcomeChipText,
+                            selectedOutcome === outcome.id && { color: '#fff' },
+                            disabled && styles.outcomeChipTextDisabled,
+                          ]}
+                        >
+                          {outcome.label}{disabled ? ' 🚫' : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
+                {(detectedCallDuration || 0) === 0 && (
+                  <Text style={styles.noTalkHint}>
+                    "Connected" is unavailable because no talk time was detected for this call.
+                  </Text>
+                )}
 
                 {/* Status Update (optional) */}
                 <Text style={styles.sectionLabel}>Update Status (Optional)</Text>
@@ -1032,6 +1052,21 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500',
     color: '#374151',
+  },
+  outcomeChipDisabled: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    opacity: 0.5,
+  },
+  outcomeChipTextDisabled: {
+    color: '#9ca3af',
+  },
+  noTalkHint: {
+    fontSize: 12,
+    color: '#b91c1c',
+    marginTop: 6,
+    fontStyle: 'italic',
   },
   statusGrid: {
     flexDirection: 'row',

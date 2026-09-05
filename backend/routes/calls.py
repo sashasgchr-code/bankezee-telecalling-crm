@@ -628,6 +628,10 @@ async def create_mobile_call_log(log: MobileCallLogCreate, current_user: dict = 
     # Canonical lead identifier used everywhere else (detailed-calls joins on both `id` and _id)
     resolved_lead_id = lead.get("id") or str(lead["_id"])
 
+    # Anti-fraud: a 0-second (unanswered) call must never be recorded as Connected.
+    if log.outcome == "connected" and (not log.duration_seconds or log.duration_seconds <= 0):
+        raise HTTPException(status_code=400, detail="A call with 0s talk time cannot be logged as Connected.")
+
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
