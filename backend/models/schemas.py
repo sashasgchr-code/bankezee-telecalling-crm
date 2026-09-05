@@ -143,6 +143,7 @@ class MobileCallLogCreate(BaseModel):
     notes: Optional[str] = None
     call_type: str = "outgoing"  # outgoing, incoming
     device_timestamp: Optional[str] = None  # When the call happened on device
+    duration_detected: Optional[bool] = None  # True if talk time was read from the device call log
 
 # ===================== ACTIVITY MODELS =====================
 

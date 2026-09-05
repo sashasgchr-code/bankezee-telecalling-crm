@@ -628,8 +628,11 @@ async def create_mobile_call_log(log: MobileCallLogCreate, current_user: dict = 
     # Canonical lead identifier used everywhere else (detailed-calls joins on both `id` and _id)
     resolved_lead_id = lead.get("id") or str(lead["_id"])
 
-    # Anti-fraud: a 0-second (unanswered) call must never be recorded as Connected.
-    if log.outcome == "connected" and (not log.duration_seconds or log.duration_seconds <= 0):
+    # Anti-fraud: block Connected only when 0 talk time was CONFIRMED from the device
+    # call log (duration_detected). If detection was unknown (duration_detected False),
+    # allow it - the module may have failed to read a genuine call. Legacy clients that
+    # omit the flag keep the strict behaviour.
+    if log.outcome == "connected" and log.duration_seconds <= 0 and log.duration_detected is not False:
         raise HTTPException(status_code=400, detail="A call with 0s talk time cannot be logged as Connected.")
 
     now = datetime.now(timezone.utc)

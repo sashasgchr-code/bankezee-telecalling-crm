@@ -229,8 +229,10 @@ const LeadDetailScreen = ({ route, navigation }) => {
       return;
     }
 
-    // Anti-fraud guard: block "Connected" when there is no talk time.
-    if (selectedOutcome === 'connected' && (detectedCallDuration || 0) === 0) {
+    // Anti-fraud guard: block "Connected" ONLY when we CONFIRMED 0 talk time
+    // (detection succeeded and returned 0). If duration is unknown (null, e.g. the
+    // call-log module could not read it), do NOT block - the agent may have really talked.
+    if (selectedOutcome === 'connected' && detectedCallDuration === 0) {
       Alert.alert('Not allowed', 'A call with 0s talk time cannot be logged as Connected. Please select the correct outcome.');
       return;
     }
@@ -242,6 +244,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
         outcome: selectedOutcome,
         notes: callNotes,
         duration_seconds: detectedCallDuration || 0,
+        duration_detected: detectedCallDuration !== null && detectedCallDuration !== undefined,
         call_type: 'outgoing',
         device_timestamp: callStartTime ? new Date(callStartTime).toISOString() : new Date().toISOString(),
       });
@@ -546,8 +549,8 @@ const LeadDetailScreen = ({ route, navigation }) => {
                 <Text style={styles.sectionLabel}>Call Outcome *</Text>
                 <View style={styles.outcomeGrid}>
                   {callOutcomes.map((outcome) => {
-                    // Anti-fraud: a call with 0s talk time cannot be marked "Connected".
-                    const noTalkTime = (detectedCallDuration || 0) === 0;
+                    // Anti-fraud: block "Connected" only when a 0s call was CONFIRMED.
+                    const noTalkTime = detectedCallDuration === 0;
                     const disabled = outcome.id === 'connected' && noTalkTime;
                     return (
                       <TouchableOpacity
@@ -574,9 +577,9 @@ const LeadDetailScreen = ({ route, navigation }) => {
                     );
                   })}
                 </View>
-                {(detectedCallDuration || 0) === 0 && (
+                {detectedCallDuration === 0 && (
                   <Text style={styles.noTalkHint}>
-                    "Connected" is unavailable because no talk time was detected for this call.
+                    "Connected" is unavailable because this call had 0s talk time (not answered).
                   </Text>
                 )}
 
