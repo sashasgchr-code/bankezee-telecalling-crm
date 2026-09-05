@@ -724,10 +724,12 @@ async def admin_get_attendance_summary(
             "present": {"$sum": {"$cond": [{"$eq": ["$attendance_status", "PRESENT"]}, 1, 0]}},
             "late": {"$sum": {"$cond": [{"$eq": ["$attendance_status", "LATE"]}, 1, 0]}},
             "half_day": {"$sum": {"$cond": [{"$eq": ["$attendance_status", "HALF_DAY"]}, 1, 0]}},
-            "on_leave": {"$sum": {"$cond": [{"$eq": ["$attendance_status", "ON_LEAVE"]}, 1, 0]}},
+            "on_leave": {"$sum": {"$cond": [{"$or": [
+                {"$eq": ["$attendance_status", "ON_LEAVE"]},
+                {"$eq": ["$work_mode", "LEAVE"]}
+            ]}, 1, 0]}},
             "office": {"$sum": {"$cond": [{"$eq": ["$work_mode", "OFFICE"]}, 1, 0]}},
             "wfh": {"$sum": {"$cond": [{"$eq": ["$work_mode", "WORK_FROM_HOME"]}, 1, 0]}},
-            "leave": {"$sum": {"$cond": [{"$eq": ["$work_mode", "LEAVE"]}, 1, 0]}},
             "checked_in": {"$sum": {"$cond": [{"$ne": ["$check_in_time", None]}, 1, 0]}},
             "checked_out": {"$sum": {"$cond": [{"$ne": ["$check_out_time", None]}, 1, 0]}},
         }}
@@ -754,7 +756,7 @@ async def admin_get_attendance_summary(
         "late": summary.get("late", 0),
         "absent": absent,
         "half_day": summary.get("half_day", 0),
-        "on_leave": summary.get("on_leave", 0) + summary.get("leave", 0),
+        "on_leave": summary.get("on_leave", 0),
         "office": summary.get("office", 0),
         "wfh": summary.get("wfh", 0),
         "currently_working": summary.get("checked_in", 0) - summary.get("checked_out", 0),

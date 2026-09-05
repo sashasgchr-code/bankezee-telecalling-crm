@@ -77,3 +77,7 @@ WEB (frontend):
 VERIFIED: all changed mobile files compile under babel-preset-expo; backend endpoints curl-tested 200 (team/today, reports/hourly, manager-team-members, leads/stats) with correct shapes; post-call fix tested across id types; web Attendance renders Export PDF (screenshot, no compile overlay).
 NOT verified on-device: RN mobile UI (cannot render Expo here) and live TL/Manager-account nav (no TL/manager test creds).
 KNOWN/BACKLOG: "no duplicate call records" (#10) — the crash is fixed but the dual-collection merge (call_logs mobile vs verified_call_logs sync) dedup was intentionally NOT changed to avoid regression; needs verification on device.
+
+## 2026-06 — Fix: Assign Leave double-counted on Attendance summary
+- Bug: admin/leave-assign writes ONE attendance doc with attendance_status=ON_LEAVE AND work_mode=LEAVE. /attendance/admin/summary counted on_leave (by status) + leave (by work_mode) then SUMMED them (line 757) -> every assigned leave showed as 2 On Leave.
+- Fix (backend/routes/attendance.py admin_get_attendance_summary): on_leave now counts each record once via {$or:[status==ON_LEAVE, work_mode==LEAVE]}; removed redundant `leave` field and the `+ summary.get("leave")` addition. Verified: single leave doc -> on_leave=1 (was 2). Requires production redeploy to reach connect.bankezee.com.
