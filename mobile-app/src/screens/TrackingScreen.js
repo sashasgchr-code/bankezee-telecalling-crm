@@ -51,9 +51,10 @@ const TrackingScreen = ({ user }) => {
     
     try {
       const response = await getDailyTrackingSheet(selectedUser, selectedMonth, selectedYear);
-      // Find the data for selected user
-      const userData = Array.isArray(response) 
-        ? response.find(d => d.user_id === selectedUser) 
+      // Find the data for selected user (fall back to the single returned row so the
+      // sheet always loads, matching the web's alias-aware single-agent behavior)
+      const userData = Array.isArray(response)
+        ? (response.find(d => d.user_id === selectedUser) || response[0] || null)
         : response;
       setData(userData);
     } catch (error) {

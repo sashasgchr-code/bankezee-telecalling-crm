@@ -213,9 +213,9 @@ export const getUsers = async () => {
 };
 
 export const getTelecallers = async () => {
-  const response = await api.get('/users');
-  // Filter to only telecallers
-  return response.data.filter(u => u.role === 'telecaller');
+  // Same source as the web dropdowns (all GP roles: growth_partner/telecaller/sales_agent/partner)
+  const response = await api.get('/users/growth-partners');
+  return response.data || [];
 };
 
 export const createUser = async (userData) => {
@@ -240,7 +240,8 @@ export const getDashboardStats = async (period = 'today') => {
 };
 
 export const getTelecallerReports = async (period = 'today') => {
-  const response = await api.get('/reports/telecaller-summary', { params: { period } });
+  // Web-parity Summary endpoint (returns { overall, telecaller_reports })
+  const response = await api.get('/reports/telecallers', { params: { period } });
   return response.data;
 };
 

@@ -33,3 +33,9 @@
 ## 2026-09-04 (e) — Mobile APK: structured unlimited Existing Loans editor
 - mobile-app FileDetailScreen.js: replaced the 3 fixed loan text fields with the web-parity structured existing_loans array editor (bank, loan_type, loan_amount, sanction_date, outstanding, roi, emi), unlimited Add/Remove, totals, legacy loans read-only. Wired into load + save (additional_data.existing_loans). Babel parse OK.
 - app.json already at version 2.4.1 / versionCode 13 (APK profile, production backend) — folds this change in; no rebuild bump needed as no APK was built yet.
+
+## 2026-09-04 (f) — Mobile web-parity fixes
+- api.js getTelecallerReports: /reports/telecaller-summary (404, didn't exist) -> /reports/telecallers (web Summary endpoint).
+- api.js getTelecallers: /users (role==telecaller only) -> /users/growth-partners (all GP roles), matching web dropdowns. Also used by DataScreen reassignment (reads id/name only - safe) and TrackingScreen dropdown.
+- TrackingScreen: single-agent row now falls back to response[0] so the sheet always loads (alias-safe), matching web.
+- app.json bumped to version 2.4.2 / versionCode 14. Babel parse OK on all edited files.
