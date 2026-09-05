@@ -52,3 +52,28 @@
 - Navigation (App.js) restructured: 5 bottom tabs (Dashboard, Data, Files, Follow-ups, More). Team/Reports/Leave + the 5 new screens registered as Stack screens reachable from More; Eligibility reached from a "Check Bank Eligibility" button added to FileDetailScreen (web parity — button on file detail).
 - Version bumped app.json 2.5.0 / versionCode 16; config.js APP_VERSION 2.5.0.
 - Verification: all 7 new/edited RN files compile under babel-preset-expo; all backend endpoints curl-verified (admin token, same get_current_user path as GP) returning the exact shapes the screens consume (policies have id; check-eligibility returns profile/results/counts; my-hourly top-level totals; unified call logs = flat array). On-device UI NOT visually tested (Expo app can't be rendered by the web screenshot tool) — needs user's Expo/EAS build to confirm visuals.
+
+## 2026-06 — Mobile roles GP + TL + Manager, session isolation, post-call & filter fixes, web PDF
+Mobile version 2.6.0 / versionCode 17.
+
+ROLE MODEL: roles are admin/hr/manager/ops/growth_partner. TL = growth_partner with is_tl=true (a flag, not a role). Mobile getMobileRole(user): manager->manager; GP role + is_tl->tl; GP role->gp; everything else (admin/hr/ops)->blocked.
+
+MOBILE (mobile-app):
+- App.js rewritten: role-based navigators. GP & TL share GpTabs (Dashboard, Data, Files, Follow-ups, More). Manager gets ManagerTabs (Files, Team, Reports, More) — no Dashboard/Data/personal Attendance, starts on Files. Admin/HR/Ops -> WebOnlyScreen ("This role is supported on the BankEzee web application. Please use the web portal."). AppNavigator keyed by user.id => full remount on account switch.
+- Session isolation (#14): handleLogin AsyncStorage.clear() before storing new; handleLogout AsyncStorage.clear() (wipes filters, last sync, auth). Nav remount clears in-memory state.
+- MoreScreen role-aware: gp=[Attendance,PolicyMaster,Leave]; tl=[MyTeam,Reports,HourlyReport,Attendance,PolicyMaster,Leave]; manager=[HourlyReport,TeamAttendance,PolicyMaster,Leave]. No standalone Call Log tab/menu anywhere (TL Call Log removed per spec; call logging still works via post-call).
+- New MyTeamScreen: TL -> GET /users/my-team, Manager -> GET /users/manager-team-members (same mapping/stats as web). New TeamAttendanceScreen: GET /attendance/team/today.
+- ReportsScreen rewritten to use role-scoped GET /reports/hourly (old /reports/telecallers is admin-only -> 403 for TL/manager). HourlyReportScreen now role-aware: tl/manager -> /reports/hourly (team, per-member expandable), gp -> /reports/my-hourly (self).
+- DataScreen filter-count fix (#11): badges now come from GET /leads/stats (full visible dataset, called WITHOUT the active status/outcome filter) so counts stay stable when a chip is tapped; 'All' uses totals.total. Removed calculateStatusCounts(page).
+- api.js: added getMyTeam, getManagerTeam, getTeamHourly, getTeamAttendanceToday, getLeadsStats.
+
+BACKEND:
+- calls.py POST /call-logs/mobile (#10 fix): resolve lead by UUID `id` first then ObjectId `_id` (was ObjectId(log.lead_id) -> bson InvalidId 500 = "Failed to log call outcome" on legacy/imported leads). Role check now uses is_gp_role (was == "telecaller"); GP access + daily-session stats now apply to all GP roles. Verified: real UUID lead -> 200; non-ObjectId id -> 404 (never 500).
+- attendance.py NEW GET /attendance/team/today: Manager/TL-scoped team attendance (HR/admin-only /attendance/admin/* can't be used by managers). Returns per-member rows (name, role, check-in/out IST, status, work_mode) + summary; absent members included.
+
+WEB (frontend):
+- admin/Attendance.js (used by Admin AND HR): added "Export PDF" button (jsPDF + jspdf-autotable) -> BankEzee heading, date, generated IST timestamp, total, columns Employee/Role/Work Mode/Check In/Check Out/Working/Status, A4 landscape, respects current filters (filteredRecords). Existing CSV Export untouched.
+
+VERIFIED: all changed mobile files compile under babel-preset-expo; backend endpoints curl-tested 200 (team/today, reports/hourly, manager-team-members, leads/stats) with correct shapes; post-call fix tested across id types; web Attendance renders Export PDF (screenshot, no compile overlay).
+NOT verified on-device: RN mobile UI (cannot render Expo here) and live TL/Manager-account nav (no TL/manager test creds).
+KNOWN/BACKLOG: "no duplicate call records" (#10) — the crash is fixed but the dual-collection merge (call_logs mobile vs verified_call_logs sync) dedup was intentionally NOT changed to avoid regression; needs verification on device.

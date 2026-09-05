@@ -585,6 +585,102 @@ async def admin_get_today_attendance(
     
     return result
 
+@router.get("/team/today")
+async def team_get_today_attendance(
+    target_date: Optional[str] = Query(None, alias="date"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Today's attendance for the caller's mapped team (Manager / Team Lead scoped).
+
+    Managers and TLs cannot use the HR/Admin-only /attendance/admin endpoints, so this
+    returns exactly their recursive subtree via the shared team resolver. One row per
+    team member, including members with no record today (shown as Absent).
+    """
+    from bson import ObjectId as _OID
+    from utils.auth import normalize_role, is_gp_role, get_user_team_ids, GP_ROLES
+
+    role = normalize_role(current_user.get("role", ""))
+    if role not in ("manager", "admin", "ops") and not (current_user.get("is_tl") and is_gp_role(role)):
+        raise HTTPException(status_code=403, detail="Manager or Team Lead access required")
+
+    team_ids = set(await get_user_team_ids(current_user) or [])
+
+    # Date window (IST calendar day)
+    if target_date:
+        try:
+            parsed = datetime.fromisoformat(target_date.replace('Z', '+00:00'))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=IST)
+            else:
+                parsed = parsed.astimezone(IST)
+            today_start = parsed.replace(hour=0, minute=0, second=0, microsecond=0)
+        except ValueError:
+            today_start, _ = get_ist_today_range()
+    else:
+        today_start, _ = get_ist_today_range()
+    today_end = today_start + timedelta(days=1)
+    s_utc = today_start.astimezone(timezone.utc)
+    e_utc = today_end.astimezone(timezone.utc)
+
+    # Team member documents (match on both id and _id)
+    oid_list = [_OID(t) for t in team_ids if _OID.is_valid(t)]
+    members = await db.users.find({
+        "$or": [{"id": {"$in": list(team_ids)}}, {"_id": {"$in": oid_list}}],
+        "role": {"$in": GP_ROLES},
+    }).to_list(1000)
+
+    member_ids = sorted({m.get("id") for m in members if m.get("id")} |
+                        {str(m["_id"]) for m in members})
+    att_records = await db.attendance.find({
+        "attendance_date": {"$gte": s_utc, "$lt": e_utc},
+        "user_id": {"$in": member_ids},
+    }).to_list(2000)
+    att_map = {}
+    for r in att_records:
+        att_map[r.get("user_id")] = r
+
+    rows = []
+    summary = {"present": 0, "wfh": 0, "leave": 0, "absent": 0, "total": 0}
+    seen = set()
+    for m in members:
+        person_key = m.get("id") or str(m["_id"])
+        if person_key in seen:
+            continue
+        seen.add(person_key)
+        rec = att_map.get(m.get("id")) or att_map.get(str(m["_id"]))
+        status = rec.get("attendance_status") if rec else "ABSENT"
+        work_mode = rec.get("work_mode") if rec else None
+        ci = utc_to_ist(rec["check_in_time"]) if rec and rec.get("check_in_time") else None
+        co = utc_to_ist(rec["check_out_time"]) if rec and rec.get("check_out_time") else None
+        rows.append({
+            "user_id": person_key,
+            "name": m.get("full_name") or m.get("name") or (m.get("email", "").split("@")[0]),
+            "role": "Team Lead" if m.get("is_tl") else "Growth Partner",
+            "is_tl": bool(m.get("is_tl")),
+            "attendance_status": status,
+            "work_mode": work_mode,
+            "check_in_time_ist": ci.strftime("%I:%M %p") if ci else None,
+            "check_out_time_ist": co.strftime("%I:%M %p") if co else None,
+        })
+        summary["total"] += 1
+        if work_mode == "wfh":
+            summary["wfh"] += 1
+        elif status in ("ON_LEAVE", "LEAVE"):
+            summary["leave"] += 1
+        elif status in ("PRESENT", "LATE"):
+            summary["present"] += 1
+        else:
+            summary["absent"] += 1
+
+    rows.sort(key=lambda r: (r["attendance_status"] == "ABSENT", r["name"] or ""))
+    return {
+        "date": today_start.strftime("%Y-%m-%d"),
+        "records": rows,
+        "summary": summary,
+    }
+
+
+
 @router.get("/admin/summary")
 async def admin_get_attendance_summary(
     target_date_str: Optional[str] = Query(None, alias="date"),

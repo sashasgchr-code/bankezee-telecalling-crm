@@ -606,13 +606,28 @@ async def create_mobile_call_log(log: MobileCallLogCreate, current_user: dict = 
     This endpoint is called after the post-call modal is submitted in the mobile app.
     It creates a unified call log in the main call_logs collection.
     """
-    lead = await db.leads.find_one({"_id": ObjectId(log.lead_id)})
+    # Resolve the lead by its UUID `id` first, then by ObjectId `_id`. Legacy/imported leads
+    # use a UUID string in `id` (not a 24-char ObjectId), so ObjectId(log.lead_id) must never
+    # be called blindly - that was raising bson InvalidId and surfacing as
+    # "Failed to log call outcome" on the mobile post-call modal.
+    lead = await db.leads.find_one({"id": log.lead_id})
+    if not lead and ObjectId.is_valid(log.lead_id):
+        lead = await db.leads.find_one({"_id": ObjectId(log.lead_id)})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-    
-    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
+
+    from utils.auth import normalize_role, is_gp_role
+    role = normalize_role(current_user.get("role", ""))
+    is_gp = is_gp_role(role)
+    # A Growth Partner may only log a call against their own assigned lead. Match on every
+    # identity the user carries so leads assigned under a legacy id are not falsely blocked.
+    user_identities = {current_user.get("id"), str(current_user.get("_id", ""))}
+    if is_gp and lead.get("assigned_to") and lead.get("assigned_to") not in user_identities:
         raise HTTPException(status_code=403, detail="Access denied")
-    
+
+    # Canonical lead identifier used everywhere else (detailed-calls joins on both `id` and _id)
+    resolved_lead_id = lead.get("id") or str(lead["_id"])
+
     now = datetime.now(timezone.utc)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     
@@ -635,7 +650,7 @@ async def create_mobile_call_log(log: MobileCallLogCreate, current_user: dict = 
     
     # Create unified call log in main collection
     log_doc = {
-        "lead_id": log.lead_id,
+        "lead_id": resolved_lead_id,
         "user_id": current_user["id"],
         "user_name": current_user["name"],
         "duration": log.duration_seconds,  # Use native duration
@@ -655,7 +670,7 @@ async def create_mobile_call_log(log: MobileCallLogCreate, current_user: dict = 
     
     # Update lead with last call info
     await db.leads.update_one(
-        {"_id": ObjectId(log.lead_id)},
+        {"_id": lead["_id"]},
         {"$set": {
             "last_call_at": now,
             "last_call_outcome": log.outcome,
@@ -668,7 +683,7 @@ async def create_mobile_call_log(log: MobileCallLogCreate, current_user: dict = 
     )
     
     # Update daily session stats for mobile calls
-    if current_user["role"] == "telecaller":
+    if is_gp:
         inc_data = {
             "total_call_seconds": log.duration_seconds,
             "verified_talk_time_seconds": log.duration_seconds if log.duration_seconds > 0 else 0

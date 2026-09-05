@@ -1565,3 +1565,13 @@ IMPLEMENTED (native, no WebViews): CallLog, HourlyReport, Attendance (matrix), P
 Endpoints used (all GP-accessible via get_current_user): /call-logs/unified, /reports/my-hourly, /attendance/today, /attendance/my/monthly-matrix, /attendance/check-in|check-out, /files/policies, /bank-policies/check-eligibility/{id}, /bank-policies/eligibility-history/{id}.
 Verified: babel compile + live endpoint shapes. NOT visually device-tested.
 BACKLOG (P1/P2): Policy Master add/edit modal (currently view-only); on-device QA of all screens via Expo/EAS build; verify EAS build config for final APK push; Bank Name cleanup script (P3).
+
+---
+## Mobile Roles GP + TL + Manager — Status (2026-06, app 2.6.0/vc17)
+Mobile supports 3 roles; Admin/HR/Ops are web-only (blocked with web-portal message).
+- GP: Dashboard, Data, Files, Follow-ups, More(Attendance, Policy Master, Leave), Bank Eligibility (file detail), Calling+Post-call.
+- TL (growth_partner + is_tl): all GP screens + More(My Team, Reports, Hourly Report). No standalone Call Log. Leave = own only.
+- Manager (role=manager): Files(team), Team, Reports, More(Hourly Report, Team Attendance, Policy Master, Leave). No Dashboard/Data/personal Attendance; starts on Files.
+Endpoints reused/added: /users/my-team (TL), /users/manager-team-members (mgr), /reports/hourly (scoped Summary+Hourly), /attendance/team/today (NEW scoped), /leads/stats (stable Data badges), POST /call-logs/mobile (crash fix).
+Fixes: #10 post-call ObjectId crash (done), #11 Data filter counts (done), #14 session isolation (done), #16 web Attendance Export PDF (done).
+BACKLOG: on-device QA (Expo/EAS) of all role flows; verify with real TL & Manager accounts; #10 duplicate-call dedup across call_logs vs verified_call_logs (crash fixed, dedup unchanged).

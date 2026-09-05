@@ -456,4 +456,40 @@ export const getMyMonthlyMatrix = async (month, year) => {
   return response.data;
 };
 
+// ============ TEAM LEAD / MANAGER PARITY ============
+
+// TL's mapped team (GPs under this TL) with per-member stats
+export const getMyTeam = async () => {
+  const response = await api.get('/users/my-team');
+  return response.data;
+};
+
+// Manager's full mapped subtree with per-member stats
+export const getManagerTeam = async () => {
+  const response = await api.get('/users/manager-team-members');
+  return response.data;
+};
+
+// Team hourly report (role-scoped: Manager -> their GPs, TL -> their team)
+export const getTeamHourly = async (date = null) => {
+  const params = {};
+  if (date) params.date = date;
+  const response = await api.get('/reports/hourly', { params });
+  return response.data;
+};
+
+// Team attendance for today (Manager / TL scoped)
+export const getTeamAttendanceToday = async (date = null) => {
+  const params = {};
+  if (date) params.date = date;
+  const response = await api.get('/attendance/team/today', { params });
+  return response.data;
+};
+
+// Full-dataset lead stats (status + outcome counts) for stable Data-tab badges
+export const getLeadsStats = async (params = {}) => {
+  const response = await api.get('/leads/stats', { params });
+  return response.data;
+};
+
 export default api;

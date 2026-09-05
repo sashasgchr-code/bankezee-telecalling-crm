@@ -1,17 +1,26 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 
-const MENU = [
-  { key: 'Team', icon: '👥', label: 'Team', desc: 'View team members' },
-  { key: 'Reports', icon: '📈', label: 'Reports', desc: 'Performance summary & recordings' },
-  { key: 'CallLog', icon: '📞', label: 'Call Log', desc: 'Your call history' },
-  { key: 'HourlyReport', icon: '⏱️', label: 'Hourly Report', desc: 'Calls, leads & files by hour' },
-  { key: 'Attendance', icon: '📅', label: 'Attendance', desc: 'Check-in & monthly summary' },
-  { key: 'PolicyMaster', icon: '🏦', label: 'Policy Master', desc: 'Bank policies & criteria' },
-  { key: 'Leave', icon: '🌴', label: 'Leave', desc: 'Leave & WFH requests' },
-];
+const ITEMS = {
+  MyTeam: { icon: '👥', label: 'My Team', desc: 'Your mapped team & stats' },
+  Reports: { icon: '📈', label: 'Reports', desc: 'Team performance summary' },
+  HourlyReport: { icon: '⏱️', label: 'Hourly Report', desc: 'Calls, leads & files by hour' },
+  Attendance: { icon: '📅', label: 'Attendance', desc: 'Check-in & monthly summary' },
+  TeamAttendance: { icon: '🗓️', label: 'Team Attendance', desc: "Your team's attendance today" },
+  PolicyMaster: { icon: '🏦', label: 'Policy Master', desc: 'Bank policies & criteria' },
+  Leave: { icon: '🌴', label: 'Leave', desc: 'Your leave & WFH requests' },
+};
 
-const MoreScreen = ({ navigation, user, onLogout }) => {
+// Menu contents per mobile role. Tabs already cover the primary screens for each role.
+const MENU_BY_ROLE = {
+  gp: ['Attendance', 'PolicyMaster', 'Leave'],
+  tl: ['MyTeam', 'Reports', 'HourlyReport', 'Attendance', 'PolicyMaster', 'Leave'],
+  manager: ['HourlyReport', 'TeamAttendance', 'PolicyMaster', 'Leave'],
+};
+
+const MoreScreen = ({ navigation, user, mobileRole = 'gp', onLogout }) => {
+  const keys = MENU_BY_ROLE[mobileRole] || MENU_BY_ROLE.gp;
+
   const confirmLogout = () => {
     Alert.alert('Logout', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -27,22 +36,26 @@ const MoreScreen = ({ navigation, user, onLogout }) => {
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        {MENU.map(item => (
-          <TouchableOpacity
-            key={item.key}
-            style={styles.row}
-            onPress={() => navigation.navigate(item.key)}
-            activeOpacity={0.7}
-            data-testid={`more-${item.key.toLowerCase()}`}
-          >
-            <Text style={styles.icon}>{item.icon}</Text>
-            <View style={styles.rowText}>
-              <Text style={styles.label}>{item.label}</Text>
-              <Text style={styles.desc}>{item.desc}</Text>
-            </View>
-            <Text style={styles.arrow}>›</Text>
-          </TouchableOpacity>
-        ))}
+        {keys.map(key => {
+          const item = ITEMS[key];
+          if (!item) return null;
+          return (
+            <TouchableOpacity
+              key={key}
+              style={styles.row}
+              onPress={() => navigation.navigate(key)}
+              activeOpacity={0.7}
+              data-testid={`more-${key.toLowerCase()}`}
+            >
+              <Text style={styles.icon}>{item.icon}</Text>
+              <View style={styles.rowText}>
+                <Text style={styles.label}>{item.label}</Text>
+                <Text style={styles.desc}>{item.desc}</Text>
+              </View>
+              <Text style={styles.arrow}>›</Text>
+            </TouchableOpacity>
+          );
+        })}
 
         <TouchableOpacity style={styles.logoutBtn} onPress={confirmLogout} data-testid="more-logout">
           <Text style={styles.logoutText}>Log Out</Text>

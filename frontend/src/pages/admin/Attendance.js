@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { format, parseISO } from 'date-fns';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 /**
  * AdminAttendanceDashboard - Full attendance management for admins
@@ -244,6 +246,49 @@ const AdminAttendanceDashboard = () => {
     }
   };
 
+  const handleExportPDF = () => {
+    if (!filteredRecords || filteredRecords.length === 0) {
+      alert('No data to export');
+      return;
+    }
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const generatedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+    doc.setFontSize(18);
+    doc.setTextColor(22, 163, 74);
+    doc.text('BankEzee Connect', 40, 40);
+    doc.setFontSize(12);
+    doc.setTextColor(17, 24, 39);
+    doc.text('Attendance Report', 40, 60);
+    doc.setFontSize(10);
+    doc.setTextColor(107, 114, 128);
+    doc.text(`Date: ${selectedDate}`, 40, 78);
+    doc.text(`Generated: ${generatedAt} IST`, 40, 92);
+    doc.text(`Total Records: ${filteredRecords.length}`, 40, 106);
+
+    const rows = filteredRecords.map((r) => [
+      r.user_name || '-',
+      r.role || 'Growth Partner',
+      (workModeConfig[r.work_mode]?.label) || r.work_mode || 'Office',
+      getDisplayTime(r, 'check_in_time'),
+      getDisplayTime(r, 'check_out_time'),
+      r.working_minutes ? `${Math.floor(r.working_minutes / 60)}h ${r.working_minutes % 60}m` : '-',
+      (r.attendance_status || '-').replace(/_/g, ' '),
+    ]);
+
+    autoTable(doc, {
+      startY: 120,
+      head: [['Employee', 'Role', 'Work Mode', 'Check In', 'Check Out', 'Working', 'Status']],
+      body: rows,
+      styles: { fontSize: 9, cellPadding: 4, overflow: 'linebreak' },
+      headStyles: { fillColor: [22, 163, 74], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [240, 253, 244] },
+      margin: { left: 40, right: 40 },
+    });
+
+    doc.save(`BankEzee_Attendance_${selectedDate}.pdf`);
+  };
+
   const formatTime = (isoString) => {
     if (!isoString) return '--:--';
     // Use Intl.DateTimeFormat with Asia/Kolkata timezone for consistent IST display
@@ -304,6 +349,14 @@ const AdminAttendanceDashboard = () => {
           >
             <Download size={18} />
             Export
+          </button>
+          <button
+            onClick={handleExportPDF}
+            className="btn-secondary flex items-center gap-2"
+            data-testid="attendance-export-pdf"
+          >
+            <Download size={18} />
+            Export PDF
           </button>
         </div>
       </div>

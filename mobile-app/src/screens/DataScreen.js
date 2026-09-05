@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getLeads, getTelecallers } from '../services/api';
+import { getLeads, getTelecallers, getLeadsStats } from '../services/api';
 import { makePhoneCall } from '../services/callLogService';
 
 const FILTER_STORAGE_KEY = '@data_screen_filters';
@@ -31,6 +31,7 @@ const DataScreen = ({ user }) => {
   const [telecallers, setTelecallers] = useState([]);
   const [selectedTelecaller, setSelectedTelecaller] = useState('all');
   const [statusCounts, setStatusCounts] = useState({});
+  const [allCount, setAllCount] = useState(0);
   const filtersLoaded = useRef(false);
   
   // Pagination state
@@ -89,6 +90,7 @@ const DataScreen = ({ user }) => {
       console.error('Error loading filters:', error);
     } finally {
       filtersLoaded.current = true;
+      loadStats();
     }
   };
 
@@ -113,6 +115,23 @@ const DataScreen = ({ user }) => {
     });
     setStatusCounts(counts);
   };
+
+  // Badge counts must reflect the user's COMPLETE visible dataset, never the currently
+  // filtered/paginated page. /leads/stats groups by status over the full dataset and is
+  // deliberately called WITHOUT the active status/outcome filter so the numbers stay stable
+  // when a filter chip is tapped (tapping only changes which records are displayed).
+  const loadStats = useCallback(async () => {
+    try {
+      const params = {};
+      if (searchQuery && searchQuery.trim().length >= 2) params.search = searchQuery.trim();
+      if (isAdmin && selectedTelecaller !== 'all') params.assigned_to = selectedTelecaller;
+      const stats = await getLeadsStats(params);
+      setStatusCounts(stats.by_status || {});
+      setAllCount(stats.totals?.total || 0);
+    } catch (error) {
+      console.error('Error loading lead stats:', error?.message);
+    }
+  }, [isAdmin, selectedTelecaller, searchQuery]);
 
   const loadLeads = useCallback(async (applyFilters = true, page = 1, append = false) => {
     try {
@@ -158,11 +177,6 @@ const DataScreen = ({ user }) => {
       setCurrentPage(pagination.page || page);
       setTotalPages(pagination.total_pages || 1);
       setTotalCount(pagination.total_count || leadsData.length);
-      
-      // Update status counts from stats endpoint for accurate counts
-      if (!append) {
-        calculateStatusCounts(leadsData);
-      }
     } catch (error) {
       console.error('Error loading leads:', error);
     } finally {
@@ -195,9 +209,16 @@ const DataScreen = ({ user }) => {
       if (filtersLoaded.current) {
         setCurrentPage(1);
         loadLeads(true, 1, false);
+        loadStats();
       }
-    }, [loadLeads])
+    }, [loadLeads, loadStats])
   );
+
+  // Reload the stable badge counts only when the dataset scope changes (agent/search),
+  // NOT when the status/outcome chips change.
+  useEffect(() => {
+    if (filtersLoaded.current) loadStats();
+  }, [selectedTelecaller]);
 
   useEffect(() => {
     loadTelecallers();
@@ -225,12 +246,14 @@ const DataScreen = ({ user }) => {
     // For short queries, do client-side filtering for quick feedback
     if (!searchQuery || searchQuery.trim().length < 2) {
       filterLeads(leads, searchQuery);
+      if (filtersLoaded.current) loadStats();
     }
     // For longer queries, debounce and trigger server-side search
     else {
       const debounceTimer = setTimeout(() => {
         setCurrentPage(1);
         loadLeads(true, 1, false);
+        loadStats();
       }, 500); // Wait 500ms after user stops typing
       return () => clearTimeout(debounceTimer);
     }
@@ -297,7 +320,7 @@ const DataScreen = ({ user }) => {
 
   // Get count for a status
   const getStatusCount = (statusId) => {
-    if (statusId === 'all') return totalCount;
+    if (statusId === 'all') return allCount;
     return statusCounts[statusId] || 0;
   };
 
