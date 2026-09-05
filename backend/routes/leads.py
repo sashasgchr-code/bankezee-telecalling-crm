@@ -280,7 +280,7 @@ def build_leads_query(
 async def list_leads(
     # Pagination
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=10, le=200, description="Items per page"),
+    page_size: int = Query(50, ge=10, le=300, description="Items per page"),
     # Filters
     status: Optional[str] = None,
     statuses: Optional[str] = None,  # Comma-separated for multi-select

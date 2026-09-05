@@ -38,7 +38,8 @@ const AdminLeads = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [pageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(50);
+  const [pageInput, setPageInput] = useState('');
   
   // Modals
   const [showAddModal, setShowAddModal] = useState(false);
@@ -79,11 +80,11 @@ const AdminLeads = () => {
     }
   };
 
-  const fetchData = async (page = currentPage) => {
+  const fetchData = async (page = currentPage, size = pageSize) => {
     try {
       const params = {
         page: page,
-        page_size: pageSize,
+        page_size: size,
       };
       if (searchQuery) params.search = searchQuery;
       if (statusFilter) params.status = statusFilter;
@@ -133,6 +134,21 @@ const AdminLeads = () => {
       setCurrentPage(newPage);
       fetchData(newPage);
     }
+  };
+
+  const handlePageSizeChange = (newSize) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    setIsLoading(true);
+    fetchData(1, newSize);
+  };
+
+  const handleJumpToPage = () => {
+    const n = parseInt(pageInput, 10);
+    if (!isNaN(n)) {
+      handlePageChange(Math.min(Math.max(n, 1), totalPages));
+    }
+    setPageInput('');
   };
 
   const handleRefresh = () => {
@@ -603,29 +619,75 @@ const AdminLeads = () => {
         </p>
         
         {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => handlePageChange(currentPage - 1)}
-              disabled={currentPage <= 1 || isLoading}
-              className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
-              data-testid="prev-page-btn"
+        <div className="flex items-center gap-3">
+          {/* Page size selector */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-500">Per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => handlePageSizeChange(parseInt(e.target.value, 10))}
+              disabled={isLoading}
+              className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+              data-testid="page-size-select"
             >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="text-sm text-gray-700 min-w-[60px] text-center">
-              {currentPage} / {totalPages}
-            </span>
-            <button
-              onClick={() => handlePageChange(currentPage + 1)}
-              disabled={currentPage >= totalPages || isLoading}
-              className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
-              data-testid="next-page-btn"
-            >
-              <ChevronRight size={18} />
-            </button>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={200}>200</option>
+              <option value={300}>300</option>
+            </select>
           </div>
-        )}
+
+          {totalPages > 1 && (
+            <>
+              {/* Jump to page */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-gray-500">Go to</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={pageInput}
+                  onChange={(e) => setPageInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleJumpToPage(); }}
+                  placeholder={`${currentPage}`}
+                  disabled={isLoading}
+                  className="w-16 text-sm border border-gray-200 rounded-lg px-2 py-1.5 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  data-testid="page-jump-input"
+                />
+                <button
+                  onClick={handleJumpToPage}
+                  disabled={isLoading}
+                  className="text-sm px-2.5 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-40"
+                  data-testid="page-jump-btn"
+                >
+                  Go
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage <= 1 || isLoading}
+                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+                  data-testid="prev-page-btn"
+                >
+                  <ChevronLeft size={18} />
+                </button>
+                <span className="text-sm text-gray-700 min-w-[60px] text-center">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage >= totalPages || isLoading}
+                  className="p-1.5 rounded-lg border border-gray-200 text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100"
+                  data-testid="next-page-btn"
+                >
+                  <ChevronRight size={18} />
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Data List */}
