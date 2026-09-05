@@ -22,6 +22,7 @@ import {
   assignFile,
   getOpsTeam,
 } from '../services/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const FILE_STATUSES = [
   { value: 'new', label: 'New' },
@@ -74,6 +75,7 @@ const FileDetailScreen = ({ route, navigation }) => {
   const [opsTeam, setOpsTeam] = useState([]);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedAssignee, setSelectedAssignee] = useState('');
+  const [canManageFiles, setCanManageFiles] = useState(false);
   
   // Editable fields
   const [details, setDetails] = useState({
@@ -100,6 +102,15 @@ const FileDetailScreen = ({ route, navigation }) => {
   useEffect(() => {
     loadFileDetails();
     loadOpsTeam();
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('user_data');
+        const role = raw ? (JSON.parse(raw).role || '').toLowerCase() : '';
+        setCanManageFiles(['admin', 'manager', 'ops'].includes(role));
+      } catch (e) {
+        setCanManageFiles(false);
+      }
+    })();
   }, [fileId]);
 
   const loadFileDetails = async () => {
@@ -436,38 +447,51 @@ const FileDetailScreen = ({ route, navigation }) => {
             {renderField('Tenure Required (months)', 'tenure_required', 'numeric')}
           </View>
 
-          {/* Status Update */}
+          {/* File Status */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📋 Update Status</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusContainer}>
-              {FILE_STATUSES.map(status => (
+            <Text style={styles.sectionTitle}>📋 File Status</Text>
+            {canManageFiles ? (
+              <>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusContainer}>
+                  {FILE_STATUSES.map(status => (
+                    <TouchableOpacity
+                      key={status.value}
+                      style={[
+                        styles.statusChip,
+                        selectedStatus === status.value && styles.statusChipActive
+                      ]}
+                      onPress={() => setSelectedStatus(status.value)}
+                      data-testid={`file-status-${status.value}`}
+                    >
+                      <Text style={[
+                        styles.statusChipText,
+                        selectedStatus === status.value && styles.statusChipTextActive
+                      ]}>
+                        {status.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
                 <TouchableOpacity
-                  key={status.value}
-                  style={[
-                    styles.statusChip,
-                    selectedStatus === status.value && styles.statusChipActive
-                  ]}
-                  onPress={() => setSelectedStatus(status.value)}
+                  style={[styles.updateBtn, selectedStatus === file?.file_status && styles.updateBtnDisabled]}
+                  onPress={handleStatusUpdate}
+                  disabled={selectedStatus === file?.file_status}
+                  data-testid="update-status-btn"
                 >
-                  <Text style={[
-                    styles.statusChipText,
-                    selectedStatus === status.value && styles.statusChipTextActive
-                  ]}>
-                    {status.label}
-                  </Text>
+                  <Text style={styles.updateBtnText}>Update Status</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <TouchableOpacity 
-              style={[styles.updateBtn, selectedStatus === file?.file_status && styles.updateBtnDisabled]}
-              onPress={handleStatusUpdate}
-              disabled={selectedStatus === file?.file_status}
-            >
-              <Text style={styles.updateBtnText}>Update Status</Text>
-            </TouchableOpacity>
+              </>
+            ) : (
+              <View style={styles.readOnlyStatusBox} data-testid="file-status-readonly">
+                <Text style={styles.readOnlyStatusValue}>
+                  {(FILE_STATUSES.find(s => s.value === (file?.file_status || 'new'))?.label) || file?.file_status || 'New'}
+                </Text>
+              </View>
+            )}
           </View>
 
-          {/* Assignment */}
+          {/* Assignment - Admin/Manager/Ops only */}
+          {canManageFiles && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>👥 Assign File</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusContainer}>
@@ -497,6 +521,7 @@ const FileDetailScreen = ({ route, navigation }) => {
               <Text style={styles.updateBtnText}>Assign</Text>
             </TouchableOpacity>
           </View>
+          )}
 
           {/* Notes */}
           <View style={styles.section}>
@@ -825,6 +850,20 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  readOnlyStatusBox: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 1,
+    borderColor: '#86efac',
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  readOnlyStatusValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#15803d',
   },
   noteInput: {
     borderWidth: 1,

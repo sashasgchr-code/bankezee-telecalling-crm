@@ -32,8 +32,9 @@ const HourColumns = ({ rows }) => (
   </View>
 );
 
-const HourlyReportScreen = ({ navigation, mobileRole }) => {
-  const isTeam = mobileRole === 'tl' || mobileRole === 'manager';
+const HourlyReportScreen = ({ navigation, route, mobileRole }) => {
+  const scope = route?.params?.scope; // 'self' | 'team' | undefined
+  const isTeam = scope ? scope === 'team' : (mobileRole === 'tl' || mobileRole === 'manager');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

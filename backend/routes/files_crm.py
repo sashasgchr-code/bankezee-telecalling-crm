@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 import logging
-from utils.auth import get_current_user, require_admin, require_file_write
+from utils.auth import get_current_user, require_admin, require_file_write, require_file_manage
 from utils.json_safe import json_safe
 from utils.helpers import doc_ref_filter
 from utils.bank_names import canonical_bank_name
@@ -2042,7 +2042,7 @@ async def update_file_details(file_id: str, update_data: FileDetailsUpdate, curr
 
 
 @router.put("/{file_id}/file-status")
-async def update_file_status(file_id: str, status_update: FileStatusUpdate, current_user: dict = Depends(require_file_write)):
+async def update_file_status(file_id: str, status_update: FileStatusUpdate, current_user: dict = Depends(require_file_manage)):
     """Update file CRM status"""
     if status_update.file_status not in FILE_STATUSES:
         raise HTTPException(status_code=400, detail=f"Invalid status. Valid: {', '.join(FILE_STATUSES)}")
@@ -2095,7 +2095,7 @@ async def add_file_note(file_id: str, note_data: NoteAdd, current_user: dict = D
 
 
 @router.put("/{file_id}/assign")
-async def assign_file(file_id: str, assignment: FileAssignment, current_user: dict = Depends(require_file_write)):
+async def assign_file(file_id: str, assignment: FileAssignment, current_user: dict = Depends(require_file_manage)):
     """Assign a file to an operations team member"""
     assignee = await db.users.find_one({"id": assignment.assigned_to}, {"_id": 0})
     if not assignee:

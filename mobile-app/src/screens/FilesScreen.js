@@ -54,11 +54,37 @@ const FilesScreen = ({ navigation, user }) => {
   const [hasMore, setHasMore] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [loanType, setLoanType] = useState('');
+  const [datePreset, setDatePreset] = useState('all');
   const [opsTeam, setOpsTeam] = useState([]);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
 
   const isAdmin = user?.role === 'admin';
+
+  // Same filter scope applied to BOTH stats cards and the file list.
+  const buildParams = () => {
+    const params = {};
+    if (statusFilter) params.file_status = statusFilter;
+    if (loanType) params.loan_types = loanType;
+    const now = new Date();
+    const iso = (d) => d.toISOString();
+    if (datePreset === 'today') {
+      const s = new Date(now); s.setHours(0, 0, 0, 0);
+      params.start_date = iso(s); params.end_date = iso(now);
+    } else if (datePreset === 'yesterday') {
+      const s = new Date(now); s.setDate(s.getDate() - 1); s.setHours(0, 0, 0, 0);
+      const e = new Date(now); e.setDate(e.getDate() - 1); e.setHours(23, 59, 59, 999);
+      params.start_date = iso(s); params.end_date = iso(e);
+    } else if (datePreset === 'week') {
+      const s = new Date(now); s.setDate(s.getDate() - s.getDay()); s.setHours(0, 0, 0, 0);
+      params.start_date = iso(s); params.end_date = iso(now);
+    } else if (datePreset === 'month') {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      params.start_date = iso(s); params.end_date = iso(now);
+    }
+    return params;
+  };
 
   useEffect(() => {
     loadData();
@@ -69,7 +95,8 @@ const FilesScreen = ({ navigation, user }) => {
     setPage(1);
     setFiles([]);
     loadFiles(1, true);
-  }, [statusFilter]);
+    loadStats();
+  }, [statusFilter, loanType, datePreset]);
 
   const loadData = async () => {
     await Promise.all([loadFiles(1, true), loadStats()]);
@@ -78,18 +105,17 @@ const FilesScreen = ({ navigation, user }) => {
   const loadFiles = async (pageNum = 1, reset = false) => {
     try {
       if (reset) setLoading(true);
-      const params = { page: pageNum, limit: 20 };
-      if (statusFilter) params.file_status = statusFilter;
-      
+      const params = { page: pageNum, limit: 20, ...buildParams() };
+
       const response = await getFiles(params);
       const newFiles = response.files || [];
-      
+
       if (reset) {
         setFiles(newFiles);
       } else {
         setFiles(prev => [...prev, ...newFiles]);
       }
-      
+
       setHasMore(pageNum < (response.pagination?.pages || 1));
       setPage(pageNum);
     } catch (error) {
@@ -103,7 +129,8 @@ const FilesScreen = ({ navigation, user }) => {
 
   const loadStats = async () => {
     try {
-      const response = await getFilesStats();
+      // Stats represent the COMPLETE filtered dataset (same filters as the list).
+      const response = await getFilesStats(buildParams());
       setStats(response);
     } catch (error) {
       console.error('Error loading stats:', error);
@@ -162,6 +189,14 @@ const FilesScreen = ({ navigation, user }) => {
     );
   });
 
+  const fmtAmt = (v) => {
+    const n = Number(v) || 0;
+    if (n >= 10000000) return `₹${(n / 10000000).toFixed(1)}Cr`;
+    if (n >= 100000) return `₹${(n / 100000).toFixed(1)}L`;
+    if (n >= 1000) return `₹${(n / 1000).toFixed(0)}K`;
+    return `₹${n}`;
+  };
+
   const renderStatsCard = (title, value, color) => (
     <View style={[styles.statCard, { borderLeftColor: color }]}>
       <Text style={styles.statValue}>{value || 0}</Text>
@@ -213,29 +248,65 @@ const FilesScreen = ({ navigation, user }) => {
     );
   };
 
-  const renderFilters = () => (
-    <View style={styles.filtersContainer}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <TouchableOpacity
-          style={[styles.filterChip, !statusFilter && styles.filterChipActive]}
-          onPress={() => setStatusFilter('')}
-        >
-          <Text style={[styles.filterChipText, !statusFilter && styles.filterChipTextActive]}>All</Text>
-        </TouchableOpacity>
-        {Object.entries(FILE_STATUS_LABELS).map(([key, label]) => (
+  const renderFilters = () => {
+    const LOAN_TYPES = [
+      { v: '', l: 'All Loans' }, { v: 'personal_loan', l: 'Personal' }, { v: 'home_loan', l: 'Home' },
+      { v: 'business_loan', l: 'Business' }, { v: 'car_loan', l: 'Car' }, { v: 'lap', l: 'LAP' },
+      { v: 'education_loan', l: 'Education' }, { v: 'gold_loan', l: 'Gold' },
+    ];
+    const DATES = [
+      { v: 'all', l: 'All Time' }, { v: 'today', l: 'Today' }, { v: 'yesterday', l: 'Yesterday' },
+      { v: 'week', l: 'This Week' }, { v: 'month', l: 'This Month' },
+    ];
+    return (
+      <View style={styles.filtersContainer}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           <TouchableOpacity
-            key={key}
-            style={[styles.filterChip, statusFilter === key && styles.filterChipActive]}
-            onPress={() => setStatusFilter(key)}
+            style={[styles.filterChip, !statusFilter && styles.filterChipActive]}
+            onPress={() => setStatusFilter('')}
           >
-            <Text style={[styles.filterChipText, statusFilter === key && styles.filterChipTextActive]}>
-              {label}
-            </Text>
+            <Text style={[styles.filterChipText, !statusFilter && styles.filterChipTextActive]}>All</Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
+          {Object.entries(FILE_STATUS_LABELS).map(([key, label]) => (
+            <TouchableOpacity
+              key={key}
+              style={[styles.filterChip, statusFilter === key && styles.filterChipActive]}
+              onPress={() => setStatusFilter(key)}
+              data-testid={`files-status-${key}`}
+            >
+              <Text style={[styles.filterChipText, statusFilter === key && styles.filterChipTextActive]}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+          {LOAN_TYPES.map(lt => (
+            <TouchableOpacity
+              key={lt.v || 'all'}
+              style={[styles.filterChip, loanType === lt.v && styles.filterChipLoan]}
+              onPress={() => setLoanType(lt.v)}
+              data-testid={`files-loan-${lt.v || 'all'}`}
+            >
+              <Text style={[styles.filterChipText, loanType === lt.v && styles.filterChipTextActive]}>{lt.l}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+          {DATES.map(d => (
+            <TouchableOpacity
+              key={d.v}
+              style={[styles.filterChip, datePreset === d.v && styles.filterChipDate]}
+              onPress={() => setDatePreset(d.v)}
+              data-testid={`files-date-${d.v}`}
+            >
+              <Text style={[styles.filterChipText, datePreset === d.v && styles.filterChipTextActive]}>{d.l}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
 
   const renderBulkActions = () => {
     if (!isAdmin || selectedFiles.length === 0) return null;
@@ -290,7 +361,11 @@ const FilesScreen = ({ navigation, user }) => {
             {renderStatsCard('Login', stats.login, '#6366F1')}
             {renderStatsCard('Approved', stats.approved, '#22C55E')}
             {renderStatsCard('Disbursed', stats.disbursed, '#10B981')}
-            {renderStatsCard('Rejected', stats.final_rejections, '#EF4444')}
+            {renderStatsCard('Interim Rej', stats.interim_rejects, '#F97316')}
+            {renderStatsCard('Final Rej', stats.final_rejections, '#EF4444')}
+            {renderStatsCard('Approved ₹', fmtAmt(stats.total_approved_amount), '#22C55E')}
+            {renderStatsCard('Disbursed ₹', fmtAmt(stats.total_disbursed_amount), '#10B981')}
+            {renderStatsCard('Pipeline ₹', fmtAmt(stats.amt_in_pipeline), '#8B5CF6')}
           </ScrollView>
         </View>
       )}
@@ -423,6 +498,12 @@ const styles = StyleSheet.create({
   },
   filterChipActive: {
     backgroundColor: '#16a34a',
+  },
+  filterChipLoan: {
+    backgroundColor: '#2563eb',
+  },
+  filterChipDate: {
+    backgroundColor: '#7c3aed',
   },
   filterChipText: {
     fontSize: 12,

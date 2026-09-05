@@ -4,7 +4,8 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'rea
 const ITEMS = {
   MyTeam: { icon: '👥', label: 'My Team', desc: 'Your mapped team & stats' },
   Reports: { icon: '📈', label: 'Reports', desc: 'Team performance summary' },
-  HourlyReport: { icon: '⏱️', label: 'Hourly Report', desc: 'Calls, leads & files by hour' },
+  MyHourly: { icon: '⏱️', label: 'My Hourly Report', desc: 'Your own calls, leads & files by hour' },
+  TeamHourly: { icon: '📊', label: 'Team Hourly Report', desc: "Your team's activity by hour" },
   Attendance: { icon: '📅', label: 'Attendance', desc: 'Check-in & monthly summary' },
   TeamAttendance: { icon: '🗓️', label: 'Team Attendance', desc: "Your team's attendance today" },
   PolicyMaster: { icon: '🏦', label: 'Policy Master', desc: 'Bank policies & criteria' },
@@ -13,9 +14,15 @@ const ITEMS = {
 
 // Menu contents per mobile role. Tabs already cover the primary screens for each role.
 const MENU_BY_ROLE = {
-  gp: ['Attendance', 'PolicyMaster', 'Leave'],
-  tl: ['MyTeam', 'Reports', 'HourlyReport', 'Attendance', 'PolicyMaster', 'Leave'],
-  manager: ['HourlyReport', 'TeamAttendance', 'PolicyMaster', 'Leave'],
+  gp: ['MyHourly', 'Attendance', 'PolicyMaster', 'Leave'],
+  tl: ['MyTeam', 'Reports', 'MyHourly', 'TeamHourly', 'Attendance', 'PolicyMaster', 'Leave'],
+  manager: ['TeamHourly', 'TeamAttendance', 'PolicyMaster', 'Leave'],
+};
+
+// Map menu keys to the actual navigator screen + params.
+const navTarget = {
+  MyHourly: ['HourlyReport', { scope: 'self' }],
+  TeamHourly: ['HourlyReport', { scope: 'team' }],
 };
 
 const MoreScreen = ({ navigation, user, mobileRole = 'gp', onLogout }) => {
@@ -43,7 +50,10 @@ const MoreScreen = ({ navigation, user, mobileRole = 'gp', onLogout }) => {
             <TouchableOpacity
               key={key}
               style={styles.row}
-              onPress={() => navigation.navigate(key)}
+              onPress={() => {
+                const [screen, params] = navTarget[key] || [key, undefined];
+                navigation.navigate(screen, params);
+              }}
               activeOpacity={0.7}
               data-testid={`more-${key.toLowerCase()}`}
             >

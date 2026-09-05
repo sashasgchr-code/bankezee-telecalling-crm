@@ -198,6 +198,13 @@ async def require_file_write(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="HR has view-only access to Files")
     return current_user
 
+async def require_file_manage(current_user: dict = Depends(get_current_user)):
+    """File status edit & (re)assignment: Admin, Manager, Ops only. GP/TL/HR are rejected."""
+    role = normalize_role(current_user.get("role", ""))
+    if role not in ("admin", "manager", "ops"):
+        raise HTTPException(status_code=403, detail="Only Admin and Manager can modify file status or assignment")
+    return current_user
+
 async def require_bank_processing(current_user: dict = Depends(get_current_user)):
     """
     Require bank processing permission - only Admin and Ops.

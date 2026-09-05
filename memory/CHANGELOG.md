@@ -100,3 +100,12 @@ WEB: frontend/src/pages/admin/Attendance.js Export PDF (jsPDF) - Admin/HR.
 VERSION: app.json 2.6.0/vc17 AND android/app/build.gradle versionCode 17 / versionName 2.6.0 (NOT reverted).
 
 DELIVERY: no git remote in workspace -> user must click "Save to Github" to push commit to origin/main; backend needs Emergent Deploy to reach connect.bankezee.com.
+
+## 2026-06 — Mobile web-parity pass (2.6.1/vc18)
+- LeaveScreen: replaced raw Object.entries dump (showed Accrual_start_month, yearly_allowance, Infinity) with clean 6-metric summary from /leave/balance: Accrued/Used/Available (days) + Rewards/Penalties/Net (₹, from total_rewards/total_penalties/net_amount). Number()-guarded (no Infinity/NaN). Requests/WFH tabs unchanged.
+- FilesScreen: stats now use /files/dashboard/stats WITH the same filters as the list (file_status, loan_types, date preset -> start/end_date). Added loan-type + date-preset (All/Today/Yesterday/Week/Month) filter rows; both stats+list react to all filters. Added amount cards (Approved ₹, Disbursed ₹, Pipeline ₹). Web-matching keys: total_files/new/in_progress/login/approved/disbursed/interim_rejects/final_rejections/total_approved_amount/total_disbursed_amount/amt_in_pipeline. Verified filter changes stats (513 all -> 94 disbursed).
+- FileDetailScreen: File Status is editable ONLY for admin/manager/ops (loads role from AsyncStorage user_data); GP/TL/HR see read-only "File Status" box. Assign File section hidden for non-managers.
+- Backend: NEW require_file_manage (admin/manager/ops only) applied to PUT /files/{id}/file-status and PUT /files/{id}/assign (previously require_file_write which only blocked HR -> GP/TL could edit). Verified unauthorized -> 403. bulk-assign already admin-only.
+- Hourly reports: HourlyReportScreen accepts route.params.scope ('self'|'team'). GP More has "My Hourly Report"; TL More has BOTH "My Hourly Report" (scope self) and "Team Hourly Report" (scope team); Manager has "Team Hourly Report". /reports/my-hourly (self) and /reports/hourly (team) unchanged.
+- Version 2.6.1 / versionCode 18 in app.json + build.gradle + config.js.
+- Preserved: call logging, post-call modal, 0s-no-Connected guard (UI+backend), Schedule Follow-up fix, Data filter counts, Manager/TL navigators, Team Attendance, session isolation, Admin/HR block, PDF export.

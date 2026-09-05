@@ -337,8 +337,8 @@ export const getFiles = async (params = {}) => {
 };
 
 // Get files dashboard stats
-export const getFilesStats = async () => {
-  const response = await api.get('/files/dashboard/stats');
+export const getFilesStats = async (params = {}) => {
+  const response = await api.get('/files/dashboard/stats', { params });
   return response.data;
 };
 

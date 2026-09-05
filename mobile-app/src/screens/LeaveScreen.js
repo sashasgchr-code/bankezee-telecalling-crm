@@ -231,20 +231,27 @@ const LeaveScreen = ({ user }) => {
         {/* Balance Tab */}
         {activeTab === 'balance' && leaveBalance && (
           <View style={styles.balanceContainer}>
-            {Object.entries(leaveBalance)
-              .filter(([key]) => key !== 'year')
-              .map(([type, data]) => (
-                <View key={type} style={styles.balanceCard}>
-                  <Text style={styles.balanceType}>{type.charAt(0).toUpperCase() + type.slice(1)}</Text>
-                  <View style={styles.balanceValues}>
-                    <Text style={styles.balanceRemaining}>
-                      {typeof data.total === 'number' ? (data.total - data.used).toFixed(1) : '∞'}
-                    </Text>
-                    <Text style={styles.balanceTotal}>/ {data.total}</Text>
-                  </View>
-                  <Text style={styles.balanceUsed}>Used: {data.used} days</Text>
+            {(() => {
+              const n = (v) => {
+                const x = Number(v);
+                return Number.isFinite(x) ? x : 0;
+              };
+              const metrics = [
+                { label: 'Accrued', value: n(leaveBalance.accrued).toFixed(1), sub: 'days', color: '#2563eb' },
+                { label: 'Used', value: n(leaveBalance.used).toFixed(1), sub: 'days', color: '#d97706' },
+                { label: 'Available', value: n(leaveBalance.available).toFixed(1), sub: 'days', color: '#16a34a' },
+                { label: 'Rewards', value: `₹${n(leaveBalance.total_rewards).toLocaleString('en-IN')}`, sub: 'earned', color: '#16a34a' },
+                { label: 'Penalties', value: `₹${n(leaveBalance.total_penalties).toLocaleString('en-IN')}`, sub: 'deducted', color: '#dc2626' },
+                { label: 'Net', value: `₹${n(leaveBalance.net_amount).toLocaleString('en-IN')}`, sub: 'reward/penalty', color: n(leaveBalance.net_amount) >= 0 ? '#16a34a' : '#dc2626' },
+              ];
+              return metrics.map((m) => (
+                <View key={m.label} style={styles.balanceCard}>
+                  <Text style={styles.balanceType}>{m.label}</Text>
+                  <Text style={[styles.balanceRemaining, { color: m.color }]}>{m.value}</Text>
+                  <Text style={styles.balanceUsed}>{m.sub}</Text>
                 </View>
-              ))}
+              ));
+            })()}
           </View>
         )}
 
