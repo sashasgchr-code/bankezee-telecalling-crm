@@ -64,6 +64,12 @@ const TelecallerTabs = ({ user, onLogout }) => {
       <Tab.Screen name="Files">
         {props => <FilesScreen {...props} user={user} />}
       </Tab.Screen>
+      <Tab.Screen name="Team">
+        {props => <TeamScreen {...props} user={user} />}
+      </Tab.Screen>
+      <Tab.Screen name="Reports">
+        {props => <ReportsScreen {...props} user={user} />}
+      </Tab.Screen>
       <Tab.Screen name="Follow-ups">
         {props => <FollowUpsScreen {...props} user={user} />}
       </Tab.Screen>
