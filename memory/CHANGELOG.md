@@ -81,3 +81,22 @@ KNOWN/BACKLOG: "no duplicate call records" (#10) — the crash is fixed but the 
 ## 2026-06 — Fix: Assign Leave double-counted on Attendance summary
 - Bug: admin/leave-assign writes ONE attendance doc with attendance_status=ON_LEAVE AND work_mode=LEAVE. /attendance/admin/summary counted on_leave (by status) + leave (by work_mode) then SUMMED them (line 757) -> every assigned leave showed as 2 On Leave.
 - Fix (backend/routes/attendance.py admin_get_attendance_summary): on_leave now counts each record once via {$or:[status==ON_LEAVE, work_mode==LEAVE]}; removed redundant `leave` field and the `+ summary.get("leave")` addition. Verified: single leave doc -> on_leave=1 (was 2). Requires production redeploy to reach connect.bankezee.com.
+
+## 2026-06 — Corrective pass (commit 2c443d8): call-outcome, follow-up, filters, role nav
+MOBILE (mobile-app):
+- LeadDetailScreen.js: REMOVED manual "Log Call Outcome" button (agents can no longer fabricate outcomes). Post-call modal now opens ONLY via the real-call AppState flow (initiateCall -> phone -> AppState 'active' -> Android call-log match -> setShowCallModal(true)). Preserved: device call match, talk time, UUID/legacy ids, outcome save, status update, follow-up, no dup/500.
+- LeadDetailScreen.js: Schedule Follow-up rewritten from iOS-only Alert.prompt (dead on Android) to a real Modal with Day + Time(IST) chips + notes; buildIstScheduledAt() produces a timezone-independent UTC ISO for the chosen IST wall-clock; persists via same /follow-ups backend; sets lead status follow_up locally + reloads.
+- Deleted obsolete src/screens/TeamScreen.js (generic +Add/telecaller CRUD) - no longer referenced; Manager/TL Team now MyTeamScreen only.
+- (from role pass) App.js: ManagerTabs = Files, Team, Reports, More (NO Dashboard/Data/Follow-ups). GP & TL = GpTabs (Dashboard, Data, Files, Follow-ups, More); TL More adds MyTeam/Reports/HourlyReport. No Call Log anywhere. Admin/HR/Ops -> WebOnlyScreen. getMobileRole(user): manager->manager; GP role + is_tl->tl; GP role->gp; else blocked. AppNavigator keyed by user.id + AsyncStorage.clear() on login/logout.
+- MyTeamScreen (/users/my-team TL, /users/manager-team-members mgr), TeamAttendanceScreen (/attendance/team/today), ReportsScreen & HourlyReportScreen role-scoped (/reports/hourly), DataScreen badges from /leads/stats (full-dataset facets, NOT recomputed on status/outcome tap).
+
+BACKEND:
+- routes/follow_ups.py POST /follow-ups: resolve lead by id-or-ObjectId (fix UUID 500), is_gp_role access check, set lead.status=follow_up + next_follow_up_at. Verified: UUID lead -> 200, status->follow_up.
+- routes/calls.py /call-logs/mobile: UUID/ObjectId lead resolve + is_gp_role (prior).
+- routes/attendance.py: /admin/summary on_leave counted ONCE (leave double-count fix); NEW /attendance/team/today (manager/TL scoped).
+
+WEB: frontend/src/pages/admin/Attendance.js Export PDF (jsPDF) - Admin/HR.
+
+VERSION: app.json 2.6.0/vc17 AND android/app/build.gradle versionCode 17 / versionName 2.6.0 (NOT reverted).
+
+DELIVERY: no git remote in workspace -> user must click "Save to Github" to push commit to origin/main; backend needs Emergent Deploy to reach connect.bankezee.com.
