@@ -1674,3 +1674,8 @@ Extended the Files Dashboard Activity Date filter (previously only Approved/Disb
 File-created date still governs Total/New/In-Progress; the two filters stay independent for all roles. Verified with synthetic Sep-2025 records (interim=1, final=1, pipeline=₹700000) excluded from Aug/Oct windows. Changed file: backend/routes/files_crm.py.
 
 *Last Updated: June 6, 2026*
+
+### ACTIVITY-DATE now also applies to Login (June 6, 2026)
+`get_files_dashboard_stats`: the Login card is now gated by the login EVENT date — with an activity window set, a file counts only if an eligibility `login_done_at` falls inside it; with no window, prior "ever logged in" behavior is preserved. Verified: baseline 334; Sep-2025 window=1 (synthetic), Aug-2025=0. Changed file: backend/routes/files_crm.py.
+
+*Last Updated: June 6, 2026*

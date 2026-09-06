@@ -2803,13 +2803,19 @@ async def get_files_dashboard_stats(
         if file_status in IN_PROGRESS_STATUSES and created_ok:
             in_progress_count += 1
         
-        # LOGIN: File ever reached login-level status OR has login_done=yes in eligibilities
-        file_logged = ever_had_status_via_activities(activities, file_status, LOGIN_AND_BEYOND)
-        if not file_logged:
-            for elig in eligibilities:
-                if is_login_done(elig):
-                    file_logged = True
-                    break
+        # LOGIN: gated by ACTIVITY DATE. With an activity window, the login EVENT
+        # (eligibility login_done_at) must fall inside it; without a window, count any file
+        # that ever reached login (status history or a login_done eligibility).
+        if not activity_from and not activity_to:
+            file_logged = ever_had_status_via_activities(activities, file_status, LOGIN_AND_BEYOND)
+            if not file_logged:
+                for elig in eligibilities:
+                    if is_login_done(elig):
+                        file_logged = True
+                        break
+        else:
+            file_logged = any(is_login_done(elig) and stamp_in_range(elig.get('login_done_at'))
+                              for elig in eligibilities)
         if file_logged:
             login_count += 1
         
