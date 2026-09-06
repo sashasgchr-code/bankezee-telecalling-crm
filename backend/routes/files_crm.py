@@ -2698,7 +2698,9 @@ async def get_files_dashboard_stats(
             return False
         return True
     
-    # Same shared builder as the Files list, so identical filters = identical population
+    # Same shared builder as the Files list, but WITHOUT date filters here: the base is the
+    # full authorized population. File-created date gates the file metrics (below) and activity
+    # date gates the activity metrics (stamp_in_range) - independently, so they never interfere.
     query = await build_files_query(
         db, current_user,
         file_status=file_status,
@@ -2708,10 +2710,10 @@ async def get_files_dashboard_stats(
         assigned_to=assigned_to,
         loan_types=loan_types,
         search=search,
-        start_date=start_date,
-        end_date=end_date,
-        activity_start_date=activity_start_date,
-        activity_end_date=activity_end_date,
+        start_date=None,
+        end_date=None,
+        activity_start_date=None,
+        activity_end_date=None,
         min_star=min_star,
         team_view=(team_view == 'true'),
     )
@@ -2719,9 +2721,25 @@ async def get_files_dashboard_stats(
         return EMPTY_DASHBOARD_STATS()
     
     all_files = await db.leads.find(query).to_list(10000)
+
+    # FILE-CREATED window gates Total Files / New / In Progress (the day it became a File).
+    created_from = parse_iso(start_date) if start_date else None
+    created_to = parse_iso(end_date) if end_date else None
+
+    def file_created_in_range(f):
+        if not created_from and not created_to:
+            return True
+        moment = parse_iso(f.get('file_created_at')) or parse_iso(f.get('created_at'))
+        if not moment:
+            return False
+        if created_from and moment < created_from:
+            return False
+        if created_to and moment > created_to:
+            return False
+        return True
     
     # Initialize metrics
-    total_files = len(all_files)
+    total_files = 0
     new_count = 0
     in_progress_count = 0
     login_count = 0
@@ -2742,7 +2760,13 @@ async def get_files_dashboard_stats(
     
     for f in all_files:
         file_status = (f.get('file_status') or 'new').lower()
-        status_counts[file_status] = status_counts.get(file_status, 0) + 1
+
+        # FILE metrics (Total / New / In Progress / by_status / loans_by_type) are gated by the
+        # FILE-CREATED window only.
+        created_ok = file_created_in_range(f)
+        if created_ok:
+            total_files += 1
+            status_counts[file_status] = status_counts.get(file_status, 0) + 1
         
         # Get activities
         activities = f.get('file_activities', []) or f.get('activities', [])
@@ -2766,17 +2790,17 @@ async def get_files_dashboard_stats(
         except (ValueError, TypeError):
             pass
         
-        # Loans by Type (using type_of_loan from file_details)
+        # Loans by Type (using type_of_loan from file_details) - file-created window
         type_of_loan = file_details.get('type_of_loan', '').strip()
-        if type_of_loan:
+        if type_of_loan and created_ok:
             loans_by_type[type_of_loan] = loans_by_type.get(type_of_loan, 0) + 1
         
-        # NEW: Current status is 'new'
-        if file_status == 'new':
+        # NEW: Current status is 'new' (within the file-created window)
+        if file_status == 'new' and created_ok:
             new_count += 1
         
-        # IN PROGRESS: Current status in IN_PROGRESS_STATUSES
-        if file_status in IN_PROGRESS_STATUSES:
+        # IN PROGRESS: Current status in IN_PROGRESS_STATUSES (within the file-created window)
+        if file_status in IN_PROGRESS_STATUSES and created_ok:
             in_progress_count += 1
         
         # LOGIN: File ever reached login-level status OR has login_done=yes in eligibilities

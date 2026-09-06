@@ -151,11 +151,18 @@ async def build_files_query(
     if search:
         clauses.append(search_clause(search))
 
-    created = _date_clause("created_at", start_date, end_date)
-    if created:
+    # File-created date (the day the lead BECAME a File), with a legacy fallback to created_at.
+    # NOTE: activity-date is intentionally NOT applied to the base population - it only narrows
+    # the activity metrics (Login/Approved/Disbursed/Rejects/Pipeline), which each apply it to
+    # their own event timestamp. This keeps the two date filters fully independent.
+    if start_date or end_date:
+        fc = _date_clause("file_created_at", start_date, end_date)
+        cc = _date_clause("created_at", start_date, end_date)
+        created = {"$or": [
+            fc,
+            {"$and": [{"file_created_at": {"$in": [None, ""]}}, cc]},
+            {"$and": [{"file_created_at": {"$exists": False}}, cc]},
+        ]}
         clauses.append(created)
-    activity = _date_clause("updated_at", activity_start_date, activity_end_date)
-    if activity:
-        clauses.append(activity)
 
     return {"$and": clauses} if len(clauses) > 1 else clauses[0]

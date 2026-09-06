@@ -1478,8 +1478,18 @@ async def get_daily_tracking_sheet(
             "_id": {"user_id": "$user_id", "date": "$date_str"},
             "calls": {"$sum": 1},
             "connected": {"$sum": {"$cond": [{"$eq": ["$outcome", "connected"]}, 1, 0]}},
-            "talk_time": {"$sum": {"$ifNull": ["$duration", 0]}}
+            "talk_time": {"$sum": {"$ifNull": ["$duration", 0]}},
+            "first_call": {"$min": "$created_at"}
         }}
+    ]
+
+    # Attendance check-out time per (user, date) - used for the tracking End Time
+    attendance_pipeline = [
+        {"$match": {"user_id": {"$in": telecaller_ids},
+                    "attendance_date": {"$gte": range_start, "$lt": range_end}}},
+        {"$addFields": {"date_str": {"$dateToString": {"format": "%Y-%m-%d", "date": {"$add": ["$attendance_date", 19800000]}}}}},
+        {"$group": {"_id": {"user_id": "$user_id", "date": "$date_str"},
+                    "check_out": {"$max": "$check_out_time"}}}
     ]
     
     # Aggregation for leads by date (status=leads only; Files handled separately)
@@ -1502,11 +1512,12 @@ async def get_daily_tracking_sheet(
         {"$group": {"_id": {"user_id": "$owner", "date": "$date_str"}, "count": {"$sum": 1}}}
     ]
 
-    activity_stats, call_stats, lead_stats, file_stats = await asyncio.gather(
+    activity_stats, call_stats, lead_stats, file_stats, attendance_stats = await asyncio.gather(
         db.activity_logs.aggregate(activity_pipeline).to_list(3100),
         db.call_logs.aggregate(call_pipeline).to_list(3100),
         db.leads.aggregate(lead_pipeline).to_list(3100),
-        db.leads.aggregate(file_pipeline).to_list(3100)
+        db.leads.aggregate(file_pipeline).to_list(3100),
+        db.attendance.aggregate(attendance_pipeline).to_list(3100)
     )
     
     # Build lookup maps
@@ -1518,7 +1529,14 @@ async def get_daily_tracking_sheet(
     call_map = {}
     for c in call_stats:
         key = (c["_id"]["user_id"], c["_id"]["date"])
-        call_map[key] = {"calls": c["calls"], "connected": c["connected"], "talk_time": c["talk_time"]}
+        call_map[key] = {"calls": c["calls"], "connected": c["connected"],
+                         "talk_time": c["talk_time"], "first_call": c.get("first_call")}
+
+    # Attendance check-out per (user, date)
+    checkout_map = {}
+    for a in attendance_stats:
+        key = (a["_id"]["user_id"], a["_id"]["date"])
+        checkout_map[key] = a.get("check_out")
     
     lead_map = {}
     for l in lead_stats:
@@ -1571,25 +1589,39 @@ async def get_daily_tracking_sheet(
             activities = []
             calls = {"calls": 0, "connected": 0, "talk_time": 0}
             leads = {"leads": 0, "files": 0}
+            first_call_dt = None
+            checkout_dt = None
             for tc_key in tc_keys:
                 key = (tc_key, date_str)
                 activities.extend(activity_map.get(key, []))
                 c = call_map.get(key)
                 if c:
-                    calls = {k: calls[k] + c[k] for k in calls}
+                    calls["calls"] += c["calls"]
+                    calls["connected"] += c["connected"]
+                    calls["talk_time"] += c["talk_time"]
+                    fc = c.get("first_call")
+                    if fc and (first_call_dt is None or fc < first_call_dt):
+                        first_call_dt = fc
                 l = lead_map.get(key)
                 if l:
                     leads = {k: leads[k] + l[k] for k in leads}
+                co = checkout_map.get(key)
+                if co and (checkout_dt is None or co > checkout_dt):
+                    checkout_dt = co
+
+            def _fmt_ist(dt):
+                if not dt:
+                    return None
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(IST).strftime("%H:%M")
+
+            # Start Time = when this GP's FIRST ACTUAL CALL started that day (not login).
+            # End Time = this GP's attendance CHECK-OUT time (not logout / last call).
+            start_time = _fmt_ist(first_call_dt)
+            end_time = _fmt_ist(checkout_dt)
             
-            start_time = None
-            end_time = None
-            for act in activities:
-                if act["action"] == "login" and not start_time:
-                    start_time = act["time"]
-                elif act["action"] == "logout":
-                    end_time = act["time"]
-            
-            if start_time or calls["calls"] > 0 or leads["leads"] > 0 or leads["files"] > 0:
+            if start_time or calls["calls"] > 0 or leads["leads"] > 0 or leads["files"] > 0 or end_time:
                 talk_time_seconds = calls["talk_time"]
                 daily_data.append({
                     "date": date_str,
