@@ -1666,3 +1666,11 @@ VERIFIED: teja growth-partners 18→7, files 94→52, no longer includes Nithin/
 FLAG for user: Masula Saikiran's role is currently `sales_agent`, not `manager`. If he must log in and view this team via the Manager web scope, his role needs to be set to `manager` (separate decision — not changed here per "data fix only").
 
 *Last Updated: June 6, 2026*
+
+### ACTIVITY-DATE now applies to Rejects + Pipeline (June 6, 2026)
+Extended the Files Dashboard Activity Date filter (previously only Approved/Disbursed/Login) to also gate:
+- Interim Rejects & Final Rejections: by the reject EVENT date = latest eligibility `rejected_at` (fallback file `rejected_at`/`updated_at`), not merely current status.
+- Amt in Pipeline: each qualifying eligibility contributes only if its `login_done_at` falls in the activity window.
+File-created date still governs Total/New/In-Progress; the two filters stay independent for all roles. Verified with synthetic Sep-2025 records (interim=1, final=1, pipeline=₹700000) excluded from Aug/Oct windows. Changed file: backend/routes/files_crm.py.
+
+*Last Updated: June 6, 2026*

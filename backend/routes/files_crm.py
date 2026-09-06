@@ -2837,21 +2837,30 @@ async def get_files_dashboard_stats(
                 except (ValueError, TypeError):
                     pass
         
-        # INTERIM REJECTS: Current status in INTERIM_REJECTS
-        if file_status in INTERIM_REJECTS:
+        # INTERIM REJECTS / FINAL REJECTIONS: gated by ACTIVITY DATE (the reject event date).
+        # Event date = latest eligibility rejected_at, falling back to the file's last update.
+        reject_stamps = [e.get('rejected_at') for e in eligibilities if e.get('rejected_at')]
+        reject_dt = None
+        for s in reject_stamps:
+            m = parse_iso(s)
+            if m and (reject_dt is None or m > reject_dt):
+                reject_dt = m
+        reject_event = reject_dt if reject_dt else f.get('rejected_at') or f.get('updated_at')
+        
+        if file_status in INTERIM_REJECTS and stamp_in_range(reject_event):
             interim_rejects += 1
         
-        # FINAL REJECTIONS: Current status in FINAL_REJECTIONS
-        if file_status in FINAL_REJECTIONS:
+        if file_status in FINAL_REJECTIONS and stamp_in_range(reject_event):
             final_rejections += 1
         
-        # PIPELINE: SUM eligibilities[].eligible_amount where the bank is logged in with an
-        # application id, not yet disbursed, not declined, and the file is not finally rejected
+        # AMT IN PIPELINE: gated by ACTIVITY DATE via each qualifying eligibility's login_done_at
+        # (bank login done + application id, not yet disbursed, not declined, file not finally rejected)
         if file_status not in FINAL_REJECTIONS + ['disbursed']:
             for elig in eligibilities:
                 if (is_login_done(elig) and elig.get('application_id')
                         and not is_disbursed_elig(elig)
-                        and elig.get('approval_status') != 'declined'):
+                        and elig.get('approval_status') != 'declined'
+                        and stamp_in_range(elig.get('login_done_at'))):
                     try:
                         pipeline_amount += float(elig.get('eligible_amount') or 0)
                     except (ValueError, TypeError):
