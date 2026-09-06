@@ -76,6 +76,7 @@ const FileDetailScreen = ({ route, navigation }) => {
   const [selectedStatus, setSelectedStatus] = useState('');
   const [selectedAssignee, setSelectedAssignee] = useState('');
   const [canManageFiles, setCanManageFiles] = useState(false);
+  const [expandedElig, setExpandedElig] = useState(null);
   
   // Editable fields
   const [details, setDetails] = useState({
@@ -446,6 +447,56 @@ const FileDetailScreen = ({ route, navigation }) => {
             {renderField('Loan Amount Required (₹)', 'loan_amount_required', 'numeric')}
             {renderField('Tenure Required (months)', 'tenure_required', 'numeric')}
           </View>
+
+          {/* Profile Analysis (read-only) */}
+          {(file?.cibil_score != null || file?.cibil_issues || file?.foir != null || file?.foir_percentage != null || file?.company_type || file?.company_category) && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>📊 Profile Analysis</Text>
+              <View style={styles.roGrid}>
+                {file?.cibil_score != null && <View style={styles.roItem}><Text style={styles.roLabel}>CIBIL Score</Text><Text style={styles.roValue}>{String(file.cibil_score)}</Text></View>}
+                {!!file?.cibil_issues && <View style={styles.roItem}><Text style={styles.roLabel}>CIBIL Issues</Text><Text style={styles.roValue}>{String(file.cibil_issues)}</Text></View>}
+                {(file?.foir != null || file?.foir_percentage != null) && <View style={styles.roItem}><Text style={styles.roLabel}>FOIR %</Text><Text style={styles.roValue}>{String(file.foir ?? file.foir_percentage)}%</Text></View>}
+                {!!(file?.company_type || file?.company_category) && <View style={styles.roItem}><Text style={styles.roLabel}>Company Type</Text><Text style={styles.roValue}>{String(file.company_type || file.company_category)}</Text></View>}
+              </View>
+            </View>
+          )}
+
+          {/* Bank Eligibilities (read-only, same saved records as web) */}
+          {Array.isArray(file?.eligibilities) && file.eligibilities.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>🏦 Bank Eligibilities ({file.eligibilities.length})</Text>
+              {file.eligibilities.map((el, idx) => {
+                const open = expandedElig === idx;
+                const rows = [
+                  ['Eligible', el.is_eligible == null ? null : (el.is_eligible ? 'Yes' : 'No')],
+                  ['Eligible Amount', el.eligible_amount], ['ROI', el.eligible_roi], ['Tenure', el.eligible_tenure],
+                  ['Not Eligible Reason', el.not_eligible_reason],
+                  ['TVR Done', el.tvr_done == null ? null : (el.tvr_done ? 'Yes' : 'No')], ['TVR Reason', el.tvr_not_done_reason],
+                  ['EMI OK', el.emi_ok == null ? null : (el.emi_ok ? 'Yes' : 'No')], ['EMI Reason', el.emi_not_ok_reason],
+                  ['Login Done', el.login_done == null ? null : (el.login_done ? 'Yes' : 'No')], ['Login Bank', el.login_bank], ['Application ID', el.application_id], ['SM Name', el.sm_name], ['SM Number', el.sm_number], ['Login Rejection', el.login_rejection_reason],
+                  ['Approval Status', el.approval_status], ['Approved Bank', el.approved_bank], ['Approved Amount', el.approved_amount], ['Approved Tenure', el.approved_tenure], ['Approved ROI', el.approved_roi], ['Declined Bank', el.declined_bank], ['Declined Reason', el.declined_reason],
+                  ['RC Submitted', el.rc_submitted == null ? null : (el.rc_submitted ? 'Yes' : 'No')], ['NOC Submitted', el.noc_submitted == null ? null : (el.noc_submitted ? 'Yes' : 'No')], ['Hypothecation', el.hypothecation == null ? null : (el.hypothecation ? 'Yes' : 'No')],
+                  ['Disbursed', el.disbursed == null ? null : (el.disbursed ? 'Yes' : 'No')], ['Disbursed Bank', el.disbursed_bank], ['Disbursed Amount', el.disbursed_amount], ['Disbursal Date', el.disbursal_date], ['Disbursed ROI', el.disbursed_roi], ['Disbursed Tenure', el.disbursed_tenure], ['Disbursement Rejection', el.disbursement_rejection_reason],
+                  ['Commission %', el.commission_percentage], ['Commission Amount', el.commission_amount],
+                ].filter(([, v]) => v !== null && v !== undefined && v !== '');
+                return (
+                  <View key={idx} style={styles.eligCard} data-testid={`elig-ro-${idx}`}>
+                    <TouchableOpacity style={styles.eligHead} onPress={() => setExpandedElig(open ? null : idx)} activeOpacity={0.7}>
+                      <Text style={styles.eligBank}>{el.bank_name || `Bank ${idx + 1}`}</Text>
+                      <Text style={styles.eligChevron}>{open ? '▲' : '▼'}</Text>
+                    </TouchableOpacity>
+                    {open && (
+                      <View style={styles.roGrid}>
+                        {rows.map(([label, val]) => (
+                          <View key={label} style={styles.roItem}><Text style={styles.roLabel}>{label}</Text><Text style={styles.roValue}>{String(val)}</Text></View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
           {/* File Status */}
           <View style={styles.section}>
@@ -865,6 +916,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#15803d',
   },
+  roGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 6 },
+  roItem: { width: '50%', paddingVertical: 6, paddingRight: 8 },
+  roLabel: { fontSize: 11, color: '#9ca3af' },
+  roValue: { fontSize: 14, color: '#111827', fontWeight: '600', marginTop: 1 },
+  eligCard: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, marginTop: 10, overflow: 'hidden' },
+  eligHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, backgroundColor: '#f9fafb' },
+  eligBank: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  eligChevron: { fontSize: 12, color: '#9ca3af' },
   noteInput: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
