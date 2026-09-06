@@ -36,19 +36,27 @@ const loadCallLogModule = () => {
   moduleLoadAttempted = true;
   
   try {
-    // First check if NativeModules has the CallLogs module
+    // Load the JS package first, then verify a usable API. Do NOT hard-fail solely
+    // because NativeModules.CallLogs is absent - depending on RN/autolinking the
+    // module can still resolve via the package's default export. This is the
+    // previously-working resilient pattern.
     const { NativeModules } = require('react-native');
-    if (NativeModules.CallLogs) {
-      console.log('✅ NativeModules.CallLogs found');
-    } else {
-      console.log('❌ NativeModules.CallLogs not found - native module not linked');
-      console.log('Available NativeModules:', Object.keys(NativeModules || {}).join(', '));
+    const hasNativeKey = !!NativeModules.CallLogs;
+    console.log(hasNativeKey ? '✅ NativeModules.CallLogs found' : 'ℹ️ NativeModules.CallLogs key absent - trying package require');
+
+    const CallLogPackage = require('react-native-call-log');
+    CallLogsModule = (CallLogPackage && CallLogPackage.default) || CallLogPackage;
+
+    if (!CallLogsModule || typeof CallLogsModule.load !== 'function') {
       diagnosticsState.moduleLoaded = false;
-      diagnosticsState.moduleLoadError = 'NativeModules.CallLogs not found - app needs rebuild';
+      diagnosticsState.moduleLoadError = hasNativeKey
+        ? 'react-native-call-log loaded but CallLogs.load is unavailable'
+        : 'NativeModules.CallLogs not found and package.load unavailable - app needs rebuild';
+      console.log('❌ Call log module unusable. Available NativeModules:', Object.keys(NativeModules || {}).join(', '));
+      CallLogsModule = null;
       return null;
     }
-    
-    CallLogsModule = require('react-native-call-log').default;
+
     diagnosticsState.moduleLoaded = true;
     diagnosticsState.moduleLoadError = null;
     console.log('✅ react-native-call-log module loaded successfully');
