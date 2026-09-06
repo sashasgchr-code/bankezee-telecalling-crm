@@ -1055,31 +1055,36 @@ const FilesDashboard = () => {
                   ))}
                 </select>
                 
-                {/* Managers - Only actual managers */}
-                <select
-                  value={managerFilter}
-                  onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
-                  className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-                  data-testid="manager-filter"
-                >
-                  <option value="">All Managers</option>
-                  {managers.map(mgr => (
-                    <option key={mgr.id} value={mgr.id}>{mgr.full_name || mgr.name}</option>
-                  ))}
-                </select>
-                
-                {/* Team Leads */}
-                <select
-                  value={tlFilter}
-                  onChange={(e) => { setTlFilter(e.target.value); setPage(1); }}
-                  className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
-                  data-testid="tl-filter"
-                >
-                  <option value="">All Team Leads</option>
-                  {teamLeads.map(tl => (
-                    <option key={tl.id} value={tl.id}>{tl.full_name || tl.name}</option>
-                  ))}
-                </select>
+                {/* Managers & Team Leads - Admin/Ops only. Managers are scoped to
+                    their own recursive team subtree, so these org-wide filters are hidden. */}
+                {!isManager && (
+                  <>
+                    <select
+                      value={managerFilter}
+                      onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
+                      className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                      data-testid="manager-filter"
+                    >
+                      <option value="">All Managers</option>
+                      {managers.map(mgr => (
+                        <option key={mgr.id} value={mgr.id}>{mgr.full_name || mgr.name}</option>
+                      ))}
+                    </select>
+                    
+                    {/* Team Leads */}
+                    <select
+                      value={tlFilter}
+                      onChange={(e) => { setTlFilter(e.target.value); setPage(1); }}
+                      className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                      data-testid="tl-filter"
+                    >
+                      <option value="">All Team Leads</option>
+                      {teamLeads.map(tl => (
+                        <option key={tl.id} value={tl.id}>{tl.full_name || tl.name}</option>
+                      ))}
+                    </select>
+                  </>
+                )}
                 
                 {/* Growth Partners */}
                 <select

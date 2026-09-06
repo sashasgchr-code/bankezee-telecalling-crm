@@ -27,6 +27,7 @@ from utils.database import db
 from utils.auth import get_current_user, require_admin, require_hr_or_admin, ACTIVE_GP_QUERY
 from utils.helpers import serialize_doc, serialize_docs
 from utils.email_service import send_leave_request_notification, send_leave_approval_notification
+from utils.working_days import is_working_day, load_holiday_dates
 from models.schemas import LeaveRequest, LeaveRequestApproval, WFHRequestCreate, WFHRequestApproval
 
 router = APIRouter(prefix="/api/leave", tags=["Leave Management"])
@@ -64,16 +65,16 @@ SPECIAL_YEAR_ACCRUAL_START = {
 }
 
 
-def calculate_leave_days(start_date: datetime, end_date: datetime, half_day: bool = False) -> float:
-    """Calculate number of leave days between dates"""
+def calculate_leave_days(start_date: datetime, end_date: datetime, half_day: bool = False, holidays=None) -> float:
+    """Calculate number of leave days between dates (excludes weekends and holidays)"""
     if half_day:
         return 0.5
     
     days = 0
     current = start_date
     while current <= end_date:
-        # Exclude weekends (optional - based on company policy)
-        if current.weekday() < 5:  # Monday = 0, Friday = 4
+        # Exclude weekends and configured company holidays
+        if is_working_day(current, holidays):
             days += 1
         current += timedelta(days=1)
     return float(days)
@@ -319,8 +320,8 @@ async def submit_leave_request(data: LeaveRequest, current_user: dict = Depends(
     if existing:
         raise HTTPException(status_code=400, detail="You already have a leave request for overlapping dates")
     
-    # Calculate leave days
-    leave_days = calculate_leave_days(start_date, end_date, data.half_day)
+    # Calculate leave days (excluding weekends and configured holidays)
+    leave_days = calculate_leave_days(start_date, end_date, data.half_day, await load_holiday_dates(db))
     
     request_doc = {
         "user_id": current_user["id"],
@@ -418,11 +419,12 @@ async def submit_wfh_request(data: WFHRequestCreate, current_user: dict = Depend
     if to_dt < from_dt:
         raise HTTPException(status_code=400, detail="To Date cannot be before From Date")
 
-    # Working days in range (weekends skipped)
+    # Working days in range (weekends and configured holidays skipped)
+    _holidays = await load_holiday_dates(db)
     working = []
     cur = from_dt
     while cur <= to_dt:
-        if cur.weekday() not in (5, 6):
+        if is_working_day(cur, _holidays):
             working.append(cur)
         cur += timedelta(days=1)
     if not working:
@@ -565,11 +567,11 @@ async def handle_leave_request(
             "created_at": now
         })
         
-        # Create attendance records for leave days
+        # Create attendance records for leave days (skip weekends and holidays)
+        _holidays = await load_holiday_dates(db)
         current_date = request["start_date"]
         while current_date <= request["end_date"]:
-            # Skip weekends
-            if current_date.weekday() < 5:
+            if is_working_day(current_date, _holidays):
                 existing = await db.attendance.find_one({
                     "user_id": request["user_id"],
                     "attendance_date": current_date
@@ -667,9 +669,10 @@ async def handle_wfh_request(
             to_dt = datetime.fromisoformat(to_dt.replace('Z', '+00:00'))
         from_dt = from_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
         to_dt = to_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+        _holidays = await load_holiday_dates(db)
         cur = from_dt
         while cur <= to_dt:
-            if cur.weekday() not in (5, 6):
+            if is_working_day(cur, _holidays):
                 exists = await db.wfh_approvals.find_one({"user_id": request["user_id"], "date": cur})
                 if not exists:
                     await db.wfh_approvals.insert_one({
@@ -1223,11 +1226,12 @@ async def get_monthly_leave_summary(
     # Get all active users
     users = await db.users.find(ACTIVE_GP_QUERY).to_list(500)
     
-    # Calculate working days in month
+    # Calculate working days in month (exclude weekends and configured holidays)
+    _holidays = await load_holiday_dates(db)
     working_days = 0
     current_day = month_start
     while current_day < month_end:
-        if current_day.weekday() < 5:  # Mon-Fri
+        if is_working_day(current_day, _holidays):
             working_days += 1
         current_day += timedelta(days=1)
     

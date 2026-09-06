@@ -45,6 +45,7 @@ const AdminAttendanceDashboard = () => {
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
   const [showWFHAssignModal, setShowWFHAssignModal] = useState(false);
   const [showLeaveAssignModal, setShowLeaveAssignModal] = useState(false);
+  const [showHolidayModal, setShowHolidayModal] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   
   // Form states
@@ -52,6 +53,8 @@ const AdminAttendanceDashboard = () => {
   const [correctionForm, setCorrectionForm] = useState({ check_in_time: '', check_out_time: '', work_mode: '', attendance_status: '', reason: '' });
   const [wfhAssignForm, setWfhAssignForm] = useState({ user_id: '', from_date: '', to_date: '', admin_notes: '' });
   const [leaveAssignForm, setLeaveAssignForm] = useState({ user_id: '', start_date: '', end_date: '', leave_type: 'GENERAL', reason: '' });
+  const [holidays, setHolidays] = useState([]);
+  const [holidayForm, setHolidayForm] = useState({ id: null, date: '', name: '' });
 
   const workModeConfig = {
     OFFICE: { icon: Building2, label: 'Office', color: 'text-blue-600', bgColor: 'bg-blue-100' },
@@ -74,6 +77,7 @@ const AdminAttendanceDashboard = () => {
     fetchSettings();
     fetchWFHRequests();
     fetchUsers();
+    if (currentRole === 'admin') fetchHolidays();
   }, [selectedDate]);
 
   // Fetch monthly matrix when matrix view is enabled
@@ -190,6 +194,44 @@ const AdminAttendanceDashboard = () => {
       fetchWFHRequests();
     } catch (error) {
       alert(error.response?.data?.detail || 'Failed to process WFH request');
+    }
+  };
+
+  const fetchHolidays = async () => {
+    try {
+      const response = await api.get('/attendance/admin/holidays');
+      setHolidays(response.data || []);
+    } catch (error) {
+      console.error('Error fetching holidays:', error);
+    }
+  };
+
+  const handleSaveHoliday = async (e) => {
+    e.preventDefault();
+    if (!holidayForm.date || !holidayForm.name.trim()) {
+      alert('Please provide both a date and a holiday name');
+      return;
+    }
+    try {
+      if (holidayForm.id) {
+        await api.put(`/attendance/admin/holidays/${holidayForm.id}`, { date: holidayForm.date, name: holidayForm.name });
+      } else {
+        await api.post('/attendance/admin/holidays', { date: holidayForm.date, name: holidayForm.name });
+      }
+      setHolidayForm({ id: null, date: '', name: '' });
+      fetchHolidays();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to save holiday');
+    }
+  };
+
+  const handleDeleteHoliday = async (id) => {
+    if (!window.confirm('Delete this holiday?')) return;
+    try {
+      await api.delete(`/attendance/admin/holidays/${id}`);
+      fetchHolidays();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to delete holiday');
     }
   };
 
@@ -360,6 +402,16 @@ const AdminAttendanceDashboard = () => {
             >
               <Settings size={18} />
               Settings
+            </button>
+          )}
+          {currentRole === 'admin' && (
+            <button
+              onClick={() => setShowHolidayModal(true)}
+              className="btn-secondary flex items-center gap-2"
+              data-testid="manage-holidays-btn"
+            >
+              <Calendar size={18} />
+              Holidays
             </button>
           )}
           <button
@@ -1123,6 +1175,87 @@ const AdminAttendanceDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Holiday Calendar Modal (Admin only) */}
+      {showHolidayModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" data-testid="holiday-modal">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Holiday Calendar</h3>
+              <button onClick={() => { setShowHolidayModal(false); setHolidayForm({ id: null, date: '', name: '' }); }} className="text-gray-400 hover:text-gray-600">
+                <XCircle size={22} />
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mb-4">Configured holidays are treated as non-working days across attendance, matrix, WFH and leave calculations. Weekends remain non-working automatically.</p>
+
+            <form onSubmit={handleSaveHoliday} className="flex flex-wrap items-end gap-2 mb-4 p-3 bg-gray-50 rounded-lg">
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                <input
+                  type="date"
+                  data-testid="holiday-date-input"
+                  value={holidayForm.date}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, date: e.target.value })}
+                  className="input-field"
+                  required
+                />
+              </div>
+              <div className="flex-1 min-w-[160px]">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Name / Reason</label>
+                <input
+                  type="text"
+                  data-testid="holiday-name-input"
+                  placeholder="e.g. Independence Day"
+                  value={holidayForm.name}
+                  onChange={(e) => setHolidayForm({ ...holidayForm, name: e.target.value })}
+                  className="input-field"
+                  required
+                />
+              </div>
+              <button type="submit" className="btn-primary h-10" data-testid="holiday-save-btn">
+                {holidayForm.id ? 'Update' : 'Add'}
+              </button>
+              {holidayForm.id && (
+                <button type="button" onClick={() => setHolidayForm({ id: null, date: '', name: '' })} className="btn-secondary h-10">
+                  Cancel
+                </button>
+              )}
+            </form>
+
+            <div className="space-y-2" data-testid="holiday-list">
+              {holidays.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">No holidays configured yet</p>
+              ) : (
+                holidays.map((h) => (
+                  <div key={h.id} className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg">
+                    <div>
+                      <p className="font-medium text-gray-900">{h.name}</p>
+                      <p className="text-sm text-gray-500">{h.date}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setHolidayForm({ id: h.id, date: h.date, name: h.name })}
+                        className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+                        data-testid={`holiday-edit-${h.id}`}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteHoliday(h.id)}
+                        className="px-3 py-1 text-sm bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100"
+                        data-testid={`holiday-delete-${h.id}`}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Settings Modal */}
       {showSettingsModal && settings && (

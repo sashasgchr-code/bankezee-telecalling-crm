@@ -75,3 +75,13 @@ class AttendanceSettingsUpdate(BaseModel):
     allowed_office_radius_meters: Optional[int] = None  # 150
     location_accuracy_threshold_meters: Optional[int] = None  # 150
     require_registered_device: Optional[bool] = None
+
+
+class HolidayCreate(BaseModel):
+    date: str  # ISO date, e.g. "2026-06-25"
+    name: str  # holiday name / reason
+
+
+class HolidayUpdate(BaseModel):
+    date: Optional[str] = None
+    name: Optional[str] = None

@@ -17,7 +17,8 @@ from utils.helpers import serialize_doc
 from models.attendance_schemas import (
     AttendanceCheckIn, AttendanceCheckOut, WFHRequest, 
     AttendanceCorrection, OfficeCreate, OfficeUpdate,
-    AttendanceSettingsUpdate, WFHApproval, LeaveApproval
+    AttendanceSettingsUpdate, WFHApproval, LeaveApproval,
+    HolidayCreate, HolidayUpdate
 )
 
 router = APIRouter(prefix="/api/attendance", tags=["Attendance"])
@@ -64,13 +65,13 @@ def get_ist_today_range():
 
 # ===================== HELPER FUNCTIONS =====================
 
-def is_working_day(d) -> bool:
-    """A day is a working day unless it is a weekend (Sat/Sun).
+from utils.working_days import (is_working_day as _is_working_day, is_non_working,
+                                load_holiday_dates, invalidate_holiday_cache)
 
-    This mirrors the working-day rule used everywhere in attendance/leave. If a
-    configurable holiday system is added later, this is the single place to extend.
-    """
-    return d.weekday() not in (5, 6)
+
+def is_working_day(d, holidays=None) -> bool:
+    """A day is a working day unless it is a weekend OR a configured holiday."""
+    return _is_working_day(d, holidays)
 
 
 def parse_iso_date_naive(value: str) -> datetime:
@@ -81,12 +82,12 @@ def parse_iso_date_naive(value: str) -> datetime:
     return dt.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
-def working_days_in_range(from_dt: datetime, to_dt: datetime):
+def working_days_in_range(from_dt: datetime, to_dt: datetime, holidays=None):
     """Yield naive UTC-midnight datetimes for each WORKING day in [from_dt, to_dt] inclusive."""
     cur = from_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     end = to_dt.replace(hour=0, minute=0, second=0, microsecond=0)
     while cur <= end:
-        if is_working_day(cur):
+        if is_working_day(cur, holidays):
             yield cur
         cur += timedelta(days=1)
 
@@ -559,7 +560,7 @@ async def submit_wfh_request(data: WFHRequest, current_user: dict = Depends(get_
     if existing:
         raise HTTPException(status_code=400, detail="A WFH request already exists for one or more days in this range")
 
-    working = list(working_days_in_range(from_dt, to_dt))
+    working = list(working_days_in_range(from_dt, to_dt, await load_holiday_dates(db)))
     if not working:
         raise HTTPException(status_code=400, detail="Selected range has no working days")
 
@@ -708,7 +709,8 @@ async def team_get_today_attendance(
     for r in att_records:
         att_map[r.get("user_id")] = r
 
-    is_wd = is_working_day(today_start)
+    _holidays = await load_holiday_dates(db)
+    is_wd = is_working_day(today_start, _holidays)
     rows = []
     summary = {"present": 0, "wfh": 0, "leave": 0, "absent": 0, "total": 0}
     seen = set()
@@ -836,12 +838,13 @@ async def admin_get_attendance_summary(
     # Non-working days (weekends/holidays) are NOT counted as absent.
     marked = summary.get("total", 0)
     display_date = day_start.astimezone(IST)
-    is_non_working = not is_working_day(display_date)
-    absent = 0 if is_non_working else max(0, active_users - marked)
+    _holidays = await load_holiday_dates(db)
+    non_working = is_non_working(display_date, _holidays)
+    absent = 0 if non_working else max(0, active_users - marked)
     
     return {
         "date": display_date.strftime("%Y-%m-%d"),
-        "is_working_day": not is_non_working,
+        "is_working_day": not non_working,
         "total_employees": active_users,
         "present": summary.get("present", 0) + summary.get("late", 0),
         "late": summary.get("late", 0),
@@ -975,6 +978,7 @@ async def admin_get_monthly_matrix(
     import calendar
 
     scope = await resolve_attendance_scope(current_user)
+    _holidays = await load_holiday_dates(db)
     ist_now = get_ist_now()
     target_month = month or ist_now.month
     target_year = year or ist_now.year
@@ -1091,12 +1095,13 @@ async def admin_get_monthly_matrix(
             day_of_week = current_date.weekday()
             
             is_weekend = day_of_week in [5, 6]
+            is_off = is_non_working(current_date, _holidays)
             is_future = current_date > today
             
             if is_future:
                 days[day] = {"code": "", "detail": "Future"}
-            elif is_weekend:
-                days[day] = {"code": "-", "detail": "Weekend"}
+            elif is_off:
+                days[day] = {"code": "-", "detail": ("Weekend" if is_weekend else "Holiday")}
             else:
                 summary["working_days"] += 1
 
@@ -1165,6 +1170,7 @@ async def get_my_monthly_matrix(
     import calendar
     
     ist_now = get_ist_now()
+    _holidays = await load_holiday_dates(db)
     target_month = month or ist_now.month
     target_year = year or ist_now.year
     uid = current_user.get("id")
@@ -1219,12 +1225,13 @@ async def get_my_monthly_matrix(
         current_date = date(target_year, target_month, day)
         date_str = current_date.strftime("%Y-%m-%d")
         is_weekend = current_date.weekday() in [5, 6]
+        is_off = is_non_working(current_date, _holidays)
         is_future = current_date > today
         
         if is_future:
             days[day] = {"code": "", "detail": "Future"}
-        elif is_weekend:
-            days[day] = {"code": "-", "detail": "Weekend"}
+        elif is_off:
+            days[day] = {"code": "-", "detail": ("Weekend" if is_weekend else "Holiday")}
         else:
             summary["working_days"] += 1
             if date_str in attendance_by_date:
@@ -1457,7 +1464,7 @@ async def admin_handle_wfh_request(
             to_dt = parse_iso_date_naive(to_dt)
         from_dt = from_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
         to_dt = to_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
-        for day in working_days_in_range(from_dt, to_dt):
+        for day in working_days_in_range(from_dt, to_dt, await load_holiday_dates(db)):
             exists = await db.wfh_approvals.find_one({"user_id": request["user_id"], "date": day})
             if not exists:
                 await db.wfh_approvals.insert_one({
@@ -1495,7 +1502,7 @@ async def admin_assign_wfh(data: WFHApproval, current_user: dict = Depends(requi
         raise HTTPException(status_code=404, detail="User not found")
     user_name = user.get("name") or user.get("full_name") or user.get("email", "")
 
-    working = list(working_days_in_range(from_dt, to_dt))
+    working = list(working_days_in_range(from_dt, to_dt, await load_holiday_dates(db)))
     if not working:
         raise HTTPException(status_code=400, detail="Selected range has no working days")
 
@@ -1620,6 +1627,108 @@ async def admin_update_settings(
     )
     
     return await get_attendance_settings()
+
+# ===================== HOLIDAY CALENDAR =====================
+
+@router.get("/admin/holidays")
+async def admin_list_holidays(
+    year: Optional[int] = None,
+    current_user: dict = Depends(require_hr_or_admin)
+):
+    """List configured company holidays (optionally filtered by year)."""
+    query = {}
+    if year:
+        y_start = datetime(year, 1, 1)
+        y_end = datetime(year + 1, 1, 1)
+        query["date"] = {"$gte": y_start, "$lt": y_end}
+    holidays = await db.holidays.find(query).sort("date", 1).to_list(1000)
+    result = []
+    for h in holidays:
+        d = h.get("date")
+        date_str = d.strftime("%Y-%m-%d") if isinstance(d, datetime) else str(d)[:10]
+        result.append({
+            "id": h.get("id") or str(h["_id"]),
+            "date": date_str,
+            "name": h.get("name", ""),
+        })
+    return result
+
+
+@router.post("/admin/holidays")
+async def admin_create_holiday(data: HolidayCreate, current_user: dict = Depends(require_admin)):
+    """Create a company holiday (Admin only). Weekends already count as non-working."""
+    import uuid
+    try:
+        d = parse_iso_date_naive(data.date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+    if not data.name or not data.name.strip():
+        raise HTTPException(status_code=400, detail="Holiday name is required")
+
+    existing = await db.holidays.find_one({"date": d})
+    if existing:
+        raise HTTPException(status_code=400, detail="A holiday already exists for this date")
+
+    doc = {
+        "id": str(uuid.uuid4()),
+        "date": d,
+        "name": data.name.strip(),
+        "created_by": current_user["id"],
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.holidays.insert_one(doc)
+    invalidate_holiday_cache()
+    return {"id": doc["id"], "date": d.strftime("%Y-%m-%d"), "name": doc["name"]}
+
+
+@router.put("/admin/holidays/{holiday_id}")
+async def admin_update_holiday(holiday_id: str, data: HolidayUpdate, current_user: dict = Depends(require_admin)):
+    """Update a company holiday (Admin only)."""
+    ref = [{"id": holiday_id}]
+    if ObjectId.is_valid(holiday_id):
+        ref.append({"_id": ObjectId(holiday_id)})
+    holiday = await db.holidays.find_one({"$or": ref})
+    if not holiday:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+
+    update = {"updated_at": datetime.now(timezone.utc)}
+    if data.date is not None:
+        try:
+            nd = parse_iso_date_naive(data.date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format")
+        clash = await db.holidays.find_one({"date": nd, "id": {"$ne": holiday.get("id")}})
+        if clash:
+            raise HTTPException(status_code=400, detail="A holiday already exists for this date")
+        update["date"] = nd
+    if data.name is not None:
+        if not data.name.strip():
+            raise HTTPException(status_code=400, detail="Holiday name cannot be empty")
+        update["name"] = data.name.strip()
+
+    await db.holidays.update_one({"_id": holiday["_id"]}, {"$set": update})
+    invalidate_holiday_cache()
+    updated = await db.holidays.find_one({"_id": holiday["_id"]})
+    d = updated.get("date")
+    return {
+        "id": updated.get("id") or str(updated["_id"]),
+        "date": d.strftime("%Y-%m-%d") if isinstance(d, datetime) else str(d)[:10],
+        "name": updated.get("name", ""),
+    }
+
+
+@router.delete("/admin/holidays/{holiday_id}")
+async def admin_delete_holiday(holiday_id: str, current_user: dict = Depends(require_admin)):
+    """Delete a company holiday (Admin only). Historical attendance is never touched."""
+    ref = [{"id": holiday_id}]
+    if ObjectId.is_valid(holiday_id):
+        ref.append({"_id": ObjectId(holiday_id)})
+    result = await db.holidays.delete_one({"$or": ref})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Holiday not found")
+    invalidate_holiday_cache()
+    return {"success": True, "deleted": result.deleted_count}
+
 
 # ===================== EXPORT =====================
 
@@ -1759,8 +1868,10 @@ async def admin_get_weekly_attendance_summary(
             "working_minutes": record.get("working_minutes", 0)
         })
     
-    # Calculate absent days (working days without attendance)
-    working_days = 5  # Mon-Fri
+    # Calculate absent days (working days without attendance, excluding weekends/holidays)
+    _holidays = await load_holiday_dates(db)
+    working_days = sum(1 for i in range(7)
+                       if is_working_day(week_start + timedelta(days=i), _holidays))
     for user_id, data in user_attendance.items():
         data["days_absent"] = max(0, working_days - data["days_present"] - data["days_leave"])
         data["total_working_hours"] = f"{data['total_working_minutes'] // 60}h {data['total_working_minutes'] % 60}m"
@@ -1802,10 +1913,11 @@ async def admin_get_monthly_attendance_summary(
     month_end_utc = month_end.astimezone(timezone.utc)
     
     # Calculate working days in month (excluding weekends)
+    _holidays = await load_holiday_dates(db)
     working_days = 0
     current_day = month_start
     while current_day < month_end:
-        if current_day.weekday() < 5:  # Monday = 0, Friday = 4
+        if is_working_day(current_day, _holidays):
             working_days += 1
         current_day += timedelta(days=1)
     
@@ -1940,10 +2052,11 @@ async def get_monthly_attendance_summary(
     
     day_wise = []
     
-    # Calculate working days (exclude weekends)
+    # Calculate working days (exclude weekends and configured holidays)
+    _holidays = await load_holiday_dates(db)
     current_date = month_start
     while current_date <= month_end and current_date <= now:
-        if current_date.weekday() < 5:  # Monday-Friday
+        if is_working_day(current_date, _holidays):
             summary["working_days"] += 1
         current_date += timedelta(days=1)
     
@@ -2051,9 +2164,10 @@ async def get_user_monthly_attendance_summary(
     
     day_wise = []
     
+    _holidays = await load_holiday_dates(db)
     current_date = month_start
     while current_date <= month_end and current_date <= now:
-        if current_date.weekday() < 5:
+        if is_working_day(current_date, _holidays):
             summary["working_days"] += 1
         current_date += timedelta(days=1)
     
