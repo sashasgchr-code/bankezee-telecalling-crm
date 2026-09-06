@@ -708,6 +708,7 @@ async def team_get_today_attendance(
     for r in att_records:
         att_map[r.get("user_id")] = r
 
+    is_wd = is_working_day(today_start)
     rows = []
     summary = {"present": 0, "wfh": 0, "leave": 0, "absent": 0, "total": 0}
     seen = set()
@@ -717,7 +718,8 @@ async def team_get_today_attendance(
             continue
         seen.add(person_key)
         rec = att_map.get(m.get("id")) or att_map.get(str(m["_id"]))
-        status = rec.get("attendance_status") if rec else "ABSENT"
+        # On a non-working day, no attendance record must NOT count as Absent.
+        status = rec.get("attendance_status") if rec else ("ABSENT" if is_wd else "WEEKEND")
         work_mode = rec.get("work_mode") if rec else None
         ci = utc_to_ist(rec["check_in_time"]) if rec and rec.get("check_in_time") else None
         co = utc_to_ist(rec["check_out_time"]) if rec and rec.get("check_out_time") else None
@@ -738,12 +740,13 @@ async def team_get_today_attendance(
             summary["leave"] += 1
         elif status in ("PRESENT", "LATE"):
             summary["present"] += 1
-        else:
+        elif status == "ABSENT":
             summary["absent"] += 1
 
     rows.sort(key=lambda r: (r["attendance_status"] == "ABSENT", r["name"] or ""))
     return {
         "date": today_start.strftime("%Y-%m-%d"),
+        "is_working_day": is_wd,
         "records": rows,
         "summary": summary,
     }
@@ -829,15 +832,16 @@ async def admin_get_attendance_summary(
         "office": 0, "wfh": 0, "leave": 0, "checked_in": 0, "checked_out": 0
     }
     
-    # Calculate absent (active users - those who marked attendance or on leave)
+    # Calculate absent (active users - those who marked attendance or on leave).
+    # Non-working days (weekends/holidays) are NOT counted as absent.
     marked = summary.get("total", 0)
-    absent = max(0, active_users - marked)
-    
-    # Convert day_start back to IST for display
     display_date = day_start.astimezone(IST)
+    is_non_working = not is_working_day(display_date)
+    absent = 0 if is_non_working else max(0, active_users - marked)
     
     return {
         "date": display_date.strftime("%Y-%m-%d"),
+        "is_working_day": not is_non_working,
         "total_employees": active_users,
         "present": summary.get("present", 0) + summary.get("late", 0),
         "late": summary.get("late", 0),

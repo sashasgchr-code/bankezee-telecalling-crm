@@ -401,29 +401,51 @@ async def cancel_leave_request(request_id: str, current_user: dict = Depends(get
 
 @router.post("/wfh/requests")
 async def submit_wfh_request(data: WFHRequestCreate, current_user: dict = Depends(get_current_user)):
-    """Submit a WFH request"""
+    """Submit a WFH request (single day or a From -> To range; working days only)."""
     now = datetime.now(timezone.utc)
-    
+
+    raw_from = data.from_date or data.date
+    raw_to = data.to_date or data.from_date or data.date
+    if not raw_from:
+        raise HTTPException(status_code=400, detail="from_date (or date) is required")
     try:
-        request_date = datetime.fromisoformat(data.date.replace('Z', '+00:00'))
+        from_dt = datetime.fromisoformat(raw_from.replace('Z', '+00:00')).replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+        to_dt = datetime.fromisoformat(raw_to.replace('Z', '+00:00')).replace(
+            hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
-    
-    # Check for existing request
+    if to_dt < from_dt:
+        raise HTTPException(status_code=400, detail="To Date cannot be before From Date")
+
+    # Working days in range (weekends skipped)
+    working = []
+    cur = from_dt
+    while cur <= to_dt:
+        if cur.weekday() not in (5, 6):
+            working.append(cur)
+        cur += timedelta(days=1)
+    if not working:
+        raise HTTPException(status_code=400, detail="Selected range has no working days")
+
+    # Overlap check against this user's existing (non-rejected) range requests
     existing = await db.wfh_requests.find_one({
         "user_id": current_user["id"],
-        "date": {"$gte": request_date.replace(hour=0), "$lt": request_date.replace(hour=0) + timedelta(days=1)},
-        "status": {"$in": ["PENDING", "APPROVED"]}
+        "status": {"$in": ["PENDING", "APPROVED"]},
+        "from_date": {"$lte": to_dt},
+        "to_date": {"$gte": from_dt},
     })
-    
     if existing:
-        raise HTTPException(status_code=400, detail="WFH request already exists for this date")
-    
+        raise HTTPException(status_code=400, detail="A WFH request already exists for one or more days in this range")
+
     request_doc = {
         "user_id": current_user["id"],
         "user_name": current_user["name"],
         "user_email": current_user.get("email", ""),
-        "date": request_date.replace(hour=0, minute=0, second=0, microsecond=0),
+        "date": from_dt,  # legacy compat = range start
+        "from_date": from_dt,
+        "to_date": to_dt,
+        "working_days_count": len(working),
         "reason": data.reason,
         "status": "PENDING",
         "created_at": now,
@@ -437,15 +459,15 @@ async def submit_wfh_request(data: WFHRequestCreate, current_user: dict = Depend
     await send_leave_request_notification(
         employee_name=current_user["name"],
         leave_type="WFH",
-        start_date=request_date,
-        end_date=request_date,
+        start_date=from_dt,
+        end_date=to_dt,
         reason=data.reason,
         request_id=str(result.inserted_id)
     )
     
     return {
         "success": True,
-        "message": "WFH request submitted successfully",
+        "message": f"WFH request submitted for {len(working)} working day(s)",
         "request": serialize_doc(request_doc)
     }
 
@@ -635,24 +657,38 @@ async def handle_wfh_request(
         }}
     )
     
-    # If approved, create WFH approval record
+    # If approved, create WFH approval records for each working day in the range
     if data.status == "APPROVED":
-        await db.wfh_approvals.insert_one({
-            "user_id": request["user_id"],
-            "user_name": request["user_name"],
-            "date": request["date"],
-            "approved_by": current_user["id"],
-            "status": "APPROVED",
-            "created_at": now
-        })
+        from_dt = request.get("from_date") or request.get("date")
+        to_dt = request.get("to_date") or request.get("from_date") or request.get("date")
+        if isinstance(from_dt, str):
+            from_dt = datetime.fromisoformat(from_dt.replace('Z', '+00:00'))
+        if isinstance(to_dt, str):
+            to_dt = datetime.fromisoformat(to_dt.replace('Z', '+00:00'))
+        from_dt = from_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+        to_dt = to_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+        cur = from_dt
+        while cur <= to_dt:
+            if cur.weekday() not in (5, 6):
+                exists = await db.wfh_approvals.find_one({"user_id": request["user_id"], "date": cur})
+                if not exists:
+                    await db.wfh_approvals.insert_one({
+                        "user_id": request["user_id"],
+                        "user_name": request["user_name"],
+                        "date": cur,
+                        "approved_by": current_user["id"],
+                        "status": "APPROVED",
+                        "created_at": now
+                    })
+            cur += timedelta(days=1)
     
     # Send notification to employee
     await send_leave_approval_notification(
         employee_email=request.get("user_email", ""),
         employee_name=request["user_name"],
         leave_type="WFH",
-        start_date=request["date"],
-        end_date=request["date"],
+        start_date=request.get("from_date") or request["date"],
+        end_date=request.get("to_date") or request["date"],
         status=data.status,
         admin_notes=data.admin_notes
     )

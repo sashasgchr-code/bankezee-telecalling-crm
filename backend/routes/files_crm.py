@@ -3042,11 +3042,16 @@ async def get_tat_metrics(
             return None
     
     def days_between(start, end):
-        """Calculate days between two timestamps"""
+        """Calculate days between two timestamps (tz-normalized to avoid naive/aware clash)"""
         start_dt = parse_timestamp(start)
         end_dt = parse_timestamp(end)
         if not start_dt or not end_dt:
             return None
+        # Normalize both to naive UTC so legacy naive and ISO tz-aware values can subtract
+        if start_dt.tzinfo is not None:
+            start_dt = start_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        if end_dt.tzinfo is not None:
+            end_dt = end_dt.astimezone(timezone.utc).replace(tzinfo=None)
         diff = end_dt - start_dt
         return max(0, diff.days)
     

@@ -42,10 +42,12 @@ const LeaveScreen = ({ user }) => {
   
   // WFH form
   const [wfhForm, setWfhForm] = useState({
-    date: new Date(),
+    from_date: new Date(),
+    to_date: new Date(),
     reason: '',
   });
-  const [showWfhDatePicker, setShowWfhDatePicker] = useState(false);
+  const [showWfhFromPicker, setShowWfhFromPicker] = useState(false);
+  const [showWfhToPicker, setShowWfhToPicker] = useState(false);
 
   const loadData = async () => {
     try {
@@ -113,16 +115,21 @@ const LeaveScreen = ({ user }) => {
       Alert.alert('Error', 'Please provide a reason for WFH');
       return;
     }
+    if (wfhForm.to_date < wfhForm.from_date) {
+      Alert.alert('Error', 'To Date cannot be before From Date');
+      return;
+    }
     
     setSubmitting(true);
     try {
       await submitWfhRequest({
-        date: wfhForm.date.toISOString().split('T')[0],
+        from_date: wfhForm.from_date.toISOString().split('T')[0],
+        to_date: wfhForm.to_date.toISOString().split('T')[0],
         reason: wfhForm.reason,
       });
       Alert.alert('Success', 'WFH request submitted successfully');
       setShowWfhModal(false);
-      setWfhForm({ date: new Date(), reason: '' });
+      setWfhForm({ from_date: new Date(), to_date: new Date(), reason: '' });
       loadData();
     } catch (error) {
       Alert.alert('Error', error.response?.data?.detail || 'Failed to submit WFH request');
@@ -310,7 +317,11 @@ const LeaveScreen = ({ user }) => {
                       </Text>
                     </View>
                   </View>
-                  <Text style={styles.requestDates}>{formatDate(req.date)}</Text>
+                  <Text style={styles.requestDates}>
+                    {req.from_date && req.to_date && req.from_date !== req.to_date
+                      ? `${formatDate(req.from_date)} - ${formatDate(req.to_date)}`
+                      : formatDate(req.from_date || req.date)}
+                  </Text>
                   <Text style={styles.requestReason} numberOfLines={2}>{req.reason}</Text>
                 </View>
               ))
@@ -443,26 +454,56 @@ const LeaveScreen = ({ user }) => {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Apply for WFH</Text>
 
-            <Text style={styles.inputLabel}>Date</Text>
+            <Text style={styles.inputLabel}>From Date</Text>
             <TouchableOpacity
               style={styles.dateButton}
-              onPress={() => setShowWfhDatePicker(true)}
+              onPress={() => setShowWfhFromPicker(true)}
             >
               <Text style={styles.dateButtonText}>
-                {wfhForm.date.toLocaleDateString()}
+                {wfhForm.from_date.toLocaleDateString()}
               </Text>
             </TouchableOpacity>
 
-            {showWfhDatePicker && (
+            {showWfhFromPicker && (
               <DateTimePicker
-                value={wfhForm.date}
+                value={wfhForm.from_date}
                 mode="date"
                 onChange={(event, date) => {
-                  setShowWfhDatePicker(false);
-                  if (date) setWfhForm({ ...wfhForm, date: date });
+                  setShowWfhFromPicker(false);
+                  if (date) {
+                    setWfhForm((prev) => ({
+                      ...prev,
+                      from_date: date,
+                      to_date: prev.to_date < date ? date : prev.to_date,
+                    }));
+                  }
                 }}
               />
             )}
+
+            <Text style={styles.inputLabel}>To Date</Text>
+            <TouchableOpacity
+              style={styles.dateButton}
+              onPress={() => setShowWfhToPicker(true)}
+            >
+              <Text style={styles.dateButtonText}>
+                {wfhForm.to_date.toLocaleDateString()}
+              </Text>
+            </TouchableOpacity>
+
+            {showWfhToPicker && (
+              <DateTimePicker
+                value={wfhForm.to_date}
+                mode="date"
+                minimumDate={wfhForm.from_date}
+                onChange={(event, date) => {
+                  setShowWfhToPicker(false);
+                  if (date) setWfhForm((prev) => ({ ...prev, to_date: date }));
+                }}
+              />
+            )}
+
+            <Text style={styles.wfhHelperText}>WFH is applied to working days only (weekends are skipped).</Text>
 
             <Text style={styles.inputLabel}>Reason</Text>
             <TextInput
@@ -740,6 +781,11 @@ const styles = StyleSheet.create({
   dateButtonText: {
     fontSize: 15,
     color: '#1f2937',
+  },
+  wfhHelperText: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 8,
   },
   halfDayRow: {
     flexDirection: 'row',

@@ -202,8 +202,10 @@ class LeaveRequestApproval(BaseModel):
     admin_notes: Optional[str] = None
 
 class WFHRequestCreate(BaseModel):
-    """Employee-initiated WFH request"""
-    date: str
+    """Employee-initiated WFH request (single day or From -> To range)"""
+    date: Optional[str] = None
+    from_date: Optional[str] = None
+    to_date: Optional[str] = None
     reason: str
 
 class WFHRequestApproval(BaseModel):

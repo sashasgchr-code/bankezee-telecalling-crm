@@ -1618,3 +1618,10 @@ Manager Files page still shows All-Managers/All-TLs filter dropdowns (backend fa
 site-wide radix Select HTML-nesting hydration warnings; Reassignment-count + Junk Folder (P1, not started).
 
 *Last Updated: June 6, 2026*
+
+### CORRECTIONS to the 7-item batch (June 6, 2026) — verified
+1. MOBILE WFH From→To (item 1 web+mobile completion): `mobile-app/src/screens/LeaveScreen.js` WFH modal now has From Date + To Date pickers + "working days only" note; submits `from_date`/`to_date`; request list shows the range. Backend `/leave/wfh/requests` (the path the mobile app actually calls) + `models.schemas.WFHRequestCreate` now accept from/to and its approval expands into working-day `wfh_approvals` (weekends skipped). Backward compatible with legacy single `date`. E2E verified: GP submit Jun 22-26 → 5 working days → admin approve → matrix W on 22-26. No version bump (2.6.2/vc19); no protected files touched (callLogService.js, package.json, app.json, build.gradle, File/Lead DetailScreen untouched). Babel compile OK.
+2. TAT REPORT 500 fixed: `files_crm.get_tat_metrics` crashed on `naive - aware` datetime subtraction (legacy naive `created_at` vs ISO tz-aware eligibility timestamps). `days_between()` now normalizes both to naive UTC. Verified 200 (lead_to_login count 374, lead_to_disbursal avg 14.6). Calculations/scoping unchanged.
+3. NON-WORKING DAY in Today's Attendance: `/attendance/admin/summary` now returns `absent=0` + `is_working_day` flag on weekends (was marking everyone Absent); `/attendance/team/today` marks no-record members as `WEEKEND` (not ABSENT) and excludes them from the absent count on non-working days. Monthly Matrix already excluded weekends from working_days/%. Verified: Sun 2026-09-06 absent=0, Fri 2026-09-04 absent=19.
+
+*Last Updated: June 6, 2026*
