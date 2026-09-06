@@ -120,8 +120,11 @@ def build_leads_query(
     # Role-based access control
     # If team_view is True and user is TL, show team's data instead of just own
     if team_view and team_ids:
-        # Team Lead viewing their team's data
-        query["assigned_to"] = {"$in": team_ids}
+        # Team Lead viewing their team's data (optionally narrowed to a single team GP)
+        if assigned_to and assigned_to not in ("all", "unassigned") and assigned_to in team_ids:
+            query["assigned_to"] = assigned_to
+        else:
+            query["assigned_to"] = {"$in": team_ids}
     elif is_gp_role(current_user.get("role", "")):
         # GP roles only see their own data
         query["assigned_to"] = current_user["id"]

@@ -326,6 +326,7 @@ async def get_team_call_logs(
     limit: int = 20,
     search: Optional[str] = None,
     team_view: Optional[str] = None,
+    member_id: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -359,8 +360,13 @@ async def get_team_call_logs(
             "stats": {"total_calls": 0, "connected": 0, "not_connected": 0}
         }
     
-    # Build query for team's calls
-    query = {"user_id": {"$in": team_ids}}
+    # Build query for team's calls (optionally narrowed to one team member)
+    if member_id and member_id in team_ids:
+        query = {"user_id": member_id}
+        stats_ids = [member_id]
+    else:
+        query = {"user_id": {"$in": team_ids}}
+        stats_ids = team_ids
     
     # Search filter
     if search:
@@ -386,7 +392,7 @@ async def get_team_call_logs(
     
     # Get stats
     connected_count = await db.call_logs.count_documents({
-        "user_id": {"$in": team_ids},
+        "user_id": {"$in": stats_ids},
         "outcome": {"$in": ["connected", "answered", "Connected", "Answered"]}
     })
     

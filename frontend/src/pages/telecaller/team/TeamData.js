@@ -11,6 +11,8 @@ const TeamData = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [members, setMembers] = useState([]);
+  const [selectedGp, setSelectedGp] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total_count: 0, total_pages: 1 });
 
@@ -21,6 +23,16 @@ const TeamData = () => {
     }
   }, [user, navigate]);
 
+  useEffect(() => {
+    const loadMembers = async () => {
+      try {
+        const res = await api.get('/users/growth-partners');
+        setMembers(res.data || []);
+      } catch (e) { console.error('Failed to load team GPs:', e); }
+    };
+    if (user?.is_tl) loadMembers();
+  }, [user]);
+
   const fetchTeamData = useCallback(async () => {
     try {
       setLoading(true);
@@ -30,6 +42,7 @@ const TeamData = () => {
         team_view: 'true',
       });
       if (search) params.append('search', search);
+      if (selectedGp) params.append('assigned_to', selectedGp);
       
       const response = await api.get(`/leads?${params}`);
       setLeads(response.data.leads || []);
@@ -39,7 +52,7 @@ const TeamData = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, search, selectedGp]);
 
   useEffect(() => {
     if (user?.is_tl) {
@@ -109,6 +122,21 @@ const TeamData = () => {
           />
         </div>
       </form>
+
+      {/* Growth Partner filter (only this TL's mapped GPs) */}
+      <div className="mb-4">
+        <select
+          value={selectedGp}
+          onChange={(e) => { setSelectedGp(e.target.value); setPage(1); }}
+          className="w-full h-11 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+          data-testid="team-data-gp-filter"
+        >
+          <option value="">All Growth Partners</option>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>{m.full_name || m.name}</option>
+          ))}
+        </select>
+      </div>
 
       {/* Stats Summary */}
       <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 mb-4">

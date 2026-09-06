@@ -58,16 +58,17 @@ async def load_holiday_dates(db=None):
 
 
 def is_weekend(d) -> bool:
+    """Weekly-off day. BankEzee works Mon-Sat; only SUNDAY is the default weekly off."""
     dd = _coerce_date(d)
-    return dd is not None and dd.weekday() in (5, 6)
+    return dd is not None and dd.weekday() == 6
 
 
 def is_non_working(d, holidays=None) -> bool:
-    """True if the date is a weekend or a configured holiday."""
+    """True if the date is the weekly off (Sunday) or a configured holiday."""
     dd = _coerce_date(d)
     if dd is None:
         return False
-    if dd.weekday() in (5, 6):
+    if dd.weekday() == 6:  # Sunday only
         return True
     if holidays and dd in holidays:
         return True

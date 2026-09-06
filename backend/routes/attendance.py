@@ -1094,14 +1094,14 @@ async def admin_get_monthly_matrix(
             date_str = current_date.strftime("%Y-%m-%d")
             day_of_week = current_date.weekday()
             
-            is_weekend = day_of_week in [5, 6]
+            is_weekend = day_of_week == 6  # Sunday only (Mon-Sat are working days)
             is_off = is_non_working(current_date, _holidays)
             is_future = current_date > today
             
             if is_future:
                 days[day] = {"code": "", "detail": "Future"}
             elif is_off:
-                days[day] = {"code": "-", "detail": ("Weekend" if is_weekend else "Holiday")}
+                days[day] = {"code": "-", "detail": ("Weekly Off" if is_weekend else "Holiday")}
             else:
                 summary["working_days"] += 1
 
@@ -1224,14 +1224,14 @@ async def get_my_monthly_matrix(
     for day in range(1, days_in_month + 1):
         current_date = date(target_year, target_month, day)
         date_str = current_date.strftime("%Y-%m-%d")
-        is_weekend = current_date.weekday() in [5, 6]
+        is_weekend = current_date.weekday() == 6  # Sunday only
         is_off = is_non_working(current_date, _holidays)
         is_future = current_date > today
         
         if is_future:
             days[day] = {"code": "", "detail": "Future"}
         elif is_off:
-            days[day] = {"code": "-", "detail": ("Weekend" if is_weekend else "Holiday")}
+            days[day] = {"code": "-", "detail": ("Weekly Off" if is_weekend else "Holiday")}
         else:
             summary["working_days"] += 1
             if date_str in attendance_by_date:

@@ -346,9 +346,33 @@ async def get_dashboard_stats(
         
         call_outcomes = call_stats[0] if call_stats else {"total": 0, "connected": 0, "not_connecting": 0, "no_answer": 0, "wrong_number": 0, "busy": 0, "voicemail": 0}
         
-        # Get verified incoming call stats from daily session
-        verified_incoming_calls = session.get("verified_incoming_calls", 0) if session else 0
-        verified_incoming_time = session.get("verified_incoming_time_seconds", 0) if session else 0
+        # Incoming calls: compute STRICTLY from the authenticated GP's own verified call
+        # records (never lead ownership), scoped to the selected period. verified_call_logs
+        # are deduped on insert by (user_id, phone_number, device_timestamp), so re-syncing
+        # the same handset cannot inflate the count. This isolates each GP's incoming calls.
+        incoming_match = {
+            "user_id": user_id,
+            "call_type": "incoming",
+            "duration_seconds": {"$gt": 0},
+        }
+        if start_date or end_date:
+            sd = start_date.astimezone(timezone.utc) if (start_date and start_date.tzinfo) else (start_date.replace(tzinfo=timezone.utc) if start_date else None)
+            ed = end_date.astimezone(timezone.utc) if (end_date and end_date.tzinfo) else (end_date.replace(tzinfo=timezone.utc) if end_date else None)
+            ts_filter = {}
+            if sd:
+                ts_filter["$gte"] = sd.isoformat()
+            if ed:
+                ts_filter["$lt"] = ed.isoformat()
+            if ts_filter:
+                incoming_match["device_timestamp"] = ts_filter
+        incoming_agg = await db.verified_call_logs.aggregate([
+            {"$match": incoming_match},
+            {"$group": {"_id": None, "count": {"$sum": 1},
+                        "time": {"$sum": {"$ifNull": ["$duration_seconds", 0]}}}}
+        ]).to_list(1)
+        incoming_row = incoming_agg[0] if incoming_agg else {}
+        verified_incoming_calls = incoming_row.get("count", 0)
+        verified_incoming_time = incoming_row.get("time", 0)
         verified_talk_time = session.get("verified_talk_time_seconds", 0) if session else 0
         
         my_leads_by_status = {s["_id"]: s["count"] for s in status_counts if s["_id"]}
