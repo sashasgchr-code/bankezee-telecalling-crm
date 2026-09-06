@@ -1632,3 +1632,11 @@ site-wide radix Select HTML-nesting hydration warnings; Reassignment-count + Jun
    Verified: create 2026-06-24 → matrix WD 22→21, day shows "Holiday", `/admin/summary` is_working_day=False & absent=0; WFH assign Jun22-26 → 4 working days (skips 24) with matrix W on 22,23,25,26; delete works; test data cleaned.
 
 *Last Updated: June 6, 2026*
+
+### FOLLOW-UP correction (June 6, 2026) — Manager keeps Team-Lead filter (scoped)
+Per user: a Manager with multiple TLs needs the Team-Lead filter. Reverted the earlier hide of the TL dropdown for Managers — now ONLY "All Managers" is hidden for Managers; the "All Team Leads" filter is shown to Managers and its options are scoped to the Manager's own subtree.
+- Backend `routes/users.py get_team_leads`: when no `manager_id` is passed and the caller is a Manager (or a TL), auto-scope `manager_id` to the caller's own id so the dropdown lists only their mapped Team Leads (admin/ops/hr still see all org TLs).
+- Frontend `FilesDashboard.js`: `{!isManager}` now wraps only the Managers `<select>`; the Team-Leads `<select>` renders for Admin/Ops/HR and Managers.
+Verified: admin team-leads=3 (2 TLs+default), manager(teja)=2 (1 TL+default); files filter by that TL scoped within subtree (all=94 → TL=20). UI: manager-filter absent, tl-filter+gp-filter present.
+
+*Last Updated: June 6, 2026*

@@ -343,6 +343,16 @@ async def get_team_leads(
     
     index = await load_user_index(db)
     allowed_roots = None
+
+    # Auto-scope to the caller's subtree for Manager/TL when no manager_id is given,
+    # so a Manager's Team-Lead filter only lists THEIR mapped Team Leads.
+    caller_role = normalize_role(current_user.get("role", ""))
+    if not manager_id:
+        if caller_role == "manager":
+            manager_id = current_user.get("id")
+        elif current_user.get("is_tl") and is_gp_role(caller_role):
+            manager_id = current_user.get("id")
+
     if manager_id:
         # TLs anywhere in the selected Manager's subtree, through all their identities
         allowed_roots = {
