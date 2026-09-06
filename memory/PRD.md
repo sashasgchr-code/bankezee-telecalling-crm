@@ -1658,3 +1658,11 @@ Verified: admin team-leads=3 (2 TLs+default), manager(teja)=2 (1 TL+default); fi
 Changed files: backend/routes/reports.py, backend/routes/files_crm.py, backend/utils/files_query.py. Preserved: Saturday=working, Sunday/holiday, WFH ranges, incoming-call attribution, outgoing/post-call. Mobile 2.6.2/vc19 untouched. All test data cleaned up.
 
 *Last Updated: June 6, 2026*
+
+### HIERARCHY DATA FIX (June 6, 2026) — Nithin/team mis-mapping (DATA ONLY, no code change)
+ROOT CAUSE: not a resolver bug. 11 Growth Partners under TL "Yarragonda Anusha" (yarragondaanusha@gmail.com) had `manager_id` pointing to "Gujjari Sai kiran" (gujjarisaikiran13@gmail.com, role=telecaller) who himself sits under manager teja. Since the hierarchy resolver walks BOTH manager_id and tl_id parent edges, that bad manager_id pulled the whole branch (incl. Nithin, Asma) into teja's subtree, even though their tl_id chain (Anusha) was correct.
+FIX (data only, per user): set TL Yarragonda Anusha.manager_id → Masula Saikiran (Saikiranmasula389@gmail.com, id cf14f7bd-...); then swept every agent whose manager_id disagreed with their tl_id's manager and re-pointed manager_id to the TL's manager. 12 records changed (1 TL + 11 GPs). Reversible backup: /app/memory/hierarchy_fix_backup_20260606.json.
+VERIFIED: teja growth-partners 18→7, files 94→52, no longer includes Nithin/Asma; Masula Saikiran subtree now includes Nithin. Resolver unchanged (user chose data-fix-only).
+FLAG for user: Masula Saikiran's role is currently `sales_agent`, not `manager`. If he must log in and view this team via the Manager web scope, his role needs to be set to `manager` (separate decision — not changed here per "data fix only").
+
+*Last Updated: June 6, 2026*
