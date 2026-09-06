@@ -20,7 +20,9 @@ class AttendanceCheckOut(BaseModel):
     platform: Optional[str] = None
 
 class WFHRequest(BaseModel):
-    date: str  # ISO date string
+    date: Optional[str] = None  # ISO date string (legacy single-day; = from_date)
+    from_date: Optional[str] = None  # ISO date string (range start, inclusive)
+    to_date: Optional[str] = None  # ISO date string (range end, inclusive)
     reason: Optional[str] = None
 
 class AttendanceCorrection(BaseModel):
@@ -51,6 +53,8 @@ class OfficeUpdate(BaseModel):
 class WFHApproval(BaseModel):
     user_id: Optional[str] = None
     date: Optional[str] = None
+    from_date: Optional[str] = None  # ISO date (range start, inclusive)
+    to_date: Optional[str] = None  # ISO date (range end, inclusive)
     status: Optional[str] = None  # "APPROVED", "REJECTED"
     admin_notes: Optional[str] = None
 

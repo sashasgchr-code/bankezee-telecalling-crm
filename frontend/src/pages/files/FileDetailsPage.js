@@ -468,7 +468,7 @@ const FileDetailsPage = () => {
           </div>
           <button
             onClick={() => {
-              const basePath = isAdmin || isOps || isManager ? '/admin' : (isHr ? '/hr' : '/agent');
+              const basePath = isManager ? '/manager' : (isAdmin || isOps ? '/admin' : (isHr ? '/hr' : '/agent'));
               navigate(`${basePath}/files/${fileId}/check-eligibility`);
             }}
             className={`px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2 ${isHr ? 'hidden' : ''}`}

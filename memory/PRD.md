@@ -1575,3 +1575,46 @@ Mobile supports 3 roles; Admin/HR/Ops are web-only (blocked with web-portal mess
 Endpoints reused/added: /users/my-team (TL), /users/manager-team-members (mgr), /reports/hourly (scoped Summary+Hourly), /attendance/team/today (NEW scoped), /leads/stats (stable Data badges), POST /call-logs/mobile (crash fix).
 Fixes: #10 post-call ObjectId crash (done), #11 Data filter counts (done), #14 session isolation (done), #16 web Attendance Export PDF (done).
 BACKLOG: on-device QA (Expo/EAS) of all role flows; verify with real TL & Manager accounts; #10 duplicate-call dedup across call_logs vs verified_call_logs (crash fixed, dedup unchanged).
+
+---
+
+## 7-ITEM MANAGER PARITY + WFH DATE RANGES + ATTENDANCE MATRIX (June 6, 2026) — Preview, verified
+
+Scope: fix 7 Manager web/backend parity items; reuse the existing canonical hierarchy resolver
+(`utils.hierarchy` via `utils.auth.get_user_team_ids`) everywhere. Mobile untouched. Working-days-only
+WFH (weekends skipped); existing single-day WFH data left intact (backward compatible).
+
+Backend
+- `routes/attendance.py`: NEW `resolve_attendance_scope()` (admin/hr/ops=full None; manager/TL=recursive
+  subtree; GP=403). `/admin/today`, `/admin/summary`, `/admin/monthly-matrix` switched from
+  `require_hr_or_admin` to `get_current_user` + scope. Summary & matrix now count ONE row per PERSON
+  (email dedupe) so both agree (Mgr 18/18, Admin 19/19). Matrix now also reads `wfh_approvals` so
+  approved WFH shows as `W` even without a check-in; lookups are alias-aware (id and _id).
+- WFH date ranges: `WFHRequest`/`WFHApproval` schemas gained `from_date`/`to_date` (legacy `date` still
+  works). `/wfh-request`, `/admin/wfh-requests/{id}` (approve) and `/admin/wfh-assign` expand
+  [from..to] over WORKING days only via `working_days_in_range()` (weekends skipped), one `wfh_approvals`
+  row per working day, idempotent (skips existing). `admin_assign_wfh`/`admin_assign_leave` user lookup
+  fixed to `find_user_any_id()` (no ObjectId crash on UUID team members).
+- `routes/reports.py`: `/reports/telecallers` and `/reports/detailed-calls` moved from `require_admin`
+  to `get_current_user` + `resolve_report_scope`/`resolve_agent_query` (Manager/TL scoped, HR/GP 403).
+- `routes/activities.py`: `/activity/logs` scoped for Manager/TL (was admin-only).
+
+Frontend
+- `pages/admin/Attendance.js` (reused by Manager): role-aware — `fetchUsers` uses `/users` for admin/hr
+  else scoped `/users/growth-partners`; Assign WFH modal now has From/To date inputs
+  (`wfh-assign-from-date`/`-to-date`) with "working days only" note; Assign WFH/Leave/Settings and the
+  row correction edit are HIDDEN for Manager/TL (view-only).
+- `pages/files/FileDetailsPage.js`: Check Eligibility basePath fixed to `/manager` for managers
+  (was `/admin` → bounced to Dashboard). Now navigates to `/manager/files/{id}/check-eligibility`.
+
+Verification (curl + testing agent iteration_51, frontend ~90% / 6-of-7 UI + item1 e2e by curl):
+- Manager monthly-matrix 18 rows / summary 18; Admin 19/19. Manager Reports 4 tabs load scoped;
+  GP filter = 18 mapped GPs; Track Report 19 mapped options; Check Eligibility routes to /manager;
+  admin regression intact; GP gets 403 on telecallers/matrix/activity. WFH range Jun 8-12 → 5 working
+  days, Jun 13-15 → 1 (Mon only); matrix shows W on 8-12 & 15, weekends skipped. Test data cleaned.
+
+Out of scope / pre-existing (flagged, NOT fixed): `/api/tat/metrics` 500 on /manager/reports;
+Manager Files page still shows All-Managers/All-TLs filter dropdowns (backend fail-closes to subtree);
+site-wide radix Select HTML-nesting hydration warnings; Reassignment-count + Junk Folder (P1, not started).
+
+*Last Updated: June 6, 2026*

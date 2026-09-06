@@ -11,7 +11,8 @@ from zoneinfo import ZoneInfo
 
 from utils.database import db
 from utils.auth import (get_current_user, require_admin, require_hr_or_admin,
-                        ACTIVE_GP_QUERY, active_gp_ids)
+                        ACTIVE_GP_QUERY, active_gp_ids, get_user_team_ids,
+                        normalize_role, is_gp_role, GP_ROLES)
 from utils.helpers import serialize_doc
 from models.attendance_schemas import (
     AttendanceCheckIn, AttendanceCheckOut, WFHRequest, 
@@ -62,6 +63,56 @@ def get_ist_today_range():
     return ist_today_start.astimezone(timezone.utc), ist_today_end.astimezone(timezone.utc)
 
 # ===================== HELPER FUNCTIONS =====================
+
+def is_working_day(d) -> bool:
+    """A day is a working day unless it is a weekend (Sat/Sun).
+
+    This mirrors the working-day rule used everywhere in attendance/leave. If a
+    configurable holiday system is added later, this is the single place to extend.
+    """
+    return d.weekday() not in (5, 6)
+
+
+def parse_iso_date_naive(value: str) -> datetime:
+    """Parse an ISO date/datetime string to a naive UTC-midnight datetime (date only)."""
+    dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def working_days_in_range(from_dt: datetime, to_dt: datetime):
+    """Yield naive UTC-midnight datetimes for each WORKING day in [from_dt, to_dt] inclusive."""
+    cur = from_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = to_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    while cur <= end:
+        if is_working_day(cur):
+            yield cur
+        cur += timedelta(days=1)
+
+
+async def find_user_any_id(user_id: str):
+    """Find a user document by custom `id` or Mongo `_id` (never raises on UUID ids)."""
+    or_clauses = [{"id": user_id}]
+    if ObjectId.is_valid(user_id):
+        or_clauses.append({"_id": ObjectId(user_id)})
+    return await db.users.find_one({"$or": or_clauses})
+
+
+async def resolve_attendance_scope(current_user: dict):
+    """Identifiers this user may see in attendance views. `None` = full scope.
+
+    Admin/HR/Ops -> None (all active GPs). Manager / Team Lead -> their recursive
+    subtree (shared resolver). Regular GP -> 403. Same hierarchy used by Reports,
+    Dashboard, Track Report and Files.
+    """
+    role = normalize_role(current_user.get("role", ""))
+    if role in ("admin", "hr", "ops"):
+        return None
+    if role == "manager" or (current_user.get("is_tl") and is_gp_role(role)):
+        return set(await get_user_team_ids(current_user) or [])
+    raise HTTPException(status_code=403, detail="Admin, HR, Manager or Team Lead access required")
+
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """
@@ -481,42 +532,56 @@ async def get_attendance_history(
 
 @router.post("/wfh-request")
 async def submit_wfh_request(data: WFHRequest, current_user: dict = Depends(get_current_user)):
-    """Submit a Work From Home request"""
+    """Submit a Work From Home request (single day or a From -> To range)."""
     user_id = current_user["id"]
     now = datetime.now(timezone.utc)
-    
-    # Parse date
+
+    # Resolve range: prefer from_date/to_date, fall back to legacy single `date`
+    raw_from = data.from_date or data.date
+    raw_to = data.to_date or data.from_date or data.date
+    if not raw_from:
+        raise HTTPException(status_code=400, detail="from_date (or date) is required")
     try:
-        request_date = datetime.fromisoformat(data.date.replace('Z', '+00:00'))
+        from_dt = parse_iso_date_naive(raw_from)
+        to_dt = parse_iso_date_naive(raw_to)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
-    
-    # Check for existing request
+    if to_dt < from_dt:
+        raise HTTPException(status_code=400, detail="To Date cannot be before From Date")
+
+    # Overlap check against this user's existing (non-rejected) range requests
     existing = await db.wfh_requests.find_one({
         "user_id": user_id,
-        "date": {"$gte": request_date.replace(hour=0), "$lt": request_date.replace(hour=0) + timedelta(days=1)}
+        "status": {"$ne": "REJECTED"},
+        "from_date": {"$lte": to_dt},
+        "to_date": {"$gte": from_dt},
     })
-    
     if existing:
-        raise HTTPException(status_code=400, detail="WFH request already exists for this date")
-    
-    # Create request
+        raise HTTPException(status_code=400, detail="A WFH request already exists for one or more days in this range")
+
+    working = list(working_days_in_range(from_dt, to_dt))
+    if not working:
+        raise HTTPException(status_code=400, detail="Selected range has no working days")
+
     request_doc = {
         "user_id": user_id,
         "user_name": current_user["name"],
-        "date": request_date.replace(hour=0, minute=0, second=0, microsecond=0),
+        "date": from_dt,  # legacy compat = range start
+        "from_date": from_dt,
+        "to_date": to_dt,
+        "working_days_count": len(working),
         "reason": data.reason,
         "status": "PENDING",
         "created_at": now,
         "updated_at": now
     }
-    
+
     result = await db.wfh_requests.insert_one(request_doc)
     request_doc["_id"] = result.inserted_id
-    
+
     return {
         "success": True,
-        "message": "WFH request submitted successfully",
+        "message": f"WFH request submitted for {len(working)} working day(s)",
         "request": serialize_doc(request_doc)
     }
 
@@ -537,9 +602,11 @@ async def admin_get_today_attendance(
     work_mode: Optional[str] = None,
     status: Optional[str] = None,
     target_date: Optional[str] = Query(None, alias="date"),
-    current_user: dict = Depends(require_hr_or_admin)
+    current_user: dict = Depends(get_current_user)
 ):
-    """Get attendance for a specific date (defaults to today) for all users (Admin only)"""
+    """Attendance for a date (defaults to today). Admin/HR/Ops see all active GPs;
+    Manager/TL are scoped to their recursive team subtree."""
+    scope = await resolve_attendance_scope(current_user)
     # Parse target date or use today in IST
     if target_date:
         try:
@@ -559,8 +626,11 @@ async def admin_get_today_attendance(
     today_start_utc = today_start.astimezone(timezone.utc)
     today_end_utc = today_end.astimezone(timezone.utc)
     
+    allowed_ids = set(await active_gp_ids(db))
+    if scope is not None:
+        allowed_ids &= scope
     query = {"attendance_date": {"$gte": today_start_utc, "$lt": today_end_utc},
-             "user_id": {"$in": list(await active_gp_ids(db))}}
+             "user_id": {"$in": list(allowed_ids)}}
     
     if work_mode:
         query["work_mode"] = work_mode
@@ -597,7 +667,6 @@ async def team_get_today_attendance(
     team member, including members with no record today (shown as Absent).
     """
     from bson import ObjectId as _OID
-    from utils.auth import normalize_role, is_gp_role, get_user_team_ids, GP_ROLES
 
     role = normalize_role(current_user.get("role", ""))
     if role not in ("manager", "admin", "ops") and not (current_user.get("is_tl") and is_gp_role(role)):
@@ -684,9 +753,10 @@ async def team_get_today_attendance(
 @router.get("/admin/summary")
 async def admin_get_attendance_summary(
     target_date_str: Optional[str] = Query(None, alias="date"),
-    current_user: dict = Depends(require_hr_or_admin)
+    current_user: dict = Depends(get_current_user)
 ):
-    """Get attendance summary for a date (Admin only)"""
+    """Attendance summary for a date. Admin/HR/Ops see all active GPs; Manager/TL scoped."""
+    scope = await resolve_attendance_scope(current_user)
     ist_now = get_ist_now()
     
     if target_date_str:
@@ -710,9 +780,26 @@ async def admin_get_attendance_summary(
     day_start = day_start.astimezone(timezone.utc)
     day_end = day_end.astimezone(timezone.utc)
     
-    # Get all active users
-    active_users = await db.users.count_documents(ACTIVE_GP_QUERY)
-    gp_ids = await active_gp_ids(db)
+    # Get all active users (scoped for Manager/TL; counted per PERSON, matched by alias)
+    all_docs = await db.users.find(ACTIVE_GP_QUERY, {"_id": 1, "id": 1, "email": 1}).to_list(2000)
+    if scope is not None:
+        all_docs = [u for u in all_docs
+                    if str(u["_id"]) in scope or (isinstance(u.get("id"), str) and u["id"] in scope)]
+    # Dedupe to one row per person (by email), matching the Monthly Matrix
+    seen_email = set()
+    person_docs = []
+    for u in all_docs:
+        key = (u.get("email") or "").lower() or (u.get("id") or str(u.get("_id")))
+        if key in seen_email:
+            continue
+        seen_email.add(key)
+        person_docs.append(u)
+    active_users = len(person_docs)
+    gp_ids = set()
+    for u in all_docs:  # match attendance under ANY alias, incl. duplicate docs
+        gp_ids.add(str(u["_id"]))
+        if isinstance(u.get("id"), str):
+            gp_ids.add(u["id"])
     
     # Get attendance records for the day
     pipeline = [
@@ -866,11 +953,11 @@ async def admin_get_monthly_attendance(
 async def admin_get_monthly_matrix(
     month: Optional[int] = None,
     year: Optional[int] = None,
-    current_user: dict = Depends(require_hr_or_admin)
+    current_user: dict = Depends(get_current_user)
 ):
     """
-    Get monthly attendance matrix for all employees (Admin only).
-    Returns a day-by-day breakdown for each employee.
+    Monthly attendance matrix. Admin/HR/Ops see all active GPs; Manager/TL are scoped
+    to their recursive team subtree. Returns a day-by-day breakdown for each employee.
     
     Codes:
     P = Present
@@ -882,7 +969,8 @@ async def admin_get_monthly_matrix(
     (empty) = Future date
     """
     import calendar
-    
+
+    scope = await resolve_attendance_scope(current_user)
     ist_now = get_ist_now()
     target_month = month or ist_now.month
     target_year = year or ist_now.year
@@ -904,9 +992,45 @@ async def admin_get_monthly_matrix(
     
     users = await db.users.find(
         ACTIVE_GP_QUERY,
-        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "email": 1, "phone": 1, "mobile": 1}
+        {"_id": 1, "id": 1, "full_name": 1, "name": 1, "email": 1, "phone": 1, "mobile": 1}
     ).to_list(length=500)
-    
+    if scope is not None:
+        users = [u for u in users
+                 if (u.get("id") in scope) or (str(u.get("_id")) in scope)]
+    # Dedupe to one row per person (by email); keeps matrix consistent with the summary
+    _seen_email = set()
+    _deduped = []
+    for u in users:
+        key = (u.get("email") or "").lower() or (u.get("id") or str(u.get("_id")))
+        if key in _seen_email:
+            continue
+        _seen_email.add(key)
+        _deduped.append(u)
+    users = _deduped
+
+    # Approved WFH days (single-day legacy + expanded ranges), so WFH shows as W even
+    # when the employee did not create an attendance check-in record that day.
+    wfh_records = await db.wfh_approvals.find({
+        "status": "APPROVED",
+        "date": {"$gte": month_start_utc.replace(tzinfo=None) - timedelta(days=1),
+                 "$lt": month_end_utc.replace(tzinfo=None) + timedelta(days=1)}
+    }).to_list(length=5000)
+    wfh_by_user_date = {}
+    for w in wfh_records:
+        uid = w.get("user_id")
+        wd = w.get("date")
+        if not uid or not wd:
+            continue
+        if isinstance(wd, str):
+            try:
+                wd = datetime.fromisoformat(wd.replace('Z', '+00:00'))
+            except ValueError:
+                continue
+        if wd.tzinfo is None:
+            wd = wd.replace(tzinfo=timezone.utc)
+        date_str = wd.astimezone(IST).strftime("%Y-%m-%d")
+        wfh_by_user_date.setdefault(uid, set()).add(date_str)
+
     leave_records = await db.leave_requests.find({
         "status": "approved",
         "$or": [
@@ -949,7 +1073,9 @@ async def admin_get_monthly_matrix(
     matrix_data = []
     
     for user in users:
-        uid = user.get("id")
+        uid = user.get("id") or str(user.get("_id"))
+        uids = {x for x in (user.get("id"),
+                            str(user.get("_id")) if user.get("_id") else None) if x}
         user_name = user.get("full_name") or user.get("name") or user.get("email", "Unknown")
         
         days = {}
@@ -969,14 +1095,21 @@ async def admin_get_monthly_matrix(
                 days[day] = {"code": "-", "detail": "Weekend"}
             else:
                 summary["working_days"] += 1
-                
-                if uid in attendance_by_user_date and date_str in attendance_by_user_date[uid]:
-                    rec = attendance_by_user_date[uid][date_str]
+
+                rec = None
+                for a in uids:
+                    if a in attendance_by_user_date and date_str in attendance_by_user_date[a]:
+                        rec = attendance_by_user_date[a][date_str]
+                        break
+                has_leave = any(a in leave_by_user_date and date_str in leave_by_user_date[a] for a in uids)
+                has_wfh = any(a in wfh_by_user_date and date_str in wfh_by_user_date[a] for a in uids)
+
+                if rec is not None:
                     status = rec.get("attendance_status", "")
                     work_mode = rec.get("work_mode", "")
                     check_in = rec.get("check_in_time")
                     
-                    if work_mode == "WORK_FROM_HOME":
+                    if work_mode == "WORK_FROM_HOME" or (has_wfh and status not in ("LATE",)):
                         days[day] = {"code": "W", "detail": "Work From Home"}
                         summary["wfh"] += 1
                         summary["present"] += 1
@@ -997,9 +1130,13 @@ async def admin_get_monthly_matrix(
                     else:
                         days[day] = {"code": "P", "detail": "Present"}
                         summary["present"] += 1
-                elif uid in leave_by_user_date and date_str in leave_by_user_date[uid]:
+                elif has_leave:
                     days[day] = {"code": "A", "detail": "Approved Leave"}
                     summary["leave"] += 1
+                elif has_wfh:
+                    days[day] = {"code": "W", "detail": "Work From Home (Approved)"}
+                    summary["wfh"] += 1
+                    summary["present"] += 1
                 else:
                     days[day] = {"code": "U", "detail": "Uninformed Absence"}
                     summary["absent"] += 1
@@ -1306,60 +1443,83 @@ async def admin_handle_wfh_request(
         }}
     )
     
-    # If approved, create WFH approval record
+    # If approved, create WFH approval records for each working day in the range
     if data.status == "APPROVED":
-        await db.wfh_approvals.insert_one({
-            "user_id": request["user_id"],
-            "user_name": request["user_name"],
-            "date": request["date"],
-            "approved_by": current_user["id"],
-            "status": "APPROVED",
-            "created_at": now
-        })
+        from_dt = request.get("from_date") or request.get("date")
+        to_dt = request.get("to_date") or request.get("from_date") or request.get("date")
+        if isinstance(from_dt, str):
+            from_dt = parse_iso_date_naive(from_dt)
+        if isinstance(to_dt, str):
+            to_dt = parse_iso_date_naive(to_dt)
+        from_dt = from_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+        to_dt = to_dt.replace(tzinfo=None, hour=0, minute=0, second=0, microsecond=0)
+        for day in working_days_in_range(from_dt, to_dt):
+            exists = await db.wfh_approvals.find_one({"user_id": request["user_id"], "date": day})
+            if not exists:
+                await db.wfh_approvals.insert_one({
+                    "user_id": request["user_id"],
+                    "user_name": request["user_name"],
+                    "date": day,
+                    "approved_by": current_user["id"],
+                    "status": "APPROVED",
+                    "created_at": now
+                })
     
     updated = await db.wfh_requests.find_one({"_id": ObjectId(request_id)})
     return serialize_doc(updated)
 
 @router.post("/admin/wfh-assign")
 async def admin_assign_wfh(data: WFHApproval, current_user: dict = Depends(require_hr_or_admin)):
-    """Directly assign WFH to an employee for a date (Admin only)"""
+    """Directly assign WFH to an employee for a single day or a From -> To range (Admin/HR)."""
     now = datetime.now(timezone.utc)
-    
+
+    raw_from = data.from_date or data.date
+    raw_to = data.to_date or data.from_date or data.date
+    if not data.user_id or not raw_from:
+        raise HTTPException(status_code=400, detail="user_id and from_date (or date) are required")
     try:
-        target_date = datetime.fromisoformat(data.date.replace('Z', '+00:00'))
+        from_dt = parse_iso_date_naive(raw_from)
+        to_dt = parse_iso_date_naive(raw_to)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
-    
-    date_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # Check for existing approval
-    existing = await db.wfh_approvals.find_one({
-        "user_id": data.user_id,
-        "date": date_start
-    })
-    
-    if existing:
-        raise HTTPException(status_code=400, detail="WFH already assigned for this date")
-    
-    # Get user info
-    user = await db.users.find_one({"_id": ObjectId(data.user_id)})
+    if to_dt < from_dt:
+        raise HTTPException(status_code=400, detail="To Date cannot be before From Date")
+
+    # Get user info (handles both UUID `id` and Mongo `_id`)
+    user = await find_user_any_id(data.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
-    approval_doc = {
-        "user_id": data.user_id,
-        "user_name": user["name"],
-        "date": date_start,
-        "approved_by": current_user["id"],
-        "admin_notes": data.admin_notes,
-        "status": "APPROVED",
-        "created_at": now
+    user_name = user.get("name") or user.get("full_name") or user.get("email", "")
+
+    working = list(working_days_in_range(from_dt, to_dt))
+    if not working:
+        raise HTTPException(status_code=400, detail="Selected range has no working days")
+
+    created = 0
+    skipped = 0
+    for day in working:
+        exists = await db.wfh_approvals.find_one({"user_id": data.user_id, "date": day})
+        if exists:
+            skipped += 1
+            continue
+        await db.wfh_approvals.insert_one({
+            "user_id": data.user_id,
+            "user_name": user_name,
+            "date": day,
+            "approved_by": current_user["id"],
+            "admin_notes": data.admin_notes,
+            "status": "APPROVED",
+            "created_at": now
+        })
+        created += 1
+
+    return {
+        "success": True,
+        "message": f"WFH assigned for {created} working day(s)" + (f", {skipped} already assigned" if skipped else ""),
+        "created": created,
+        "skipped": skipped,
+        "working_days": len(working),
     }
-    
-    result = await db.wfh_approvals.insert_one(approval_doc)
-    approval_doc["_id"] = result.inserted_id
-    
-    return serialize_doc(approval_doc)
 
 @router.post("/admin/leave-assign")
 async def admin_assign_leave(data: LeaveApproval, current_user: dict = Depends(require_hr_or_admin)):
@@ -1372,14 +1532,15 @@ async def admin_assign_leave(data: LeaveApproval, current_user: dict = Depends(r
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format")
     
-    # Get user info
-    user = await db.users.find_one({"_id": ObjectId(data.user_id)})
+    # Get user info (handles both UUID `id` and Mongo `_id`)
+    user = await find_user_any_id(data.user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+    user_name = user.get("name") or user.get("full_name") or user.get("email", "")
+
     leave_doc = {
         "user_id": data.user_id,
-        "user_name": user["name"],
+        "user_name": user_name,
         "start_date": start_date.replace(hour=0, minute=0, second=0, microsecond=0),
         "end_date": end_date.replace(hour=23, minute=59, second=59, microsecond=0),
         "leave_type": data.leave_type or "GENERAL",
@@ -1404,7 +1565,7 @@ async def admin_assign_leave(data: LeaveApproval, current_user: dict = Depends(r
         if not existing:
             await db.attendance.insert_one({
                 "user_id": data.user_id,
-                "user_name": user["name"],
+                "user_name": user_name,
                 "attendance_date": current_date,
                 "work_mode": "LEAVE",
                 "attendance_status": "ON_LEAVE",

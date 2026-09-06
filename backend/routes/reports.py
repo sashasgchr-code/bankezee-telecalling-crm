@@ -431,12 +431,14 @@ async def get_detailed_call_report(
     page: int = 1,
     page_size: int = 500,
     limit: int = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(get_current_user)
 ):
     """Detailed call report (manual + verified mobile calls), server-side paginated.
 
     Totals are always computed over the full matching dataset, never over the current page.
+    Admin/Ops see all; Manager/TL are scoped to their recursive team subtree.
     """
+    scope_ids = await resolve_report_scope(current_user)
     start_date, end_date, _ = get_date_range("today", from_date, to_date)
     MAX_ROWS = 25000
     page = max(1, page)
@@ -448,7 +450,11 @@ async def get_detailed_call_report(
     owner_ids = None
     if telecaller_id and telecaller_id != "all":
         _idx = await load_user_index(db)
-        owner_ids = sorted(_idx.aliases(telecaller_id) or {telecaller_id})
+        owner_ids = set(_idx.aliases(telecaller_id) or {telecaller_id})
+        if scope_ids is not None:
+            owner_ids &= set(scope_ids)
+    elif scope_ids is not None:
+        owner_ids = set(scope_ids)
 
     match_stage = {}
     if start_date and end_date:
@@ -456,8 +462,14 @@ async def get_detailed_call_report(
     elif start_date:
         match_stage["created_at"] = {"$gte": start_date}
     
-    if owner_ids:
-        match_stage["user_id"] = {"$in": owner_ids}
+    if owner_ids is not None:
+        if not owner_ids:
+            return {"calls": [], "total_count": 0, "page": page, "page_size": page_size,
+                    "total_pages": 1, "has_more": False,
+                    "totals": {"calls": 0, "connected": 0, "talk_time_seconds": 0,
+                               "talk_time_formatted": format_duration(0)},
+                    "from_date": from_date, "to_date": to_date}
+        match_stage["user_id"] = {"$in": sorted(owner_ids)}
     
     # Only fetch what the requested page needs (merge window), never the whole dataset.
     fetch_n = min(page * page_size, MAX_ROWS)
@@ -653,14 +665,23 @@ async def get_telecaller_reports(
     period: str = "today",
     from_date: str = None,
     to_date: str = None,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(get_current_user)
 ):
-    """Optimized telecaller reports using aggregation pipelines"""
+    """Optimized telecaller reports using aggregation pipelines.
+
+    Admin/Ops see all agents; Manager/TL are scoped to their recursive team subtree
+    (shared resolver). HR / regular GP are blocked.
+    """
+    scope_ids = await resolve_report_scope(current_user)
     start_date, end_date, period = get_date_range(period, from_date, to_date)
     now = datetime.now(timezone.utc)
     
     # Get all reporting agents (every GP role, not just legacy 'telecaller')
     telecallers = await db.users.find({"role": AGENT_ROLE_FILTER}).to_list(2000)
+    if scope_ids is not None:
+        telecallers = [tc for tc in telecallers
+                       if str(tc["_id"]) in scope_ids
+                       or (isinstance(tc.get("id"), str) and tc["id"] in scope_ids)]
     telecaller_ids = sorted({str(tc["_id"]) for tc in telecallers} |
                             {tc["id"] for tc in telecallers if isinstance(tc.get("id"), str)})
     telecaller_map = {str(tc["_id"]): tc for tc in telecallers}

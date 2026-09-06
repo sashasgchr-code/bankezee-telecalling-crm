@@ -7,7 +7,8 @@ from bson import ObjectId
 
 from models.schemas import BreakAction
 from utils.database import db
-from utils.auth import get_current_user, require_admin
+from utils.auth import (get_current_user, normalize_role,
+                        is_gp_role, get_user_team_ids)
 from utils.helpers import serialize_doc, serialize_docs
 
 router = APIRouter(prefix="/api", tags=["Activities"])
@@ -112,9 +113,19 @@ async def get_activity_logs(
     date: str = None,
     user_id: str = None,
     grouped: bool = True,
-    current_user: dict = Depends(require_admin)
+    current_user: dict = Depends(get_current_user)
 ):
-    """Get activity logs (admin only), optionally grouped by telecaller"""
+    """Get activity logs. Admin/Ops see all; Manager/TL are scoped to their recursive
+    team subtree (shared hierarchy resolver). HR / regular GP are blocked."""
+    role = normalize_role(current_user.get("role", ""))
+    scope_ids = None
+    if role in ("admin", "ops"):
+        scope_ids = None
+    elif role == "manager" or (current_user.get("is_tl") and is_gp_role(role)):
+        scope_ids = set(await get_user_team_ids(current_user) or [])
+    else:
+        raise HTTPException(status_code=403, detail="Admin, Operations, Manager or Team Lead access required")
+
     now = datetime.now(timezone.utc)
     
     if date:
@@ -129,7 +140,11 @@ async def get_activity_logs(
     
     query = {"timestamp": {"$gte": start_naive, "$lt": end_naive}}
     if user_id:
+        if scope_ids is not None and user_id not in scope_ids:
+            return [] if grouped else []
         query["user_id"] = user_id
+    elif scope_ids is not None:
+        query["user_id"] = {"$in": sorted(scope_ids)}
     
     logs = await db.activity_logs.find(query).sort("timestamp", 1).to_list(500)
     

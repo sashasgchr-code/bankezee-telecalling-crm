@@ -1,0 +1,51 @@
+{
+  "summary": "Frontend regression testing of BankEzee Manager parity (7 items) + Admin regression. Manager Attendance/Reports/Tracking/Files+Check Eligibility routing verified. Admin WFH modal date-range UI verified. E2E WFH range submission not fully executed (see notes).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/tat/metrics", "issue": "Returns 500 (visible in console on /manager/reports load). Not part of current task scope but recurring error."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Manager Attendance summary vs matrix", "issue": "Summary card Total=18 and Absent=18, but Monthly Matrix table renders 19 rows. Off-by-one between summary and matrix scope.", "selector": "table tbody tr on /manager/attendance", "priority": "MEDIUM"},
+      {"component": "Manager Files filters", "issue": "Filter row contains 'All Managers' and 'All Team Leads' dropdowns for a Manager user - potential scope leakage (not part of the 7-item task but noticed).", "selector": "select on /manager/files", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (many pages)", "issues": ["Persistent React hydration warnings: '<span> cannot be a child of <select>/<option>/<tbody>/<tr>/<table>'. Likely shadcn Select mis-nested."]}
+    ]
+  },
+  "verified_items": {
+    "item1_wfh_range_ui": "PASS - Admin Assign WFH modal shows From Date (data-testid=wfh-assign-from-date) and To Date (data-testid=wfh-assign-to-date) with helper text 'WFH is applied to working days only (weekends are skipped).'",
+    "item1_wfh_range_e2e_submit": "NOT VERIFIED - Automation could not select an employee inside modal (portal + page-level select shadowing). Manual verification recommended. No WFH test data created.",
+    "item2_monthly_matrix": "PASS - Manager matrix renders with columns P/L/W/A/U/WD/%. Admin matrix loads.",
+    "item3_manager_reports_scoped": "PASS - All 4 tabs (Summary, Hourly, Activity, Call Log) load without 403. Summary shows team-scoped GP list (Pushpa, PILLALAMARRI SHIVASAI, Banothu anil kumar, Nalavoni Lakshmi Priya, Banothu Nithin, Meghana Anamdhas ...).",
+    "item4_gp_filter_reports": "PASS (visual) - Call Log tab shows Growth Partner shadcn Select. Programmatic option enumeration failed (radix portal); screenshot confirms filter present.",
+    "item5_manager_daily_tracking": "PASS - /manager/tracking GP select has 19 mapped options (Asma Sultana, BEJJANKI RISHIKESH RAO, Banothu Nithin, Banothu anil kumar, Deevena, Gujjari Sai kiran, ...).",
+    "item6_manager_web_attendance_populated": "PASS - Summary Total=18 (was 0 before fix). Matrix populates.",
+    "item7_check_eligibility_routing": "PASS - Manager -> /manager/files -> click file-row -> file detail -> click 'Check Eligibility' -> navigates to /manager/files/{id}/check-eligibility and renders 'Bank Eligibility Analysis' page. No redirect to /manager.",
+    "manager_view_only_buttons": "PASS - Assign WFH / Assign Leave / Settings HIDDEN for Manager. Visible for Admin.",
+    "admin_regression": "PASS - Admin Total=19, all 3 buttons visible, matrix loads."
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Investigate off-by-one between Manager Attendance summary Total(=18) and Monthly Matrix row count(=19). Ensure both use same recursive team subtree.",
+    "Manager Files page: scope/hide 'All Managers' and 'All Team Leads' filters for Manager role.",
+    "Fix /api/tat/metrics 500 error on /manager/reports.",
+    "Fix persistent React hydration warnings (shadcn Select nested inside <select>/<option>/<tbody>).",
+    "Manually verify end-to-end Admin WFH range assign (employee=Md masoom babu or a GP, From=2026-06-08, To=2026-06-12) - Monthly Matrix Jun 2026 must show W on 8-12 weekdays only."
+  ],
+  "critical_code_review_comments": [
+    "Manager Files filter row exposes admin-only filters (Managers, TLs) - review role gating.",
+    "Radix/shadcn Select components produce invalid HTML nesting warnings site-wide.",
+    "Manager Attendance summary and matrix should share the same team subtree query - 18 vs 19 suggests two code paths."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped per request)", "frontend": "~90% (6 of 7 items fully verified via UI; item 1 E2E submit skipped)"},
+  "test_credentials": "Used admin@bankezee.com / ConnectSasha12!! and teja@bankezee.com / tejasme12 from /app/memory/test_credentials.md",
+  "seed_data_creation": "None. No WFH test data was created during this run.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Manager files page uses data-testid='file-row-{id}' cards (not a table) - click those to open detail. Reports GP filter on Call Log is a radix Select rendered as button 'All Growth Partners' (portal); enumerate options via page.get_by_role('option') AFTER clicking with force=True and waiting 1500ms. For Admin WFH modal E2E, target the employee <select> INSIDE the dialog: page.locator('[role=\"dialog\"] select').first, or ask main agent to add data-testid='wfh-assign-employee' to that select. Manager Attendance summary=18 vs matrix rows=19 needs investigation."
+}

@@ -16,6 +16,10 @@ import autoTable from 'jspdf-autotable';
  * AdminAttendanceDashboard - Full attendance management for admins
  */
 const AdminAttendanceDashboard = () => {
+  const currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+  const currentRole = (currentUser.role || '').toLowerCase();
+  const isAdminOrHr = ['admin', 'hr'].includes(currentRole);
+  const isManagerView = !isAdminOrHr; // manager / TL: view-only scoped attendance
   const [activeTab, setActiveTab] = useState('today');
   const [showMatrixView, setShowMatrixView] = useState(false);
   const [matrixMonth, setMatrixMonth] = useState(new Date().getMonth() + 1);
@@ -46,7 +50,7 @@ const AdminAttendanceDashboard = () => {
   // Form states
   const [officeForm, setOfficeForm] = useState({ office_name: '', latitude: '', longitude: '', allowed_radius_meters: 150 });
   const [correctionForm, setCorrectionForm] = useState({ check_in_time: '', check_out_time: '', work_mode: '', attendance_status: '', reason: '' });
-  const [wfhAssignForm, setWfhAssignForm] = useState({ user_id: '', date: '', admin_notes: '' });
+  const [wfhAssignForm, setWfhAssignForm] = useState({ user_id: '', from_date: '', to_date: '', admin_notes: '' });
   const [leaveAssignForm, setLeaveAssignForm] = useState({ user_id: '', start_date: '', end_date: '', leave_type: 'GENERAL', reason: '' });
 
   const workModeConfig = {
@@ -138,7 +142,9 @@ const AdminAttendanceDashboard = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await api.get('/users');
+      // Admin/HR can list all users; Manager/TL use the scoped growth-partners list
+      const endpoint = isAdminOrHr ? '/users' : '/users/growth-partners';
+      const response = await api.get(endpoint);
       setUsers(response.data.filter(u => u.role !== 'admin' && u.is_active));
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -189,10 +195,21 @@ const AdminAttendanceDashboard = () => {
 
   const handleAssignWFH = async (e) => {
     e.preventDefault();
+    if (!wfhAssignForm.user_id || !wfhAssignForm.from_date) {
+      alert('Please select an employee and a From date');
+      return;
+    }
     try {
-      await api.post('/attendance/admin/wfh-assign', wfhAssignForm);
+      const payload = {
+        user_id: wfhAssignForm.user_id,
+        from_date: wfhAssignForm.from_date,
+        to_date: wfhAssignForm.to_date || wfhAssignForm.from_date,
+        admin_notes: wfhAssignForm.admin_notes,
+      };
+      const res = await api.post('/attendance/admin/wfh-assign', payload);
       setShowWFHAssignModal(false);
-      setWfhAssignForm({ user_id: '', date: '', admin_notes: '' });
+      setWfhAssignForm({ user_id: '', from_date: '', to_date: '', admin_notes: '' });
+      if (res.data?.message) alert(res.data.message);
       fetchData();
     } catch (error) {
       alert(error.response?.data?.detail || 'Failed to assign WFH');
@@ -336,13 +353,15 @@ const AdminAttendanceDashboard = () => {
           <p className="text-gray-500">Monitor and manage employee attendance</p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowSettingsModal(true)}
-            className="btn-secondary flex items-center gap-2"
-          >
-            <Settings size={18} />
-            Settings
-          </button>
+          {isAdminOrHr && (
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Settings size={18} />
+              Settings
+            </button>
+          )}
           <button
             onClick={handleExport}
             className="btn-secondary flex items-center gap-2"
@@ -432,27 +451,32 @@ const AdminAttendanceDashboard = () => {
 
       {/* Quick Actions */}
       <div className="flex flex-wrap gap-3">
-        <button
-          onClick={() => setShowOfficeModal(true)}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <Building2 size={18} />
-          Add Office
-        </button>
-        <button
-          onClick={() => setShowWFHAssignModal(true)}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <Home size={18} />
-          Assign WFH
-        </button>
-        <button
-          onClick={() => setShowLeaveAssignModal(true)}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <Palmtree size={18} />
-          Assign Leave
-        </button>
+        {isAdminOrHr && (
+          <>
+            <button
+              onClick={() => setShowOfficeModal(true)}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Building2 size={18} />
+              Add Office
+            </button>
+            <button
+              onClick={() => setShowWFHAssignModal(true)}
+              className="btn-secondary flex items-center gap-2"
+              data-testid="assign-wfh-btn"
+            >
+              <Home size={18} />
+              Assign WFH
+            </button>
+            <button
+              onClick={() => setShowLeaveAssignModal(true)}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Palmtree size={18} />
+              Assign Leave
+            </button>
+          </>
+        )}
         <GrowthPartnerFilter selected={gpSelection} onChange={setGpSelection} testId="attendance-gp-filter" />
         <EmployeeSearch value={gpSearch} onChange={setGpSearch} testId="attendance-gp-search" />
         <button
@@ -766,6 +790,7 @@ const AdminAttendanceDashboard = () => {
                         )}
                       </td>
                       <td className="px-4 py-3">
+                        {isAdminOrHr && (
                         <button
                           onClick={() => {
                             setSelectedRecord(record);
@@ -783,6 +808,7 @@ const AdminAttendanceDashboard = () => {
                         >
                           <Edit2 size={16} className="text-gray-500" />
                         </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -976,16 +1002,31 @@ const AdminAttendanceDashboard = () => {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={wfhAssignForm.date}
-                  onChange={(e) => setWfhAssignForm({ ...wfhAssignForm, date: e.target.value })}
-                  className="input-field"
-                  required
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">From Date</label>
+                  <input
+                    type="date"
+                    data-testid="wfh-assign-from-date"
+                    value={wfhAssignForm.from_date}
+                    onChange={(e) => setWfhAssignForm({ ...wfhAssignForm, from_date: e.target.value, to_date: (!wfhAssignForm.to_date || wfhAssignForm.to_date < e.target.value) ? e.target.value : wfhAssignForm.to_date })}
+                    className="input-field"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">To Date</label>
+                  <input
+                    type="date"
+                    data-testid="wfh-assign-to-date"
+                    value={wfhAssignForm.to_date}
+                    min={wfhAssignForm.from_date || undefined}
+                    onChange={(e) => setWfhAssignForm({ ...wfhAssignForm, to_date: e.target.value })}
+                    className="input-field"
+                  />
+                </div>
               </div>
+              <p className="text-xs text-gray-500 -mt-2">WFH is applied to working days only (weekends are skipped).</p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
                 <textarea
