@@ -1679,3 +1679,13 @@ File-created date still governs Total/New/In-Progress; the two filters stay inde
 `get_files_dashboard_stats`: the Login card is now gated by the login EVENT date — with an activity window set, a file counts only if an eligibility `login_done_at` falls inside it; with no window, prior "ever logged in" behavior is preserved. Verified: baseline 334; Sep-2025 window=1 (synthetic), Aug-2025=0. Changed file: backend/routes/files_crm.py.
 
 *Last Updated: June 6, 2026*
+
+### MANAGER DAILY TRACKING SHEET RENDER FIX (June 6, 2026)
+Manager "Track Report" showed nothing / stuck loading. ROOT CAUSE (frontend only):
+`DailyTrackingSheet.js` matched the sheet with `data.find(d => d.user_id === selectedUser)`,
+but the tracking API resolves each person to a CANONICAL user_id (e.g. Gujjari Sai kiran
+dropdown id `6a8e6d93...` vs returned `6a96f82a...`), so the match failed and no sheet rendered.
+FIX: fall back to the single returned record when a specific GP is selected; the early return in
+`fetchData` now also clears `isLoading` so an empty GP list can never hang the spinner. No backend,
+scoping, hierarchy or mobile changes. Verified in preview as Manager Teja — sheet renders.
+NOTE: change is Preview-only; production (connect.bankezee.com) requires a redeploy to pick it up.

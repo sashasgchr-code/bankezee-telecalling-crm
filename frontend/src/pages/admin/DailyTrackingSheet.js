@@ -50,8 +50,11 @@ const DailyTrackingSheet = () => {
 
   // Fetch tracking data
   const fetchData = useCallback(async () => {
-    if (!selectedUser) return;
-    
+    if (!selectedUser) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     try {
       let url = `/reports/daily-tracking-sheet?user_id=${selectedUser}`;
@@ -129,8 +132,12 @@ const DailyTrackingSheet = () => {
     return new Date(year, month - 1).toLocaleString('default', { month: 'long', year: 'numeric' });
   };
 
-  // Current user data
-  const currentUserData = data.find(d => d.user_id === selectedUser) || null;
+  // Current user data. The tracking API resolves each person to a canonical user_id
+  // which can differ from the alias id used by the /users/growth-partners dropdown,
+  // so fall back to the single returned record when a specific GP is selected.
+  const currentUserData =
+    data.find(d => d.user_id === selectedUser) ||
+    (selectedUser && Array.isArray(data) && data.length > 0 ? data[0] : null);
 
   // Analytics calculations
   const analytics = useMemo(() => {
