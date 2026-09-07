@@ -1689,3 +1689,47 @@ FIX: fall back to the single returned record when a specific GP is selected; the
 `fetchData` now also clears `isLoading` so an empty GP list can never hang the spinner. No backend,
 scoping, hierarchy or mobile changes. Verified in preview as Manager Teja — sheet renders.
 NOTE: change is Preview-only; production (connect.bankezee.com) requires a redeploy to pick it up.
+
+### ONE-PASS: CENTRAL GP FILTER (A) + TWO INDEPENDENT DATE FILTERS (B) + DIRECT FILE CREATE (C, WEB) (June 7, 2026)
+Implemented centrally; testing_agent iteration_52 = backend 14/14 + frontend A/B/C all PASS.
+
+A. CANONICAL GP RESOLUTION & FILTERING (central):
+- `/api/users/growth-partners` (routes/users.py) rewritten to iterate the shared UserIndex:
+  returns ONE row per person with the CANONICAL id (index.canonical_doc), deduped, matching
+  legacy docs that have no `id` field (old query `{"id": {"$in": scope}}` missed them). Admin=full
+  active GP list; Manager/TL=recursive subtree (fail closed); plain GP=self.
+- reports.py get_daily_tracking_sheet now emits `user_id = index.canonical_id(tc_id)` so the
+  dropdown value ALWAYS matches the report row (was raw str(_id) -> caused blank Manager sheet).
+- reports.py get_detailed_call_report: verified-call filter `{"$in": owner_ids}` set -> sorted list
+  (a Python set is not BSON-encodable and broke the verified-calls GP filter).
+- Result: dropdown canonical id == tracking user_id for Admin & Manager; GP selection filters
+  server-side across Files/Track Report/Summary/Hourly/Activity/Call Log; scoped roles cannot widen
+  scope via query params (fail closed / 403).
+
+B. TWO INDEPENDENT DATE FILTERS (Files Dashboard):
+- Backend already gated Total Files/New/In Progress by FILE-CREATED window (file_created_at, legacy
+  fallback created_at) and Login/Approved/Total Approved/Disbursed/Total Disbursed/Interim Rejects/
+  Final Rejections/Amt in Pipeline by ACTIVITY window (each metric's own event timestamp) - verified
+  independent (created 2020 -> files 0, activity stats unchanged; activity 2020 -> files unchanged,
+  all 8 activity stats 0).
+- FilesDashboard.js: split the single shared custom range into TWO independent ranges
+  (customStartDate/EndDate for File Created; activityCustomStartDate/EndDate for Activity Date),
+  added a Custom option to Activity Date, relabelled 'Lead Created' -> 'File Created', rendered two
+  separate custom pickers. getDateRange now takes explicit custom start/end.
+
+C. DIRECT '+ ADD NEW FILE' (WEB ONLY this pass):
+- NEW backend POST /api/files/create (routes/files_crm.py, FileCreate model) - creates the SAME
+  canonical File in db.leads (status='file', file_status='new', file_created_at=now,
+  file_source='manual', source_id/assigned_to/file_assigned_to=owner) + activity 'File manually
+  created'. Ownership: plain GP forced to self; Admin/Ops assign any GP; Manager/TL assign only
+  inside their subtree (else 403). Returns canonical file_id.
+- FilesDashboard.js: green 'Add New File' button (all non-HR roles) -> modal (customer/loan fields +
+  GP assign for admin/ops/manager/TL) -> on success navigates to the normal File Details page
+  (Check Eligibility at top, all role permissions intact). Appears in list/stats/reports immediately
+  (source_id drives FILE_OWNER). Same canonical model as Lead->File conversion; conversion untouched.
+
+DEFERRED (needs explicit go-ahead + new APK build): native Mobile '+ Add New File'. NOT done this
+pass to protect the locked mobile build (v2.6.2 / versionCode 19). Backend POST /api/files/create is
+mobile-ready - the native screen just needs to call it. No mobile/EAS/version files were touched.
+
+*Last Updated: June 7, 2026*

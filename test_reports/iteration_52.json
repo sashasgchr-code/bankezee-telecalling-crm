@@ -1,0 +1,39 @@
+{
+  "summary": "Independently verified BankEzee CRM task A/B/C. Backend: 14/14 pytest passed covering (A) canonical GP resolution & subtree filtering + detailed-calls scope enforcement, (B) two independent File Dashboard date windows (File Created vs Activity Date), (C) POST /api/files/create for admin/manager-403/GP-self flows with GET verification and DELETE cleanup. Frontend: /admin/files exposes created-date-filter, activity-date-filter, add-new-file-btn testids; both Custom Range flows reveal their independent testid inputs (custom-start/end-date and activity-custom-start/end-date) and setting one does not affect the other. Add New File modal fields all present, submit navigates to File Details, shows customer name, 'Check Eligibility' button, and Activity Log entry 'File manually created by Admin User'. Created UI file was cleaned up via DELETE 200.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (admin layout)", "issues": ["Persistent React hydration warnings still present: '<span> cannot be a child of <select>/<option>/<tbody>/<tr>/<table>'. Pre-existing from iteration_51 - shadcn Select mis-nesting. Not caused by this task."]}
+    ]
+  },
+  "verified_items": {
+    "A1_admin_gp_list": "PASS - Admin returns canonical GP list, no duplicate ids",
+    "A1_manager_gp_subtree": "PASS - Manager teja returns non-empty subtree only",
+    "A2_canonical_id_alignment": "PASS - id from /users/growth-partners == user_id in /reports/daily-tracking-sheet for admin and manager",
+    "A3_detailed_calls_scope": "PASS - telecaller_id=all vs specific GP returns different scoped sets",
+    "A4_manager_cannot_widen": "PASS - out-of-scope GP -> tracking returns [], detailed-calls returns 0",
+    "B1_dashboard_stats_windows": "PASS - start/end_date only changes total/new/in_progress; activity_start/end only changes activity metrics; both together independent",
+    "B2_frontend_dual_filters": "PASS - both filter testids present; Custom Range reveals independent date inputs; setting activity custom preserves created custom values",
+    "C1_add_new_file_modal": "PASS - modal opens, all 5 field testids present, submit navigates to /admin/files/{id}, shows customer name + Check Eligibility + Activity Log 'File manually created'",
+    "C2_create_endpoint_scope": "PASS - admin gp_id create ok+listed, manager out-of-scope 403, GP self-create ok+listed",
+    "C3_cleanup": "PASS - all created test files DELETEd 200"
+  },
+  "test_report_links": ["/app/backend/tests/test_gp_files_dashboard.py", "/app/test_reports/pytest/gp_files.xml"],
+  "action_items": [
+    "(Pre-existing, not this task) Fix persistent React hydration warnings caused by shadcn Select nesting inside <select>/<tr>/<tbody>.",
+    "(Pre-existing) /api/tat/metrics 500 noted in iteration_51 still worth confirming."
+  ],
+  "critical_code_review_comments": [
+    "File create API returns only {id, file_id, message, owner_id, ...} not the full file document; UI/tests must GET /files/{id} to verify status/file_source. Consider returning full file object for consistency.",
+    "POST /files/create pydantic field is 'full_name' + 'mobile' (not customer_name/mobile_number). Ensure frontend uses matching keys (it does)."
+  ],
+  "updated_files": ["/app/backend/tests/test_gp_files_dashboard.py"],
+  "success_rate": {"backend": "100% (14/14)", "frontend": "100% (B2 + C1 verified end-to-end)"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!!, teja@bankezee.com/tejasme12, banothunithinnaik@gmail.com/Nithin@123 (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "3 test files were created during test runs (TEST_ManualFile_Admin, TEST_GPSelfCreate, TEST_UIManualFile) - all DELETEd successfully (status 200/204). No residual test data.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression file at /app/backend/tests/test_gp_files_dashboard.py covers GP canonical resolution, detailed-calls scope, dashboard stats dual windows, and file create for 3 roles. Field names for POST /files/create: full_name (required), mobile, loan_amount, gp_id. Create response returns id+file_id but no status/file_source - GET /files/{id} to verify. Frontend testids on /admin/files: created-date-filter, activity-date-filter, add-new-file-btn, custom-start-date/custom-end-date, activity-custom-start-date/activity-custom-end-date, add-file-modal, new-file-name/mobile/loan-amount/gp, submit-add-file."
+}

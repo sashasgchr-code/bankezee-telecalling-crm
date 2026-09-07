@@ -103,6 +103,19 @@ class NoteAdd(BaseModel):
     note: str
 
 
+class FileCreate(BaseModel):
+    """Direct File creation (no Lead / call required). Produces the SAME canonical File
+    document as the Lead->File conversion path."""
+    full_name: str
+    mobile: Optional[str] = None
+    email: Optional[str] = None
+    city: Optional[str] = None
+    employment_type: Optional[str] = None
+    type_of_loan: Optional[str] = None
+    gp_id: Optional[str] = None  # owner GP; admin/ops/manager/TL may assign, GP is forced to self
+    additional_data: Optional[dict] = None  # all remaining File Details fields
+
+
 def parse_iso(value):
     """Tolerant ISO parser for the mixed legacy/Connect timestamp formats."""
     if not value:
@@ -1982,6 +1995,113 @@ async def get_file_details(file_id: str, current_user: dict = Depends(get_curren
     file_doc["documents"] = documents
     
     return json_safe(file_doc)
+
+
+@router.post("/create")
+async def create_file_direct(payload: FileCreate, current_user: dict = Depends(require_file_write)):
+    """Create a File DIRECTLY (no Lead / call). Same canonical File document, collection and
+    reporting pipeline as a Lead->File conversion; only source/audit metadata differs
+    (file_source='manual'). Returns the canonical file_id so the caller opens the normal
+    File Details page. Web and Mobile both call this single endpoint.
+    """
+    from utils.hierarchy import load_user_index
+    from utils.auth import normalize_role, is_gp_role
+
+    role = normalize_role(current_user.get("role", ""))
+    creator_id = current_user.get("id") or str(current_user.get("_id") or "")
+
+    # ---- resolve owner GP (fail closed for scoped roles) ----
+    index = await load_user_index(db)
+    requested_gp = (payload.gp_id or "").strip() or None
+
+    if is_gp_role(role) and not current_user.get("is_tl"):
+        owner_id = creator_id  # a plain GP always owns their own file
+    elif requested_gp:
+        if role in ("admin", "ops"):
+            owner_id = index.canonical_id(requested_gp) or requested_gp
+        else:
+            # manager / TL: the assignee must be inside their recursive subtree
+            if not index.belongs_under(requested_gp, creator_id):
+                raise HTTPException(status_code=403, detail="Selected Growth Partner is not in your team")
+            owner_id = index.canonical_id(requested_gp) or requested_gp
+    else:
+        owner_id = creator_id
+
+    owner_name = index.display_name(owner_id) or current_user.get("name", "Unknown")
+
+    now = datetime.now(timezone.utc)
+    file_id = str(uuid.uuid4())
+
+    extra = {k: v for k, v in (payload.additional_data or {}).items() if v is not None}
+    file_details = {
+        "full_name": payload.full_name,
+        "mobile": payload.mobile,
+        "email": payload.email,
+        "city": payload.city,
+        "employment_type": payload.employment_type,
+        "type_of_loan": payload.type_of_loan,
+        **extra,
+    }
+    file_details = {k: v for k, v in file_details.items() if v is not None}
+
+    doc = {
+        "id": file_id,
+        "status": "file",
+        "file_status": "new",
+        "name": payload.full_name,
+        "phone": payload.mobile,
+        "email": payload.email,
+        "city": payload.city,
+        "employment_type": payload.employment_type,
+        "requirement": payload.type_of_loan,
+        "file_details": file_details,
+        "eligibilities": [],
+        # ownership: source_id is the canonical reporting owner (FILE_OWNER = source_id|assigned_to)
+        "source_id": owner_id,
+        "assigned_to": owner_id,
+        "file_assigned_to": owner_id,
+        "source_name": owner_name,
+        "source_system": "connect",
+        "file_source": "manual",
+        "created_by": creator_id,
+        "created_by_name": current_user.get("name", "Unknown"),
+        "created_by_role": role,
+        "created_at": now,
+        "file_created_at": now,
+        "updated_at": now,
+        "file_activities": [{
+            "type": "file_created",
+            "message": f"File manually created by {current_user.get('name', 'Unknown')}",
+            "by": creator_id,
+            "by_name": current_user.get("name", "Unknown"),
+            "timestamp": now.isoformat(),
+        }],
+    }
+    rating = calculate_star_rating(doc)
+    doc["star_rating"] = rating["star_rating"]
+    doc["star_score"] = rating["star_score"]
+
+    await db.leads.insert_one(doc)
+
+    await db.activities.insert_one({
+        "lead_id": file_id,
+        "type": "file_created",
+        "to_status": "file",
+        "performed_by": creator_id,
+        "performed_by_name": current_user.get("name", "Unknown"),
+        "timestamp": now,
+        "notes": f"File manually created (direct). Owner: {owner_name}",
+    })
+
+    return {
+        "file_id": file_id,
+        "id": file_id,
+        "owner_id": owner_id,
+        "owner_name": owner_name,
+        "redirect_url": f"/files/{file_id}",
+        "message": "File created",
+    }
+
 
 
 @router.put("/{file_id}/details")

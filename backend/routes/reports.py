@@ -529,7 +529,7 @@ async def get_detailed_call_report(
         verified_match["call_timestamp"] = {"$gte": start_date}
     
     if telecaller_id and telecaller_id != "all":
-        verified_match["user_id"] = {"$in": owner_ids}
+        verified_match["user_id"] = {"$in": sorted(owner_ids)}
     
     verified_pipeline = [
         {"$match": verified_match},
@@ -1651,7 +1651,7 @@ async def get_daily_tracking_sheet(
             continue
 
         results.append({
-            "user_id": tc_id,
+            "user_id": index.canonical_id(tc_id) or tc_id,
             "user_name": tc_name,
             "month": (range_start + IST_OFFSET).strftime("%B %Y"),
             "achieved_files": total_files,

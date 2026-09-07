@@ -4,7 +4,7 @@ import {
   FileText, Search, ChevronDown, Eye, Trash2, Download, RefreshCw, 
   Clock, DollarSign, TrendingUp, CheckCircle, XCircle, LogIn, AlertTriangle,
   BarChart3, Star, ChevronLeft, ChevronRight, Loader2, Filter, Database,
-  Calendar, Users, Building2, Timer
+  Calendar, Users, Building2, Timer, Plus, X
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
@@ -91,9 +91,11 @@ const FilesDashboard = () => {
   const [totalPages, setTotalPages] = useState(1);
   const [totalFiles, setTotalFiles] = useState(0);
   
-  // Date Range State
+  // Date Range State - independent custom ranges for File Created vs Activity Date
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [activityCustomStartDate, setActivityCustomStartDate] = useState('');
+  const [activityCustomEndDate, setActivityCustomEndDate] = useState('');
   
   // Reports State
   const [bankPerformance, setBankPerformance] = useState(null);
@@ -141,10 +143,21 @@ const FilesDashboard = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
 
+  // Add New File (direct creation) state
+  const [showAddFileModal, setShowAddFileModal] = useState(false);
+  const [isCreatingFile, setIsCreatingFile] = useState(false);
+  const [newFile, setNewFile] = useState({
+    full_name: '', mobile: '', email: '', city: '',
+    employment_type: '', type_of_loan: '', gp_id: '',
+    loan_amount_required: '', net_salary: '', cibil_score: '',
+  });
+
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
   const isManager = user.role === 'manager';
   const isHr = user.role === 'hr';
+  const isGpRole = ['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'].includes(user.role);
+  const canAssignGp = isAdmin || isManager || user.role === 'ops' || user.is_tl;
   
   // Helper to get the correct base path for navigation
   const getBasePath = () => {
@@ -152,6 +165,41 @@ const FilesDashboard = () => {
     if (isManager) return '/manager';
     if (isHr) return '/hr';
     return '/agent';
+  };
+
+  // Direct File creation handler - opens the normal File Details page on success
+  const handleCreateFile = async () => {
+    if (!newFile.full_name.trim()) {
+      toast.error('Customer name is required');
+      return;
+    }
+    setIsCreatingFile(true);
+    try {
+      const additional_data = {};
+      if (newFile.loan_amount_required) additional_data.loan_amount_required = Number(newFile.loan_amount_required);
+      if (newFile.net_salary) additional_data.net_salary = Number(newFile.net_salary);
+      if (newFile.cibil_score) additional_data.cibil_score = Number(newFile.cibil_score);
+      const payload = {
+        full_name: newFile.full_name.trim(),
+        mobile: newFile.mobile || null,
+        email: newFile.email || null,
+        city: newFile.city || null,
+        employment_type: newFile.employment_type || null,
+        type_of_loan: newFile.type_of_loan || null,
+        gp_id: newFile.gp_id || null,
+        additional_data,
+      };
+      const res = await api.post('/files/create', payload);
+      const fileId = res.data.file_id || res.data.id;
+      toast.success('File created');
+      setShowAddFileModal(false);
+      setNewFile({ full_name: '', mobile: '', email: '', city: '', employment_type: '', type_of_loan: '', gp_id: '', loan_amount_required: '', net_salary: '', cibil_score: '' });
+      navigate(`${getBasePath()}/files/${fileId}`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to create file');
+    } finally {
+      setIsCreatingFile(false);
+    }
   };
   
   // Delete file handler
@@ -204,8 +252,9 @@ const FilesDashboard = () => {
     setDeleteConfirmOpen(true);
   };
   
-  // Calculate date range based on filter
-  const getDateRange = (filterValue = 'all') => {
+  // Calculate date range based on filter. `custom` uses the explicit start/end passed in,
+  // so File Created and Activity Date can each carry their OWN independent custom range.
+  const getDateRange = (filterValue = 'all', customStart = customStartDate, customEnd = customEndDate) => {
     const now = new Date();
     let startDate = null;
     let endDate = null;
@@ -255,8 +304,8 @@ const FilesDashboard = () => {
         endDate = now.toISOString();
         break;
       case 'custom':
-        if (customStartDate) startDate = new Date(customStartDate).toISOString();
-        if (customEndDate) endDate = new Date(customEndDate + 'T23:59:59').toISOString();
+        if (customStart) startDate = new Date(customStart).toISOString();
+        if (customEnd) endDate = new Date(customEnd + 'T23:59:59').toISOString();
         break;
       default:
         // all time - no dates
@@ -267,7 +316,7 @@ const FilesDashboard = () => {
 
   useEffect(() => {
     fetchAll();
-  }, [page, statusFilter, managerFilter, gpFilter, tlFilter, starFilter, createdDateFilter, activityDateFilter, customStartDate, customEndDate, loanTypeFilter]);
+  }, [page, statusFilter, managerFilter, gpFilter, tlFilter, starFilter, createdDateFilter, activityDateFilter, customStartDate, customEndDate, activityCustomStartDate, activityCustomEndDate, loanTypeFilter]);
 
   // Debounced search effect
   useEffect(() => {
@@ -324,11 +373,11 @@ const FilesDashboard = () => {
     if (searchTerm) params.append('search', searchTerm);
     if (loanTypeFilter.length > 0) params.append('loan_types', loanTypeFilter.join(','));
 
-    const { startDate, endDate } = getDateRange(createdDateFilter);
+    const { startDate, endDate } = getDateRange(createdDateFilter, customStartDate, customEndDate);
     if (startDate) params.append('start_date', startDate);
     if (endDate) params.append('end_date', endDate);
 
-    const activityDates = getDateRange(activityDateFilter);
+    const activityDates = getDateRange(activityDateFilter, activityCustomStartDate, activityCustomEndDate);
     if (activityDates.startDate) params.append('activity_start_date', activityDates.startDate);
     if (activityDates.endDate) params.append('activity_end_date', activityDates.endDate);
     return params;
@@ -800,6 +849,16 @@ const FilesDashboard = () => {
           
           {/* Report Buttons - Navigate to separate report pages */}
           <div className="flex items-center gap-2 flex-wrap overflow-x-auto pb-2 lg:pb-0">
+            {!isHr && (
+              <button
+                onClick={() => setShowAddFileModal(true)}
+                className="px-3 py-1.5 text-xs md:text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-1 whitespace-nowrap font-medium"
+                data-testid="add-new-file-btn"
+              >
+                <Plus size={15} />
+                <span>Add New File</span>
+              </button>
+            )}
             {(isAdmin || isManager) && (
               <>
                 <button 
@@ -920,9 +979,9 @@ const FilesDashboard = () => {
                   />
                 </div>
                 
-                {/* Lead Created Date Filter - For Total, New, In Progress, Pipeline */}
+                {/* File Created Date Filter - For Total Files, New, In Progress */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Lead Created:</span>
+                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">File Created:</span>
                   <select
                     value={createdDateFilter}
                     onChange={(e) => setCreatedDateFilter(e.target.value)}
@@ -942,7 +1001,7 @@ const FilesDashboard = () => {
                   </select>
                 </div>
                 
-                {/* Activity Date Filter - For Login, Approved, Disbursed, etc. */}
+                {/* Activity Date Filter - For Login, Approved, Disbursed, Rejects, Pipeline */}
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Activity Date:</span>
                   <select
@@ -960,14 +1019,15 @@ const FilesDashboard = () => {
                     <option value="last_month">Last Month</option>
                     <option value="quarter">This Quarter</option>
                     <option value="year">This Year</option>
+                    <option value="custom">Custom Range</option>
                   </select>
                 </div>
               </div>
               
-              {/* Custom date range if selected */}
-              {(createdDateFilter === 'custom' || activityDateFilter === 'custom') && (
+              {/* Independent custom ranges: File Created and Activity Date each have their own */}
+              {createdDateFilter === 'custom' && (
                 <div className="flex items-center gap-2 mb-3 pl-0">
-                  <span className="text-xs text-gray-500">Custom Range:</span>
+                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">File Created Range:</span>
                   <input
                     type="date"
                     value={customStartDate}
@@ -982,6 +1042,26 @@ const FilesDashboard = () => {
                     onChange={(e) => setCustomEndDate(e.target.value)}
                     className="h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white"
                     data-testid="custom-end-date"
+                  />
+                </div>
+              )}
+              {activityDateFilter === 'custom' && (
+                <div className="flex items-center gap-2 mb-3 pl-0">
+                  <span className="text-xs text-gray-500 font-medium whitespace-nowrap">Activity Date Range:</span>
+                  <input
+                    type="date"
+                    value={activityCustomStartDate}
+                    onChange={(e) => setActivityCustomStartDate(e.target.value)}
+                    className="h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                    data-testid="activity-custom-start-date"
+                  />
+                  <span className="text-gray-400">to</span>
+                  <input
+                    type="date"
+                    value={activityCustomEndDate}
+                    onChange={(e) => setActivityCustomEndDate(e.target.value)}
+                    className="h-9 px-3 border border-gray-200 rounded-lg text-sm bg-white"
+                    data-testid="activity-custom-end-date"
                   />
                 </div>
               )}
@@ -2169,6 +2249,96 @@ const FilesDashboard = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Add New File Modal - direct File creation (no lead/call required) */}
+      {showAddFileModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" data-testid="add-file-modal">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 sticky top-0 bg-white">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-green-100 rounded-lg"><Plus size={18} className="text-green-600" /></div>
+                <h3 className="text-lg font-bold text-gray-900">Add New File</h3>
+              </div>
+              <button onClick={() => setShowAddFileModal(false)} className="p-1 rounded hover:bg-gray-100" data-testid="close-add-file">
+                <X size={20} className="text-gray-500" />
+              </button>
+            </div>
+            <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Customer Name <span className="text-red-500">*</span></label>
+                <input type="text" value={newFile.full_name} onChange={(e) => setNewFile({ ...newFile, full_name: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  data-testid="new-file-name" placeholder="Full name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Mobile</label>
+                <input type="text" value={newFile.mobile} onChange={(e) => setNewFile({ ...newFile, mobile: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-mobile" placeholder="10-digit mobile" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input type="email" value={newFile.email} onChange={(e) => setNewFile({ ...newFile, email: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-email" placeholder="email@example.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                <input type="text" value={newFile.city} onChange={(e) => setNewFile({ ...newFile, city: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-city" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Employment Type</label>
+                <select value={newFile.employment_type} onChange={(e) => setNewFile({ ...newFile, employment_type: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white" data-testid="new-file-employment">
+                  <option value="">Select</option>
+                  <option value="salaried">Salaried</option>
+                  <option value="self_employed">Self Employed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type of Loan</label>
+                <input type="text" value={newFile.type_of_loan} onChange={(e) => setNewFile({ ...newFile, type_of_loan: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-loan-type" placeholder="e.g. Personal Loan" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Loan Amount Required</label>
+                <input type="number" value={newFile.loan_amount_required} onChange={(e) => setNewFile({ ...newFile, loan_amount_required: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-loan-amount" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Net Salary</label>
+                <input type="number" value={newFile.net_salary} onChange={(e) => setNewFile({ ...newFile, net_salary: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-net-salary" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">CIBIL Score</label>
+                <input type="number" value={newFile.cibil_score} onChange={(e) => setNewFile({ ...newFile, cibil_score: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-cibil" />
+              </div>
+              {canAssignGp && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Growth Partner</label>
+                  <select value={newFile.gp_id} onChange={(e) => setNewFile({ ...newFile, gp_id: e.target.value })}
+                    className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white" data-testid="new-file-gp">
+                    <option value="">{isGpRole ? 'Myself' : 'Myself (creator)'}</option>
+                    {growthPartners.map(gp => (
+                      <option key={gp.id} value={gp.id}>{gp.full_name || gp.name} ({(gp.email || '').split('@')[0]})</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <p className="md:col-span-2 text-xs text-gray-500">You can add all remaining details (banks, eligibility, documents, status) on the File Details page that opens after creation.</p>
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-200 sticky bottom-0 bg-white">
+              <button onClick={() => setShowAddFileModal(false)} className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50" data-testid="cancel-add-file">Cancel</button>
+              <button onClick={handleCreateFile} disabled={isCreatingFile}
+                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2" data-testid="submit-add-file">
+                {isCreatingFile ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                Create File
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

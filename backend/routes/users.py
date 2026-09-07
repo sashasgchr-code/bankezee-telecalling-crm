@@ -242,56 +242,81 @@ async def list_growth_partners(
     - GP: Only themselves
     """
     role = normalize_role(current_user.get("role", ""))
-    user_id = current_user.get("id")
-    
-    query = {"role": {"$in": GP_ROLES}}
-    
-    if is_active is not None:
-        query["is_active"] = is_active
-    
-    # Apply hierarchy-based filtering
-    if role in ("admin", "ops", "hr"):
-        # Admin/Ops can see all, but respect explicit filters
-        if manager_id:
-            query["manager_id"] = manager_id
-        if tl_id:
-            query["tl_id"] = tl_id
+    user_id = current_user.get("id") or str(current_user.get("_id") or "")
+
+    if role == "hr":
+        raise HTTPException(status_code=403, detail="HR cannot access Growth Partner data")
+
+    # Single identity index drives dedup + canonical id, so the value emitted here is the
+    # SAME canonical id every report endpoint resolves back through index.aliases().
+    index = await load_user_index(db)
+
+    # ---- who is this caller allowed to see? (root set, fail closed for scoped roles) ----
+    scope_roots = None  # None = unrestricted (admin/ops)
+    if role in ("admin", "ops"):
+        scope_roots = None
     elif role == "manager":
-        # Manager sees their full downward subtree (identity-resolved)
-        index = await load_user_index(db)
-        scope = index.descendants(user_id, include_self=False)
-        if not scope:
+        scope_roots = index.descendant_roots(user_id, include_self=False)
+        if not scope_roots:
             return []
-        query["id"] = {"$in": sorted(scope)}
-        if tl_id:
-            query["tl_id"] = tl_id
     elif is_gp_role(role):
         if current_user.get("is_tl"):
-            # TL sees GPs in their own subtree
-            index = await load_user_index(db)
-            scope = index.descendants(user_id, include_self=False)
-            if not scope:
+            scope_roots = index.descendant_roots(user_id, include_self=False)
+            if not scope_roots:
                 return []
-            query["id"] = {"$in": sorted(scope)}
         else:
-            # Regular GP sees only themselves
-            query["id"] = user_id
-    elif role == "hr":
-        # HR cannot list GPs
-        raise HTTPException(status_code=403, detail="HR cannot access Growth Partner data")
-    
-    users = await db.users.find(query).sort("name", 1).to_list(1000)
-    
-    # Deduplicate by email (keep first occurrence)
-    seen_emails = set()
-    unique_users = []
-    for user in users:
-        email = user.get("email", "").lower()
-        if email and email not in seen_emails:
-            seen_emails.add(email)
-            unique_users.append(user)
-    
-    return serialize_docs(unique_users)
+            root = index.root_for(user_id)
+            scope_roots = {root} if root else set()
+            if not scope_roots:
+                return []
+    else:
+        raise HTTPException(status_code=403, detail="No Growth Partner access")
+
+    # ---- optional explicit manager/tl narrowing (fail closed) ----
+    if manager_id:
+        mgr_roots = index.descendant_roots(manager_id, include_self=True)
+        if not mgr_roots:
+            return []
+        scope_roots = mgr_roots if scope_roots is None else (scope_roots & mgr_roots)
+    if tl_id:
+        tl_roots = index.descendant_roots(tl_id, include_self=False)
+        if not tl_roots:
+            return []
+        scope_roots = tl_roots if scope_roots is None else (scope_roots & tl_roots)
+    if scope_roots is not None and not scope_roots:
+        return []
+
+    # Iterate people (one canonical doc per person), keep GP-role + active + in scope.
+    result = []
+    seen_ids = set()
+    for root, group in index.groups.items():
+        if scope_roots is not None and root not in scope_roots:
+            continue
+        if is_active and not group["active"]:
+            continue
+        doc = index.canonical_doc(root) or (group["docs"][0] if group["docs"] else None)
+        if not doc:
+            continue
+        if not is_gp_role(doc.get("role", "")):
+            continue
+        canonical_id = doc.get("id") or str(doc.get("_id"))
+        if not canonical_id or canonical_id in seen_ids:
+            continue
+        seen_ids.add(canonical_id)
+        name = doc.get("name") or doc.get("full_name") or (doc.get("email") or "").split("@")[0]
+        result.append({
+            "id": canonical_id,
+            "name": name,
+            "full_name": doc.get("full_name") or name,
+            "email": doc.get("email", ""),
+            "role": doc.get("role", ""),
+            "is_tl": bool(doc.get("is_tl")),
+            "manager_id": doc.get("manager_id"),
+            "tl_id": doc.get("tl_id"),
+        })
+
+    result.sort(key=lambda u: (u["name"] or "").lower())
+    return result
 
 
 @router.get("/users/telecallers")
