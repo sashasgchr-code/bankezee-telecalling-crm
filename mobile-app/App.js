@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
+import RegisterScreen from './src/screens/RegisterScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import DataScreen from './src/screens/DataScreen';
 import LeadDetailScreen from './src/screens/LeadDetailScreen';
@@ -25,6 +26,16 @@ import EligibilityScreen from './src/screens/EligibilityScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+const AuthStack = createStackNavigator();
+
+const AuthNavigator = ({ onLogin }) => (
+  <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Screen name="Login">
+      {(props) => <LoginScreen {...props} onLogin={onLogin} />}
+    </AuthStack.Screen>
+    <AuthStack.Screen name="Register" component={RegisterScreen} />
+  </AuthStack.Navigator>
+);
 
 const GP_ROLES = ['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'];
 
@@ -166,7 +177,7 @@ const App = () => {
   return (
     <NavigationContainer>
       {!user ? (
-        <LoginScreen onLogin={handleLogin} />
+        <AuthNavigator onLogin={handleLogin} />
       ) : mobileRole === 'blocked' ? (
         <WebOnlyScreen onLogout={handleLogout} />
       ) : (

@@ -223,6 +223,12 @@ export const createUser = async (userData) => {
   return response.data;
 };
 
+// Growth Partner self-registration (pending admin approval) - same endpoint & contract as web
+export const registerGP = async (data) => {
+  const response = await api.post('/auth/register-gp', data);
+  return response.data;
+};
+
 export const updateUser = async (userId, data) => {
   const response = await api.put(`/users/${userId}`, data);
   return response.data;

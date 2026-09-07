@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { login } from '../services/api';
 
-const LoginScreen = ({ onLogin }) => {
+const LoginScreen = ({ onLogin, navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -88,6 +88,13 @@ const LoginScreen = ({ onLogin }) => {
               <Text style={styles.buttonText}>Login</Text>
             )}
           </TouchableOpacity>
+
+          <Text style={styles.signupRow}>
+            Don't have an account?{' '}
+            <Text style={styles.signupLink} onPress={() => navigation && navigation.navigate('Register')} data-testid="signup-link">
+              Sign Up
+            </Text>
+          </Text>
         </View>
 
         <Text style={styles.footer}>
@@ -166,6 +173,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  signupRow: {
+    textAlign: 'center',
+    marginTop: 20,
+    color: '#6b7280',
+    fontSize: 14,
+  },
+  signupLink: {
+    color: '#16a34a',
+    fontWeight: '700',
   },
   footer: {
     textAlign: 'center',

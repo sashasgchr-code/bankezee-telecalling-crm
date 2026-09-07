@@ -1775,3 +1775,20 @@ Authorized by user (explicit request) to modify mobile and cut a new APK.
   FileDetail route exists. Backend endpoints already verified via the web pass.
 - NOT runtime-tested on device (no emulator/APK in this env) - requires an EAS APK build of
   v2.6.3/versionCode 20 to validate on a handset.
+
+### MOBILE SIGN-UP (self-registration) - 1:1 with web (June 7, 2026)
+Added Growth Partner self-registration to the mobile app, replicating web pages/Register.js exactly.
+- NEW src/screens/RegisterScreen.js: identical 3-step wizard + success screen:
+  Step 1 Basic Information (Full Name, Email, Phone [6-9 + 10 digits], City picker, Password [min 6,
+  show/hide], auto-generated Partner Code preview); Step 2 KYC (PAN ABCDE1234F regex, optional
+  ID-document box - informational, matches web which never uploads the doc); Step 3 Bank Details
+  (Bank picker, Account Holder, Account Number, Confirm, IFSC regex). Same validations, green progress
+  stepper and success + "What happens next?" panel. Submits the EXACT same payload to the EXISTING
+  POST /api/auth/register-gp (role telecaller, pending admin approval) - NO auth backend changes.
+- src/services/api.js: added registerGP(data) -> POST /auth/register-gp.
+- src/screens/LoginScreen.js: added "Don't have an account? Sign Up" link (navigates to Register).
+- App.js: unauthenticated branch now uses an AuthNavigator stack (Login <-> Register) instead of a
+  bare LoginScreen; onLogin passed through.
+- Verified: register-gp 200 + partner code, duplicate email -> 400, all mobile files compile via
+  babel-preset-expo. Rides on the same unreleased v2.6.3/versionCode 20 (no extra bump). Not
+  runtime-tested on device - validate after the EAS build.
