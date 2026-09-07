@@ -342,6 +342,18 @@ export const getFilesStats = async (params = {}) => {
   return response.data;
 };
 
+// Create a File directly (no lead/call). Same canonical File as web; returns { file_id }.
+export const createFile = async (data) => {
+  const response = await api.post('/files/create', data);
+  return response.data;
+};
+
+// Growth Partners visible to the current user (scoped server-side, canonical ids)
+export const getGrowthPartners = async () => {
+  const response = await api.get('/users/growth-partners');
+  return response.data;
+};
+
 // Get file details
 export const getFileDetails = async (fileId) => {
   const response = await api.get(`/files/${fileId}`);

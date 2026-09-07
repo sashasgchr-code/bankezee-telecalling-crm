@@ -12,8 +12,11 @@ import {
   StatusBar,
   ScrollView,
   Alert,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
-import { getFiles, getFilesStats, getOpsTeam, bulkAssignFiles } from '../services/api';
+import { getFiles, getFilesStats, getOpsTeam, bulkAssignFiles, createFile, getGrowthPartners } from '../services/api';
 
 const FILE_STATUS_COLORS = {
   new: '#3B82F6',
@@ -60,7 +63,17 @@ const FilesScreen = ({ navigation, user }) => {
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
 
+  // Add New File (direct creation)
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [growthPartners, setGrowthPartners] = useState([]);
+  const [newFile, setNewFile] = useState({
+    full_name: '', mobile: '', email: '', city: '',
+    type_of_loan: '', loan_amount_required: '', gp_id: '',
+  });
+
   const isAdmin = user?.role === 'admin';
+  const canAssignGp = ['admin', 'ops', 'manager'].includes(user?.role) || user?.is_tl;
 
   // Same filter scope applied to BOTH stats cards and the file list.
   const buildParams = () => {
@@ -146,6 +159,49 @@ const FilesScreen = ({ navigation, user }) => {
     }
   };
 
+  const openAddModal = async () => {
+    setNewFile({ full_name: '', mobile: '', email: '', city: '', type_of_loan: '', loan_amount_required: '', gp_id: '' });
+    setShowAddModal(true);
+    if (canAssignGp && growthPartners.length === 0) {
+      try {
+        const gps = await getGrowthPartners();
+        setGrowthPartners(gps || []);
+      } catch (e) {
+        console.error('Error loading GPs:', e);
+      }
+    }
+  };
+
+  const handleCreateFile = async () => {
+    if (!newFile.full_name.trim()) {
+      Alert.alert('Required', 'Customer name is required');
+      return;
+    }
+    setCreating(true);
+    try {
+      const additional_data = {};
+      if (newFile.loan_amount_required) additional_data.loan_amount_required = Number(newFile.loan_amount_required);
+      const payload = {
+        full_name: newFile.full_name.trim(),
+        mobile: newFile.mobile || null,
+        email: newFile.email || null,
+        city: newFile.city || null,
+        type_of_loan: newFile.type_of_loan || null,
+        gp_id: newFile.gp_id || null,
+        additional_data,
+      };
+      const res = await createFile(payload);
+      const fileId = res.file_id || res.id;
+      setShowAddModal(false);
+      onRefresh();
+      if (fileId) navigation.navigate('FileDetail', { fileId });
+    } catch (error) {
+      Alert.alert('Error', error?.response?.data?.detail || 'Failed to create file');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setPage(1);
@@ -197,10 +253,11 @@ const FilesScreen = ({ navigation, user }) => {
     return `₹${n}`;
   };
 
-  const renderStatsCard = (title, value, color) => (
+  const renderStatsCard = (title, value, color, sub) => (
     <View style={[styles.statCard, { borderLeftColor: color }]}>
       <Text style={styles.statValue}>{value || 0}</Text>
       <Text style={styles.statLabel}>{title}</Text>
+      {sub ? <Text style={styles.statSub}>{sub}</Text> : null}
     </View>
   );
 
@@ -346,9 +403,14 @@ const FilesScreen = ({ navigation, user }) => {
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>📁 Files</Text>
-        <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
-          <Text style={styles.refreshText}>🔄</Text>
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity onPress={openAddModal} style={styles.addBtn} data-testid="add-new-file-btn">
+            <Text style={styles.addBtnText}>+ Add File</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
+            <Text style={styles.refreshText}>🔄</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Stats */}
@@ -358,14 +420,14 @@ const FilesScreen = ({ navigation, user }) => {
             {renderStatsCard('Total', stats.total_files, '#6B7280')}
             {renderStatsCard('New', stats.new, '#3B82F6')}
             {renderStatsCard('In Progress', stats.in_progress, '#F59E0B')}
-            {renderStatsCard('Login', stats.login, '#6366F1')}
-            {renderStatsCard('Approved', stats.approved, '#22C55E')}
-            {renderStatsCard('Disbursed', stats.disbursed, '#10B981')}
-            {renderStatsCard('Interim Rej', stats.interim_rejects, '#F97316')}
-            {renderStatsCard('Final Rej', stats.final_rejections, '#EF4444')}
-            {renderStatsCard('Approved ₹', fmtAmt(stats.total_approved_amount), '#22C55E')}
-            {renderStatsCard('Disbursed ₹', fmtAmt(stats.total_disbursed_amount), '#10B981')}
-            {renderStatsCard('Pipeline ₹', fmtAmt(stats.amt_in_pipeline), '#8B5CF6')}
+            {renderStatsCard('Login', stats.login, '#6366F1', `C:${stats.login_current || 0} S:${stats.login_spillover || 0}`)}
+            {renderStatsCard('Approved', stats.approved, '#22C55E', `C:${stats.approved_current || 0} S:${stats.approved_spillover || 0}`)}
+            {renderStatsCard('Disbursed', stats.disbursed, '#10B981', `C:${stats.disbursed_current || 0} S:${stats.disbursed_spillover || 0}`)}
+            {renderStatsCard('Interim Rej', stats.interim_rejects, '#F97316', `C:${stats.interim_rejects_current || 0} S:${stats.interim_rejects_spillover || 0}`)}
+            {renderStatsCard('Final Rej', stats.final_rejections, '#EF4444', `C:${stats.final_rejections_current || 0} S:${stats.final_rejections_spillover || 0}`)}
+            {renderStatsCard('Approved ₹', fmtAmt(stats.total_approved_amount), '#22C55E', `C:${fmtAmt(stats.total_approved_amount_current)} S:${fmtAmt(stats.total_approved_amount_spillover)}`)}
+            {renderStatsCard('Disbursed ₹', fmtAmt(stats.total_disbursed_amount), '#10B981', `C:${fmtAmt(stats.total_disbursed_amount_current)} S:${fmtAmt(stats.total_disbursed_amount_spillover)}`)}
+            {renderStatsCard('Pipeline ₹', fmtAmt(stats.amt_in_pipeline), '#8B5CF6', `C:${fmtAmt(stats.amt_in_pipeline_current)} S:${fmtAmt(stats.amt_in_pipeline_spillover)}`)}
           </ScrollView>
         </View>
       )}
@@ -416,6 +478,79 @@ const FilesScreen = ({ navigation, user }) => {
           }
         />
       )}
+
+      {/* Add New File Modal */}
+      <Modal visible={showAddModal} animationType="slide" transparent onRequestClose={() => setShowAddModal(false)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add New File</Text>
+              <TouchableOpacity onPress={() => setShowAddModal(false)} data-testid="close-add-file">
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 460 }} keyboardShouldPersistTaps="handled">
+              <Text style={styles.fieldLabel}>Customer Name *</Text>
+              <TextInput style={styles.modalInput} value={newFile.full_name}
+                onChangeText={(t) => setNewFile({ ...newFile, full_name: t })}
+                placeholder="Full name" placeholderTextColor="#9CA3AF" data-testid="new-file-name" />
+
+              <Text style={styles.fieldLabel}>Mobile</Text>
+              <TextInput style={styles.modalInput} value={newFile.mobile} keyboardType="phone-pad"
+                onChangeText={(t) => setNewFile({ ...newFile, mobile: t })}
+                placeholder="10-digit mobile" placeholderTextColor="#9CA3AF" data-testid="new-file-mobile" />
+
+              <Text style={styles.fieldLabel}>Email</Text>
+              <TextInput style={styles.modalInput} value={newFile.email} keyboardType="email-address" autoCapitalize="none"
+                onChangeText={(t) => setNewFile({ ...newFile, email: t })}
+                placeholder="email@example.com" placeholderTextColor="#9CA3AF" data-testid="new-file-email" />
+
+              <Text style={styles.fieldLabel}>City</Text>
+              <TextInput style={styles.modalInput} value={newFile.city}
+                onChangeText={(t) => setNewFile({ ...newFile, city: t })}
+                placeholder="City" placeholderTextColor="#9CA3AF" data-testid="new-file-city" />
+
+              <Text style={styles.fieldLabel}>Type of Loan</Text>
+              <TextInput style={styles.modalInput} value={newFile.type_of_loan}
+                onChangeText={(t) => setNewFile({ ...newFile, type_of_loan: t })}
+                placeholder="e.g. Personal Loan" placeholderTextColor="#9CA3AF" data-testid="new-file-loan-type" />
+
+              <Text style={styles.fieldLabel}>Loan Amount Required</Text>
+              <TextInput style={styles.modalInput} value={newFile.loan_amount_required} keyboardType="numeric"
+                onChangeText={(t) => setNewFile({ ...newFile, loan_amount_required: t })}
+                placeholder="Amount" placeholderTextColor="#9CA3AF" data-testid="new-file-loan-amount" />
+
+              {canAssignGp && (
+                <>
+                  <Text style={styles.fieldLabel}>Assign to Growth Partner</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+                    <TouchableOpacity
+                      style={[styles.gpChip, !newFile.gp_id && styles.gpChipActive]}
+                      onPress={() => setNewFile({ ...newFile, gp_id: '' })}>
+                      <Text style={[styles.gpChipText, !newFile.gp_id && styles.gpChipTextActive]}>Myself</Text>
+                    </TouchableOpacity>
+                    {growthPartners.map(gp => (
+                      <TouchableOpacity key={gp.id}
+                        style={[styles.gpChip, newFile.gp_id === gp.id && styles.gpChipActive]}
+                        onPress={() => setNewFile({ ...newFile, gp_id: gp.id })}>
+                        <Text style={[styles.gpChipText, newFile.gp_id === gp.id && styles.gpChipTextActive]}>
+                          {gp.full_name || gp.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              )}
+              <Text style={styles.modalHint}>Add banks, eligibility, documents & status on the File Details screen that opens next.</Text>
+            </ScrollView>
+            <TouchableOpacity
+              style={[styles.createBtn, creating && { opacity: 0.6 }]}
+              onPress={handleCreateFile} disabled={creating} data-testid="submit-add-file">
+              {creating ? <ActivityIndicator color="#fff" /> : <Text style={styles.createBtnText}>Create File</Text>}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -445,6 +580,105 @@ const styles = StyleSheet.create({
   },
   refreshText: {
     fontSize: 20,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addBtn: {
+    backgroundColor: '#16a34a',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    marginRight: 6,
+  },
+  addBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  statSub: {
+    fontSize: 9,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 28,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalClose: {
+    fontSize: 18,
+    color: '#6B7280',
+    padding: 4,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 4,
+    marginTop: 8,
+  },
+  modalInput: {
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#111827',
+  },
+  modalHint: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 12,
+  },
+  gpChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: '#F3F4F6',
+    marginRight: 8,
+  },
+  gpChipActive: {
+    backgroundColor: '#16a34a',
+  },
+  gpChipText: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  gpChipTextActive: {
+    color: '#fff',
+  },
+  createBtn: {
+    backgroundColor: '#16a34a',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  createBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
   },
   statsContainer: {
     padding: 12,

@@ -1757,3 +1757,21 @@ renders the split on the 3 amount cards as well (currency formatted). Verified v
 windows (invariant holds; File-Created=2024 -> all Spillover) + screenshot.
 NOTE: Mobile not updated (locked APK v2.6.2/vc19) - backend now returns the split fields so mobile
 can adopt them in the same pass as the native Add-New-File work.
+
+### MOBILE PASS: native "+ Add New File" + C/S split + version bump (June 7, 2026)
+Authorized by user (explicit request) to modify mobile and cut a new APK.
+- app.json: version 2.6.2 -> 2.6.3, android.versionCode 19 -> 20. NOTHING else in mobile config,
+  permissions, call logic, post-call modal, call-log sync, attendance or EAS touched.
+- src/services/api.js: added createFile(data) -> POST /files/create and getGrowthPartners() ->
+  GET /users/growth-partners (same canonical, scoped endpoints as web).
+- src/screens/FilesScreen.js:
+  * '+ Add File' button in the Files header -> slide-up Modal (Customer Name*, Mobile, Email, City,
+    Type of Loan, Loan Amount, and GP-assign chips for admin/ops/manager/TL; plain GP owns self).
+    On submit -> createFile -> navigates to the existing FileDetail screen (route already registered
+    in App.js) and refreshes the list. Same canonical File as web; no second file type.
+  * Stat cards now show the C/S split sub-label for Login, Approved, Disbursed, Interim Rej,
+    Final Rej, Approved ₹, Disbursed ₹, Pipeline ₹ (reads *_current / *_spillover from the API).
+- Only 3 mobile files changed. Verified: both JS files compile via babel-preset-expo; app.json valid;
+  FileDetail route exists. Backend endpoints already verified via the web pass.
+- NOT runtime-tested on device (no emulator/APK in this env) - requires an EAS APK build of
+  v2.6.3/versionCode 20 to validate on a handset.
