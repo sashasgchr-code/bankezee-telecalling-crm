@@ -51,10 +51,13 @@ def EMPTY_DASHBOARD_STATS():
     keys = [
         "total_files", "new", "in_progress", "login", "login_current", "login_spillover",
         "approved", "approved_current", "approved_spillover", "total_approved_amount",
+        "total_approved_amount_current", "total_approved_amount_spillover",
         "disbursed", "disbursed_current", "disbursed_spillover", "total_disbursed_amount",
+        "total_disbursed_amount_current", "total_disbursed_amount_spillover",
         "interim_rejects", "interim_rejects_current", "interim_rejects_spillover",
         "final_rejections", "final_rejections_current", "final_rejections_spillover",
-        "amt_in_pipeline", "contacted", "documents_collected", "sent_to_bank", "rejected",
+        "amt_in_pipeline", "amt_in_pipeline_current", "amt_in_pipeline_spillover",
+        "contacted", "documents_collected", "sent_to_bank", "rejected",
     ]
     payload = {k: 0 for k in keys}
     payload["by_status"] = {}
@@ -2871,6 +2874,19 @@ async def get_files_dashboard_stats(
     total_approved_amount = 0.0
     total_disbursed_amount = 0.0
     pipeline_amount = 0.0
+
+    # Current vs Spillover split for every ACTIVITY-DATE metric.
+    #   Current   = file created inside the File-Created window AND activity in the Activity window
+    #   Spillover = file created in an EARLIER (outside) window       AND activity in the Activity window
+    # Total (the card number) always == current + spillover.
+    login_c = login_s = 0
+    approved_c = approved_s = 0
+    disbursed_c = disbursed_s = 0
+    interim_c = interim_s = 0
+    final_c = final_s = 0
+    approved_amt_c = approved_amt_s = 0.0
+    disbursed_amt_c = disbursed_amt_s = 0.0
+    pipeline_amt_c = pipeline_amt_s = 0.0
     
     # Status counts for breakdown
     status_counts = {}
@@ -2938,6 +2954,10 @@ async def get_files_dashboard_stats(
                               for elig in eligibilities)
         if file_logged:
             login_count += 1
+            if created_ok:
+                login_c += 1
+            else:
+                login_s += 1
         
         # APPROVED: one per FILE when any eligibility row is approved inside the activity window.
         # Amount is the SUM of those rows' approved_amount - never loan_amount_required (old CRM).
@@ -2945,9 +2965,18 @@ async def get_files_dashboard_stats(
                          if e.get('approval_status') == 'approved' and stamp_in_range(e.get('approved_at'))]
         if approved_rows:
             approved_count += 1
+            if created_ok:
+                approved_c += 1
+            else:
+                approved_s += 1
             for elig in approved_rows:
                 try:
-                    total_approved_amount += float(elig.get('approved_amount') or 0)
+                    amt = float(elig.get('approved_amount') or 0)
+                    total_approved_amount += amt
+                    if created_ok:
+                        approved_amt_c += amt
+                    else:
+                        approved_amt_s += amt
                 except (ValueError, TypeError):
                     pass
         
@@ -2957,9 +2986,18 @@ async def get_files_dashboard_stats(
                           if is_disbursed_elig(e) and stamp_in_range(e.get('disbursed_at'))]
         if disbursed_rows:
             disbursed_count += 1
+            if created_ok:
+                disbursed_c += 1
+            else:
+                disbursed_s += 1
             for elig in disbursed_rows:
                 try:
-                    total_disbursed_amount += float(elig.get('disbursed_amount') or 0)
+                    amt = float(elig.get('disbursed_amount') or 0)
+                    total_disbursed_amount += amt
+                    if created_ok:
+                        disbursed_amt_c += amt
+                    else:
+                        disbursed_amt_s += amt
                 except (ValueError, TypeError):
                     pass
         
@@ -2975,9 +3013,17 @@ async def get_files_dashboard_stats(
         
         if file_status in INTERIM_REJECTS and stamp_in_range(reject_event):
             interim_rejects += 1
+            if created_ok:
+                interim_c += 1
+            else:
+                interim_s += 1
         
         if file_status in FINAL_REJECTIONS and stamp_in_range(reject_event):
             final_rejections += 1
+            if created_ok:
+                final_c += 1
+            else:
+                final_s += 1
         
         # AMT IN PIPELINE: gated by ACTIVITY DATE via each qualifying eligibility's login_done_at
         # (bank login done + application id, not yet disbursed, not declined, file not finally rejected)
@@ -2988,7 +3034,12 @@ async def get_files_dashboard_stats(
                         and elig.get('approval_status') != 'declined'
                         and stamp_in_range(elig.get('login_done_at'))):
                     try:
-                        pipeline_amount += float(elig.get('eligible_amount') or 0)
+                        amt = float(elig.get('eligible_amount') or 0)
+                        pipeline_amount += amt
+                        if created_ok:
+                            pipeline_amt_c += amt
+                        else:
+                            pipeline_amt_s += amt
                     except (ValueError, TypeError):
                         pass
     
@@ -2999,24 +3050,30 @@ async def get_files_dashboard_stats(
         "new": new_count,
         "in_progress": in_progress_count,
         "login": login_count,
-        "login_current": login_count,
-        "login_spillover": 0,
+        "login_current": login_c,
+        "login_spillover": login_s,
         "approved": approved_count,
-        "approved_current": approved_count,
-        "approved_spillover": 0,
+        "approved_current": approved_c,
+        "approved_spillover": approved_s,
         "total_approved_amount": total_approved_amount,
+        "total_approved_amount_current": approved_amt_c,
+        "total_approved_amount_spillover": approved_amt_s,
         # Row 2 stats
         "disbursed": disbursed_count,
-        "disbursed_current": disbursed_count,
-        "disbursed_spillover": 0,
+        "disbursed_current": disbursed_c,
+        "disbursed_spillover": disbursed_s,
         "total_disbursed_amount": total_disbursed_amount,
+        "total_disbursed_amount_current": disbursed_amt_c,
+        "total_disbursed_amount_spillover": disbursed_amt_s,
         "interim_rejects": interim_rejects,
-        "interim_rejects_current": interim_rejects,
-        "interim_rejects_spillover": 0,
+        "interim_rejects_current": interim_c,
+        "interim_rejects_spillover": interim_s,
         "final_rejections": final_rejections,
-        "final_rejections_current": final_rejections,
-        "final_rejections_spillover": 0,
+        "final_rejections_current": final_c,
+        "final_rejections_spillover": final_s,
         "amt_in_pipeline": pipeline_amount,
+        "amt_in_pipeline_current": pipeline_amt_c,
+        "amt_in_pipeline_spillover": pipeline_amt_s,
         # Loans by Type (using type_of_loan)
         "loans_by_type": loans_by_type,
         # Legacy fields for backwards compatibility

@@ -1733,3 +1733,27 @@ pass to protect the locked mobile build (v2.6.2 / versionCode 19). Backend POST 
 mobile-ready - the native screen just needs to call it. No mobile/EAS/version files were touched.
 
 *Last Updated: June 7, 2026*
+
+### CURRENT vs SPILLOVER SPLIT (C:/S:) - real calculation (June 7, 2026)
+The dashboard stat cards show `C: <n> S: <n>` (Current/Spillover). Previously *_current was just
+the full count and *_spillover was hard-coded 0 (placeholder). Now computed for real in
+`files_crm.py get_files_dashboard_stats` for ALL 8 activity metrics:
+Login, Approved, Total Approved (₹), Disbursed, Total Disbursed (₹), Interim Rejects,
+Final Rejections, Amt in Pipeline (₹).
+DEFINITION (per user):
+- Current (C)   = file created INSIDE the File-Created window AND the activity happened inside the
+  Activity-Date window.
+- Spillover (S) = file created in an EARLIER (outside) File-Created window BUT the activity happened
+  inside the current Activity-Date window (e.g. Aug-created file that logs in / gets approved /
+  disbursed / rejected in Sep counts as Spillover when Sep is the Activity window).
+- Invariant: card Total == Current + Spillover ALWAYS (implemented via the existing
+  `created_ok = file_created_in_range(f)` flag: current when created_ok else spillover).
+Two-filter logic UNCHANGED: Total Files/New/In Progress -> File Created window;
+the 8 activity metrics -> Activity Date window. New API keys:
+*_current / *_spillover for each count, plus total_approved_amount_current/_spillover,
+total_disbursed_amount_current/_spillover, amt_in_pipeline_current/_spillover (added to
+EMPTY_DASHBOARD_STATS too). Frontend FilesDashboard.js (shared by admin/manager/agent web) now
+renders the split on the 3 amount cards as well (currency formatted). Verified via curl across 3
+windows (invariant holds; File-Created=2024 -> all Spillover) + screenshot.
+NOTE: Mobile not updated (locked APK v2.6.2/vc19) - backend now returns the split fields so mobile
+can adopt them in the same pass as the native Add-New-File work.

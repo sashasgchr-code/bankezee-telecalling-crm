@@ -1230,7 +1230,7 @@ const FilesDashboard = () => {
             <StatCard 
               label="Total Approved" 
               value={stats?.total_approved_amount || 0}
-              subLabel="Activity date"
+              subLabel={`C: ${formatCurrency(stats?.total_approved_amount_current || 0, true)} S: ${formatCurrency(stats?.total_approved_amount_spillover || 0, true)}`}
               color="text-green-600"
               icon={TrendingUp}
               amount
@@ -1249,7 +1249,7 @@ const FilesDashboard = () => {
             <StatCard 
               label="Total Disbursed" 
               value={stats?.total_disbursed_amount || 0}
-              subLabel="Activity date"
+              subLabel={`C: ${formatCurrency(stats?.total_disbursed_amount_current || 0, true)} S: ${formatCurrency(stats?.total_disbursed_amount_spillover || 0, true)}`}
               color="text-emerald-600"
               icon={DollarSign}
               amount
@@ -1271,7 +1271,7 @@ const FilesDashboard = () => {
             <StatCard 
               label="Amt in Pipeline" 
               value={stats?.amt_in_pipeline || 0}
-              subLabel="Login=Yes & App ID"
+              subLabel={`C: ${formatCurrency(stats?.amt_in_pipeline_current || 0, true)} S: ${formatCurrency(stats?.amt_in_pipeline_spillover || 0, true)}`}
               color="text-blue-600"
               icon={TrendingUp}
               amount
