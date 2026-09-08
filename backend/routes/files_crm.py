@@ -1745,6 +1745,203 @@ async def get_commissions(
     }
 
 
+# ---- Disbursement-based commission engine (single source of truth) ----
+def _elig_is_disbursed(elig):
+    d = elig.get('disbursed')
+    return d is True or (isinstance(d, str) and d.strip().lower() in ('yes', 'true'))
+
+
+def _elig_commission(elig):
+    """Stored commission_amount is the source of truth; only fall back to the
+    formula for legacy disbursed files that saved % + amount but no amount."""
+    ca = elig.get('commission_amount')
+    try:
+        ca = float(ca) if ca not in (None, '') else 0.0
+    except (TypeError, ValueError):
+        ca = 0.0
+    if ca > 0:
+        return ca
+    try:
+        amt = float(elig.get('disbursed_amount') or 0)
+        pct = float(elig.get('commission_percentage') or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return round(amt * pct / 100.0, 2)
+
+
+async def _commission_report_data(month=None, year=None, all_time=False,
+                                   source_id=None, disbursed_bank=None, include_bank_details=False):
+    from datetime import datetime, timezone
+    from utils.hierarchy import load_user_index
+    now = datetime.now(timezone.utc)
+    if not all_time:
+        month = int(month) if month else now.month
+        year = int(year) if year else now.year
+
+    index = await load_user_index(db)
+    filter_canon = (index.canonical_id(source_id) or source_id) if source_id else None
+
+    leads = await db.leads.find(
+        {"status": "file", "eligibilities": {"$exists": True, "$ne": []}},
+        {"_id": 0, "id": 1, "full_name": 1, "name": 1, "phone": 1, "loan_type": 1,
+         "source_id": 1, "assigned_to": 1, "file_assigned_to": 1, "eligibilities": 1}
+    ).to_list(20000)
+
+    groups = {}
+    for lead in leads:
+        sid = lead.get('source_id') or lead.get('assigned_to') or lead.get('file_assigned_to')
+        canon = index.canonical_id(sid) or sid or 'unassigned'
+        if filter_canon and canon != filter_canon:
+            continue
+        gp_name = index.display_name(sid) or 'Unassigned'
+        customer = lead.get('full_name') or lead.get('name') or '—'
+        lid = lead.get('id')
+        for elig in (lead.get('eligibilities') or []):
+            if not _elig_is_disbursed(elig):
+                continue
+            ddate = elig.get('disbursed_at') or elig.get('disbursal_date')
+            dt = parse_iso(ddate)
+            if not all_time:
+                if not dt or dt.month != month or dt.year != year:
+                    continue
+            bank = elig.get('disbursed_bank') or elig.get('bank_name') or '—'
+            if disbursed_bank and bank != disbursed_bank:
+                continue
+            try:
+                amt = float(elig.get('disbursed_amount') or 0)
+            except (TypeError, ValueError):
+                amt = 0.0
+            try:
+                pct = float(elig.get('commission_percentage') or 0)
+            except (TypeError, ValueError):
+                pct = 0.0
+            comm = _elig_commission(elig)
+            g = groups.setdefault(canon, {'name': gp_name, 'rows': [], 'file_ids': set(),
+                                          'disbursed_amount': 0.0, 'commission_amount': 0.0})
+            g['rows'].append({
+                'lead_id': lid, 'customer': customer, 'loan_type': lead.get('loan_type') or '',
+                'disbursement_date': (dt.date().isoformat() if dt else (ddate or '')),
+                'disbursed_bank': bank, 'disbursed_amount': amt,
+                'commission_percentage': pct, 'commission_amount': comm,
+            })
+            g['file_ids'].add(lid)
+            g['disbursed_amount'] += amt
+            g['commission_amount'] += comm
+
+    result_groups = []
+    grand = {'files': 0, 'disbursals': 0, 'disbursed_amount': 0.0, 'commission_amount': 0.0}
+    for root, g in groups.items():
+        gp = {
+            'source_id': root,
+            'source_name': g.get('name') or 'Unassigned',
+            'rows': sorted(g['rows'], key=lambda r: r['disbursement_date'] or '', reverse=True),
+            'subtotal': {
+                'count': len(g['file_ids']),
+                'disbursals': len(g['rows']),
+                'disbursed_amount': round(g['disbursed_amount'], 2),
+                'commission_amount': round(g['commission_amount'], 2),
+            },
+        }
+        if include_bank_details:
+            alias_ids = list(index.aliases(root)) or [root]
+            udoc = await db.users.find_one({"id": {"$in": alias_ids}}, {"_id": 0, "bank_details": 1}) or {}
+            bd = udoc.get('bank_details') or {}
+            gp['bank_details'] = {
+                'account_holder': bd.get('account_holder') or 'Not provided',
+                'bank_name': bd.get('bank_name') or 'Not provided',
+                'account_number': bd.get('account_number') or 'Not provided',
+                'ifsc': bd.get('ifsc_code') or bd.get('ifsc') or 'Not provided',
+                'upi': bd.get('upi_id') or bd.get('upi') or 'Not provided',
+            }
+        result_groups.append(gp)
+        grand['files'] += gp['subtotal']['count']
+        grand['disbursals'] += gp['subtotal']['disbursals']
+        grand['disbursed_amount'] += g['disbursed_amount']
+        grand['commission_amount'] += g['commission_amount']
+
+    result_groups.sort(key=lambda x: -x['subtotal']['commission_amount'])
+    grand['disbursed_amount'] = round(grand['disbursed_amount'], 2)
+    grand['commission_amount'] = round(grand['commission_amount'], 2)
+    return {
+        'groups': result_groups,
+        'grand_totals': grand,
+        'filters': {'month': month, 'year': year, 'all_time': all_time,
+                    'source_id': source_id, 'disbursed_bank': disbursed_bank},
+    }
+
+
+@router.get("/commission-report")
+async def commission_report(month: Optional[int] = None, year: Optional[int] = None,
+                            all_time: bool = False, source_id: Optional[str] = None,
+                            disbursed_bank: Optional[str] = None,
+                            current_user: dict = Depends(get_current_user)):
+    """Commission grouped by Growth Partner for the DISBURSEMENT-date period.
+    Admin/Ops/HR only (bank details are authorized-roles only)."""
+    from utils.auth import normalize_role
+    role = normalize_role(current_user.get('role', ''))
+    if role not in ('admin', 'ops', 'hr'):
+        raise HTTPException(status_code=403, detail="Not authorized for commission report")
+    return await _commission_report_data(month, year, all_time, source_id, disbursed_bank, include_bank_details=True)
+
+
+@router.get("/commission-report/export")
+async def commission_report_export(month: Optional[int] = None, year: Optional[int] = None,
+                                   all_time: bool = False, source_id: Optional[str] = None,
+                                   disbursed_bank: Optional[str] = None,
+                                   current_user: dict = Depends(get_current_user)):
+    import io, csv
+    from fastapi.responses import Response
+    from utils.auth import normalize_role
+    role = normalize_role(current_user.get('role', ''))
+    if role not in ('admin', 'ops', 'hr'):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    data = await _commission_report_data(month, year, all_time, source_id, disbursed_bank, include_bank_details=True)
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Growth Partner", "Account Holder", "GP Bank", "Account No.", "IFSC", "UPI",
+                "Customer/File", "Loan Type", "Disbursement Date", "Disbursed Bank",
+                "Disbursed Amount", "Commission %", "Commission Amount"])
+    for g in data['groups']:
+        bd = g.get('bank_details') or {}
+        for r in g['rows']:
+            w.writerow([g['source_name'], bd.get('account_holder', ''), bd.get('bank_name', ''),
+                        bd.get('account_number', ''), bd.get('ifsc', ''), bd.get('upi', ''),
+                        r['customer'], r['loan_type'], r['disbursement_date'], r['disbursed_bank'],
+                        r['disbursed_amount'], r['commission_percentage'], r['commission_amount']])
+        st = g['subtotal']
+        w.writerow([f"SUBTOTAL — {g['source_name']}", '', '', '', '', '',
+                    f"{st['count']} file(s), {st['disbursals']} disbursal(s)", '', '', '',
+                    st['disbursed_amount'], '', st['commission_amount']])
+        w.writerow([])
+    gt = data['grand_totals']
+    w.writerow([f"GRAND TOTAL", '', '', '', '', '',
+                f"{gt['files']} file(s), {gt['disbursals']} disbursal(s)", '', '', '',
+                gt['disbursed_amount'], '', gt['commission_amount']])
+    return Response(content=out.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="commission_report.csv"'})
+
+
+@router.get("/my-earnings")
+async def my_earnings(month: Optional[int] = None, year: Optional[int] = None,
+                      all_time: bool = False, current_user: dict = Depends(get_current_user)):
+    """A Growth Partner's OWN earnings for the disbursement period. Strictly self-scoped."""
+    uid = current_user.get('id') or str(current_user.get('_id') or '')
+    data = await _commission_report_data(month, year, all_time, source_id=uid,
+                                         disbursed_bank=None, include_bank_details=False)
+    grp = data['groups'][0] if data['groups'] else {'rows': [], 'subtotal': {'count': 0, 'disbursals': 0, 'disbursed_amount': 0.0, 'commission_amount': 0.0}}
+    # Lifetime (all-time) totals, independent of the selected period
+    life = await _commission_report_data(all_time=True, source_id=uid, include_bank_details=False)
+    lgrp = life['groups'][0]['subtotal'] if life['groups'] else {'count': 0, 'disbursed_amount': 0.0, 'commission_amount': 0.0}
+    return {
+        'filters': data['filters'],
+        'rows': grp['rows'],
+        'totals': grp['subtotal'],
+        'lifetime': {'commission_amount': lgrp.get('commission_amount', 0), 'count': lgrp.get('count', 0),
+                     'disbursed_amount': lgrp.get('disbursed_amount', 0)},
+    }
+
+
+
 @router.get("/commissions/summary")
 async def get_commission_summary(current_user: dict = Depends(get_current_user)):
     """Get commission summary for dashboard"""

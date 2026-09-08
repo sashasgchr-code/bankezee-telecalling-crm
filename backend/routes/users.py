@@ -244,16 +244,13 @@ async def list_growth_partners(
     role = normalize_role(current_user.get("role", ""))
     user_id = current_user.get("id") or str(current_user.get("_id") or "")
 
-    if role == "hr":
-        raise HTTPException(status_code=403, detail="HR cannot access Growth Partner data")
-
     # Single identity index drives dedup + canonical id, so the value emitted here is the
     # SAME canonical id every report endpoint resolves back through index.aliases().
     index = await load_user_index(db)
 
     # ---- who is this caller allowed to see? (root set, fail closed for scoped roles) ----
-    scope_roots = None  # None = unrestricted (admin/ops)
-    if role in ("admin", "ops"):
+    scope_roots = None  # None = unrestricted (admin/ops/hr)
+    if role in ("admin", "ops", "hr"):
         scope_roots = None
     elif role == "manager":
         scope_roots = index.descendant_roots(user_id, include_self=False)

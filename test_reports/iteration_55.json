@@ -1,0 +1,56 @@
+{
+  "summary": "Iter55 - Commission Report + GP Earnings + HR fixes. Backend: 14 passed + 1 xfail on /app/backend/tests/test_iter55_commission_earnings.py. Verified (a) HR /users/growth-partners returns 19 GPs (matches admin); (b) /files/commission-report as admin all-time returns 27 GP groups, grand ₹9,23,178.31 with sub-totals summing to grand total; HR access allowed, GP 403; disbursed_bank filter narrows rows correctly; CSV export returns text/csv with 'Growth Partner', 'SUBTOTAL --', 'GRAND TOTAL'; (c) /files/my-earnings as Anusha returns lifetime ₹21,650.12 / 2 files / 3 disbursals - matches admin filtered view. Frontend (Playwright, preview URL): HR attendance page shows 'All Growth Partners (19)' (was 0) ✓; HR /hr/files/policies resolves to Policy Master with 35 bank policies (no blank File Details) ✓; Admin /admin/files → Commission button opens commission-report-panel with all filter testids (all-time, month, year, gp-filter with 20 options, bank-filter), 28 grouped tables (all-time), Grand ₹9,23,178.31, Export CSV downloads commission_report_2026-09-08.csv ✓; GP dashboard (/agent/dashboard) shows Earnings trophy card, period ₹0 for Sep 2026, Lifetime ₹21,650.12 ✓; All-Time toggle updates period to ₹21,650.12; earnings-open-breakdown opens modal with 3 rows (2 unique files) totaling ₹21,650.12 ✓; GP fetch of /api/files/commission-report → 403 ✓.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/files/commission-report", "issue": "source_id filter is a no-op when the passed id has no root in the hierarchy index. index.root_for(source_id) returns None -> filter_root=None -> no filtering. The endpoint's own emitted source_ids (e.g. 'email:admin@bankezee.com') fall into this bucket, and any real user id whose canonical root is itself but is not in the hierarchy index is also affected. Suggested fix: `filter_root = index.root_for(source_id) or (source_id if source_id else None)` in _commission_report_data (files_crm.py:1782)."},
+      {"endpoint": "/api/files/commission-report", "issue": "All 27 groups have source_name='Unassigned' because index.display_name(root) returns None for canonical roots keyed as 'email:...'. UI Commission panel therefore shows every GP group header as 'Unassigned' - major visible defect in the UI. Fix: fall back to lookup users collection by canonical id / email alias when display_name is empty."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FilesDashboard commission panel", "issue": "Every GP-group card renders the group header/name as 'Unassigned' because backend source_name is 'Unassigned' for all 27 groups (see backend minor #2). Bank-details line under each GP also reads 'Not provided' for every field.", "selector": "[data-testid^='commission-gp-']", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Admin Commission - GP filter dropdown", "issue": "Dropdown options carry the real users.id ObjectId but many GPs (e.g. asma.sultana0r@gmail.com id 6a5866a969071f897aef93a1) have 0 file disbursals AND their lead docs' source_id is not resolved to the same canonical id (leads reference by email:...). Selecting them returns 0 groups. Selecting Anusha does work (returns 1 group). Effectively the GP filter only works for GPs whose users.id is present in the hierarchy index root_for chain.", "affected_selectors": ["[data-testid='commission-gp-filter']"]}
+    ],
+    "design_issues": [
+      {"screen": "HR Attendance / other HR pages", "issues": ["Multiple React hydration warnings due to <span> being rendered as child of <select>/<tbody>/<tr> (visual-editor markers). Not user-visible but pollutes console."]}
+    ]
+  },
+  "verified_items": {
+    "hr_attendance_gp_filter": "PASS - 'All Growth Partners (19)' visible; canonical /users/growth-partners now allowed for HR",
+    "hr_files_policy_route": "PASS - /hr/files/policies renders PolicyMaster (35 policies)",
+    "admin_commission_panel": "PASS - opens on Commission button click, all filter testids, 28 groups (all-time) with subtotals & bank-details rows",
+    "commission_grand_total_math": "PASS - subtotals sum equals grand ₹9,23,178.31 within 0.05 tolerance",
+    "commission_csv_export": "PASS - downloads commission_report_2026-09-08.csv with Growth Partner/SUBTOTAL/GRAND TOTAL text",
+    "gp_earnings_card": "PASS - Sep 2026 ₹0, Lifetime ₹21,650.12; toggle All Time → period becomes ₹21,650.12",
+    "gp_earnings_breakdown": "PASS - modal shows 3 disbursed rows summing to ₹21,650.12 with 2 unique files",
+    "gp_isolation_403_commission": "PASS - browser fetch as GP → 403 on /api/files/commission-report and /export",
+    "regression_admin_files_stats_authme": "PASS"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter55_commission_earnings.py",
+    "/app/test_reports/pytest/iter55.xml"
+  ],
+  "action_items": [
+    "Fix _commission_report_data source_id filter to fall back to the raw source_id when index.root_for(source_id) is None (files_crm.py ~line 1782). Otherwise GP filter dropdown in Admin Commission panel is a no-op for most GPs.",
+    "Fix source_name resolution so canonical roots keyed as 'email:...' resolve to the corresponding users.full_name/name. Currently every GP group card and CSV row shows 'Unassigned' as the Growth Partner name.",
+    "Fix bank_details lookup for the same reason - db.users.find_one({'id': {'$in': alias_ids}}) never matches when the canonical root is an email:... alias not present in users.id. Consider searching by email or users.email_aliases.",
+    "(Cosmetic) Clean up visual-editor <span> wrappers producing React hydration warnings inside <select>/<tbody> across HR Attendance and Files pages."
+  ],
+  "critical_code_review_comments": [
+    "files_crm.py _commission_report_data lines 1782-1795: root_for(source_id) is the ONLY filter path; when it returns None the filter silently becomes a no-op. Fail-open on filters is dangerous - the report would return everyone even if a GP filter is set.",
+    "files_crm.py lines 1834-1835: source_id emitted uses `root` which for orphan GPs becomes 'email:xxx'. display_name(root) then can't find them. The GP CANONICAL id used to emit and the id used to look up bank_details/name must be consistent (either both users.id ObjectId or both 'email:...' with a matching resolver).",
+    "EarningsCard.js: no ESC/backdrop handler on modal is fine (modal has bg-black/50 onClick backdrop close). Code is clean.",
+    "FilesDashboard.js commission-bank-filter options derive from commissionData rows, so a bank that had ZERO matching rows in the currently filtered view disappears from the dropdown - a user-facing quirk if they had first filtered by bank and no rows came back. Non-blocking."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter55_commission_earnings.py"],
+  "success_rate": {"backend": "93% (14/15 passed, 1 xfail for known source_id filter bug)", "frontend": "90% - all listed flows work; visible defect is every commission group shows 'Unassigned' as GP name because backend source_name resolution fails"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!!, hr@neosales.in/Hr@BankEzee@$, yarragondaanusha@gmail.com/MetaGP123!",
+  "seed_data_creation": "None",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Commission panel testids all wired: commission-report-panel, commission-{all-time,month,year,gp-filter,bank-filter,grand-amount,gp-<sid>,subtotal-<sid>,bank-details-<sid>}. GP earnings card testids on /agent/dashboard: gp-earnings-card, earnings-{all-time,month,year,period-amount,lifetime-amount,open-breakdown,breakdown-modal}. Admin route is /admin/files (not /files). HR leaves route is /hr/leave (not /hr/leaves). After main-agent fixes source_id filter and source_name resolution, re-run /app/backend/tests/test_iter55_commission_earnings.py - the xfail should become pass; and visually confirm commission-gp-<id> group cards show actual GP names instead of 'Unassigned'.",
+  "rca of the issue": "Backend `_commission_report_data` uses `index.root_for(source_id)` to compute the canonical filter root AND to bucket every lead into a group. If the canonical root falls back to a synthetic key like 'email:foo@bar.com' (because the user doc/alias graph doesn't map that id to a real users.id), (a) `filter_root` becomes None -> filter is silently dropped, and (b) `display_name(root)` and `db.users.find_one({'id': {'$in': aliases}})` both return empty because no users.id equals 'email:foo@bar.com'. Result: correct SUMS (money is computed straight from stored eligibility.commission_amount) but 'Unassigned' display and a non-functional GP filter. Fix in files_crm.py: (1) `filter_root = index.root_for(source_id) or source_id` and match either root or source_id when filtering; (2) resolve display name & bank_details by trying users.find by email/aliases when the canonical root is an email:… key."
+}

@@ -9,8 +9,9 @@ import {
   Alert,
   Switch,
   Dimensions,
+  Modal,
 } from 'react-native';
-import { getDashboardStats, pingActivity, logout as apiLogout } from '../services/api';
+import { getDashboardStats, pingActivity, logout as apiLogout, getMyEarnings } from '../services/api';
 import { 
   syncCallLogsWithBackend, 
   requestAllPermissions,
@@ -36,6 +37,13 @@ const DashboardScreen = ({ user, onLogout }) => {
   const [period, setPeriod] = useState('today');
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [diagnostics, setDiagnostics] = useState(null);
+  const [earnings, setEarnings] = useState(null);
+  const [showEarnings, setShowEarnings] = useState(false);
+
+  useEffect(() => {
+    getMyEarnings({}).then(setEarnings).catch(() => {});
+  }, []);
+  const inrM = (n) => `₹${Number(n || 0).toLocaleString('en-IN')}`;
 
   const isAdmin = user?.role === 'admin';
 
@@ -264,6 +272,46 @@ const DashboardScreen = ({ user, onLogout }) => {
 
       {/* Attendance Card - Near the top */}
       <AttendanceCard />
+
+      {/* Earnings Card */}
+      <TouchableOpacity style={styles.earningsCard} onPress={() => setShowEarnings(true)} data-testid="gp-earnings-card" activeOpacity={0.85}>
+        <View style={styles.earningsIconWrap}><Text style={{ fontSize: 22 }}>🏆</Text></View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.earningsLabel}>Earnings (This Month)</Text>
+          <Text style={styles.earningsValue}>{inrM(earnings?.totals?.commission_amount)}</Text>
+          <Text style={styles.earningsSub}>Lifetime: {inrM(earnings?.lifetime?.commission_amount)} · {earnings?.totals?.count || 0} disbursed file(s)</Text>
+        </View>
+        <Text style={styles.earningsChevron}>›</Text>
+      </TouchableOpacity>
+
+      <Modal visible={showEarnings} animationType="slide" transparent onRequestClose={() => setShowEarnings(false)}>
+        <View style={styles.earningsModalOverlay}>
+          <View style={styles.earningsModal}>
+            <View style={styles.earningsModalHeader}>
+              <Text style={styles.earningsModalTitle}>🏆 My Earnings</Text>
+              <TouchableOpacity onPress={() => setShowEarnings(false)}><Text style={styles.earningsClose}>✕</Text></TouchableOpacity>
+            </View>
+            <View style={styles.earningsTotalsRow}>
+              <View style={styles.earningsTotalBox}><Text style={styles.earningsTotalLabel}>This Month</Text><Text style={styles.earningsTotalAmt}>{inrM(earnings?.totals?.commission_amount)}</Text></View>
+              <View style={styles.earningsTotalBox}><Text style={styles.earningsTotalLabel}>Lifetime</Text><Text style={[styles.earningsTotalAmt, { color: '#059669' }]}>{inrM(earnings?.lifetime?.commission_amount)}</Text></View>
+            </View>
+            <ScrollView style={{ maxHeight: 380 }}>
+              {(earnings?.rows || []).length === 0 ? (
+                <Text style={styles.earningsEmpty}>No disbursed files this month.</Text>
+              ) : (earnings.rows.map((r, i) => (
+                <View key={i} style={styles.earningsRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.earningsRowName}>{r.customer}</Text>
+                    <Text style={styles.earningsRowSub}>{r.disbursement_date} · {r.disbursed_bank}</Text>
+                    <Text style={styles.earningsRowSub}>Disbursed {inrM(r.disbursed_amount)} · {r.commission_percentage}%</Text>
+                  </View>
+                  <Text style={styles.earningsRowAmt}>{inrM(r.commission_amount)}</Text>
+                </View>
+              )))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Period Filter */}
       <View style={styles.periodFilter}>
@@ -523,6 +571,27 @@ const DashboardScreen = ({ user, onLogout }) => {
 };
 
 const styles = StyleSheet.create({
+  earningsCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 16, marginBottom: 12, padding: 16, borderRadius: 14, borderWidth: 1, borderColor: '#FDE68A', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  earningsIconWrap: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FEF3C7', alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  earningsLabel: { fontSize: 12, color: '#92400E' },
+  earningsValue: { fontSize: 22, fontWeight: 'bold', color: '#D97706' },
+  earningsSub: { fontSize: 11, color: '#6B7280', marginTop: 2 },
+  earningsChevron: { fontSize: 26, color: '#D1D5DB', marginLeft: 8 },
+  earningsModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  earningsModal: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: 30 },
+  earningsModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  earningsModalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  earningsClose: { fontSize: 20, color: '#9CA3AF' },
+  earningsTotalsRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
+  earningsTotalBox: { flex: 1, backgroundColor: '#FEF3C7', borderRadius: 12, padding: 12 },
+  earningsTotalLabel: { fontSize: 12, color: '#92400E' },
+  earningsTotalAmt: { fontSize: 20, fontWeight: 'bold', color: '#D97706', marginTop: 2 },
+  earningsEmpty: { textAlign: 'center', color: '#9CA3AF', paddingVertical: 30, fontSize: 13 },
+  earningsRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  earningsRowName: { fontSize: 14, fontWeight: '600', color: '#111827' },
+  earningsRowSub: { fontSize: 11, color: '#6B7280', marginTop: 1 },
+  earningsRowAmt: { fontSize: 15, fontWeight: '700', color: '#059669', marginLeft: 10 },
+
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',

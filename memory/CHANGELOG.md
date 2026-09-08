@@ -109,3 +109,11 @@ DELIVERY: no git remote in workspace -> user must click "Save to Github" to push
 - Hourly reports: HourlyReportScreen accepts route.params.scope ('self'|'team'). GP More has "My Hourly Report"; TL More has BOTH "My Hourly Report" (scope self) and "Team Hourly Report" (scope team); Manager has "Team Hourly Report". /reports/my-hourly (self) and /reports/hourly (team) unchanged.
 - Version 2.6.1 / versionCode 18 in app.json + build.gradle + config.js.
 - Preserved: call logging, post-call modal, 0s-no-Connected guard (UI+backend), Schedule Follow-up fix, Data filter counts, Manager/TL navigators, Team Attendance, session isolation, Admin/HR block, PDF export.
+
+## Connect: HR filters, Policy route, Commission report, GP Earnings (Sep 8, 2026)
+- FIX A: /users/growth-partners no longer 403s for HR — HR now loads the canonical active GP list (fixes "All Growth Partners (0)" in HR Attendance + Leave). backend/routes/users.py.
+- FIX B: Added HR route /hr/files/policies -> PolicyMaster (was falling through to files/:fileId => blank). frontend/src/App.js.
+- FIX C (mobile): Added "Sent for Eligibility" (canonical key sent_for_eligibility) to mobile Files status filter. mobile-app/src/screens/FilesScreen.js.
+- Commission report rebuilt (disbursement-date period): backend GET /api/files/commission-report (+/export CSV), /api/files/my-earnings (self-scoped GP). Groups by canonical GP, sums STORED eligibility.commission_amount (fallback amount*pct/100 only when missing), only disbursed=yes, per-GP subtotals + grand totals + GP bank_details; filters month/year/all_time/source_id/disbursed_bank. Admin/ops/hr only; GP gets 403. backend/routes/files_crm.py. FilesDashboard commission panel rebuilt.
+- GP Earnings: web components/EarningsCard.js on telecaller Dashboard; mobile earnings card+modal in DashboardScreen.js (getMyEarnings). Trophy card, month/all-time, lifetime, tap for own breakdown. GP isolation enforced server-side.
+- Verified: HR sees 19 GPs; commission grand ₹9,23,178.31 (stored amounts, decimals preserved); GP self sum ₹21,650.12 == direct DB sum (2 files/3 disbursals, no double count); GP 403 on full report; names resolve (0 Unassigned); source_id filter returns single GP.

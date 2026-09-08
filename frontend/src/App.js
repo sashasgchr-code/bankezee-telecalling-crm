@@ -252,6 +252,7 @@ function App() {
           <Route path="attendance" element={<AdminAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="files" element={<FilesDashboard />} />
+          <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
         </Route>
 

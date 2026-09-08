@@ -116,6 +116,8 @@ const FilesDashboard = () => {
   const [qualityData, setQualityData] = useState(null);
   const [showCommissionReport, setShowCommissionReport] = useState(false);
   const [commissionData, setCommissionData] = useState(null);
+  const now = new Date();
+  const [commFilters, setCommFilters] = useState({ month: now.getMonth() + 1, year: now.getFullYear(), all_time: false, source_id: '', disbursed_bank: '' });
   const [showExportMenu, setShowExportMenu] = useState(false);
   
   // Filters
@@ -567,16 +569,28 @@ const FilesDashboard = () => {
     }
   };
 
-  // Fetch Commission Report
+  // Fetch Commission Report (disbursement-period, grouped by Growth Partner)
+  const buildCommParams = () => {
+    const p = new URLSearchParams();
+    if (commFilters.all_time) p.set('all_time', 'true');
+    else { p.set('month', commFilters.month); p.set('year', commFilters.year); }
+    if (commFilters.source_id) p.set('source_id', commFilters.source_id);
+    if (commFilters.disbursed_bank) p.set('disbursed_bank', commFilters.disbursed_bank);
+    return p;
+  };
   const fetchCommissionReport = async () => {
     try {
-      const response = await api.get('/files/commissions');
+      const response = await api.get(`/files/commission-report?${buildCommParams().toString()}`);
       setCommissionData(response.data);
     } catch (error) {
       console.error('Failed to fetch commission report:', error);
-      toast.error('Failed to load commission report');
+      toast.error(error.response?.data?.detail || 'Failed to load commission report');
     }
   };
+  useEffect(() => {
+    if (showCommissionReport) fetchCommissionReport();
+    // eslint-disable-next-line
+  }, [showCommissionReport, commFilters]);
 
   // Export handlers
   const handleExportDashboard = async () => {
@@ -619,8 +633,16 @@ const FilesDashboard = () => {
 
   const handleExportCommissions = async () => {
     try {
-      window.open(`${process.env.REACT_APP_BACKEND_URL}/api/files/export/commissions`, '_blank');
-      toast.success('Commission export started');
+      const response = await api.get(`/files/commission-report/export?${buildCommParams().toString()}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `commission_report_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Commission report exported');
     } catch (error) {
       toast.error('Export failed');
     }
@@ -1718,90 +1740,117 @@ const FilesDashboard = () => {
               </div>
             </div>
             
-            {!commissionData ? (
-              <div className="p-8 flex items-center justify-center">
-                <button 
-                  onClick={fetchCommissionReport}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700"
-                >
-                  Load Commission Data
-                </button>
-              </div>
-            ) : (
-              <div className="p-4">
-                {/* Summary Cards */}
+            {(
+              <div className="p-4" data-testid="commission-report-body">
+                {/* Filters */}
+                <div className="flex flex-wrap items-end gap-3 mb-5" data-testid="commission-filters">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" data-testid="commission-all-time" checked={commFilters.all_time}
+                      onChange={(e) => setCommFilters({ ...commFilters, all_time: e.target.checked })} />
+                    All Time
+                  </label>
+                  {!commFilters.all_time && (
+                    <>
+                      <select data-testid="commission-month" value={commFilters.month} onChange={(e) => setCommFilters({ ...commFilters, month: parseInt(e.target.value) })}
+                        className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                        {['January','February','March','April','May','June','July','August','September','October','November','December'].map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+                      </select>
+                      <select data-testid="commission-year" value={commFilters.year} onChange={(e) => setCommFilters({ ...commFilters, year: parseInt(e.target.value) })}
+                        className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                        {Array.from({ length: 4 }, (_, i) => now.getFullYear() - 2 + i).map(y => <option key={y} value={y}>{y}</option>)}
+                      </select>
+                    </>
+                  )}
+                  <select data-testid="commission-gp-filter" value={commFilters.source_id} onChange={(e) => setCommFilters({ ...commFilters, source_id: e.target.value })}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white min-w-[180px]">
+                    <option value="">All Growth Partners</option>
+                    {growthPartners.map(gp => <option key={gp.id} value={gp.id}>{gp.name || gp.full_name}</option>)}
+                  </select>
+                  <select data-testid="commission-bank-filter" value={commFilters.disbursed_bank} onChange={(e) => setCommFilters({ ...commFilters, disbursed_bank: e.target.value })}
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white">
+                    <option value="">All Disbursed Banks</option>
+                    {[...new Set((commissionData?.groups || []).flatMap(g => g.rows.map(r => r.disbursed_bank)).filter(Boolean))].sort().map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+
+                {!commissionData ? (
+                  <div className="p-8 text-center text-gray-400 text-sm">Loading commission data…</div>
+                ) : (
+                <>
+                {/* Grand total cards */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                   <div className="bg-emerald-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-emerald-600">₹{(commissionData.total_amount / 100000).toFixed(1)}L</p>
+                    <p className="text-2xl font-bold text-emerald-600" data-testid="commission-grand-amount">₹{(commissionData.grand_totals.commission_amount).toLocaleString('en-IN')}</p>
                     <p className="text-sm text-gray-600">Total Commission</p>
                   </div>
                   <div className="bg-blue-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-blue-600">{commissionData.total}</p>
-                    <p className="text-sm text-gray-600">Records</p>
+                    <p className="text-2xl font-bold text-blue-600">₹{(commissionData.grand_totals.disbursed_amount).toLocaleString('en-IN')}</p>
+                    <p className="text-sm text-gray-600">Disbursed Amount</p>
                   </div>
                   <div className="bg-purple-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-purple-600">{commissionData.by_growth_partner?.length || 0}</p>
-                    <p className="text-sm text-gray-600">Growth Partners</p>
+                    <p className="text-2xl font-bold text-purple-600">{commissionData.grand_totals.files}</p>
+                    <p className="text-sm text-gray-600">Disbursed Files</p>
                   </div>
                   <div className="bg-orange-50 rounded-lg p-4 text-center">
-                    <p className="text-2xl font-bold text-orange-600">{commissionData.by_bank?.length || 0}</p>
-                    <p className="text-sm text-gray-600">Banks</p>
+                    <p className="text-2xl font-bold text-orange-600">{commissionData.groups.length}</p>
+                    <p className="text-sm text-gray-600">Growth Partners</p>
                   </div>
                 </div>
 
-                {/* By Growth Partner Table */}
-                <div className="mb-6">
-                  <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                    <Users size={16} /> Commission by Growth Partner
-                  </h4>
-                  <div className="overflow-x-auto max-h-60">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 sticky top-0">
-                        <tr>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Growth Partner</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Amount</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Count</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {(commissionData.by_growth_partner || []).slice(0, 10).map((gp, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 font-medium text-gray-900">{gp.source_name}</td>
-                            <td className="px-4 py-2 text-right text-emerald-600 font-medium">₹{gp.total_amount.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right text-gray-600">{gp.count}</td>
+                {/* Per-GP grouped tables */}
+                {commissionData.groups.length === 0 ? (
+                  <p className="text-center text-gray-400 py-8 text-sm">No disbursed files for the selected period.</p>
+                ) : commissionData.groups.map((gp) => (
+                  <div key={gp.source_id} className="mb-6 border border-gray-200 rounded-lg overflow-hidden" data-testid={`commission-gp-${gp.source_id}`}>
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <Users size={16} className="text-emerald-600" />
+                        <span className="font-semibold text-gray-900">{gp.source_name}</span>
+                      </div>
+                      {gp.bank_details && (
+                        <div className="text-xs text-gray-500" data-testid={`commission-bank-details-${gp.source_id}`}>
+                          {gp.bank_details.account_holder} · {gp.bank_details.bank_name} · A/C {gp.bank_details.account_number} · IFSC {gp.bank_details.ifsc}{gp.bank_details.upi !== 'Not provided' ? ` · UPI ${gp.bank_details.upi}` : ''}
+                        </div>
+                      )}
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-white border-b border-gray-100">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Customer/File</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Disbursement Date</th>
+                            <th className="px-4 py-2 text-left font-medium text-gray-600">Disbursed Bank</th>
+                            <th className="px-4 py-2 text-right font-medium text-gray-600">Disbursed Amount</th>
+                            <th className="px-4 py-2 text-right font-medium text-gray-600">Commission %</th>
+                            <th className="px-4 py-2 text-right font-medium text-gray-600">Commission Amount</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* By Bank Table */}
-                <div>
-                  <h4 className="font-medium text-gray-700 mb-3 flex items-center gap-2">
-                    <Building2 size={16} /> Commission by Bank
-                  </h4>
-                  <div className="overflow-x-auto max-h-48">
-                    <table className="w-full text-sm">
-                      <thead className="bg-gray-50 sticky top-0">
-                        <tr>
-                          <th className="px-4 py-2 text-left font-medium text-gray-700">Bank</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Amount</th>
-                          <th className="px-4 py-2 text-right font-medium text-gray-700">Count</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {(commissionData.by_bank || []).slice(0, 10).map((bank, idx) => (
-                          <tr key={idx} className="hover:bg-gray-50">
-                            <td className="px-4 py-2 font-medium text-gray-900">{bank.bank_name}</td>
-                            <td className="px-4 py-2 text-right text-emerald-600 font-medium">₹{bank.total_amount.toLocaleString()}</td>
-                            <td className="px-4 py-2 text-right text-gray-600">{bank.count}</td>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {gp.rows.map((r, i) => (
+                            <tr key={i} className="hover:bg-gray-50">
+                              <td className="px-4 py-2 font-medium text-gray-900">{r.customer}</td>
+                              <td className="px-4 py-2 text-gray-600">{r.disbursement_date}</td>
+                              <td className="px-4 py-2 text-gray-600">{r.disbursed_bank}</td>
+                              <td className="px-4 py-2 text-right text-gray-700">₹{Number(r.disbursed_amount).toLocaleString('en-IN')}</td>
+                              <td className="px-4 py-2 text-right text-gray-600">{r.commission_percentage}%</td>
+                              <td className="px-4 py-2 text-right text-emerald-600 font-medium">₹{Number(r.commission_amount).toLocaleString('en-IN')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-emerald-50 border-t border-emerald-100">
+                          <tr className="font-semibold text-gray-800">
+                            <td className="px-4 py-2" colSpan={3}>Subtotal · {gp.subtotal.count} file(s)</td>
+                            <td className="px-4 py-2 text-right">₹{Number(gp.subtotal.disbursed_amount).toLocaleString('en-IN')}</td>
+                            <td className="px-4 py-2"></td>
+                            <td className="px-4 py-2 text-right text-emerald-700" data-testid={`commission-subtotal-${gp.source_id}`}>₹{Number(gp.subtotal.commission_amount).toLocaleString('en-IN')}</td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </tfoot>
+                      </table>
+                    </div>
                   </div>
-                </div>
+                ))}
+                </>
+                )}
               </div>
             )}
           </div>

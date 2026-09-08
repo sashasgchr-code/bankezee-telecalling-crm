@@ -505,6 +505,12 @@ export const getMyMonthlyMatrix = async (month, year) => {
   return response.data;
 };
 
+// A Growth Partner's own earnings (self-scoped). all_time or month/year.
+export const getMyEarnings = async (params = {}) => {
+  const response = await api.get('/files/my-earnings', { params });
+  return response.data;
+};
+
 // ============ TEAM LEAD / MANAGER PARITY ============
 
 // TL's mapped team (GPs under this TL) with per-member stats

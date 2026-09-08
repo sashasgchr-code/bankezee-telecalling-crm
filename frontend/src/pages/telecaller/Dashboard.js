@@ -3,6 +3,7 @@ import { useOutletContext } from 'react-router-dom';
 import { Phone, Clock, TrendingUp, Target, Loader2, RefreshCw, PhoneOff, PhoneMissed, Calendar, BarChart3 } from 'lucide-react';
 import api from '../../services/api';
 import AttendanceCard from '../../components/attendance/AttendanceCard';
+import EarningsCard from '../../components/EarningsCard';
 
 const TelecallerDashboard = () => {
   const [stats, setStats] = useState(null);
@@ -137,6 +138,11 @@ const TelecallerDashboard = () => {
       {/* Attendance Card - At the top */}
       <div className="mb-4">
         <AttendanceCard />
+      </div>
+
+      {/* Earnings Card */}
+      <div className="mb-4">
+        <EarningsCard />
       </div>
 
       {/* Period Filter */}
