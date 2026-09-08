@@ -205,6 +205,19 @@ async def require_file_manage(current_user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Only Admin and Manager can modify file status or assignment")
     return current_user
 
+async def require_meta_access(current_user: dict = Depends(get_current_user)):
+    """
+    Gate for the isolated Meta module (/api/meta/*).
+    Enforced server-side: hiding the Meta menu is NOT sufficient - a user with
+    meta_access falsy is rejected here even when calling the API directly.
+    Attaches resolved meta identity for downstream scoping.
+    """
+    if not current_user.get("meta_access"):
+        raise HTTPException(status_code=403, detail="Meta access not granted")
+    current_user["meta_role_normalized"] = (current_user.get("meta_role") or "").strip().lower()
+    return current_user
+
+
 async def require_bank_processing(current_user: dict = Depends(get_current_user)):
     """
     Require bank processing permission - only Admin and Ops.
