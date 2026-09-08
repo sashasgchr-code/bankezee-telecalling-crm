@@ -18,10 +18,19 @@
 - Verified via curl: access OFF=403; processor & GP scoping correct; files metadata + 409 pending; staff-only enforced.
 
 ## NOT YET DONE (next approved increments)
-- Google Sheet CSV sync port (routes + dedupe on sheet_id) — keep OLD Meta sync running; single sync only at cutover.
-- Email notifications port (use meta_email).
 - Mobile Meta GP workflow + Meta call flow (embedded call_logs/activities on meta_leads; one-call-one-record).
 - GridFS binary backfill (149 files / fs.chunks) from live Meta MONGO_URL.
+- Production sync cutover (OLD Meta sync OFF -> Connect sync ON) — pending; only ONE active at cutover.
+
+## SHEET SYNC + EMAIL INCREMENT — DONE & VERIFIED (Sep 8, 2026)
+- routes/meta_sync.py ported from META-APP: sync_leads_from_sheet -> meta_leads (dedupe sheet_id),
+  email notify helpers (staff/processor/partner via meta_users.email == meta_email). Routes:
+  /api/meta/leads/sync (staff), /api/meta/cron/sync-leads + /api/meta/webhook/sheet-sync (WEBHOOK_CRON_SECRET).
+  NO scheduler started. Triggers wired into meta.py assign + status=FILE.
+- PREVIEW SAFETY: META_EMAIL_ENABLED=false -> sends CAPTURED to meta_email_log (no real send).
+- .env added: WEBHOOK_CRON_SECRET, META_EMAIL_ENABLED.
+- Verified: sync x2 => 392 stays 392, cron 401/200, webhook 200, import=0 emails; assignment=1 to
+  partner meta_email; FILE=staff(2)+processors, all suppressed; Connect 200; no sheet_id in Connect leads.
 
 ## WEB META UI INCREMENT — DONE & VERIFIED (Sep 8, 2026)
 - Frontend: pages/meta/MetaApp.js (Dashboard, Leads, Lead Detail, Files, User Mgmt); routes 'meta' added under

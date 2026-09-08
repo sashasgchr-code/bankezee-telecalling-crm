@@ -192,7 +192,14 @@ async def meta_update_status(lead_id: str, inp: MetaStatusInput, user: dict = De
         set_status["file_created_at"] = _now_iso()
     await db.meta_leads.update_one({"lead_id": lead_id},
                                    {"$set": set_status, "$push": {"activities": activity}})
-    return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+    updated_lead = await db.meta_leads.find_one({"lead_id": lead_id})
+    # FILE-move notifications (staff + processors) - preserves old Meta triggers
+    if inp.status == "FILE" and lead.get("status") != "FILE":
+        from routes.meta_sync import notify_staff_converted, notify_processors_new_file
+        import asyncio as _asyncio
+        _asyncio.create_task(notify_staff_converted(updated_lead, user.get("name")))
+        _asyncio.create_task(notify_processors_new_file(updated_lead, user.get("name")))
+    return serialize_doc(updated_lead)
 
 
 @router.patch("/leads/{lead_id}/assign")
@@ -221,7 +228,13 @@ async def meta_assign_lead(lead_id: str, inp: MetaAssignInput, user: dict = Depe
         "assigned_by": (user.get("name") if inp.partner_id else None),
         "assigned_at": (_now_iso() if inp.partner_id else None),
     }, "$push": {"activities": activity}})
-    return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+    updated_lead = await db.meta_leads.find_one({"lead_id": lead_id})
+    # Assignment notification to the Growth Partner's meta_email (one send)
+    if inp.partner_id and partner:
+        from routes.meta_sync import notify_partner_assignment
+        import asyncio as _asyncio
+        _asyncio.create_task(notify_partner_assignment(partner, updated_lead, user.get("name")))
+    return serialize_doc(updated_lead)
 
 
 @router.post("/leads/{lead_id}/notes")
