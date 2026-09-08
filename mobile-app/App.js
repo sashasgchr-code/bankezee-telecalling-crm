@@ -9,7 +9,7 @@ import { refreshProfile } from './src/services/api';
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
-import MetaLeadsScreen from './src/screens/MetaLeadsScreen';
+import MetaHomeScreen from './src/screens/MetaHomeScreen';
 import MetaLeadDetailScreen from './src/screens/MetaLeadDetailScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import DataScreen from './src/screens/DataScreen';
@@ -73,7 +73,7 @@ const tabScreenOptions = ({ route }) => ({
 
 // Growth Partner + Team Lead share the same personal-work tab set.
 // Meta CRM tab is registered UNCONDITIONALLY for every authenticated user.
-// Access is enforced LIVE inside MetaLeadsScreen (fresh /auth/me) and by the
+// Access is enforced LIVE inside MetaHomeScreen (fresh /auth/me) and by the
 // backend /api/meta/* 403s — never by stale cached client state.
 const GpTabs = ({ user, mobileRole, onLogout }) => (
   <Tab.Navigator screenOptions={tabScreenOptions}>
@@ -83,7 +83,7 @@ const GpTabs = ({ user, mobileRole, onLogout }) => (
     <Tab.Screen name="Data">{props => <DataScreen {...props} user={user} />}</Tab.Screen>
     <Tab.Screen name="Files">{props => <FilesScreen {...props} user={user} />}</Tab.Screen>
     <Tab.Screen name="Follow-ups">{props => <FollowUpsScreen {...props} user={user} />}</Tab.Screen>
-    <Tab.Screen name="Meta">{props => <MetaLeadsScreen {...props} user={user} />}</Tab.Screen>
+    <Tab.Screen name="Meta">{props => <MetaHomeScreen {...props} user={user} />}</Tab.Screen>
     <Tab.Screen name="More">
       {props => <MoreScreen {...props} user={user} mobileRole={mobileRole} onLogout={onLogout} />}
     </Tab.Screen>
@@ -96,7 +96,7 @@ const ManagerTabs = ({ user, mobileRole, onLogout }) => (
     <Tab.Screen name="Files">{props => <FilesScreen {...props} user={user} />}</Tab.Screen>
     <Tab.Screen name="Team">{props => <MyTeamScreen {...props} user={user} mobileRole={mobileRole} />}</Tab.Screen>
     <Tab.Screen name="Reports">{props => <ReportsScreen {...props} user={user} mobileRole={mobileRole} />}</Tab.Screen>
-    <Tab.Screen name="Meta">{props => <MetaLeadsScreen {...props} user={user} />}</Tab.Screen>
+    <Tab.Screen name="Meta">{props => <MetaHomeScreen {...props} user={user} />}</Tab.Screen>
     <Tab.Screen name="More">
       {props => <MoreScreen {...props} user={user} mobileRole={mobileRole} onLogout={onLogout} />}
     </Tab.Screen>

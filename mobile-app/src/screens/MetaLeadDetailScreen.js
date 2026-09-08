@@ -119,6 +119,26 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
           <Text style={styles.callBtnText}>📞 Start Call</Text>
         </TouchableOpacity>
 
+        {lead.status === 'FILE' && (
+          <View style={styles.card} data-testid="meta-file-details">
+            <Text style={styles.section}>📁 File Details</Text>
+            <Text style={styles.field}>Processing: {lead.processing_status || 'New'}</Text>
+            {lead.assigned_processor_name ? <Text style={styles.field}>Processor: {lead.assigned_processor_name}</Text> : null}
+            <Text style={styles.field}>Docs: {lead.docs_received ? 'Received' : ((lead.documents || []).length ? `${(lead.documents || []).length} uploaded` : 'Pending')}</Text>
+            {lead.file?.loan_type ? <Text style={styles.field}>Loan: {lead.file.loan_type}{lead.file.loan_amount ? ` · ₹${Number(lead.file.loan_amount).toLocaleString('en-IN')}` : ''}</Text> : null}
+            {(lead.file?.banks || []).length > 0 && (
+              <>
+                <Text style={[styles.field, { fontWeight: '600', marginTop: 6 }]}>Bank Eligibilities ({lead.file.banks.length})</Text>
+                {lead.file.banks.map((b, i) => (
+                  <Text key={i} style={styles.activity}>
+                    • {b.bank_name || 'Bank'} · Elig: {b.eligible || '—'}{b.login_done === 'Yes' ? ` · Login` : ''}{b.approval_status ? ` · ${b.approval_status}` : ''}{b.disbursed === 'Yes' ? ` · Disbursed ₹${Number(b.disbursed_amount || 0).toLocaleString('en-IN')}` : ''}
+                  </Text>
+                ))}
+              </>
+            )}
+          </View>
+        )}
+
         {calls.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.section}>Meta Call Logs ({calls.length})</Text>

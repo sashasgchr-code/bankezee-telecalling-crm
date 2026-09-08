@@ -390,6 +390,16 @@ export const addMetaCallLog = async (leadId, payload) => {
   const response = await api.post(`/meta/leads/${leadId}/call-log`, payload);
   return response.data;
 };
+// Meta File Reports — SAME endpoint/business logic as the web Meta File Reports.
+// Backend auto-scopes growth_partner to their own meta_user_id.
+export const getMetaFilesReport = async (params = {}) => {
+  const response = await api.get('/meta/files/report', { params });
+  return response.data;
+};
+export const getMetaFilesStats = async () => {
+  const response = await api.get('/meta/files/stats');
+  return response.data;
+};
 
 // Get file details
 export const getFileDetails = async (fileId) => {
