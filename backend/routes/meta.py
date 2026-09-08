@@ -17,7 +17,7 @@ import csv
 import zipfile
 import asyncio
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, Header
 from typing import Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -985,11 +985,35 @@ SEED_NATURAL_KEY = {
 
 
 @router.post("/admin/seed-production")
-async def meta_seed_production(current_user: dict = Depends(require_admin)):
+async def meta_seed_production(x_seed_secret: Optional[str] = Header(None),
+                               authorization: Optional[str] = Header(None)):
     import os as _os
     import gzip as _gzip
     import re as _re
+    import jwt as _jwt
     from bson import json_util
+    from bson import ObjectId as _ObjectId
+    from utils.auth import SECRET_KEY, ALGORITHM
+
+    # Auth: EITHER the prod env secret header (for engineer-driven cutover) OR an admin JWT.
+    secret = _os.environ.get("WEBHOOK_CRON_SECRET")
+    authorized = bool(secret and x_seed_secret and x_seed_secret == secret)
+    if not authorized:
+        if not authorization or not authorization.lower().startswith("bearer "):
+            raise HTTPException(status_code=401, detail="Provide X-Seed-Secret header or an admin bearer token")
+        try:
+            payload = _jwt.decode(authorization.split(" ", 1)[1], SECRET_KEY, algorithms=[ALGORITHM])
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid token")
+        uid = payload.get("user_id")
+        u = None
+        if uid:
+            try:
+                u = await db.users.find_one({"_id": _ObjectId(uid)})
+            except Exception:
+                u = await db.users.find_one({"id": uid})
+        if not u or (u.get("role") or "").strip().lower() != "admin":
+            raise HTTPException(status_code=403, detail="Admin only")
 
     seed_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "data", "meta_seed.json.gz")
     if not _os.path.exists(seed_path):
