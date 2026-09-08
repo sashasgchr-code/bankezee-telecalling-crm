@@ -73,7 +73,9 @@ const tabScreenOptions = ({ route }) => ({
 
 // Growth Partner + Team Lead share the same personal-work tab set.
 const GpTabs = ({ user, mobileRole, onLogout }) => {
-  const showMeta = !!user?.meta_access && (user?.meta_role || '').toLowerCase() === 'growth_partner';
+  const _ma = user?.meta_access;
+  const showMeta = (_ma === true || _ma === 'true' || _ma === 1 || _ma === '1')
+    && String(user?.meta_role || '').trim().toLowerCase() === 'growth_partner';
   return (
   <Tab.Navigator screenOptions={tabScreenOptions}>
     <Tab.Screen name="Dashboard">

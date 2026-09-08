@@ -42,6 +42,19 @@ const MoreScreen = ({ navigation, user, mobileRole = 'gp', onLogout }) => {
         <Text style={styles.sub}>{user?.name || user?.email}</Text>
       </View>
 
+      {/* TEMP PREVIEW-ONLY diagnostic - shows what the phone actually received */}
+      {String(process.env.EXPO_PUBLIC_API_URL || '').includes('preview') && (
+        <View style={{ backgroundColor: '#fef9c3', borderColor: '#fde047', borderWidth: 1, margin: 12, padding: 10, borderRadius: 8 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: '#854d0e' }}>META DIAGNOSTIC (preview only)</Text>
+          <Text style={{ fontSize: 11, color: '#713f12' }}>META ACCESS: {String(user?.meta_access)}</Text>
+          <Text style={{ fontSize: 11, color: '#713f12' }}>META ROLE: {String(user?.meta_role)}</Text>
+          <Text style={{ fontSize: 11, color: '#713f12' }}>META USER ID: {String(user?.meta_user_id)}</Text>
+          <Text style={{ fontSize: 11, color: '#713f12' }}>EMAIL: {String(user?.email)}</Text>
+          <Text style={{ fontSize: 11, color: '#713f12' }}>API: {String(process.env.EXPO_PUBLIC_API_URL || '').replace('https://', '').replace('/api', '')}</Text>
+          <Text style={{ fontSize: 11, color: '#713f12' }}>BUILD: 2.6.6 / vc23 · Meta tab: {(user?.meta_access === true || user?.meta_access === 'true') && String(user?.meta_role || '').trim().toLowerCase() === 'growth_partner' ? 'SHOULD SHOW' : 'HIDDEN'}</Text>
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.body}>
         {keys.map(key => {
           const item = ITEMS[key];
