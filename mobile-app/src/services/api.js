@@ -360,6 +360,28 @@ export const getGrowthPartners = async () => {
   return response.data;
 };
 
+// ---------------- Meta module (isolated /api/meta/*) ----------------
+export const getMetaLeads = async (params = {}) => {
+  const response = await api.get('/meta/leads', { params });
+  return response.data;
+};
+export const getMetaLead = async (leadId) => {
+  const response = await api.get(`/meta/leads/${leadId}`);
+  return response.data;
+};
+export const updateMetaStatus = async (leadId, status) => {
+  const response = await api.patch(`/meta/leads/${leadId}/status`, { status });
+  return response.data;
+};
+export const addMetaNote = async (leadId, text) => {
+  const response = await api.post(`/meta/leads/${leadId}/notes`, { text });
+  return response.data;
+};
+export const addMetaCallLog = async (leadId, payload) => {
+  const response = await api.post(`/meta/leads/${leadId}/call-log`, payload);
+  return response.data;
+};
+
 // Get file details
 export const getFileDetails = async (fileId) => {
   const response = await api.get(`/files/${fileId}`);

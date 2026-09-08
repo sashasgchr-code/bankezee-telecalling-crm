@@ -18,9 +18,23 @@
 - Verified via curl: access OFF=403; processor & GP scoping correct; files metadata + 409 pending; staff-only enforced.
 
 ## NOT YET DONE (next approved increments)
-- Mobile Meta GP workflow + Meta call flow (embedded call_logs/activities on meta_leads; one-call-one-record).
 - GridFS binary backfill (149 files / fs.chunks) from live Meta MONGO_URL.
 - Production sync cutover (OLD Meta sync OFF -> Connect sync ON) — pending; only ONE active at cutover.
+- Final APK build (v bump) after Meta mobile approval.
+
+## MOBILE GP + META CALLS INCREMENT — DONE (Sep 8, 2026)
+- Backend: routes/meta.py + POST /api/meta/leads/{id}/call-log (dedupe on call_id; stores in
+  meta_leads.call_logs + activities; optional status transition; FILE triggers staff+processor email)
+  and GET /api/meta/my-call-stats (talk-time from call_logs). Verified via curl: save, dedupe, 95s stat.
+- Mobile (ADDITIVE, Connect calling untouched): src/screens/MetaLeadsScreen.js (assigned Meta leads,
+  search/status filter), src/screens/MetaLeadDetailScreen.js (detail + REUSES makePhoneCall +
+  AppState + getRecentCallForNumber from callLogService, shared post-call modal, saves to Meta API
+  with call_id=meta_<leadId>_<ts>). api.js Meta funcs. App.js: conditional 'Meta' tab in GpTabs when
+  meta_access && meta_role==growth_partner + MetaLeadDetail stack screen.
+- callLogService.js and LeadDetailScreen.js NOT modified -> ordinary Connect calls byte-for-byte unchanged.
+- version 2.6.4 / versionCode 21 UNCHANGED (no bump this increment). No native deps / permissions / EAS changes.
+- NOT runtime-tested on device (no emulator/APK in env) - requires an EAS build to validate the native
+  call lifecycle on a handset.
 
 ## SHEET SYNC + EMAIL INCREMENT — DONE & VERIFIED (Sep 8, 2026)
 - routes/meta_sync.py ported from META-APP: sync_leads_from_sheet -> meta_leads (dedupe sheet_id),

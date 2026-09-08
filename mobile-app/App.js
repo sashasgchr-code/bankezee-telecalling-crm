@@ -8,6 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
+import MetaLeadsScreen from './src/screens/MetaLeadsScreen';
+import MetaLeadDetailScreen from './src/screens/MetaLeadDetailScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import DataScreen from './src/screens/DataScreen';
 import LeadDetailScreen from './src/screens/LeadDetailScreen';
@@ -49,7 +51,7 @@ const getMobileRole = (user) => {
 
 const TabIcon = ({ name, focused }) => {
   const icons = {
-    Dashboard: '📊', Data: '📋', Files: '📁', 'Follow-ups': '📅',
+    Dashboard: '📊', Data: '📋', Files: '📁', 'Follow-ups': '📅', Meta: '🟣',
     Team: '👥', Reports: '📈', More: '⋯',
   };
   return (
@@ -69,7 +71,9 @@ const tabScreenOptions = ({ route }) => ({
 });
 
 // Growth Partner + Team Lead share the same personal-work tab set.
-const GpTabs = ({ user, mobileRole, onLogout }) => (
+const GpTabs = ({ user, mobileRole, onLogout }) => {
+  const showMeta = !!user?.meta_access && (user?.meta_role || '').toLowerCase() === 'growth_partner';
+  return (
   <Tab.Navigator screenOptions={tabScreenOptions}>
     <Tab.Screen name="Dashboard">
       {props => <DashboardScreen {...props} user={user} onLogout={onLogout} />}
@@ -77,11 +81,15 @@ const GpTabs = ({ user, mobileRole, onLogout }) => (
     <Tab.Screen name="Data">{props => <DataScreen {...props} user={user} />}</Tab.Screen>
     <Tab.Screen name="Files">{props => <FilesScreen {...props} user={user} />}</Tab.Screen>
     <Tab.Screen name="Follow-ups">{props => <FollowUpsScreen {...props} user={user} />}</Tab.Screen>
+    {showMeta && (
+      <Tab.Screen name="Meta">{props => <MetaLeadsScreen {...props} user={user} />}</Tab.Screen>
+    )}
     <Tab.Screen name="More">
       {props => <MoreScreen {...props} user={user} mobileRole={mobileRole} onLogout={onLogout} />}
     </Tab.Screen>
   </Tab.Navigator>
-);
+  );
+};
 
 // Manager: no Dashboard/Data/personal Attendance. Starts with Files (team files).
 const ManagerTabs = ({ user, mobileRole, onLogout }) => (
@@ -114,6 +122,7 @@ const AppNavigator = ({ user, mobileRole, onLogout }) => (
 
     <Stack.Screen name="LeadDetail" component={LeadDetailScreen} options={{ headerShown: true, title: 'Lead Details' }} />
     <Stack.Screen name="FileDetail" component={FileDetailScreen} options={{ headerShown: false }} />
+    <Stack.Screen name="MetaLeadDetail" component={MetaLeadDetailScreen} options={{ headerShown: true, title: 'Meta Lead' }} />
   </Stack.Navigator>
 );
 

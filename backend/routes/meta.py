@@ -48,6 +48,17 @@ class MetaUserMgmtInput(BaseModel):
     meta_user_id: Optional[str] = None
 
 
+class MetaCallLogInput(BaseModel):
+    call_id: str  # native call/session identifier for dedupe
+    phone: Optional[str] = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    duration_seconds: int = 0
+    outcome: Optional[str] = None          # disposition / call outcome
+    note: Optional[str] = None
+    resulting_status: Optional[str] = None  # optional Meta status transition
+
+
 def _meta_ctx(user: dict):
     """Resolve the caller's Meta identity/role from their linked Connect account."""
     return (user.get("meta_role_normalized") or "").strip().lower(), user.get("meta_user_id")
@@ -251,6 +262,74 @@ async def meta_add_note(lead_id: str, inp: MetaNoteInput, user: dict = Depends(r
                                    {"$push": {"notes": note, "activities": activity},
                                     "$set": {"updated_at": _now_iso()}})
     return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+
+
+@router.post("/leads/{lead_id}/call-log")
+async def meta_add_call_log(lead_id: str, inp: MetaCallLogInput, user: dict = Depends(require_meta_access)):
+    """Save a Meta call (from the mobile post-call modal) onto the Meta lead.
+    Reuses the native call lifecycle for duration; stores ONLY in isolated meta_leads.
+    Idempotent on call_id so native call-log sync cannot create a duplicate."""
+    lead = await db.meta_leads.find_one({"lead_id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Meta lead not found")
+    role, meta_uid = _meta_ctx(user)
+    if not _can_action_lead(role, meta_uid, lead):
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    # Dedupe: same physical call (call_id) => exactly one record
+    existing = next((c for c in (lead.get("call_logs") or []) if c.get("call_id") == inp.call_id), None)
+    if existing:
+        return {"deduped": True, "lead": serialize_doc(lead)}
+
+    now = _now_iso()
+    call = {
+        "call_id": inp.call_id,
+        "lead_source": "meta",
+        "source": "mobile",
+        "meta_user_id": meta_uid,
+        "connect_user_id": user.get("id"),
+        "user_name": user.get("name"),
+        "phone": inp.phone or lead.get("phone"),
+        "started_at": inp.started_at,
+        "ended_at": inp.ended_at,
+        "duration_seconds": int(inp.duration_seconds or 0),
+        "disposition": inp.outcome,
+        "note": inp.note,
+        "at": now,
+    }
+    push = {"call_logs": call, "activities": {
+        "type": "call",
+        "detail": f"{user.get('name')} called {call['phone']} — {inp.outcome or 'no outcome'} ({call['duration_seconds']}s)",
+        "at": now}}
+    if inp.note:
+        push["notes"] = {"text": inp.note, "author": user.get("name"), "at": now}
+    set_fields = {"updated_at": now}
+    if inp.resulting_status and inp.resulting_status in CRM_STATUSES:
+        set_fields["status"] = inp.resulting_status
+        if inp.resulting_status == "FILE" and not lead.get("file_created_at"):
+            set_fields["file_created_at"] = now
+    await db.meta_leads.update_one({"lead_id": lead_id}, {"$push": push, "$set": set_fields})
+    updated = await db.meta_leads.find_one({"lead_id": lead_id})
+    if inp.resulting_status == "FILE" and lead.get("status") != "FILE":
+        from routes.meta_sync import notify_staff_converted, notify_processors_new_file
+        import asyncio as _asyncio
+        _asyncio.create_task(notify_staff_converted(updated, user.get("name")))
+        _asyncio.create_task(notify_processors_new_file(updated, user.get("name")))
+    return {"deduped": False, "lead": serialize_doc(updated)}
+
+
+@router.get("/my-call-stats")
+async def meta_my_call_stats(user: dict = Depends(require_meta_access)):
+    """Growth Partner's Meta call talk-time/count derived from meta_leads.call_logs."""
+    role, meta_uid = _meta_ctx(user)
+    scope = _lead_scope(user)
+    total_calls, total_talk = 0, 0
+    async for lead in db.meta_leads.find(scope, {"call_logs": 1}):
+        for c in (lead.get("call_logs") or []):
+            if role in STAFF_ROLES or c.get("meta_user_id") == meta_uid:
+                total_calls += 1
+                total_talk += int(c.get("duration_seconds") or 0)
+    return {"total_calls": total_calls, "total_talk_time_seconds": total_talk}
 
 
 @router.get("/partners")
