@@ -1058,6 +1058,22 @@ async def meta_seed_production(x_seed_secret: Optional[str] = Header(None),
         else:
             manual_needed.append({"email": mu.get("email"), "meta_role": mu.get("role")})
 
+    # Staff whose CONNECT email differs from their META email (admin/ops) get an explicit
+    # grant (mirrors the validated preview mapping; meta_user_id stays None for staff — they
+    # are unrestricted scope). Idempotent.
+    STAFF_OVERRIDE = {
+        "admin@bankezee.com": "admin", "sasha.sgchr@gmail.com": "admin",
+        "rama@bankezee.com": "ops", "rama.saffronglobal@gmail.com": "ops",
+    }
+    staff_mapped = 0
+    for cemail, mrole in STAFF_OVERRIDE.items():
+        exact = await db.meta_users.find_one({"email": {"$regex": f"^{_re.escape(cemail)}$", "$options": "i"}})
+        muid = exact.get("user_id") if exact else None
+        res = await db.users.update_many(
+            {"email": {"$regex": f"^{_re.escape(cemail)}$", "$options": "i"}},
+            {"$set": {"meta_access": True, "meta_role": mrole, "meta_email": cemail, "meta_user_id": muid}})
+        staff_mapped += res.matched_count
+
     # ---- verification of key accounts ----
     async def _verify(email):
         docs = await db.users.find({"email": {"$regex": f"^{_re.escape(email.lower())}$", "$options": "i"}},
@@ -1070,6 +1086,7 @@ async def meta_seed_production(x_seed_secret: Optional[str] = Header(None),
         "db": db.name,
         "collections": results,
         "identity_mapping": {"connect_docs_updated": auto_mapped,
+                             "staff_override_updated": staff_mapped,
                              "unmatched_meta_users": len(manual_needed),
                              "unmatched_sample": manual_needed[:20]},
         "verify": verify,
