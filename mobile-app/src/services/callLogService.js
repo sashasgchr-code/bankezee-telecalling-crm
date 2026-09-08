@@ -406,27 +406,20 @@ export const makePhoneCall = async (phoneNumber) => {
   // Clean the phone number
   const cleanPhone = String(phoneNumber).split('.')[0].replace(/[^0-9+]/g, '');
   const url = `tel:${cleanPhone}`;
-
-  // NOTE: We intentionally do NOT gate on Linking.canOpenURL('tel:') here.
-  // On Android 11+ (package visibility), canOpenURL returns false for tel:
-  // even when a dialer exists, causing a false "Cannot open phone app" error.
-  // Opening directly launches the dialer; a real failure throws and is caught.
+  
   try {
-    await Linking.openURL(url);
-    return true;
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+      return true;
+    } else {
+      console.log('Cannot open phone app');
+      Alert.alert('Error', 'Cannot open phone app');
+      return false;
+    }
   } catch (error) {
     console.error('Error making phone call:', error);
-    // Fallback: some OEM skins prefer the DIAL intent; retry once via canOpenURL path.
-    try {
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
-        await Linking.openURL(url);
-        return true;
-      }
-    } catch (e) {
-      // ignore and fall through to the user-facing error
-    }
-    Alert.alert('Error', 'Could not open the dialer on this device.');
+    Alert.alert('Error', `Failed to make call: ${error.message}`);
     return false;
   }
 };
