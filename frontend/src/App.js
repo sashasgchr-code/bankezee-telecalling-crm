@@ -4,6 +4,7 @@ import useAuthStore from "./store/authStore";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/admin/Dashboard";
+import MetaApp from "./pages/meta/MetaApp";
 import AdminLeads from "./pages/admin/Leads";
 import AdminUsers from "./pages/admin/Users";
 import AdminApprovals from "./pages/admin/Approvals";
@@ -168,6 +169,7 @@ function App() {
           <Route path="attendance" element={<AdminAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="settings" element={<AdminSettings />} />
+          <Route path="meta" element={<MetaApp />} />
         </Route>
 
         {/* Telecaller/Agent Routes */}
@@ -194,6 +196,7 @@ function App() {
           <Route path="team/files" element={<TeamFiles />} />
           <Route path="team/calls" element={<TeamCalls />} />
           <Route path="reports" element={<AdminReports />} />
+          <Route path="meta" element={<MetaApp />} />
         </Route>
 
         {/* Manager Routes - Admin-like access without User Management */}
@@ -219,6 +222,7 @@ function App() {
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="team" element={<ManagerTeam />} />
           <Route path="team/calls" element={<TeamCalls />} />
+          <Route path="meta" element={<MetaApp />} />
         </Route>
 
         {/* HR Routes - Dashboard & Files are view only, Attendance & Leave same as Admin */}

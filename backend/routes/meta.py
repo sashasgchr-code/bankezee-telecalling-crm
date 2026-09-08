@@ -11,14 +11,41 @@ Isolated Meta module for BankEzee Connect (/api/meta/*).
 """
 from fastapi import APIRouter, Depends, HTTPException, Query
 from typing import Optional
+from datetime import datetime, timezone
+from pydantic import BaseModel
 
 from utils.database import db
-from utils.auth import require_meta_access
-from utils.helpers import serialize_doc, serialize_docs
+from utils.auth import require_meta_access, require_admin
+from utils.helpers import serialize_doc, serialize_docs, object_id_or_none
 
 router = APIRouter(prefix="/api/meta", tags=["Meta"])
 
 STAFF_ROLES = {"admin", "ops"}
+CRM_STATUSES = ["NEW", "CALL_BACK", "NOT_ANSWERING", "SWITCHED_OFF", "NOT_INTERESTED", "NOT_QUALIFIED", "LEAD", "FILE"]
+META_ROLES = ["admin", "ops", "processor", "growth_partner"]
+
+
+def _now_iso():
+    return datetime.now(timezone.utc).isoformat()
+
+
+class MetaStatusInput(BaseModel):
+    status: str
+
+
+class MetaAssignInput(BaseModel):
+    partner_id: Optional[str] = None
+
+
+class MetaNoteInput(BaseModel):
+    text: str
+
+
+class MetaUserMgmtInput(BaseModel):
+    meta_access: bool
+    meta_role: Optional[str] = None
+    meta_email: Optional[str] = None
+    meta_user_id: Optional[str] = None
 
 
 def _meta_ctx(user: dict):
@@ -132,3 +159,150 @@ async def meta_file_download(file_id: str, user: dict = Depends(require_meta_acc
         # Do NOT crash / serve a fake file - signal pending backfill to the UI.
         raise HTTPException(status_code=409, detail="Document migration pending")
     raise HTTPException(status_code=409, detail="Document migration pending")
+
+
+# ------------------- Meta write workflows (preserve old Meta rules) -------------------
+
+def _can_action_lead(role, meta_uid, lead) -> bool:
+    if role in STAFF_ROLES:
+        return True
+    if role == "growth_partner" and lead.get("assigned_partner_id") == meta_uid:
+        return True
+    if role == "processor" and lead.get("assigned_processor_id") == meta_uid:
+        return True
+    return False
+
+
+@router.patch("/leads/{lead_id}/status")
+async def meta_update_status(lead_id: str, inp: MetaStatusInput, user: dict = Depends(require_meta_access)):
+    if inp.status not in CRM_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    lead = await db.meta_leads.find_one({"lead_id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Meta lead not found")
+    role, meta_uid = _meta_ctx(user)
+    # Old Meta rule: staff OR the assigned growth partner may change status
+    if role not in STAFF_ROLES and lead.get("assigned_partner_id") != meta_uid:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    activity = {"type": "status_change",
+                "detail": f"Status changed from {lead.get('status')} to {inp.status} by {user.get('name')}",
+                "at": _now_iso()}
+    set_status = {"status": inp.status, "updated_at": _now_iso()}
+    if inp.status == "FILE" and not lead.get("file_created_at"):
+        set_status["file_created_at"] = _now_iso()
+    await db.meta_leads.update_one({"lead_id": lead_id},
+                                   {"$set": set_status, "$push": {"activities": activity}})
+    return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+
+
+@router.patch("/leads/{lead_id}/assign")
+async def meta_assign_lead(lead_id: str, inp: MetaAssignInput, user: dict = Depends(require_meta_access)):
+    role, _ = _meta_ctx(user)
+    if role not in STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Only Admin/Ops can assign Meta leads")
+    lead = await db.meta_leads.find_one({"lead_id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Meta lead not found")
+    partner_name = None
+    if inp.partner_id:
+        partner = await db.meta_users.find_one({"user_id": inp.partner_id})
+        if not partner:
+            raise HTTPException(status_code=404, detail="Partner not found")
+        if partner.get("role") != "growth_partner" or not partner.get("approved"):
+            raise HTTPException(status_code=400, detail="Leads can only be assigned to an approved growth partner")
+        partner_name = partner.get("name")
+        detail = f"Assigned to {partner_name} by {user.get('name')}"
+    else:
+        detail = f"Unassigned by {user.get('name')}"
+    activity = {"type": "assignment", "detail": detail, "at": _now_iso()}
+    await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": {
+        "assigned_partner_id": inp.partner_id, "assigned_partner_name": partner_name,
+        "updated_at": _now_iso(),
+        "assigned_by": (user.get("name") if inp.partner_id else None),
+        "assigned_at": (_now_iso() if inp.partner_id else None),
+    }, "$push": {"activities": activity}})
+    return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+
+
+@router.post("/leads/{lead_id}/notes")
+async def meta_add_note(lead_id: str, inp: MetaNoteInput, user: dict = Depends(require_meta_access)):
+    lead = await db.meta_leads.find_one({"lead_id": lead_id})
+    if not lead:
+        raise HTTPException(status_code=404, detail="Meta lead not found")
+    role, meta_uid = _meta_ctx(user)
+    if not _can_action_lead(role, meta_uid, lead):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    note = {"text": inp.text, "author": user.get("name"), "at": _now_iso()}
+    activity = {"type": "note", "detail": f"{user.get('name')} added a note", "at": _now_iso()}
+    await db.meta_leads.update_one({"lead_id": lead_id},
+                                   {"$push": {"notes": note, "activities": activity},
+                                    "$set": {"updated_at": _now_iso()}})
+    return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+
+
+@router.get("/partners")
+async def meta_partners(user: dict = Depends(require_meta_access)):
+    """Approved growth partners for the assignment dropdown (staff only)."""
+    role, _ = _meta_ctx(user)
+    if role not in STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Admin/Ops only")
+    docs = await db.meta_users.find({"role": "growth_partner", "approved": True},
+                                    {"password_hash": 0, "visible_password": 0}).to_list(1000)
+    return [{"user_id": d.get("user_id"), "name": d.get("name"), "email": d.get("email")} for d in docs]
+
+
+# ------------------- Meta User Management (Connect Admin controls) -------------------
+
+@router.get("/admin/user-management")
+async def meta_user_management(current_user: dict = Depends(require_admin)):
+    """Connect users + their Meta linkage, plus the pool of Meta users for manual mapping."""
+    connect_users = await db.users.find(
+        {}, {"name": 1, "email": 1, "role": 1, "is_active": 1,
+             "meta_access": 1, "meta_role": 1, "meta_email": 1, "meta_user_id": 1}
+    ).to_list(10000)
+    meta_users = await db.meta_users.find(
+        {}, {"password_hash": 0, "visible_password": 0}).to_list(1000)
+    linked = {u.get("meta_user_id") for u in connect_users if u.get("meta_user_id")}
+    return {
+        "meta_roles": META_ROLES,
+        "connect_users": serialize_docs(connect_users),
+        "meta_users": [{"user_id": m.get("user_id"), "name": m.get("name"),
+                        "email": m.get("email"), "role": m.get("role"),
+                        "linked": (m.get("user_id") in linked)} for m in meta_users],
+    }
+
+
+@router.patch("/admin/users/{connect_user_id}")
+async def meta_set_user_access(connect_user_id: str, inp: MetaUserMgmtInput,
+                               current_user: dict = Depends(require_admin)):
+    """Set Meta Access / Role / Email / mapping for a Connect user (Admin only).
+    Prevents mapping the same Meta user to two Connect accounts (no duplicate mappings)."""
+    oid = object_id_or_none(connect_user_id)
+    match = {"$or": [{"id": connect_user_id}] + ([{"_id": oid}] if oid else [])}
+    target = await db.users.find_one(match)
+    if not target:
+        raise HTTPException(status_code=404, detail="Connect user not found")
+
+    if inp.meta_role and inp.meta_role not in META_ROLES:
+        raise HTTPException(status_code=400, detail="Invalid Meta role")
+
+    if inp.meta_user_id:
+        dup = await db.users.find_one({
+            "meta_user_id": inp.meta_user_id,
+            "_id": {"$ne": target["_id"]},
+        })
+        if dup:
+            raise HTTPException(status_code=400,
+                                detail=f"That Meta user is already mapped to {dup.get('email')}")
+
+    set_fields = {
+        "meta_access": bool(inp.meta_access),
+        "meta_role": inp.meta_role,
+        "meta_email": inp.meta_email,
+        "meta_user_id": inp.meta_user_id,
+    }
+    await db.users.update_one({"_id": target["_id"]}, {"$set": set_fields})
+    updated = await db.users.find_one({"_id": target["_id"]},
+                                      {"name": 1, "email": 1, "role": 1, "meta_access": 1,
+                                       "meta_role": 1, "meta_email": 1, "meta_user_id": 1})
+    return serialize_doc(updated)

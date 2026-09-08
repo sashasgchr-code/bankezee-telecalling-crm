@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, Users, PhoneCall } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, Users, PhoneCall, Boxes } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
@@ -28,6 +28,7 @@ const ManagerLayout = () => {
   const moreNavItems = [
     { path: '/manager/attendance', icon: Clock, label: 'Attendance' },
     { path: '/manager/leave', icon: Calendar, label: 'Leave' },
+    ...(user?.meta_access ? [{ path: '/manager/meta', icon: Boxes, label: 'Meta CRM' }] : []),
   ];
 
   // Team pages for Manager view - Team Data / Team Files removed (covered by main nav)

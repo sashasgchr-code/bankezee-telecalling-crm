@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 53: Verified BankEzee Connect Meta module isolation. Backend 23/23 pytest passed: access-off 403 for admin, GP scoping (150 leads, all assigned_partner_id==meta_uid), processor scoping, status change + activity persistence, note add + activity, GP forbidden from /assign, /partners, /users, /admin/user-management, files 149 with binary_pending, download 409, duplicate meta_user mapping rejected 400 'already mapped', staff-only user mgmt, and Connect regression (auth/me, files/dashboard/stats, leads list) all 200. Frontend verified: Admin (no meta_access) sees NO 'Meta CRM' nav and /admin/meta shows meta-no-access. GP nav under /agent/meta loads 3 tabs (Dashboard/Leads/Files), 150 assigned leads paginated, User Mgmt tab absent, lead detail opens with status buttons + note input + NO assign select. Processor /manager/meta shows exactly 1 scoped lead, no User Mgmt tab. No page errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "MetaApp.js shell", "issue": "Connect Admin (user.role=='admin' but meta_access=false) is blocked by the early 'if (!user?.meta_access) return <no-access>' guard on line 331, so the required 'User Mgmt' tab at /admin/meta is never rendered. Per spec, admin@bankezee.com must see the User Mgmt tab even without meta_access. Backend /api/meta/admin/user-management already gates via require_admin (works fine) - only the UI is blocking. Fix: bypass the meta_access guard when user.role==='admin' and render a minimal admin shell containing only the User Mgmt tab (dashboard/leads/files require meta_access, so they can be hidden for admin-without-access).", "selector": "[data-testid=\"meta-no-access\"] shown for admin", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_items": {
+    "access_off_admin_no_nav": "PASS - no 'Meta CRM' nav text on admin, /api/meta/me and /api/meta/leads both 403",
+    "gp_scoping": "PASS - all lead rows have assigned_partner_id == GP's meta_user_id; UI shows 150 leads",
+    "processor_scoping": "PASS - UI 1 lead; API returns leads with assigned_processor_id == teja's meta_user_id",
+    "status_write": "PASS - PATCH /leads/{id}/status persisted status=CALL_BACK and appended status_change activity",
+    "note_write": "PASS - POST /leads/{id}/notes appended note + activity type=note",
+    "assign_forbidden_for_gp": "PASS - PATCH /assign 403; UI has no meta-assign-select for GP",
+    "files_binary_pending": "PASS - total 149, binary_pending 149",
+    "files_download_409": "PASS",
+    "duplicate_meta_mapping_rejected": "PASS - PATCH /admin/users/{id} with an already-linked meta_user_id -> 400 'already mapped'",
+    "non_admin_user_mgmt_forbidden": "PASS - processor 403 on /admin/user-management",
+    "connect_regression": "PASS - /auth/me, /files/dashboard/stats, /leads list all 200 for admin/manager/GP"
+  },
+  "test_report_links": ["/app/backend/tests/test_meta_module.py", "/app/test_reports/pytest/meta_module.xml"],
+  "action_items": [
+    "HIGH: /app/frontend/src/pages/meta/MetaApp.js line 331 - allow Connect admin (user.role==='admin') to bypass the meta_access guard and show at least the 'User Mgmt' tab, since spec explicitly requires admin@bankezee.com to see User Mgmt at /admin/meta despite having no meta_access."
+  ],
+  "critical_code_review_comments": [
+    "meta.py _lead_scope falls back to assigned_partner_id filter for any non-staff/non-processor role - safe default but rely on meta_role_normalized being one of the four META_ROLES; consider explicit reject for unknown meta_role instead of implicit GP scoping.",
+    "meta.py /files/{id}/download always raises 409 (unconditional after the doc lookup) which is currently by design (binary_pending backfill) - once migration completes, the second unconditional raise must be removed or it will return 409 for real files too.",
+    "MetaApp.js relies on user.meta_access from auth store; ensure login response and /auth/me both include meta_access/meta_role/meta_email/meta_user_id consistently so a page refresh doesn't drop meta context."
+  ],
+  "updated_files": ["/app/backend/tests/test_meta_module.py"],
+  "success_rate": {"backend": "100% (23/23)", "frontend": "~90% - all role/scoping/write flows pass; Connect Admin User Mgmt UI blocked"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!!, teja@bankezee.com/tejasme12, banothunithinnaik@gmail.com/Nithin@123",
+  "seed_data_creation": "Test writes on isolated meta_leads only: 1 lead of GP nithin now has status=CALL_BACK and a 'TEST_iteration53 automated note'. Isolated collection, does not affect Connect CRM.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Regression file /app/backend/tests/test_meta_module.py has 23 tests across TestAccessOff, TestGrowthPartner, TestProcessor, TestAdminUserMgmt, TestConnectRegression. All pass as of iteration 53. Frontend Meta nav testids: meta-tab-{dashboard|leads|files|users}, meta-lead-row, meta-status-<STATUS>, meta-assign-select (staff-only), meta-note-input/meta-note-add, meta-user-edit-<id>, meta-access-toggle, meta-role-select, meta-email-input, meta-user-map-select, meta-user-save, meta-no-access banner. Known open UI bug: admin cannot reach User Mgmt tab because of meta_access guard in MetaApp.js line 331.",
+  "rca of the issue": "MetaApp.js short-circuits on `if (!user?.meta_access) return <no-access>` BEFORE computing tabs. Since Connect admin currently has meta_access=false (per problem statement), the admin-only User Mgmt tab is never mounted, contradicting the requirement. Repro: login admin@bankezee.com -> navigate /admin/meta -> meta-no-access banner instead of meta-tab-users. Mitigation: change guard to `if (!user?.meta_access && user?.role !== 'admin')` and render a shell with only the users tab for admin-without-meta_access, OR grant admin meta_access=true with meta_role='admin' via seed."
+}

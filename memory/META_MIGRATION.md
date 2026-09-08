@@ -18,12 +18,19 @@
 - Verified via curl: access OFF=403; processor & GP scoping correct; files metadata + 409 pending; staff-only enforced.
 
 ## NOT YET DONE (next approved increments)
-- Connect WEB Meta UI (nav gated by meta_access + Dashboard/Leads/LeadDetail/Files/Reports/UserMgmt extension).
-- Meta write workflows (status/disposition updates, assignment, notes) under /api/meta/*.
 - Google Sheet CSV sync port (routes + dedupe on sheet_id) — keep OLD Meta sync running; single sync only at cutover.
 - Email notifications port (use meta_email).
 - Mobile Meta GP workflow + Meta call flow (embedded call_logs/activities on meta_leads; one-call-one-record).
 - GridFS binary backfill (149 files / fs.chunks) from live Meta MONGO_URL.
+
+## WEB META UI INCREMENT — DONE & VERIFIED (Sep 8, 2026)
+- Frontend: pages/meta/MetaApp.js (Dashboard, Leads, Lead Detail, Files, User Mgmt); routes 'meta' added under
+  /admin,/manager,/agent in App.js; 'Meta CRM' nav gated by meta_access in AdminLayout/ManagerLayout/
+  TelecallerLayout (admin also sees it for User Mgmt even without meta_access).
+- Backend: routes/meta.py write endpoints (PATCH status, PATCH assign [staff only], POST notes, GET partners)
+  + admin User Management (GET /admin/user-management, PATCH /admin/users/{id}) with duplicate-map rejection.
+- testing_agent iteration_53: backend 23/23 + frontend role matrix PASS; Connect regression PASS. One HIGH UI
+  bug (admin blocked from User Mgmt) fixed + re-verified.
 
 ## Isolation guarantees
 - Only meta_* collections touched. Connect leads/users/files untouched. Old Meta prod DB never contacted.
