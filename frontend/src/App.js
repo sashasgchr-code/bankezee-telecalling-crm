@@ -4,7 +4,15 @@ import useAuthStore from "./store/authStore";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import AdminDashboard from "./pages/admin/Dashboard";
-import MetaApp from "./pages/meta/MetaApp";
+import MetaLayout from "./pages/meta/MetaLayout";
+import MetaDashboard from "./pages/meta/Dashboard";
+import MetaLeads from "./pages/meta/Leads";
+import MetaLeadDetail from "./pages/meta/LeadDetail";
+import MetaFiles from "./pages/meta/Files";
+import MetaFileReports from "./pages/meta/FileReports";
+import MetaCallLogs from "./pages/meta/CallLogs";
+import MetaPartners from "./pages/meta/Partners";
+import MetaUserManagement from "./pages/meta/UserManagement";
 import AdminLeads from "./pages/admin/Leads";
 import AdminUsers from "./pages/admin/Users";
 import AdminApprovals from "./pages/admin/Approvals";
@@ -102,6 +110,18 @@ const ProtectedRoute = ({ children, requiredRole }) => {
   return children;
 };
 
+// Meta section guard: authenticated + meta_access is the master gate.
+const MetaProtectedRoute = ({ children }) => {
+  const { isAuthenticated, user, isLoading } = useAuthStore();
+  if (isLoading) return <LoadingScreen />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!user?.meta_access) {
+    const base = user?.role === 'admin' ? '/admin' : user?.role === 'manager' ? '/manager' : user?.role === 'hr' ? '/hr' : '/agent';
+    return <Navigate to={base} replace />;
+  }
+  return children;
+};
+
 function App() {
   const { loadAuth, isLoading, isAuthenticated, user } = useAuthStore();
 
@@ -169,7 +189,6 @@ function App() {
           <Route path="attendance" element={<AdminAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="settings" element={<AdminSettings />} />
-          <Route path="meta" element={<MetaApp />} />
         </Route>
 
         {/* Telecaller/Agent Routes */}
@@ -196,7 +215,6 @@ function App() {
           <Route path="team/files" element={<TeamFiles />} />
           <Route path="team/calls" element={<TeamCalls />} />
           <Route path="reports" element={<AdminReports />} />
-          <Route path="meta" element={<MetaApp />} />
         </Route>
 
         {/* Manager Routes - Admin-like access without User Management */}
@@ -222,7 +240,6 @@ function App() {
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="team" element={<ManagerTeam />} />
           <Route path="team/calls" element={<TeamCalls />} />
-          <Route path="meta" element={<MetaApp />} />
         </Route>
 
         {/* HR Routes - Dashboard & Files are view only, Attendance & Leave same as Admin */}
@@ -244,6 +261,22 @@ function App() {
             <RoleNeutralFileRedirect />
           </ProtectedRoute>
         } />
+
+        {/* Meta CRM - dedicated full-screen section with the old navy sidebar */}
+        <Route path="/meta" element={
+          <MetaProtectedRoute>
+            <MetaLayout />
+          </MetaProtectedRoute>
+        }>
+          <Route index element={<MetaDashboard />} />
+          <Route path="leads" element={<MetaLeads />} />
+          <Route path="leads/:leadId" element={<MetaLeadDetail />} />
+          <Route path="files" element={<MetaFiles />} />
+          <Route path="file-reports" element={<MetaFileReports />} />
+          <Route path="call-logs" element={<MetaCallLogs />} />
+          <Route path="partners" element={<MetaPartners />} />
+          <Route path="users" element={<MetaUserManagement />} />
+        </Route>
 
         {/* Default redirect */}
         <Route path="*" element={

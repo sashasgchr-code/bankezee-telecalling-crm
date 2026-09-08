@@ -1792,3 +1792,6 @@ Added Growth Partner self-registration to the mobile app, replicating web pages/
 - Verified: register-gp 200 + partner code, duplicate email -> 400, all mobile files compile via
   babel-preset-expo. Rides on the same unreleased v2.6.3/versionCode 20 (no extra bump). Not
   runtime-tested on device - validate after the EAS build.
+
+## META WEB PARITY PASS (Sep 8, 2026)
+Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, Leads (bulk assign/delete), Lead Detail (status/partner+processor/file card/bank eligibilities/documents via Object Storage/notes/timeline/call modal), Files, File Reports (+CSV+workload), Call Logs, Growth Partners, User Management (no reset). Backend /api/meta/* expanded; role gating via meta_role+meta_user_id (master gate meta_access), enforced server+UI. Verified iteration_54: backend 28/28, frontend 100%, Connect regression clean. Object Storage uses EMERGENT_LLM_KEY. Mobile untouched; not published.

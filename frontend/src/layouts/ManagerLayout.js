@@ -28,7 +28,7 @@ const ManagerLayout = () => {
   const moreNavItems = [
     { path: '/manager/attendance', icon: Clock, label: 'Attendance' },
     { path: '/manager/leave', icon: Calendar, label: 'Leave' },
-    ...(user?.meta_access ? [{ path: '/manager/meta', icon: Boxes, label: 'Meta CRM' }] : []),
+    ...(user?.meta_access ? [{ path: '/meta', icon: Boxes, label: 'Meta CRM' }] : []),
   ];
 
   // Team pages for Manager view - Team Data / Team Files removed (covered by main nav)

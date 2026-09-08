@@ -58,3 +58,28 @@
 ## Isolation guarantees
 - Only meta_* collections touched. Connect leads/users/files untouched. Old Meta prod DB never contacted.
 - SAFE TO SHUT DOWN OLD META = NO (binaries + sync + email + mobile pending).
+
+## WEB PARITY PASS — DONE & VERIFIED (Sep 8, 2026) — iteration_54 (backend 28/28, frontend 100%)
+Replaced the rejected simplified Meta UI with a 1:1 port of the OLD Meta web app as a dedicated
+full-screen section at /meta/* with the OLD navy (#0A192F) sidebar.
+- Frontend: src/pages/meta/{MetaLayout,Dashboard,Leads,LeadDetail,Files,FileReports,CallLogs,
+  Partners,UserManagement,MetaCallModal,metaCommon}.js. Old MetaApp.js is orphaned (kept, unused).
+  App.js: new top-level /meta route group guarded by MetaProtectedRoute (master gate = meta_access).
+  Nav links in Admin/Manager/Telecaller layouts now point to /meta.
+- Backend routes/meta.py rewritten (mobile endpoints preserved byte-compatibly: /leads keeps `leads`
+  key + adds items/pages; /leads/{id}, /status, /notes, /call-log, /me, /my-call-stats unchanged).
+  Added: /leads/stats, /leads/bulk-assign (staff), /leads/bulk-delete (admin), /leads/{id}/calls,
+  /file, /processor, /processing-status, /documents (+ zip, download, delete), /files/stats,
+  /files/report, /files/report/export, /call-logs, /processors, /processors/workload, augmented
+  /partners (assigned/converted counts), /users (+approve/password/restore/default-processor/delete).
+  Role gating server-side via meta_role + meta_user_id; scoping: staff=all, processor=assigned_processor_id,
+  growth_partner=assigned_partner_id. Danger-Zone reset intentionally OMITTED (per user).
+- Documents: NEW uploads use Emergent Object Storage (utils/meta_storage.py, EMERGENT_LLM_KEY added to
+  backend/.env). Verified 22-byte PDF round-trip. Legacy 149 GridFS binaries still binary_pending -> 409.
+- Meta role test accounts (see test_credentials.md): admin@bankezee.com, rama@bankezee.com (ops),
+  teja@bankezee.com (processor), yarragondaanusha@gmail.com (growth_partner, pwd reset to MetaGP123!).
+
+## STILL PENDING (unchanged by this pass)
+- P1 GridFS binary backfill (149 files) from live Meta MONGO_URL.
+- P2 Production sync cutover (OLD sync OFF -> Connect sync ON) + real Meta emails. NOT published.
+- Mobile untouched (v2.6.6/vc23).

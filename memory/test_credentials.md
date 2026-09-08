@@ -91,3 +91,14 @@ Admin (admin@bankezee.com)
 - Users NOT in @users spreadsheet have been deactivated (is_active=false)
 - Historical file ownership and activities are NOT modified
 - All role-based accounts are seeded on backend startup
+
+## Meta CRM Section (/meta) — role gating via meta_role + meta_access
+Master gate: user.meta_access must be true. meta_role drives screen/action gating; meta_user_id drives ownership/"assigned to me".
+| Email | Password | meta_role | Notes |
+|-------|----------|-----------|-------|
+| admin@bankezee.com | ConnectSasha12!! | admin | Full Meta: Dashboard, Leads, Files, File Reports, Call Logs, Growth Partners, User Management. Assign + bulk-delete. |
+| rama@bankezee.com | rama@bzc12 | ops | Staff: all leads/files, assign, reports, processor workload. No Growth Partners/User Mgmt nav. |
+| teja@bankezee.com | tejasme12 | processor | Sees only leads where assigned_processor_id == his meta_user_id; can edit bank eligibilities + processing status. |
+| yarragondaanusha@gmail.com | MetaGP123! | growth_partner | Sees only leads assigned to her (assigned_partner_id). NOTE: Connect password reset to MetaGP123! on 2026-09-08 for Meta testing (was 9063023292). |
+
+Meta entry point: log in, then click "Meta CRM" in the More menu (or navigate to /meta). Navy sidebar section.

@@ -216,7 +216,7 @@ const TelecallerLayout = () => {
     { path: '/agent/attendance', icon: Clock, label: 'Attendance' },
     { path: '/agent/leave', icon: CalendarDays, label: 'Leave' },
     { path: '/agent/profile', icon: User, label: 'Profile' },
-    ...(user?.meta_access ? [{ path: '/agent/meta', icon: Database, label: 'Meta CRM' }] : []),
+    ...(user?.meta_access ? [{ path: '/meta', icon: Database, label: 'Meta CRM' }] : []),
   ];
 
   // Team menu items - only visible for Team Leads (is_tl = true)

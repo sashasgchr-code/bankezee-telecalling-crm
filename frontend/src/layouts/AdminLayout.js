@@ -31,7 +31,7 @@ const AdminLayout = () => {
     { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
     { path: '/admin/attendance', icon: Clock, label: 'Attendance' },
     { path: '/admin/leave', icon: Calendar, label: 'Leave' },
-    ...(user?.meta_access || user?.role === 'admin' ? [{ path: '/admin/meta', icon: Boxes, label: 'Meta CRM' }] : []),
+    ...(user?.meta_access ? [{ path: '/meta', icon: Boxes, label: 'Meta CRM' }] : []),
   ];
 
   return (
