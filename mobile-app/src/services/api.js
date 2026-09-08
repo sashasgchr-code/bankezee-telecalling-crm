@@ -60,6 +60,15 @@ export const getCurrentUser = async () => {
   return userData ? JSON.parse(userData) : null;
 };
 
+// Re-fetch the live profile so permission changes (e.g. meta_access) are picked up
+// on app launch/token-restore WITHOUT reinstalling. Returns the fresh user or null.
+export const refreshProfile = async () => {
+  const res = await api.get('/auth/me');
+  const user = res.data && res.data.user ? res.data.user : res.data;
+  if (user) await AsyncStorage.setItem('user_data', JSON.stringify(user));
+  return user;
+};
+
 export const isAuthenticated = async () => {
   const token = await AsyncStorage.getItem('auth_token');
   return !!token;

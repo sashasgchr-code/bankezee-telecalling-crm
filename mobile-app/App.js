@@ -4,6 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { refreshProfile } from './src/services/api';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
@@ -150,7 +151,15 @@ const App = () => {
     try {
       const userData = await AsyncStorage.getItem('user_data');
       const token = await AsyncStorage.getItem('auth_token');
-      if (userData && token) setUser(JSON.parse(userData));
+      if (userData && token) {
+        setUser(JSON.parse(userData));
+        // Refresh live profile so permission changes (meta_access/meta_role) apply
+        // on launch without needing a re-login or reinstall.
+        try {
+          const fresh = await refreshProfile();
+          if (fresh) setUser(fresh);
+        } catch (e) { /* keep cached user if offline / token invalid */ }
+      }
     } catch (error) {
       console.error('Auth check error:', error);
     } finally {
