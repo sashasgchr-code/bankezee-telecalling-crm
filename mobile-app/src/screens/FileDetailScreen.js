@@ -66,7 +66,15 @@ const loanNum = (v) => (v === '' || v === null || v === undefined || isNaN(Numbe
 const loanMoney = (v) => (loanNum(v) ? `₹${loanNum(v).toLocaleString('en-IN')}` : '-');
 
 const FileDetailScreen = ({ route, navigation }) => {
-  const { fileId } = route.params;
+  const { fileId, apiBase = '/files', mode = 'connect', roleOverride = null } = route.params;
+  const isMeta = mode === 'meta';
+  const META_FILE_STATUSES = [
+    'New', 'Contacted', 'Documents Collected', 'Documents Pending', 'Sent for Eligibility',
+    'Sent for Login', 'Login Done', 'Sent for Approval', 'Underwriting', 'FI (Field Investigation)',
+    'FI Negative', 'FI Reinitiated', 'Query/Hold', 'Approved', 'Disbursed', 'Not Eligible',
+    'Not Login', 'Declined', 'Not Disbursed',
+  ].map((s) => ({ value: s, label: s }));
+  const STATUS_LIST = isMeta ? META_FILE_STATUSES : FILE_STATUSES;
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -102,12 +110,13 @@ const FileDetailScreen = ({ route, navigation }) => {
 
   useEffect(() => {
     loadFileDetails();
-    loadOpsTeam();
+    if (!isMeta) loadOpsTeam();
     (async () => {
       try {
         const raw = await AsyncStorage.getItem('user_data');
-        const role = raw ? (JSON.parse(raw).role || '').toLowerCase() : '';
-        setCanManageFiles(['admin', 'manager', 'ops'].includes(role));
+        const storedRole = raw ? (JSON.parse(raw).role || '').toLowerCase() : '';
+        const role = (roleOverride || storedRole || '').toLowerCase();
+        setCanManageFiles(['admin', 'manager', 'ops', 'processor'].includes(role));
       } catch (e) {
         setCanManageFiles(false);
       }
@@ -117,7 +126,7 @@ const FileDetailScreen = ({ route, navigation }) => {
   const loadFileDetails = async () => {
     try {
       setLoading(true);
-      const response = await getFileDetails(fileId);
+      const response = await getFileDetails(fileId, apiBase);
       setFile(response);
       setSelectedStatus(response.file_status || 'new');
       setSelectedAssignee(response.file_assigned_to || '');
@@ -185,7 +194,7 @@ const FileDetailScreen = ({ route, navigation }) => {
           tenure_required: details.tenure_required,
         },
         employment_type: details.employment_type,
-      });
+      }, apiBase);
       Alert.alert('Success', 'Details saved successfully');
       setIsEditing(false);
       loadFileDetails();
@@ -200,7 +209,7 @@ const FileDetailScreen = ({ route, navigation }) => {
     if (selectedStatus === file?.file_status) return;
     
     try {
-      await updateFileStatus(fileId, selectedStatus);
+      await updateFileStatus(fileId, selectedStatus, apiBase);
       Alert.alert('Success', 'Status updated');
       loadFileDetails();
     } catch (error) {
@@ -224,7 +233,7 @@ const FileDetailScreen = ({ route, navigation }) => {
     if (!note.trim()) return;
     
     try {
-      await addFileNote(fileId, note);
+      await addFileNote(fileId, note, apiBase);
       Alert.alert('Success', 'Note added');
       setNote('');
       loadFileDetails();
@@ -328,6 +337,7 @@ const FileDetailScreen = ({ route, navigation }) => {
       >
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* Check Eligibility CTA */}
+          {!isMeta && (
           <TouchableOpacity
             style={styles.eligibilityBtn}
             onPress={() => navigation.navigate('Eligibility', { fileId })}
@@ -340,6 +350,7 @@ const FileDetailScreen = ({ route, navigation }) => {
             </View>
             <Text style={styles.eligibilityBtnArrow}>›</Text>
           </TouchableOpacity>
+          )}
 
           {/* Customer Details */}
           <View style={styles.section}>
@@ -504,7 +515,7 @@ const FileDetailScreen = ({ route, navigation }) => {
             {canManageFiles ? (
               <>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusContainer}>
-                  {FILE_STATUSES.map(status => (
+                  {STATUS_LIST.map(status => (
                     <TouchableOpacity
                       key={status.value}
                       style={[
@@ -535,14 +546,14 @@ const FileDetailScreen = ({ route, navigation }) => {
             ) : (
               <View style={styles.readOnlyStatusBox} data-testid="file-status-readonly">
                 <Text style={styles.readOnlyStatusValue}>
-                  {(FILE_STATUSES.find(s => s.value === (file?.file_status || 'new'))?.label) || file?.file_status || 'New'}
+                  {(STATUS_LIST.find(s => s.value === (file?.file_status || 'new'))?.label) || file?.file_status || 'New'}
                 </Text>
               </View>
             )}
           </View>
 
-          {/* Assignment - Admin/Manager/Ops only */}
-          {canManageFiles && (
+          {/* Assignment - Admin/Manager/Ops only (Connect) */}
+          {canManageFiles && !isMeta && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>👥 Assign File</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statusContainer}>

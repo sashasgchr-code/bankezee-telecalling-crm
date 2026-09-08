@@ -99,7 +99,7 @@ export default function MetaFiles() {
         <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden" data-testid="meta-files-list">
           {loading ? <p className="py-16 text-center text-slate-400 text-sm">Loading files...</p>
             : filtered.length === 0 ? <p className="py-16 text-center text-slate-400 text-sm">No files match your filters.</p>
-            : filtered.map((f) => <FileRow key={f.lead_id} f={f} onOpen={() => navigate(`/meta/leads/${f.lead_id}`)} />)}
+            : filtered.map((f) => <FileRow key={f.lead_id} f={f} onOpen={() => navigate(`/meta/files/${f.lead_id}`)} />)}
         </div>
       </div>
     </div>

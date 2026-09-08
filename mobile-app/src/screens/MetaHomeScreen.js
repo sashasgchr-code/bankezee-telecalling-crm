@@ -153,7 +153,7 @@ const FilesTab = ({ navigation, profile }) => {
             const fd = item.file_created_at || item.created_at;
             const docs = (item.documents || []).length;
             return (
-              <TouchableOpacity style={styles.card} data-testid="meta-file-row" onPress={() => navigation.navigate('MetaLeadDetail', { leadId: item.lead_id, user: profile })}>
+              <TouchableOpacity style={styles.card} data-testid="meta-file-row" onPress={() => navigation.navigate('FileDetail', { fileId: item.lead_id, apiBase: '/meta/files-compat', mode: 'meta', roleOverride: (profile?.meta_role || '').toLowerCase() })}>
                 <View style={styles.cardRow}><Text style={styles.name}>{item.full_name || 'Unnamed'}</Text><Text style={styles.procBadge}>{item.processing_status || 'New'}</Text></View>
                 <Text style={styles.sub}>{item.phone || '—'} · {fd ? new Date(fd).toLocaleDateString() : '—'}</Text>
                 <Text style={styles.sub2}>

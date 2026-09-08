@@ -76,6 +76,7 @@ const AdminUsers = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [copiedField, setCopiedField] = useState(null);
   const [showPassword, setShowPassword] = useState({});
+  const [metaUsers, setMetaUsers] = useState([]);
   const pageSize = 15;
 
   // Every filter change is a fresh server query; only the newest response may render.
@@ -300,10 +301,30 @@ const AdminUsers = () => {
         payload.manager_id = roleEditData.manager_id || '';
       }
       
+      // ---- Meta CRM mapping (independent of Connect role) ----
+      const metaChanged = (
+        !!roleEditData.meta_access !== !!selectedUser.meta_access ||
+        (roleEditData.meta_access && (
+          (roleEditData.meta_role || '') !== (selectedUser.meta_role || '') ||
+          (roleEditData.meta_user_id || '') !== (selectedUser.meta_user_id || '') ||
+          (roleEditData.meta_email || '') !== (selectedUser.meta_email || '')
+        ))
+      );
+      if (metaChanged) {
+        await api.patch(`/meta/admin/users/${selectedUser.id}`, {
+          meta_access: !!roleEditData.meta_access,
+          meta_role: roleEditData.meta_access ? roleEditData.meta_role : null,
+          meta_email: roleEditData.meta_access ? (roleEditData.meta_email || null) : null,
+          meta_user_id: roleEditData.meta_access ? (roleEditData.meta_user_id || null) : null,
+        });
+      }
+
       // If nothing changed, just close
       if (Object.keys(payload).length === 0) {
-        toast.info('No changes to save');
+        if (metaChanged) { reloadUsers(); toast.success('Meta access updated'); }
+        else { toast.info('No changes to save'); }
         setShowEditRoleModal(false);
+        setSelectedUser(null);
         return;
       }
       
@@ -414,10 +435,18 @@ const AdminUsers = () => {
       role: user.role || 'growth_partner',
       is_tl: user.is_tl || false,
       manager_id: user.manager_id || null,
-      tl_id: user.tl_id || null
+      tl_id: user.tl_id || null,
+      meta_access: !!user.meta_access,
+      meta_role: user.meta_role || 'growth_partner',
+      meta_user_id: user.meta_user_id || '',
+      meta_email: user.meta_email || user.email || ''
     });
     setShowEditRoleModal(true);
   };
+
+  useEffect(() => {
+    api.get('/meta/admin/user-management').then(({ data }) => setMetaUsers(data.meta_users || [])).catch(() => {});
+  }, []);
 
   const copyToClipboard = (text, field) => {
     navigator.clipboard.writeText(text);
@@ -794,6 +823,7 @@ const AdminUsers = () => {
                             <>
                               <button
                                 onClick={(e) => openEditRoleModal(user, e)}
+                                data-testid={`edit-role-${user.account_key || user.id}`}
                                 className="p-1.5 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded"
                                 title="Edit role & hierarchy"
                               >
@@ -1290,6 +1320,84 @@ const AdminUsers = () => {
                 )}
               </div>
             )}
+
+            {/* META CRM ACCESS (independent of Connect role) */}
+            <div className="border-t border-gray-200 pt-4 mt-2" data-testid="meta-access-section">
+              <div className="flex items-center justify-between p-3 bg-slate-800 rounded-lg">
+                <div>
+                  <p className="font-medium text-white">META CRM Access</p>
+                  <p className="text-xs text-slate-300">Grant this user access to the Meta section</p>
+                </div>
+                <select
+                  value={roleEditData.meta_access ? 'yes' : 'no'}
+                  onChange={(e) => setRoleEditData(prev => ({ ...prev, meta_access: e.target.value === 'yes' }))}
+                  className="px-3 py-2 rounded-lg bg-white text-slate-800 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  data-testid="meta-access-select"
+                >
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </div>
+
+              {roleEditData.meta_access && (
+                <div className="space-y-3 mt-3 p-3 border border-slate-200 rounded-lg bg-slate-50">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Meta Role</label>
+                    <select
+                      value={roleEditData.meta_role || ''}
+                      onChange={(e) => setRoleEditData(prev => ({ ...prev, meta_role: e.target.value }))}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      data-testid="meta-role-select"
+                    >
+                      <option value="">Select Meta role</option>
+                      <option value="admin">Admin</option>
+                      <option value="ops">Operations</option>
+                      <option value="processor">Processor</option>
+                      <option value="growth_partner">Growth Partner</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Meta User Mapping</label>
+                    <select
+                      value={roleEditData.meta_user_id || ''}
+                      onChange={(e) => {
+                        const mu = metaUsers.find(m => m.user_id === e.target.value);
+                        setRoleEditData(prev => ({
+                          ...prev,
+                          meta_user_id: e.target.value || '',
+                          meta_email: mu?.email || prev.meta_email,
+                        }));
+                      }}
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      data-testid="meta-user-select"
+                    >
+                      <option value="">Not mapped (staff / no ownership)</option>
+                      {metaUsers.map(mu => (
+                        <option key={mu.user_id} value={mu.user_id} disabled={mu.linked && mu.user_id !== roleEditData.meta_user_id}>
+                          {mu.name} ({mu.email}){mu.role ? ` - ${mu.role}` : ''}{mu.linked && mu.user_id !== roleEditData.meta_user_id ? ' - already mapped' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Maps this Connect account to a Meta user for ownership/"assigned to me" scoping. Required for Growth Partners.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Meta Email (optional)</label>
+                    <input
+                      type="email"
+                      value={roleEditData.meta_email || ''}
+                      onChange={(e) => setRoleEditData(prev => ({ ...prev, meta_email: e.target.value }))}
+                      placeholder="Defaults to Connect email"
+                      className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      data-testid="meta-email-input"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex gap-3 pt-4">
               <button

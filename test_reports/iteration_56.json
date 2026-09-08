@@ -1,0 +1,40 @@
+{
+  "summary": "Iter56 - META CRM Access modal + Meta File-Detail shared component adapter. Backend: 9/9 pytest passed on /app/backend/tests/test_iter56_meta_compat.py covering (a) /api/meta/files-compat GET /bank-names & GET /{id} return Connect File-Detail contract; (b) PUT /details persists company_name/net_salary; (c) PUT /eligibilities auto-computes commission (480000*1.5%=7200 verified); (d) PUT /file-status persists Meta processing status; (e) POST /notes appears in file_activities; (f) GP scoping - own file GET=200, own details PUT=200, own eligibilities PUT=403, other file GET=403; (g) Admin PATCH /api/meta/admin/users/{id} persists meta_access/meta_role/meta_email/meta_user_id; (h) Connect /api/files/{id} regression unchanged, no meta_status field. Frontend (Playwright, preview URL): (1) admin@bankezee.com -> /admin/users -> Edit pencil opens Edit Role & Hierarchy modal; META CRM Access section (meta-access-section) present with meta-access-select. Setting Yes reveals meta-role-select, meta-user-select, meta-email-input (all confirmed). (2) /meta/files clicked meta-file-row-lead_f5b36fe331b7 -> /meta/files/lead_f5b36fe331b7 renders the SHARED file-details-page component with the navy BankEzee Meta layout, meta-file-sidebar (Meta Assignment: Rama Samudrala GP, processor dropdown), file-status-select shows 'Disbursed', 1 bank-card, 4 Documents listed, Activity Log with TEST_iter56 note + status changes, 4-Star Profile header shown. Check Eligibility button is hidden via 'hidden' CSS class (hideEligibilityCheck prop works). (3) Connect regression: /admin/files/{connectId} still renders file-details-page WITH the green 'Check Eligibility' button and NO meta-file-sidebar. Zero Connect regression confirmed.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin Users, HR Attendance, Meta pages", "issues": ["React hydration warnings due to <span> being rendered as child of <select>/<option>/<tbody>/<tr>/<tfoot>/<table> (visual-editor markers). Not user-visible but pollutes console."]}
+    ]
+  },
+  "verified_items": {
+    "backend_compat_read_write": "PASS - GET file, PUT details/eligibilities/file-status, POST notes all 200; commission auto-compute 7200.0 verified",
+    "gp_scoping_403_200_403_200": "PASS as spec",
+    "meta_user_management_patch": "PASS - persists on reload",
+    "connect_file_detail_regression": "PASS - green header + Check Eligibility button visible; no meta_status on /api/files/{id}",
+    "admin_users_modal_meta_section": "PASS - meta-access-section + all 4 testids present and reveal cascade works",
+    "meta_file_detail_ui": "PASS - shared file-details-page inside Meta navy layout with meta-file-sidebar, file-status-select, bank-card-*, docs, activity log, star rating"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter56_meta_compat.py",
+    "/app/test_reports/pytest/iter56.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "meta_compat.py connect_bank_to_meta uses m.update(e) then overwrites approval_status with title-case ('Approved'/'Rejected'/''), which is fine, but 'disbursed'/'login_done' are set as 'Yes'/'No'/'' Title case in meta mirror while the Connect eligibility row (returned by meta_bank_to_connect) uses lowercase 'yes'/'no'. Round-trip on GET after PUT will return the lowercase (from meta_bank_to_connect reading _pick 'disbursed' from meta, which is now 'Yes' -> _yn returns 'yes'). No user-visible bug; noting for clarity.",
+    "meta_compat.py permission gate for POST /notes and DELETE /documents uses _perm can_info which for growth_partner=True. This means GPs can add notes and delete documents on their own files - spec text only restricts bank/status writes for GP so this is correct.",
+    "Users.js: the pencil Edit button did not have a data-testid; I added data-testid={`edit-role-${user.account_key || user.id}`} to make the flow selectable for automation."
+  ],
+  "updated_files": [
+    "/app/frontend/src/pages/admin/Users.js",
+    "/app/backend/tests/test_iter56_meta_compat.py"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% - both admin META CRM Access modal and Meta File Detail shared-component flows pass, plus Connect regression clean"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!!, banothunithinnaik@gmail.com/Nithin@123",
+  "seed_data_creation": "TestAdminCompatFileDetail wrote TEST_iter56_Co / net_salary=55000 / TEST_ITER56_BANK / status=Disbursed / 'TEST_iter56 note' to meta_leads:lead_f5b36fe331b7 (isolated meta_leads collection); TestGPScoping wrote cibil_score=700 on GP Nithin's first FILE lead; TestMetaUserManagement momentarily set meta_access=true meta_role=processor on first non-admin connect user then reverted. No Connect data touched.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Meta compat adapter is at /api/meta/files-compat/* (see routes/meta_compat.py). Known-good admin-accessible meta file: lead_f5b36fe331b7 (partner Rama). GP Nithin's own FILE leads via GET /api/meta/leads?status=FILE as GP. Admin User Management PATCH endpoint: PATCH /api/meta/admin/users/{connectUserId} with body {meta_access, meta_role, meta_email, meta_user_id}. Frontend testids for the modal: meta-access-section, meta-access-select, meta-role-select, meta-user-select, meta-email-input. Edit pencil button now has testid edit-role-{userId}. Meta File Detail testids: meta-file-row-{leadId} on /meta/files, meta-file-sidebar on /meta/files/{leadId}, file-details-page + file-status-select + bank-card-* shared with Connect. Check Eligibility button is present in DOM but hidden via 'hidden' class in meta mode (hideEligibilityCheck).",
+  "rca of the issue": "No functional issues found."
+}

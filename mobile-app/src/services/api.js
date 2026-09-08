@@ -402,26 +402,26 @@ export const getMetaFilesStats = async () => {
 };
 
 // Get file details
-export const getFileDetails = async (fileId) => {
-  const response = await api.get(`/files/${fileId}`);
+export const getFileDetails = async (fileId, apiBase = '/files') => {
+  const response = await api.get(`${apiBase}/${fileId}`);
   return response.data;
 };
 
 // Update file details
-export const updateFileDetails = async (fileId, data) => {
-  const response = await api.put(`/files/${fileId}/details`, data);
+export const updateFileDetails = async (fileId, data, apiBase = '/files') => {
+  const response = await api.put(`${apiBase}/${fileId}/details`, data);
   return response.data;
 };
 
 // Update file status
-export const updateFileStatus = async (fileId, status) => {
-  const response = await api.put(`/files/${fileId}/file-status`, { file_status: status });
+export const updateFileStatus = async (fileId, status, apiBase = '/files') => {
+  const response = await api.put(`${apiBase}/${fileId}/file-status`, { file_status: status });
   return response.data;
 };
 
 // Add note to file
-export const addFileNote = async (fileId, note) => {
-  const response = await api.post(`/files/${fileId}/notes`, { note });
+export const addFileNote = async (fileId, note, apiBase = '/files') => {
+  const response = await api.post(`${apiBase}/${fileId}/notes`, { note });
   return response.data;
 };
 
@@ -447,8 +447,8 @@ export const getOpsTeam = async () => {
 };
 
 // Update eligibilities
-export const updateEligibilities = async (fileId, eligibilities) => {
-  const response = await api.put(`/files/${fileId}/eligibilities`, { eligibilities });
+export const updateEligibilities = async (fileId, eligibilities, apiBase = '/files') => {
+  const response = await api.put(`${apiBase}/${fileId}/eligibilities`, { eligibilities });
   return response.data;
 };
 

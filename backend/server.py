@@ -30,6 +30,7 @@ from routes.files_crm import router as files_crm_router
 from routes.bank_policies import router as bank_policies_router
 from routes.document_ai import router as document_ai_router
 from routes.meta import router as meta_router  # Isolated Meta module (/api/meta/*)
+from routes.meta_compat import router as meta_compat_router  # Meta File-Detail compat adapter
 from routes.meta_sync import router as meta_sync_router  # Meta Google Sheet sync + email
 from routes.admin_maintenance import router as admin_maintenance_router  # TEMPORARY - remove after prod repair
 
@@ -62,6 +63,7 @@ app.include_router(files_crm_router)
 app.include_router(bank_policies_router)
 app.include_router(document_ai_router)
 app.include_router(meta_router)  # Isolated Meta module
+app.include_router(meta_compat_router)  # Meta File-Detail compat adapter
 app.include_router(meta_sync_router)  # Meta sheet sync + email
 
 

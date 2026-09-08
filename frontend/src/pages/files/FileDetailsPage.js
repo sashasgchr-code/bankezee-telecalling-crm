@@ -98,9 +98,19 @@ const EMPTY_BANK = {
   commission_amount: ''
 };
 
-const FileDetailsPage = () => {
-  const { fileId } = useParams();
+const FileDetailsPage = ({
+  apiBase = '/files',
+  idOverride = null,
+  roleOverride = null,
+  statusOptions = null,
+  mode = 'connect',
+  sidebarExtra = null,
+  hideEligibilityCheck = false,
+}) => {
+  const { fileId: paramId } = useParams();
+  const fileId = idOverride || paramId;
   const navigate = useNavigate();
+  const isMeta = mode === 'meta';
   
   const [fileData, setFileData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -144,19 +154,23 @@ const FileDetailsPage = () => {
   
   // User permissions
   const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const isAdmin = user.role === 'admin';
-  const isOps = user.role === 'ops' || user.role === 'operations';
-  const isManager = user.role === 'manager';
-  const isHr = user.role === 'hr';
-  const isGP = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'growth_partner'].includes(user.role);
+  const role = roleOverride || user.role;
+  const isAdmin = role === 'admin';
+  const isOps = role === 'ops' || role === 'operations';
+  const isManager = role === 'manager';
+  const isHr = role === 'hr';
+  const isProcessor = role === 'processor';
+  const isGP = ['telecaller', 'sales_agent', 'team_leader', 'partner', 'growth_partner'].includes(role);
   
   // GP, Admin, Ops, Managers can edit customer details (Image 1)
-  const canEditLeadInfo = isAdmin || isOps || isManager || isGP;
+  const canEditLeadInfo = isAdmin || isOps || isManager || isProcessor || isGP;
   
-  // Only Admin, Ops, Managers can edit Bank Eligibilities (Image 2 & 3)
-  const canEditBankInfo = isAdmin || isOps || isManager;
-  // SM name/number stay Admin/Ops only, as in the old CRM
-  const canEditSmDetails = isAdmin || isOps;
+  // Only Admin, Ops, Managers (and Meta Processor) can edit Bank Eligibilities (Image 2 & 3)
+  const canEditBankInfo = isAdmin || isOps || isManager || isProcessor;
+  // SM name/number stay Admin/Ops (and Meta Processor) only, as in the old CRM
+  const canEditSmDetails = isAdmin || isOps || isProcessor;
+  const STATUS_OPTS = statusOptions || FILE_STATUS_OPTIONS;
+  const labelForStatus = (v) => (statusOptions ? v : getFileStatusLabel(v));
   const loanType = String(fileData?.file_details?.type_of_loan || fileData?.requirement || '').toLowerCase();
   const isVehicleLoan = loanType.includes('vehicle') || loanType.includes('car') || loanType.includes('auto');
   const isUsedVehicleBt = isVehicleLoan && loanType.includes('used') && loanType.includes('bt');
@@ -168,7 +182,7 @@ const FileDetailsPage = () => {
   const fetchFileData = async () => {
     try {
       setLoading(true);
-      const response = await api.get(`/files/${fileId}`);
+      const response = await api.get(`${apiBase}/${fileId}`);
       const data = response.data;
       
       if (!data) {
@@ -232,14 +246,14 @@ const FileDetailsPage = () => {
   };
 
   useEffect(() => {
-    api.get('/files/bank-names')
+    api.get(`${apiBase}/bank-names`)
       .then(res => setBankOptions(res.data?.banks || []))
       .catch(() => setBankOptions([]));
   }, []);
 
   const handleStarOverride = async (payload) => {
     try {
-      await api.put(`/files/${fileId}/star-rating`, payload);
+      await api.put(`${apiBase}/${fileId}/star-rating`, payload);
       await fetchFileData();
       setShowStarModal(false);
       toast.success(payload.star_manual === false ? 'Star rating back to automatic' : 'Star rating updated');
@@ -250,7 +264,7 @@ const FileDetailsPage = () => {
 
   const handleSaveDetails = async () => {    setSaving(true);
     try {
-      await api.put(`/files/${fileId}/details`, {
+      await api.put(`${apiBase}/${fileId}/details`, {
         full_name: editedDetails.full_name,
         mobile: editedDetails.mobile,
         email: editedDetails.email,
@@ -269,7 +283,7 @@ const FileDetailsPage = () => {
   const handleSaveProfileAnalysis = async () => {
     setSaving(true);
     try {
-      await api.put(`/files/${fileId}/details`, {
+      await api.put(`${apiBase}/${fileId}/details`, {
         additional_data: {
           ...fileData?.file_details,
           ...profileAnalysis
@@ -294,7 +308,7 @@ const FileDetailsPage = () => {
     setSavingEligibilities(true);
     try {
       // Persist first, then adopt exactly what the backend stored (no optimistic success)
-      const response = await api.put(`/files/${fileId}/eligibilities`, { eligibilities: banks });
+      const response = await api.put(`${apiBase}/${fileId}/eligibilities`, { eligibilities: banks });
       setEligibilities(normalizeEligibilities(response.data?.eligibilities || banks));
       toast.success(successMessage);
       return true;
@@ -335,7 +349,7 @@ const FileDetailsPage = () => {
 
   const handleStatusUpdate = async () => {
     try {
-      await api.put(`/files/${fileId}/file-status`, { file_status: newStatus });
+      await api.put(`${apiBase}/${fileId}/file-status`, { file_status: newStatus });
       toast.success('Status updated');
       fetchFileData();
     } catch (error) {
@@ -346,7 +360,7 @@ const FileDetailsPage = () => {
   const handleAddNote = async () => {
     if (!note.trim()) return;
     try {
-      await api.post(`/files/${fileId}/notes`, { note });
+      await api.post(`${apiBase}/${fileId}/notes`, { note });
       toast.success('Note added');
       setNote('');
       fetchFileData();
@@ -366,7 +380,7 @@ const FileDetailsPage = () => {
     }
     
     try {
-      await api.post(`/files/${fileId}/documents`, formData, {
+      await api.post(`${apiBase}/${fileId}/documents`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       toast.success('Documents uploaded');
@@ -380,7 +394,7 @@ const FileDetailsPage = () => {
 
   const handleDeleteDocument = async (docId) => {
     try {
-      await api.delete(`/files/${fileId}/documents/${docId}`);
+      await api.delete(`${apiBase}/${fileId}/documents/${docId}`);
       toast.success('Document deleted');
       fetchFileData();
     } catch (error) {
@@ -390,7 +404,7 @@ const FileDetailsPage = () => {
 
   const handleDownloadAll = async () => {
     try {
-      const response = await api.get(`/files/${fileId}/documents/download-all`, {
+      const response = await api.get(`${apiBase}/${fileId}/documents/download-all`, {
         responseType: 'blob'
       });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -402,6 +416,22 @@ const FileDetailsPage = () => {
       link.remove();
     } catch (error) {
       toast.error('Failed to download documents');
+    }
+  };
+
+  // Meta downloads are token-protected, so fetch as a blob instead of a plain anchor.
+  const handleDownloadDoc = async (doc) => {
+    try {
+      const response = await api.get(`${apiBase}/${fileId}/documents/${doc.id}/download`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', doc.filename || doc.name || 'document');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      toast.error('Failed to download document');
     }
   };
 
@@ -471,7 +501,7 @@ const FileDetailsPage = () => {
               const basePath = isManager ? '/manager' : (isAdmin || isOps ? '/admin' : (isHr ? '/hr' : '/agent'));
               navigate(`${basePath}/files/${fileId}/check-eligibility`);
             }}
-            className={`px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2 ${isHr ? 'hidden' : ''}`}
+            className={`px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 flex items-center gap-2 ${(isHr || hideEligibilityCheck) ? 'hidden' : ''}`}
           >
             <Building2 size={18} />
             Check Eligibility
@@ -931,11 +961,11 @@ const FileDetailsPage = () => {
                     data-testid="file-status-select"
                     className={`flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm ${!canEditBankInfo ? 'bg-gray-50 cursor-not-allowed' : ''}`}
                   >
-                    {FILE_STATUS_OPTIONS.map(opt => (
+                    {STATUS_OPTS.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
-                    {!FILE_STATUS_OPTIONS.some(opt => opt.value === newStatus) && newStatus && (
-                      <option value={newStatus}>{getFileStatusLabel(newStatus)} (current)</option>
+                    {!STATUS_OPTS.some(opt => opt.value === newStatus) && newStatus && (
+                      <option value={newStatus}>{labelForStatus(newStatus)} (current)</option>
                     )}
                   </select>
                   {canEditBankInfo && (
@@ -953,6 +983,7 @@ const FileDetailsPage = () => {
 
           {/* Right Column - Documents & Activity */}
           <div className="space-y-6">
+            {sidebarExtra}
             {/* Documents */}
             <div className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center justify-between mb-4">
@@ -998,13 +1029,22 @@ const FileDetailsPage = () => {
                         <p className="text-xs text-gray-500">{doc.category || 'general'} • {doc.size || '-'}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <a
-                          href={doc.url}
-                          download
-                          className="p-1 text-gray-500 hover:text-gray-700"
-                        >
-                          <Download size={16} />
-                        </a>
+                        {isMeta ? (
+                          <button
+                            onClick={() => handleDownloadDoc(doc)}
+                            className="p-1 text-gray-500 hover:text-gray-700"
+                          >
+                            <Download size={16} />
+                          </button>
+                        ) : (
+                          <a
+                            href={doc.url}
+                            download
+                            className="p-1 text-gray-500 hover:text-gray-700"
+                          >
+                            <Download size={16} />
+                          </a>
+                        )}
                         {canEditLeadInfo && (
                           <button
                             onClick={() => handleDeleteDocument(doc.id)}

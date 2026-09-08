@@ -9,6 +9,7 @@ import MetaDashboard from "./pages/meta/Dashboard";
 import MetaLeads from "./pages/meta/Leads";
 import MetaLeadDetail from "./pages/meta/LeadDetail";
 import MetaFiles from "./pages/meta/Files";
+import MetaFileDetail from "./pages/meta/FileDetail";
 import MetaFileReports from "./pages/meta/FileReports";
 import MetaCallLogs from "./pages/meta/CallLogs";
 import MetaPartners from "./pages/meta/Partners";
@@ -273,6 +274,7 @@ function App() {
           <Route path="leads" element={<MetaLeads />} />
           <Route path="leads/:leadId" element={<MetaLeadDetail />} />
           <Route path="files" element={<MetaFiles />} />
+          <Route path="files/:leadId" element={<MetaFileDetail />} />
           <Route path="file-reports" element={<MetaFileReports />} />
           <Route path="call-logs" element={<MetaCallLogs />} />
           <Route path="partners" element={<MetaPartners />} />

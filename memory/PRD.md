@@ -1795,3 +1795,38 @@ Added Growth Partner self-registration to the mobile app, replicating web pages/
 
 ## META WEB PARITY PASS (Sep 8, 2026)
 Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, Leads (bulk assign/delete), Lead Detail (status/partner+processor/file card/bank eligibilities/documents via Object Storage/notes/timeline/call modal), Files, File Reports (+CSV+workload), Call Logs, Growth Partners, User Management (no reset). Backend /api/meta/* expanded; role gating via meta_role+meta_user_id (master gate meta_access), enforced server+UI. Verified iteration_54: backend 28/28, frontend 100%, Connect regression clean. Object Storage uses EMERGENT_LLM_KEY. Mobile untouched; not published.
+
+---
+
+## META CRM ACCESS CONTROLS + META FILE-DETAIL PARITY (June 2026) — Preview verified (iter56: BE 9/9, FE 100%)
+
+### 1. User Management "META CRM Access" controls (P0, DONE)
+- `frontend/src/pages/admin/Users.js` Edit Role & Hierarchy modal now has a `meta-access-section`:
+  Yes/No access toggle -> reveals Meta Role, Meta User Mapping (from `/api/meta/admin/user-management`),
+  and Meta Email. Saves via `PATCH /api/meta/admin/users/{id}`; independent of the Connect role save.
+
+### 2. Meta File Detail = REUSED Connect File Detail (P0, DONE)
+- Backend adapter `backend/routes/meta_compat.py` (prefix `/api/meta/files-compat`) translates
+  `meta_leads` <-> the EXACT Connect File-Detail JSON contract. Endpoints: GET /bank-names,
+  GET /{id}, PUT /{id}/details, PUT /{id}/eligibilities, PUT /{id}/file-status,
+  PUT /{id}/star-rating, POST /{id}/notes, POST /{id}/documents,
+  GET /{id}/documents/{doc_id}/download, DELETE /{id}/documents/{doc_id},
+  GET /{id}/documents/download-all. Registered in `server.py`.
+  - Bidirectional bank mapping keeps the legacy `file.banks` meta mirror keys in sync so the old
+    `/meta/leads/:id` LeadDetail view stays consistent. Commission recomputed server-side.
+  - Star rating uses the same `calculate_star_rating` engine (formula + admin override on meta lead).
+  - Permissions mirror Connect: admin/ops full; processor edit (assigned only); growth_partner edits
+    customer info, VIEW-ONLY banks/status, own files only. Verified 200/403/403/200.
+- Web: `FileDetailsPage.js` parameterized with props `apiBase`(default `/files`), `idOverride`,
+  `roleOverride`, `statusOptions`, `mode`, `sidebarExtra`, `hideEligibilityCheck`. Default = unchanged
+  Connect behaviour (zero regression, verified). Meta wrapper `pages/meta/FileDetail.js` +
+  `MetaFileSidebar.js` (GP/Processor assignment). Route `/meta/files/:leadId` in `App.js`;
+  `Files.js` list navigates there.
+- Mobile: `mobile-app/src/screens/FileDetailScreen.js` + 5 service fns in `services/api.js`
+  parameterized with optional `apiBase` (default `/files`). `MetaHomeScreen.js` Files tab opens the
+  shared `FileDetail` screen with `apiBase:/meta/files-compat`, `mode:meta`, `roleOverride:meta_role`.
+  NOTE: mobile (React Native) could not be runtime-tested in this environment; web + backend verified.
+
+### Still pending (unchanged from prior)
+- P1: GridFS binary backfill (149 legacy meta docs), production Google Sheet sync cutover, prod emails.
+- Mobile Meta File Detail runtime verification on a device/emulator.
