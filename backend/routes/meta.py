@@ -969,3 +969,85 @@ async def meta_set_user_access(connect_user_id: str, inp: MetaUserMgmtInput, cur
                                       {"name": 1, "email": 1, "role": 1, "meta_access": 1,
                                        "meta_role": 1, "meta_email": 1, "meta_user_id": 1})
     return serialize_doc(updated)
+
+
+
+# =========================== Production seed + identity mapping ===========================
+# Idempotent, admin-only. Loads the approved Meta dataset bundled at backend/data/meta_seed.json.gz
+# into the ISOLATED meta_* collections of WHATEVER DB this backend is bound to (i.e. production when
+# run there), then applies the validated Connect<->Meta identity mapping by email (never ObjectId
+# coercion; updates ALL duplicate Connect docs sharing an email). Safe to re-run.
+SEED_NATURAL_KEY = {
+    "meta_leads": "lead_id",
+    "meta_users": "user_id",
+    "meta_meta": "key",
+}
+
+
+@router.post("/admin/seed-production")
+async def meta_seed_production(current_user: dict = Depends(require_admin)):
+    import os as _os
+    import gzip as _gzip
+    import re as _re
+    from bson import json_util
+
+    seed_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "data", "meta_seed.json.gz")
+    if not _os.path.exists(seed_path):
+        raise HTTPException(status_code=500, detail="Seed bundle not found in deployment")
+    with _gzip.open(seed_path, "rt", encoding="utf-8") as f:
+        bundle = json_util.loads(f.read())
+
+    results = {}
+    # ---- upsert isolated meta_* collections (preserve original _id and relationships) ----
+    for col, docs in bundle.items():
+        docs = docs or []
+        upserts = 0
+        for doc in docs:
+            if col == "meta_fs.files":
+                doc["binary_pending"] = True
+            key_field = SEED_NATURAL_KEY.get(col)
+            if key_field and doc.get(key_field) is not None:
+                flt = {key_field: doc[key_field]}
+            else:
+                flt = {"_id": doc.get("_id")}
+            await db[col].replace_one(flt, doc, upsert=True)
+            upserts += 1
+        results[col] = {"seed": len(docs), "collection_count": await db[col].count_documents({}), "upserted": upserts}
+    # meta_fs.chunks intentionally left empty (legacy binaries pending backfill)
+    results["meta_fs.chunks"] = {"collection_count": await db["meta_fs.chunks"].count_documents({})}
+
+    # ---- identity mapping (mirror scripts/meta_link_identities.py) ----
+    meta_users = await db.meta_users.find({}).to_list(2000)
+    auto_mapped, manual_needed = 0, []
+    for mu in meta_users:
+        email = (mu.get("email") or "").strip().lower()
+        if not email:
+            continue
+        meta_uid = mu.get("user_id") or (mu.get("_id") if isinstance(mu.get("_id"), str) else str(mu.get("_id")))
+        res = await db.users.update_many(
+            {"email": {"$regex": f"^{_re.escape(email)}$", "$options": "i"}},
+            {"$set": {"meta_access": True, "meta_role": mu.get("role"),
+                      "meta_email": mu.get("email"), "meta_user_id": meta_uid}},
+        )
+        if res.matched_count:
+            auto_mapped += res.matched_count
+        else:
+            manual_needed.append({"email": mu.get("email"), "meta_role": mu.get("role")})
+
+    # ---- verification of key accounts ----
+    async def _verify(email):
+        docs = await db.users.find({"email": {"$regex": f"^{_re.escape(email.lower())}$", "$options": "i"}},
+                                   {"_id": 0, "email": 1, "meta_access": 1, "meta_role": 1, "meta_user_id": 1}).to_list(10)
+        return docs
+    verify = {e: await _verify(e) for e in [
+        "banothunithinnaik@gmail.com", "admin@bankezee.com", "rama@bankezee.com", "teja@bankezee.com"]}
+
+    return {
+        "db": db.name,
+        "collections": results,
+        "identity_mapping": {"connect_docs_updated": auto_mapped,
+                             "unmatched_meta_users": len(manual_needed),
+                             "unmatched_sample": manual_needed[:20]},
+        "verify": verify,
+        "note": "Idempotent. Legacy GridFS binaries remain pending (meta_fs.chunks empty).",
+    }
