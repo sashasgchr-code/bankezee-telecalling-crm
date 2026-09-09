@@ -268,6 +268,16 @@ export default function MetaLeads() {
                   <button data-testid={`meta-card-wa-${lead.lead_id}`} type="button" onClick={() => openMetaWhatsApp(lead.phone, lead.full_name, metaLoanType(lead), meta.name)}
                     className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-1.5 rounded-md bg-green-500 text-white px-3 py-2 text-sm font-medium active:bg-green-600"><MessageCircle size={15} /> WhatsApp</button>
                 </div>
+                {isStaff && (
+                  <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-400">Assign Growth Partner</label>
+                    <select data-testid={`meta-card-assign-${lead.lead_id}`} value={lead.assigned_partner_id || ""} onChange={(e) => assign(lead.lead_id, e.target.value, e)}
+                      className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
+                      <option value="">Unassigned</option>
+                      {partners.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
                   <Field label="City" value={lead.city} />
                   <Field label="Employment" value={lead.employment_status} />

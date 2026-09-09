@@ -13,7 +13,7 @@ import uuid
 
 from models.schemas import LeadCreate, LeadUpdate, LeadAssign, AutoDistribute, BulkDeleteRequest, BulkOperationByFilter, BulkAssignByFilter, BulkArchiveRequest, SuppressionEntry
 from utils.database import db
-from utils.auth import get_current_user, require_admin, require_not_hr
+from utils.auth import get_current_user, require_admin, require_manager_or_admin, require_not_hr
 from utils.helpers import serialize_doc, serialize_docs, object_id_or_none
 from utils.hierarchy import load_user_index
 
@@ -1242,7 +1242,7 @@ async def import_leads(
         raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
 
 @router.post("/leads/assign")
-async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(require_admin)):
+async def assign_leads(assignment: LeadAssign, current_user: dict = Depends(require_manager_or_admin)):
     """
     Assign leads to a user with CLEAN SLATE logic:
     - CRITICAL: Files (status='file') CANNOT be reassigned - server-side enforcement

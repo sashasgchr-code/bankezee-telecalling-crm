@@ -5,7 +5,7 @@ import WhatsAppIcon from './icons/WhatsAppIcon';
 import { openWhatsApp } from '../utils/whatsapp';
 import useAuthStore from '../store/authStore';
 
-const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
+const LeadCard = ({ lead, onPress, onCall, showAssignment, assignableAgents, onAssign }) => {
   const { user } = useAuthStore();
   // If there's a call outcome, prioritize showing it
   const hasCallOutcome = lead.last_call_outcome;
@@ -79,7 +79,21 @@ const LeadCard = ({ lead, onPress, onCall, showAssignment }) => {
           </div>
         )}
         
-        {showAssignment && lead.telecaller_name && (
+        {showAssignment && Array.isArray(assignableAgents) && assignableAgents.length > 0 ? (
+          <div className="mt-2 pt-2 border-t border-gray-100 pl-14" onClick={(e) => { e.stopPropagation(); }}>
+            <select
+              data-testid={`lead-assign-select-${lead.id}`}
+              value={lead.assigned_to || ''}
+              onChange={(e) => { e.stopPropagation(); onAssign && onAssign(lead.id, e.target.value); }}
+              className="w-full text-xs border border-gray-300 rounded-md px-2 py-1.5 bg-white outline-none"
+            >
+              <option value="">Unassigned</option>
+              {assignableAgents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : showAssignment && lead.telecaller_name && (
           <div className="mt-2 pt-2 border-t border-gray-100 pl-14">
             <span className="text-xs text-green-600 font-medium">
               Assigned to: {lead.telecaller_name}

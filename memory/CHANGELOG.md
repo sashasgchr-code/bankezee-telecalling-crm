@@ -166,3 +166,15 @@ DELIVERY: no git remote in workspace -> user must click "Save to Github" to push
 - Backend routes/meta.py: MetaCallInput + POST /meta/leads/{id}/calls now accept & persist notes, follow_up_date, follow_up_time (stored on call_logs entry AND lead; note pushed to notes[]). Writes ONLY to meta_leads. Verified curl: dur95/CALL_BACK/notes/follow-up saved, 1 call_log, 1 note, owner=auth user, no Connect call_log.
 - Web MetaCallModal.js: added Notes + conditional Follow-up date/time (for CALL_BACK/NOT_ANSWERING/SWITCHED_OFF), responsive max-h-[92vh] overflow-y-auto so it fits mobile widths. Duration from actual call timing. Mirrors Connect post-call UX; separate component (Connect modal untouched).
 - Direct status chips retained (two independent workflows). PART B (combined+separate Meta reporting on Dashboard/Hourly/Summary) NOT implemented this session — deferred to avoid half-done edits to Connect report surfaces.
+
+## 2026-09-09 (g) — Mobile Meta CRM screens redesigned to match web look; APK 2.7.3 (31)
+- mobile-app/src/screens/MetaHomeScreen.js rewritten for web parity (design tokens from frontend/src/pages/meta/metaCommon.js + Files.js):
+  - Adopted web Meta brand blue (#0F52BA / navy #0A192F) replacing the old purple #7c3aed accents (tabs, chips, header dot, spinners, buttons).
+  - Colored status pills identical to web STATUS_STYLES (lead status) and Files.js STATUS_COLOR (processing status) — rounded, bg+border+text per status.
+  - Lead cards now match web mobile card: name + campaign, colored StatusPill, green Call (#16a34a) + WhatsApp (#25D366) action buttons, 2-col detail grid (City, Employment, Salary, Outstanding, Assigned GP, Date). Call routes to MetaLeadDetail w/ autoStartCall (native call lifecycle); WhatsApp opens wa.me with the SAME Meta message template + phone normalization as web utils/whatsapp.js.
+  - Files tab: added 3 stat cards (Total Files / Docs Received / Docs Pending via getMetaFilesStats) + enriched file cards with colored ProcPill and rich grid (Loan Type, Loan Amount, Assigned GP, Processor, Bank/Lender, Created, Docs, Assignment).
+  - File Reports tab: metric cards restyled with colored accent bars matching web Card accents; Overall + This Month sections retained.
+  - Friendly status labels (underscores -> spaces), horizontal-scroll chip rows, "Date:" prefixed wrapping date bar.
+  - MetaLeadsScreen.js confirmed dead code (not referenced in App.js) — left untouched.
+- app.json bumped: version 2.7.2 -> 2.7.3, android.versionCode 30 -> 31.
+- Validated: babel-preset-expo (@babel/core 7) transformSync OK. No web/backend files changed. Native app not emulator-testable here (per project policy: babel + web cross-check).

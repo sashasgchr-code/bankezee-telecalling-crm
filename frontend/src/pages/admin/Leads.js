@@ -341,8 +341,17 @@ const AdminLeads = () => {
     }
   };
 
-  const handleAssign = async (telecallerId) => {
-    if (selectedLeads.length === 0) return;
+  const assignOne = async (leadId, telecallerId) => {
+    if (!telecallerId) return;
+    try {
+      await api.post('/leads/assign', { lead_ids: [leadId], user_id: telecallerId });
+      fetchData();
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to assign lead');
+    }
+  };
+
+  const handleAssign = async (telecallerId) => {    if (selectedLeads.length === 0) return;
 
     setIsSubmitting(true);
     try {
@@ -722,6 +731,8 @@ const AdminLeads = () => {
                     onPress={() => handleLeadPress(lead)}
                     onCall={() => handleCall(lead)}
                     showAssignment={true}
+                    assignableAgents={telecallers}
+                    onAssign={assignOne}
                   />
                 </div>
               </div>
