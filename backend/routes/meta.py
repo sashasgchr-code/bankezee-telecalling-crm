@@ -406,7 +406,8 @@ async def meta_assign_lead(lead_id: str, inp: MetaAssignInput, user: dict = Depe
         "assigned_at": (_now_iso() if inp.partner_id else None),
     }, "$push": {"activities": activity}})
     updated = await db.meta_leads.find_one({"lead_id": lead_id})
-    if inp.partner_id and partner:
+    # Idempotent: only notify the partner when the assignment actually CHANGED to a new partner
+    if inp.partner_id and partner and lead.get("assigned_partner_id") != inp.partner_id:
         try:
             from routes.meta_sync import notify_partner_assignment
             asyncio.create_task(notify_partner_assignment(partner, updated, user.get("name")))
@@ -459,7 +460,7 @@ async def meta_log_call(lead_id: str, inp: MetaCallInput, user: dict = Depends(r
     if is_new_file:
         await _auto_assign_processor(lead_id, {**lead, **set_fields})
     updated = await db.meta_leads.find_one({"lead_id": lead_id})
-    if inp.disposition == "FILE":
+    if is_new_file:
         _fire_file_notifications(updated, user.get("name"))
     return serialize_doc(updated)
 

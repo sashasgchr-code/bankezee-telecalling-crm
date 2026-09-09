@@ -1935,3 +1935,15 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
   writes only to its own DB). META_EMAIL_ENABLED stays false -> notifications captured, no blast.
 - Preview verified: first tick ~20s after startup imported 16/updated 390; repeats every 120s.
 - Prod manual-sync earlier: 401 -> 403 leads, 0 duplicate sheet_id. Deploy dispatched to make scheduler live.
+
+### Meta email replication verified (capture mode) - June 2026
+- Ported Meta email system already in Connect (routes/meta_sync.py send_email + notify_* funcs):
+  types = new-lead summary (staff, on imported>0), partner assignment, file-converted (staff),
+  processor new-file. Transport = Emergent proxy (X-Email-Key=EMERGENT_EMAIL_KEY). from_name=EMAIL_FROM_NAME
+  (default 'BankEzee CRM'), reply-to=EMAIL_REPLY_TO(contact_email), recipients from meta_users.email.
+  Gated by META_EMAIL_ENABLED; all sends logged to meta_email_log (sent/suppressed).
+- Idempotency fixes (routes/meta.py): assignment notify only on partner CHANGE; disposition->FILE notify
+  only on real NEW->FILE transition (status-endpoint path already guarded). new-lead notify only if imported>0.
+- Preview test (META_EMAIL_ENABLED=false -> captured): assign P1/P1-again/P2 => 2 logs (repeat suppressed),
+  correct mapped recipients. Convert->FILE once + again => 4 logs (2 staff + 2 processors) from the FIRST
+  transition only; repeat added none. No live sends. Deploy dispatched with guards.
