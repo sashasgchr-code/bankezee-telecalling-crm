@@ -498,14 +498,20 @@ export const getPolicies = async (params = {}) => {
 };
 
 // Run eligibility analysis against all bank policies for a file/lead
-export const checkFileEligibility = async (leadId) => {
-  const response = await api.post(`/bank-policies/check-eligibility/${leadId}`);
+export const checkFileEligibility = async (leadId, mode = 'connect') => {
+  const url = mode === 'meta'
+    ? `/meta/files-compat/${leadId}/check-eligibility`
+    : `/bank-policies/check-eligibility/${leadId}`;
+  const response = await api.post(url);
   return response.data;
 };
 
 // Previous eligibility checks for a file/lead
-export const getEligibilityHistory = async (leadId) => {
-  const response = await api.get(`/bank-policies/eligibility-history/${leadId}`);
+export const getEligibilityHistory = async (leadId, mode = 'connect') => {
+  const url = mode === 'meta'
+    ? `/meta/files-compat/${leadId}/eligibility-history`
+    : `/bank-policies/eligibility-history/${leadId}`;
+  const response = await api.get(url);
   return response.data;
 };
 

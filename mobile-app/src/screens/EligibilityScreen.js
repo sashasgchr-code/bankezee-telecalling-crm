@@ -107,7 +107,7 @@ const Detail = ({ label, value }) => (
 );
 
 const EligibilityScreen = ({ route, navigation }) => {
-  const { fileId } = route.params;
+  const { fileId, mode = 'connect' } = route.params;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState({});
@@ -118,20 +118,20 @@ const EligibilityScreen = ({ route, navigation }) => {
   const runCheck = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await checkFileEligibility(fileId);
+      const res = await checkFileEligibility(fileId, mode);
       setData(res);
     } catch (e) {
       Alert.alert('Error', e.response?.data?.detail || 'Failed to run eligibility check');
     } finally {
       setLoading(false);
     }
-  }, [fileId]);
+  }, [fileId, mode]);
 
   useEffect(() => { runCheck(); }, [runCheck]);
 
   const loadHistory = async () => {
     try {
-      const res = await getEligibilityHistory(fileId);
+      const res = await getEligibilityHistory(fileId, mode);
       setHistory(res || []);
     } catch { /* ignore */ }
   };

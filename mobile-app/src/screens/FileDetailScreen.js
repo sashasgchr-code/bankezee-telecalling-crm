@@ -337,10 +337,9 @@ const FileDetailScreen = ({ route, navigation }) => {
       >
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* Check Eligibility CTA */}
-          {!isMeta && (
           <TouchableOpacity
             style={styles.eligibilityBtn}
-            onPress={() => navigation.navigate('Eligibility', { fileId })}
+            onPress={() => navigation.navigate('Eligibility', { fileId, mode })}
             data-testid="check-eligibility-btn"
           >
             <Text style={styles.eligibilityBtnIcon}>🏦</Text>
@@ -350,7 +349,6 @@ const FileDetailScreen = ({ route, navigation }) => {
             </View>
             <Text style={styles.eligibilityBtnArrow}>›</Text>
           </TouchableOpacity>
-          )}
 
           {/* Customer Details */}
           <View style={styles.section}>

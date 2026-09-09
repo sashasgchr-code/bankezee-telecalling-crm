@@ -1915,3 +1915,13 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
 - GP parity verified via compat contract: GET 200, PUT /details 200 (persists), POST /notes 200,
   PUT /file-status 403, PUT /eligibilities 403 (mirrors Connect GP). Doc upload N/A (mobile Connect
   File Detail is web-only for docs; no new feature added). Bumped app.json 2.6.8/25 + config APP_VERSION.
+
+### Mobile Meta Check Eligibility (v2.6.9 / vc26, June 2026)
+- Root cause: Check Eligibility CTA in the shared mobile FileDetailScreen was gated behind `!isMeta`,
+  and the eligibility service calls hardcoded Connect `/bank-policies/*` URLs — so Meta files had no button/flow.
+- Fix (reuse, no new UI): un-gated the CTA (shows for Meta too, same as Connect), pass `mode` to the
+  shared EligibilityScreen; parameterized services/api.js checkFileEligibility/getEligibilityHistory with
+  `mode` -> Meta compat URLs (/api/meta/files-compat/{id}/check-eligibility + /eligibility-history).
+- Verified via compat contract: GP POST 200 (Strong, 35 policies, 19 eligible), GP history persists (1 entry),
+  Admin 200, Connect /bank-policies regression 200. Results saved only on meta_leads.eligibility_checks.
+- Files: FileDetailScreen.js, EligibilityScreen.js, services/api.js, app.json (2.6.9/26), config.js.
