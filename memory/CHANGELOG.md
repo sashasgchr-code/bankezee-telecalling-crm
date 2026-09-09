@@ -1,4 +1,18 @@
 
+
+## 2026-09-09 — Meta email cutover to Resend + mobile call-flow bug fixes
+### Meta email (backend)
+- Root cause of prior suppression: `meta_sync.py` sent via a non-configured EMERGENT_EMAIL_KEY proxy; Connect prod uses Resend (`utils/email_service.py`). Rewired `_send_safe` to Connect's Resend transport (no EMERGENT_EMAIL_KEY dependency). meta_email_log + caller-side idempotency preserved.
+- `utils/email_service.py`: Resend key now resolved AT SEND TIME (env RESEND_API_KEY → else DB `app_settings.resend_api_key`). Multi-replica + restart safe.
+- `routes/meta_sync.py`: `_meta_email_enabled()` = env `META_EMAIL_ENABLED` truthy OR DB `app_settings.meta_email_enabled`. Added admin-only `POST /api/meta/email/selftest` (one controlled email, returns log row).
+- `routes/settings.py`: admin settings now persist `resend_api_key` + `meta_email_enabled` to DB and set runtime env.
+- PROD verified 2026-09-09: gate=true, resend_configured=true; self-test to owner sasha.sgchr@gmail.com => sent=true, suppressed=false, error=null. Deployer confirmed NO historical blast (collection-wide sent:true=1; historical new_leads all suppressed).
+- BLOCKER (external, user action): Resend account (owner sasha.sgchr@gmail.com) has NO verified domain + send-restricted key => can ONLY deliver to the owner address. Sends to any other GP/ops recipient are REJECTED ("bankezee.com domain is not verified"). NOT safe to deactivate old Meta CRM until a domain is verified at resend.com/domains and SENDER_EMAIL is set to that domain. Do NOT emit "safe to deactivate" until then.
+### Mobile call flow (2.7.0 / versionCode 27) — CODE DONE, APK build pending user Expo auth
+- Bug 1 (post-call modal unscrollable / Save unreachable): LeadDetailScreen + MetaLeadDetailScreen modal bodies wrapped in KeyboardAvoidingView + ScrollView with a sticky always-visible Save/Cancel footer (maxHeight 90%, flexShrink scroll).
+- Bug 2 (new call reopened previous lead): React Navigation reused the LeadDetail instance (params merged, no remount) so `lead`/refs stayed on Call A. Fix: rebind `lead` + hard-reset ALL call state (callStartTime, pendingCallPhone, modal, outcome, autoCallTriggered) whenever `route.params.lead.id` changes; auto-call effect keyed on lead id. Same reset added to MetaLeadDetailScreen on leadId change.
+- APK: EAS production build NOT run — no Expo/EXPO_TOKEN in env and must not change keystore/EAS project. Needs user Save-to-Github or EXPO_TOKEN.
+
 ## 2026-09-04 — Unified File & Lead counting rule across all reports
 - Rule: A File is counted ONLY by `file_created_at` (fallback `created_at`); a Lead ONLY by `lead_created_at` (fallback `updated_at`). Counted by the day it BECAME that status, never last-edit/import date.
 - Applied consistently to: Dashboard status-breakdown + KPIs (reports.py get_dashboard_stats, admin+GP branches), Reports Summary (/reports/telecallers overall), Hourly (/reports/hourly), My-Hourly, Daily Tracking (/reports/daily-tracking-sheet), Manager Team Stats.
