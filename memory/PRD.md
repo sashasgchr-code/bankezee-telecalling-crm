@@ -1947,3 +1947,40 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
 - Preview test (META_EMAIL_ENABLED=false -> captured): assign P1/P1-again/P2 => 2 logs (repeat suppressed),
   correct mapped recipients. Convert->FILE once + again => 4 logs (2 staff + 2 processors) from the FIRST
   transition only; repeat added none. No live sends. Deploy dispatched with guards.
+
+### Meta Reporting Integration (Web + Mobile) + Mobile Post-Call Modal Parity — June 2026 (VERIFIED)
+DECISION: Combined totals computed at the presentation layer. Connect and Meta are SEPARATE datasets;
+no double counting, no merging Meta calls into Connect call_logs. Meta reporting is meta_access-only
+and scoped server-side (admin/ops -> all partners; growth_partner -> own assigned leads only).
+
+Backend (routes/meta.py, NEW):
+- GET /api/meta/reports/summary?period=today|week|month|three_months|lifetime | from_date&to_date
+  -> {overall:{total_calls,total_connected,total_call_seconds,total_leads_generated,total_file},
+      partners:[{user_id,user_name,total_calls,total_connected,total_call_seconds,leads_generated,file}]}
+- GET /api/meta/reports/hourly?date=YYYY-MM-DD (IST buckets)
+  -> {telecallers:[{user_id,user_name,hourly_breakdown:[{hour,calls,connected,leads,file}],
+      total_calls,total_connected,total_leads,total_file}], date}
+- Helpers: _period_bounds_utc, _ist_day_bounds_utc, _report_match. Python aggregation over meta_leads
+  (connected = duration>0; leads=status in {LEAD,FILE}; file=status FILE). Both require_meta_access.
+- Extended MetaCallLogInput with `reason`; meta_add_call_log now persists reason on the call log.
+
+Frontend (web):
+- NEW /app/frontend/src/components/meta/MetaReportBlocks.js: CombinedTotalsCard, MetaSummaryTable,
+  MetaHourlyTable (emerald-accented, separate from Connect green tables).
+- admin/Reports.js: Summary tab -> combined-totals-summary (top) + Connect blocks (unchanged) +
+  meta-summary-section (bottom). Hourly tab -> combined-totals-hourly (top) + Connect table +
+  meta-hourly-section (bottom). Both gated on user.meta_access (useAuthStore).
+- admin/Dashboard.js: combined-totals-dashboard (top) + Connect stats (unchanged) + meta-summary-section
+  (bottom). Period mapped (today/week/month/last_month(custom range)/all_time->lifetime).
+
+Frontend (mobile, syntax-verified via babel; no emulator):
+- MetaLeadDetailScreen.js post-call modal now parity with web: NOT_QUALIFIED reason (required),
+  follow-up date (YYYY-MM-DD) + time (HH:MM) validated text inputs for CALL_BACK/NOT_ANSWERING/SWITCHED_OFF,
+  keyboard-safe ScrollView. Saves to /meta/leads/{id}/call-log.
+- api.js: getMetaReportsHourly, getMetaReportsSummary.
+- ReportsScreen.js (Team): Combined Totals + separate Meta CRM Performance member list (meta_access only).
+- HourlyReportScreen.js: Meta CRM hourly section (combined totals + Meta by-hour + Meta by-partner).
+
+TESTING: iteration_60.json — backend 12/12 pytest (shape, math no-double-count, all periods, GP scoping,
+403 non-meta), frontend 100% (DOM order verified: combined top, Connect middle unchanged, Meta bottom).
+Verified numbers example (today): Connect calls 0 + Meta calls 3 = 3; Connect files 0 + Meta files 1 = 1.

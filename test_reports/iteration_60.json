@@ -1,0 +1,29 @@
+{
+  "summary": "Verified NEW Meta reporting endpoints (/api/meta/reports/summary and /api/meta/reports/hourly) and their integration into Connect Reports/Dashboard UI. Backend: 12/12 pytest cases passing (shape, math no-double-counting, period=today/week/month/three_months/lifetime, custom range, GP scoping to single own bucket, 403 for non-meta user). Frontend: Admin on /admin/reports Summary tab shows combined-totals-summary card at top, existing Connect Overall Performance + Growth Partner Performance blocks in the middle (unchanged), and meta-summary-section at the bottom (DOM Y-positions 235 < 443 < 589 < 9026). Hourly tab shows combined-totals-hourly at top and meta-hourly-section below (253 < 524). /admin Dashboard shows combined-totals-dashboard and meta-summary-section. Split line 'Connect calls: X · Meta calls: Y' correct (0 + 3 = 3, Connect files 0 + Meta files 1 = 1 File).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/reports and /admin (pre-existing)", "issues": ["React hydration warnings from Emergent preview instrumentation wrapping <select>/<table>/<tbody> children in <span data-ve-dynamic> nodes. These are dev-only preview tooling warnings, not caused by the Meta changes. No user-visible issue."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter60_meta_reports.py",
+    "/app/test_reports/pytest/iter60_meta_reports.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "routes/meta.py has grown to 1301 lines - consider splitting into meta_reports.py, meta_leads.py, meta_users.py etc for maintainability (already noted in previous iterations).",
+    "Meta reports summary/hourly load up to 20000 leads with call_logs into memory to aggregate in Python; will not scale beyond a few tens of thousands. Consider MongoDB aggregation pipeline once data volume grows.",
+    "Combined totals math is computed on the client from separate Connect + Meta responses; there is no server-side combined endpoint. Fine for now but any future audit/export must reproduce the split."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! ; banothunithinnaik@gmail.com / Nithin@123 ; nani9346480@gmail.com / Anil@123 (non-meta 403 check)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Meta reporting endpoints stable. Admin lifetime overall={total_calls:336 approx, but at test time counts may drift with new activity}; test asserts math relations rather than fixed magic numbers. GP scoping row named 'Banothu Nithin'. data-testids verified: combined-totals-summary, combined-totals-hourly, combined-totals-dashboard, meta-summary-section, meta-hourly-section, admin-reports, admin-dashboard.",
+  "rca of the issue": "N/A - no issues found"
+}

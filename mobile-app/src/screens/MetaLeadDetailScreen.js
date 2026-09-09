@@ -40,7 +40,11 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
   const [lookingUp, setLookingUp] = useState(false);
   const [outcome, setOutcome] = useState(null);
   const [note, setNote] = useState('');
+  const [reason, setReason] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [followUpTime, setFollowUpTime] = useState('');
   const [callStartTime, setCallStartTime] = useState(null);
+  const needsFollowUp = outcome === 'CALL_BACK' || outcome === 'NOT_ANSWERING' || outcome === 'SWITCHED_OFF';
   const pendingPhone = useRef(null);
   const callIdRef = useRef(null);
 
@@ -57,6 +61,9 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
     setShowModal(false);
     setOutcome(null);
     setNote('');
+    setReason('');
+    setFollowUpDate('');
+    setFollowUpTime('');
     setDetectedDuration(null);
     setLookingUp(false);
     setCallStartTime(null);
@@ -70,7 +77,7 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
     setCallStartTime(now);
     callIdRef.current = `meta_${leadId}_${now}`;   // unique per physical call -> backend dedupe
     pendingPhone.current = lead.phone;
-    setDetectedDuration(null); setOutcome(null); setNote('');
+    setDetectedDuration(null); setOutcome(null); setNote(''); setReason(''); setFollowUpDate(''); setFollowUpTime('');
     await makePhoneCall(lead.phone);
   };
 
@@ -100,6 +107,15 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
 
   const submitCall = async () => {
     if (!outcome) { Alert.alert('Required', 'Select a call outcome'); return; }
+    if (outcome === 'NOT_QUALIFIED' && !reason.trim()) { Alert.alert('Required', 'Reason is required for Not Qualified'); return; }
+    if (needsFollowUp) {
+      if (followUpDate && !/^\d{4}-\d{2}-\d{2}$/.test(followUpDate.trim())) {
+        Alert.alert('Invalid date', 'Follow-up date must be in YYYY-MM-DD format'); return;
+      }
+      if (followUpTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(followUpTime.trim())) {
+        Alert.alert('Invalid time', 'Follow-up time must be in HH:MM (24h) format'); return;
+      }
+    }
     setBusy(true);
     try {
       const isStatus = ['CALL_BACK', 'NOT_ANSWERING', 'SWITCHED_OFF', 'NOT_INTERESTED', 'NOT_QUALIFIED', 'LEAD', 'FILE'].includes(outcome);
@@ -110,11 +126,14 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
         ended_at: new Date().toISOString(),
         duration_seconds: detectedDuration || 0,
         outcome,
-        note: note || null,
+        note: note.trim() || null,
+        reason: outcome === 'NOT_QUALIFIED' ? reason.trim() : null,
+        follow_up_date: needsFollowUp ? (followUpDate.trim() || null) : null,
+        follow_up_time: needsFollowUp ? (followUpTime.trim() || null) : null,
         resulting_status: isStatus ? outcome : null,
       });
       setLead(res.lead);
-      setShowModal(false); setOutcome(null); setNote('');
+      setShowModal(false); setOutcome(null); setNote(''); setReason(''); setFollowUpDate(''); setFollowUpTime('');
     } catch (e) {
       Alert.alert('Error', e.response?.data?.detail || 'Failed to save call');
     } finally { setBusy(false); }
@@ -241,6 +260,42 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
               })}
             </View>
             <TextInput style={styles.noteInput} value={note} onChangeText={setNote} placeholder="Note (optional)" placeholderTextColor="#9ca3af" data-testid="meta-call-note" />
+            {outcome === 'NOT_QUALIFIED' && (
+              <View style={styles.fieldBlock}>
+                <Text style={styles.fieldLabel}>Reason <Text style={{ color: '#dc2626' }}>*</Text></Text>
+                <TextInput style={styles.noteInput} value={reason} onChangeText={setReason} placeholder="Why not qualified?" placeholderTextColor="#9ca3af" data-testid="meta-call-reason" />
+              </View>
+            )}
+            {needsFollowUp && (
+              <View style={styles.followRow}>
+                <View style={styles.followCol}>
+                  <Text style={styles.fieldLabel}>Follow-up Date</Text>
+                  <TextInput
+                    style={styles.noteInput}
+                    value={followUpDate}
+                    onChangeText={setFollowUpDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={10}
+                    data-testid="meta-followup-date"
+                  />
+                </View>
+                <View style={styles.followCol}>
+                  <Text style={styles.fieldLabel}>Follow-up Time</Text>
+                  <TextInput
+                    style={styles.noteInput}
+                    value={followUpTime}
+                    onChangeText={setFollowUpTime}
+                    placeholder="HH:MM"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="numbers-and-punctuation"
+                    maxLength={5}
+                    data-testid="meta-followup-time"
+                  />
+                </View>
+              </View>
+            )}
             </ScrollView>
             <View style={[styles.rowBetween, styles.sheetFooter]}>
               <TouchableOpacity onPress={() => setShowModal(false)} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
@@ -284,6 +339,10 @@ const styles = StyleSheet.create({
   outcomeChipActive: { backgroundColor: '#16a34a' },
   outcomeText: { fontSize: 13, color: '#374151' },
   noteInput: { backgroundColor: '#f3f4f6', borderRadius: 10, padding: 10, fontSize: 14, marginBottom: 14 },
+  fieldBlock: { marginBottom: 2 },
+  fieldLabel: { fontSize: 11, fontWeight: '700', color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 5 },
+  followRow: { flexDirection: 'row', gap: 12 },
+  followCol: { flex: 1 },
   cancelBtn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb' },
   saveBtn: { flex: 1, marginLeft: 12, backgroundColor: '#16a34a', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   saveText: { color: '#fff', fontWeight: '700' },

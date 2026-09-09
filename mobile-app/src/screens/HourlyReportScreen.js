@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
-import { getMyHourlyReport, getTeamHourly } from '../services/api';
+import { getMyHourlyReport, getTeamHourly, getMetaReportsHourly } from '../services/api';
 
 const toDateStr = (d) => {
   const y = d.getFullYear();
@@ -32,14 +32,17 @@ const HourColumns = ({ rows }) => (
   </View>
 );
 
-const HourlyReportScreen = ({ navigation, route, mobileRole }) => {
+const HourlyReportScreen = ({ navigation, route, mobileRole, user }) => {
   const scope = route?.params?.scope; // 'self' | 'team' | undefined
   const isTeam = scope ? scope === 'team' : (mobileRole === 'tl' || mobileRole === 'manager');
+  const hasMeta = !!user?.meta_access;
   const [data, setData] = useState(null);
+  const [metaData, setMetaData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dayOffset, setDayOffset] = useState(0);
   const [expanded, setExpanded] = useState(null);
+  const [metaExpanded, setMetaExpanded] = useState(null);
 
   const dateObj = new Date();
   dateObj.setDate(dateObj.getDate() + dayOffset);
@@ -51,6 +54,9 @@ const HourlyReportScreen = ({ navigation, route, mobileRole }) => {
       setLoading(true);
       const res = isTeam ? await getTeamHourly(date) : await getMyHourlyReport(date);
       setData(res);
+      if (hasMeta) {
+        try { setMetaData(await getMetaReportsHourly(date)); } catch (e) { setMetaData(null); }
+      }
     } catch (e) {
       console.error('Hourly report error', e?.message);
       setData(null);
@@ -58,7 +64,7 @@ const HourlyReportScreen = ({ navigation, route, mobileRole }) => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [date, isTeam]);
+  }, [date, isTeam, hasMeta]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -74,6 +80,27 @@ const HourlyReportScreen = ({ navigation, route, mobileRole }) => {
     leads: a.leads + (m.total_leads || 0),
     file: a.file + (m.total_file || 0),
   }), { calls: 0, connected: 0, leads: 0, file: 0 });
+
+  // Meta rows use { hour } (int); adapt to { hour_label } for the shared HourColumns.
+  const metaHourLabel = (rows) => (rows || []).map((r) => ({
+    ...r, hour_label: `${String(r.hour).padStart(2, '0')}:00`,
+  }));
+  const metaMembers = (metaData?.telecallers || []).slice().sort((a, b) => (b.total_calls || 0) - (a.total_calls || 0));
+  const metaTotals = metaMembers.reduce((a, m) => ({
+    calls: a.calls + (m.total_calls || 0),
+    connected: a.connected + (m.total_connected || 0),
+    leads: a.leads + (m.total_leads || 0),
+    file: a.file + (m.total_file || 0),
+  }), { calls: 0, connected: 0, leads: 0, file: 0 });
+  const metaOverallByHour = (() => {
+    const map = {};
+    metaMembers.forEach((m) => (m.hourly_breakdown || []).forEach((h) => {
+      const s = map[h.hour] || { hour: h.hour, calls: 0, connected: 0, leads: 0, file: 0 };
+      s.calls += h.calls || 0; s.connected += h.connected || 0; s.leads += h.leads || 0; s.file += h.file || 0;
+      map[h.hour] = s;
+    }));
+    return metaHourLabel(Object.values(map).sort((a, b) => a.hour - b.hour));
+  })();
 
   return (
     <View style={styles.container}>
@@ -128,6 +155,38 @@ const HourlyReportScreen = ({ navigation, route, mobileRole }) => {
           </>
         )}
         <Text style={styles.legend}>C = Calls · CO = Connected · L = Leads · F = Files</Text>
+
+        {hasMeta && !loading && (
+          <>
+            <View style={styles.metaDivider} />
+            <View style={styles.metaHeadRow}>
+              <Text style={styles.metaTitle}>Meta CRM — Hourly</Text>
+              <Text style={styles.metaSub}>isolated Meta data</Text>
+            </View>
+            <View style={styles.totalsRow}>
+              <TotCard v={teamTotals.calls + metaTotals.calls} l="All Calls" />
+              <TotCard v={teamTotals.connected + metaTotals.connected} l="Connected" />
+              <TotCard v={teamTotals.leads + metaTotals.leads} l="Leads" />
+              <TotCard v={teamTotals.file + metaTotals.file} l="Files" />
+            </View>
+            <Text style={styles.metaCaption}>Combined (Connect + Meta) · Connect calls {teamTotals.calls} + Meta calls {metaTotals.calls}</Text>
+            <Text style={styles.sectionLabel}>Meta Total by Hour</Text>
+            <HourColumns rows={metaOverallByHour} />
+            <Text style={styles.sectionLabel}>Meta by Partner ({metaMembers.length})</Text>
+            {metaMembers.length === 0 ? (
+              <Text style={styles.empty}>No Meta activity for this day</Text>
+            ) : metaMembers.map((m) => (
+              <View key={m.user_id} style={styles.memberCard}>
+                <TouchableOpacity style={styles.memberHead} onPress={() => setMetaExpanded(metaExpanded === m.user_id ? null : m.user_id)} data-testid={`meta-hourly-member-${m.user_id}`}>
+                  <Text style={styles.memberName}>{m.user_name}</Text>
+                  <Text style={styles.memberStat}>{m.total_calls}C · {m.total_connected}CO · {m.total_leads}L · {m.total_file}F</Text>
+                  <Text style={styles.chevron}>{metaExpanded === m.user_id ? '▲' : '▼'}</Text>
+                </TouchableOpacity>
+                {metaExpanded === m.user_id && <HourColumns rows={metaHourLabel(m.hourly_breakdown)} />}
+              </View>
+            ))}
+          </>
+        )}
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
@@ -170,6 +229,11 @@ const styles = StyleSheet.create({
   memberStat: { fontSize: 11, color: '#6b7280', marginRight: 8 },
   chevron: { fontSize: 12, color: '#9ca3af' },
   legend: { fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 12 },
+  metaDivider: { height: 1, backgroundColor: '#e5e7eb', marginVertical: 16 },
+  metaHeadRow: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 12 },
+  metaTitle: { fontSize: 18, fontWeight: '700', color: '#059669' },
+  metaSub: { fontSize: 12, color: '#9ca3af', marginLeft: 6 },
+  metaCaption: { fontSize: 11, color: '#6b7280', marginBottom: 10, textAlign: 'center' },
 });
 
 export default HourlyReportScreen;

@@ -3,10 +3,16 @@ import { Clock, Phone, TrendingUp, Loader2, ChevronDown, ChevronUp, Download, Re
 import api from '../../services/api';
 import { GrowthPartnerFilter } from '../../components/GrowthPartnerFilter';
 import { PrintReportButton } from '../../components/PrintReportButton';
+import useAuthStore from '../../store/authStore';
+import { CombinedTotalsCard, MetaSummaryTable, MetaHourlyTable } from '../../components/meta/MetaReportBlocks';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const AdminReports = () => {
+  const { user } = useAuthStore();
+  const hasMeta = !!user?.meta_access;
+  const [metaSummary, setMetaSummary] = useState(null);
+  const [metaHourly, setMetaHourly] = useState(null);
   const [reports, setReports] = useState(null);
   const [hourlyReports, setHourlyReports] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
@@ -44,13 +50,24 @@ const AdminReports = () => {
       
       const response = await api.get(url);
       setReports(response.data);
+
+      if (hasMeta) {
+        let mUrl = `/meta/reports/summary?period=${period}`;
+        if (showDateRange && fromDate && toDate) {
+          mUrl = `/meta/reports/summary?from_date=${fromDate}&to_date=${toDate}`;
+        }
+        try {
+          const mRes = await api.get(mUrl);
+          setMetaSummary(mRes.data);
+        } catch (e) { setMetaSummary(null); }
+      }
     } catch (error) {
       console.error('Error fetching reports:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [period, showDateRange, fromDate, toDate]);
+  }, [period, showDateRange, fromDate, toDate, hasMeta]);
 
   const fetchHourlyReports = useCallback(async (showRefresh = false) => {
     try {
@@ -62,13 +79,20 @@ const AdminReports = () => {
       
       const response = await api.get(`/reports/hourly?date=${hourlyDate}`);
       setHourlyReports(response.data);
+
+      if (hasMeta) {
+        try {
+          const mRes = await api.get(`/meta/reports/hourly?date=${hourlyDate}`);
+          setMetaHourly(mRes.data);
+        } catch (e) { setMetaHourly(null); }
+      }
     } catch (error) {
       console.error('Error fetching hourly reports:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [hourlyDate]);
+  }, [hourlyDate, hasMeta]);
 
   const fetchActivityLogs = useCallback(async (showRefresh = false) => {
     try {
@@ -1028,6 +1052,7 @@ const AdminReports = () => {
             </div>
           ) : reports ? (
             <>
+              {hasMeta && <CombinedTotalsCard connect={reports.overall} meta={metaSummary?.overall} testid="combined-totals-summary" />}
               {/* Overall Stats */}
               <div className="card p-4 mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Overall Performance</h3>
@@ -1236,6 +1261,7 @@ const AdminReports = () => {
               )}
             </div>
           </div>
+          {hasMeta && <MetaSummaryTable data={metaSummary} />}
         </>
       ) : null}
         </>
@@ -1261,6 +1287,21 @@ const AdminReports = () => {
             </div>
           ) : hourlyReports ? (
             <div className="space-y-6">
+              {hasMeta && (
+                <CombinedTotalsCard
+                  testid="combined-totals-hourly"
+                  connect={{
+                    total_calls: (hourlyReports.telecallers || []).reduce((s, tc) => s + (tc.total_calls || 0), 0),
+                    total_leads_generated: (hourlyReports.telecallers || []).reduce((s, tc) => s + (tc.total_leads || 0), 0),
+                    total_file: (hourlyReports.telecallers || []).reduce((s, tc) => s + (tc.total_file || 0), 0),
+                  }}
+                  meta={{
+                    total_calls: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_calls || 0), 0),
+                    total_leads_generated: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_leads || 0), 0),
+                    total_file: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_file || 0), 0),
+                  }}
+                />
+              )}
               {(() => {
                 const allHours = new Set();
                 hourlyReports.telecallers?.forEach(tc => {
@@ -1418,6 +1459,7 @@ const AdminReports = () => {
                   </div>
                 );
               })()}
+              {hasMeta && <MetaHourlyTable data={metaHourly} />}
             </div>
           ) : null}
         </>

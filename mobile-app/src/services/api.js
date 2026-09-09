@@ -397,8 +397,7 @@ export const getMetaFilesReport = async (params = {}) => {
   return response.data;
 };
 export const getMetaFilesStats = async () => {
-  const response = await api.get('/meta/files/stats');
-  return response.data;
+  const response = await api.get('/meta/files/stats');  return response.data;
 };
 
 // Get file details
@@ -553,6 +552,19 @@ export const getTeamHourly = async (date = null) => {
   const params = {};
   if (date) params.date = date;
   const response = await api.get('/reports/hourly', { params });
+  return response.data;
+};
+
+// Meta reporting (isolated) — mirrors web /meta/reports/*. Backend enforces meta_access
+// and scopes non-staff to their own assigned leads. NEVER touches Connect logs.
+export const getMetaReportsHourly = async (date = null) => {
+  const params = {};
+  if (date) params.date = date;
+  const response = await api.get('/meta/reports/hourly', { params });
+  return response.data;
+};
+export const getMetaReportsSummary = async (params = {}) => {
+  const response = await api.get('/meta/reports/summary', { params });
   return response.data;
 };
 

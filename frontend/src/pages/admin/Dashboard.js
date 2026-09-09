@@ -3,8 +3,13 @@ import { Database, Phone, TrendingUp, Users, Loader2, RefreshCw, Calendar, Phone
 import api from '../../services/api';
 import { StatusColors, StatusLabels } from '../../constants/colors';
 import VerifiedCallStats from '../../components/VerifiedCallStats';
+import useAuthStore from '../../store/authStore';
+import { CombinedTotalsCard, MetaSummaryTable } from '../../components/meta/MetaReportBlocks';
 
 const AdminDashboard = () => {
+  const { user } = useAuthStore();
+  const hasMeta = !!user?.meta_access;
+  const [metaSummary, setMetaSummary] = useState(null);
   const [stats, setStats] = useState(null);
   const [telecallers, setTelecallers] = useState([]);
   const [period, setPeriod] = useState('today');
@@ -34,13 +39,33 @@ const AdminDashboard = () => {
       ]);
       setStats(statsRes.data);
       setTelecallers(telecallersRes.data);
+
+      if (hasMeta) {
+        const periodMap = { today: 'today', this_week: 'week', this_month: 'month', all_time: 'lifetime' };
+        let mUrl;
+        if (showDateRange && fromDate && toDate) {
+          mUrl = `/meta/reports/summary?from_date=${fromDate}&to_date=${toDate}`;
+        } else if (period === 'last_month') {
+          const now = new Date();
+          const first = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          const last = new Date(now.getFullYear(), now.getMonth(), 0);
+          const iso = (d) => d.toISOString().split('T')[0];
+          mUrl = `/meta/reports/summary?from_date=${iso(first)}&to_date=${iso(last)}`;
+        } else {
+          mUrl = `/meta/reports/summary?period=${periodMap[period] || 'lifetime'}`;
+        }
+        try {
+          const mRes = await api.get(mUrl);
+          setMetaSummary(mRes.data);
+        } catch (e) { setMetaSummary(null); }
+      }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, [period, selectedTelecaller, showDateRange, fromDate, toDate]);
+  }, [period, selectedTelecaller, showDateRange, fromDate, toDate, hasMeta]);
 
   useEffect(() => {
     fetchData();
@@ -178,6 +203,17 @@ const AdminDashboard = () => {
         </div>
       ) : (
         <>
+          {hasMeta && (
+            <CombinedTotalsCard
+              testid="combined-totals-dashboard"
+              connect={{
+                total_calls: stats?.outgoing_calls?.count || 0,
+                total_leads_generated: stats?.total_leads_generated || 0,
+                total_file: stats?.total_file || 0,
+              }}
+              meta={metaSummary?.overall}
+            />
+          )}
           {/* Main Stats Row */}
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="card p-4 text-center">
@@ -312,6 +348,7 @@ const AdminDashboard = () => {
           <div className="mt-6">
             <VerifiedCallStats />
           </div>
+          {hasMeta && <MetaSummaryTable data={metaSummary} />}
         </>
       )}
     </div>

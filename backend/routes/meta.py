@@ -122,6 +122,9 @@ class MetaCallLogInput(BaseModel):
     duration_seconds: int = 0
     outcome: Optional[str] = None
     note: Optional[str] = None
+    reason: Optional[str] = None
+    follow_up_date: Optional[str] = None
+    follow_up_time: Optional[str] = None
     resulting_status: Optional[str] = None
 
 
@@ -490,7 +493,8 @@ async def meta_add_call_log(lead_id: str, inp: MetaCallLogInput, user: dict = De
         "call_id": inp.call_id, "lead_source": "meta", "source": "mobile",
         "meta_user_id": uid, "connect_user_id": user.get("id"), "user_id": uid, "user_name": user.get("name"),
         "phone": inp.phone or lead.get("phone"), "started_at": inp.started_at, "ended_at": inp.ended_at,
-        "duration_seconds": int(inp.duration_seconds or 0), "disposition": inp.outcome, "note": inp.note, "at": now,
+        "duration_seconds": int(inp.duration_seconds or 0), "disposition": inp.outcome, "note": inp.note,
+        "notes": inp.note, "reason": inp.reason, "follow_up_date": inp.follow_up_date, "follow_up_time": inp.follow_up_time, "at": now,
     }
     push = {"call_logs": call, "activities": {
         "type": "call",
@@ -499,6 +503,9 @@ async def meta_add_call_log(lead_id: str, inp: MetaCallLogInput, user: dict = De
     if inp.note:
         push["notes"] = {"text": inp.note, "author": user.get("name"), "at": now}
     set_fields = {"updated_at": now}
+    if inp.follow_up_date:
+        set_fields["follow_up_date"] = inp.follow_up_date
+        set_fields["follow_up_time"] = inp.follow_up_time
     if inp.resulting_status and inp.resulting_status in CRM_STATUSES:
         set_fields["status"] = inp.resulting_status
         if inp.resulting_status == "FILE" and not lead.get("file_created_at"):
@@ -789,6 +796,194 @@ async def meta_my_call_stats(user: dict = Depends(require_meta_access)):
                 total_calls += 1
                 total_talk += int(c.get("duration_seconds") or 0)
     return {"total_calls": total_calls, "total_talk_time_seconds": total_talk}
+
+
+# =========================== reporting (isolated Meta) ===========================
+# Meta reporting reads ONLY meta_leads/meta_call_logs. It NEVER writes to Connect
+# collections and NEVER merges into Connect logs. The web/mobile UI shows Combined
+# totals (computed at the presentation layer) with Connect and Meta tables kept separate.
+from datetime import timedelta as _timedelta
+
+_IST = timezone(_timedelta(hours=5, minutes=30))
+_LEAD_STATUSES = {"LEAD", "FILE"}
+
+
+def _parse_dt(s):
+    """Parse a stored ISO timestamp to a naive UTC datetime (tolerant of Z/offset)."""
+    if not s:
+        return None
+    try:
+        txt = str(s).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(txt)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
+    except Exception:
+        return None
+
+
+def _ist_day_bounds_utc(date_str=None):
+    if date_str:
+        d = datetime.fromisoformat(date_str)
+        start_ist = datetime(d.year, d.month, d.day, tzinfo=_IST)
+    else:
+        now_ist = datetime.now(_IST)
+        start_ist = datetime(now_ist.year, now_ist.month, now_ist.day, tzinfo=_IST)
+    start_utc = start_ist.astimezone(timezone.utc).replace(tzinfo=None)
+    return start_utc, start_utc + _timedelta(days=1)
+
+
+def _period_bounds_utc(period=None, from_date=None, to_date=None):
+    """IST-aware (start, end) as naive UTC datetimes. end=None means open-ended."""
+    if from_date and to_date:
+        s = datetime.fromisoformat(from_date).replace(tzinfo=_IST).astimezone(timezone.utc).replace(tzinfo=None)
+        e = (datetime.fromisoformat(to_date).replace(tzinfo=_IST) + _timedelta(days=1)).astimezone(timezone.utc).replace(tzinfo=None)
+        return s, e
+    now_ist = datetime.now(_IST)
+    today = datetime(now_ist.year, now_ist.month, now_ist.day, tzinfo=_IST)
+    p = (period or "today").lower()
+    if p == "today":
+        s = today
+    elif p == "week":
+        s = today - _timedelta(days=today.weekday())
+    elif p == "month":
+        s = datetime(now_ist.year, now_ist.month, 1, tzinfo=_IST)
+    elif p == "three_months":
+        s = today - _timedelta(days=90)
+    else:  # lifetime / unknown
+        return None, None
+    return s.astimezone(timezone.utc).replace(tzinfo=None), None
+
+
+def _in_range(dt, start, end):
+    if dt is None:
+        return False
+    if start is not None and dt < start:
+        return False
+    if end is not None and dt >= end:
+        return False
+    return True
+
+
+def _report_match(user):
+    """Meta report visibility: staff see all; others see only their assigned leads."""
+    role, uid = _ctx(user)
+    match = dict(NOT_DELETED)
+    if role not in STAFF_ROLES:
+        match["assigned_partner_id"] = uid
+    return match
+
+
+@router.get("/reports/summary")
+async def meta_reports_summary(user: dict = Depends(require_meta_access),
+                               period: str = "today", from_date: Optional[str] = None,
+                               to_date: Optional[str] = None):
+    """Per-partner Meta performance for the Connect Reports 'Summary' tab (Meta table)."""
+    start, end = _period_bounds_utc(period, from_date, to_date)
+    match = _report_match(user)
+    leads = await db.meta_leads.find(match, {"_id": 0, "assigned_partner_id": 1, "assigned_partner_name": 1,
+        "status": 1, "call_logs": 1, "updated_at": 1, "file_created_at": 1, "created_at": 1,
+        "created_time": 1}).to_list(20000)
+
+    partners = {}
+
+    def _bucket(pid, pname):
+        key = pid or "unassigned"
+        if key not in partners:
+            partners[key] = {"user_id": key, "user_name": pname or "Unassigned",
+                             "total_calls": 0, "total_connected": 0, "total_call_seconds": 0,
+                             "leads_generated": 0, "file": 0}
+        elif pname and partners[key]["user_name"] == "Unassigned":
+            partners[key]["user_name"] = pname
+        return partners[key]
+
+    for l in leads:
+        b = _bucket(l.get("assigned_partner_id"), l.get("assigned_partner_name"))
+        for c in (l.get("call_logs") or []):
+            if _in_range(_parse_dt(c.get("at")), start, end):
+                dur = int(c.get("duration_seconds") or 0)
+                b["total_calls"] += 1
+                b["total_call_seconds"] += dur
+                if dur > 0:
+                    b["total_connected"] += 1
+        status = l.get("status")
+        lead_dt = _parse_dt(l.get("file_created_at")) or _parse_dt(l.get("updated_at")) \
+            or _parse_dt(l.get("created_at")) or _parse_dt(l.get("created_time"))
+        if status in _LEAD_STATUSES and _in_range(lead_dt, start, end):
+            b["leads_generated"] += 1
+            if status == "FILE":
+                b["file"] += 1
+
+    rows = [p for p in partners.values() if p["total_calls"] or p["leads_generated"] or p["file"]]
+    rows.sort(key=lambda r: (-r["total_calls"], r["user_name"]))
+    overall = {
+        "total_calls": sum(r["total_calls"] for r in rows),
+        "total_connected": sum(r["total_connected"] for r in rows),
+        "total_call_seconds": sum(r["total_call_seconds"] for r in rows),
+        "total_leads_generated": sum(r["leads_generated"] for r in rows),
+        "total_file": sum(r["file"] for r in rows),
+    }
+    return {"overall": overall, "partners": rows}
+
+
+@router.get("/reports/hourly")
+async def meta_reports_hourly(user: dict = Depends(require_meta_access), date: Optional[str] = None):
+    """Per-partner Meta hourly breakdown (IST) for the Connect Reports 'Hourly' tab."""
+    start, end = _ist_day_bounds_utc(date)
+    match = _report_match(user)
+    leads = await db.meta_leads.find(match, {"_id": 0, "assigned_partner_id": 1, "assigned_partner_name": 1,
+        "status": 1, "call_logs": 1, "updated_at": 1, "file_created_at": 1}).to_list(20000)
+
+    partners = {}
+
+    def _bucket(pid, pname):
+        key = pid or "unassigned"
+        if key not in partners:
+            partners[key] = {"user_id": key, "user_name": pname or "Unassigned",
+                             "hours": {}, "total_calls": 0, "total_connected": 0,
+                             "total_leads": 0, "total_file": 0}
+        elif pname and partners[key]["user_name"] == "Unassigned":
+            partners[key]["user_name"] = pname
+        return partners[key]
+
+    def _hour_of(dt):
+        return (dt + _timedelta(hours=5, minutes=30)).hour
+
+    for l in leads:
+        b = _bucket(l.get("assigned_partner_id"), l.get("assigned_partner_name"))
+        for c in (l.get("call_logs") or []):
+            dt = _parse_dt(c.get("at"))
+            if not _in_range(dt, start, end):
+                continue
+            hr = _hour_of(dt)
+            slot = b["hours"].setdefault(hr, {"hour": hr, "calls": 0, "connected": 0, "leads": 0, "file": 0})
+            slot["calls"] += 1
+            b["total_calls"] += 1
+            if int(c.get("duration_seconds") or 0) > 0:
+                slot["connected"] += 1
+                b["total_connected"] += 1
+        status = l.get("status")
+        if status in _LEAD_STATUSES:
+            lead_dt = _parse_dt(l.get("file_created_at")) or _parse_dt(l.get("updated_at"))
+            if _in_range(lead_dt, start, end):
+                hr = _hour_of(lead_dt)
+                slot = b["hours"].setdefault(hr, {"hour": hr, "calls": 0, "connected": 0, "leads": 0, "file": 0})
+                slot["leads"] += 1
+                b["total_leads"] += 1
+                if status == "FILE":
+                    slot["file"] += 1
+                    b["total_file"] += 1
+
+    out = []
+    for p in partners.values():
+        if not (p["total_calls"] or p["total_leads"] or p["total_file"]):
+            continue
+        p["hourly_breakdown"] = sorted(p["hours"].values(), key=lambda h: h["hour"])
+        del p["hours"]
+        out.append(p)
+    out.sort(key=lambda r: (-r["total_calls"], r["user_name"]))
+    return {"telecallers": out, "date": (date or datetime.now(_IST).date().isoformat())}
+
 
 
 # =========================== partners / processors ===========================
