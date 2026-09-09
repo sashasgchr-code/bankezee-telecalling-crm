@@ -1906,3 +1906,12 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
 - Connect production deploy dispatched (carries compat adapter + download fallback + migration
   endpoints + File-Detail/eligibility/My-Files). Sheet sync + email intentionally NOT enabled.
 - After deploy: run the Meta-job client from the OLD Meta deployment to migrate all 149 binaries.
+
+### Mobile Meta File Detail fix (v2.6.8 / vc25, June 2026)
+- Root cause: MetaHomeScreen LeadsTab routed FILE-status Meta leads to the simplified
+  MetaLeadDetailScreen; only the Files tab opened the shared Connect FileDetailScreen.
+- Fix: LeadsTab now branches — status==='FILE' -> navigate('FileDetail', {apiBase:'/meta/files-compat',
+  mode:'meta', roleOverride:meta_role}); non-FILE keeps MetaLeadDetail. FilesTab already routed there.
+- GP parity verified via compat contract: GET 200, PUT /details 200 (persists), POST /notes 200,
+  PUT /file-status 403, PUT /eligibilities 403 (mirrors Connect GP). Doc upload N/A (mobile Connect
+  File Detail is web-only for docs; no new feature added). Bumped app.json 2.6.8/25 + config APP_VERSION.

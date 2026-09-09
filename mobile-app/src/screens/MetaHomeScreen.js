@@ -91,7 +91,13 @@ const LeadsTab = ({ navigation, profile }) => {
           contentContainerStyle={{ padding: 12 }}
           ListHeaderComponent={<Text style={styles.countLabel}>{data.total} lead(s)</Text>}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} data-testid="meta-lead-row" onPress={() => navigation.navigate('MetaLeadDetail', { leadId: item.lead_id, user: profile })}>
+            <TouchableOpacity style={styles.card} data-testid="meta-lead-row" onPress={() => {
+              if ((item.status || '').toUpperCase() === 'FILE') {
+                navigation.navigate('FileDetail', { fileId: item.lead_id, apiBase: '/meta/files-compat', mode: 'meta', roleOverride: (profile?.meta_role || '').toLowerCase() });
+              } else {
+                navigation.navigate('MetaLeadDetail', { leadId: item.lead_id, user: profile });
+              }
+            }}>
               <View style={styles.cardRow}><Text style={styles.name}>{item.full_name || 'Unnamed'}</Text><Text style={styles.badge}>{item.status}</Text></View>
               <Text style={styles.sub}>{item.phone || '—'} · {item.city || '—'}</Text>
             </TouchableOpacity>
