@@ -31,3 +31,29 @@ export const openWhatsApp = (phone, customerName, agentName) => {
   if (!phone) return;
   window.open(getWhatsAppLink(phone, customerName, agentName), '_blank');
 };
+
+// ---- Meta CRM WhatsApp (Instagram/Meta leads) ----
+// Reuses the SAME phone sanitization (normalizePhone) and the SAME BankEzee signature/contact
+// block used by Connect above. Only the opening body differs (Meta-specific copy).
+const buildMetaMessage = (customerName, loanType, agentName) => `Hi ${customerName || 'there'},
+
+We have received your application regarding ${loanType || 'loan requirement'} through Instagram/Meta.
+
+We would like to understand your requirement better and discuss the best available solution for you.
+
+If you are looking to consolidate existing debts, reduce your EMI burden, arrange additional funding, or explore a suitable loan option, our team can assist you in checking the available possibilities.
+
+Please call us back on this number or reply here so we can discuss your requirement.
+
+Regards,
+${agentName || 'Team'}
+BankEzee – Loan Consolidation Platform
+www.BankEzee.com`;
+
+export const getMetaWhatsAppLink = (phone, customerName, loanType, agentName = 'Team') =>
+  `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(buildMetaMessage(customerName, loanType, agentName))}`;
+
+export const openMetaWhatsApp = (phone, customerName, loanType, agentName) => {
+  if (!phone) return;
+  window.open(getMetaWhatsAppLink(phone, customerName, loanType, agentName), '_blank');
+};

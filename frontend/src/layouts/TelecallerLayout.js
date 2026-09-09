@@ -222,6 +222,7 @@ const TelecallerLayout = () => {
   // Team menu items - only visible for Team Leads (is_tl = true)
   const teamNavItems = user?.is_tl ? [
     { path: '/agent/team', icon: Users, label: 'My Team' },
+    { path: '/agent/team/leads', icon: PhoneCall, label: 'Team Leads' },
     { path: '/agent/team/data', icon: Database, label: 'Team Data' },
     { path: '/agent/team/files', icon: FileText, label: 'Team Files' },
     { path: '/agent/team/calls', icon: PhoneCall, label: 'Team Calls' },

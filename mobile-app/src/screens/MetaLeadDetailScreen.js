@@ -31,7 +31,7 @@ const STATUS_OPTIONS = [
 // Reuses the EXACT Connect native call lifecycle (makePhoneCall + AppState + getRecentCallForNumber),
 // but saves the outcome to the isolated Meta API. Connect calling code is untouched.
 const MetaLeadDetailScreen = ({ route, navigation }) => {
-  const { leadId, user } = route.params;
+  const { leadId, user, autoStartCall } = route.params;
   const [lead, setLead] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -47,6 +47,10 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
   const needsFollowUp = outcome === 'CALL_BACK' || outcome === 'NOT_ANSWERING' || outcome === 'SWITCHED_OFF';
   const pendingPhone = useRef(null);
   const callIdRef = useRef(null);
+  // Every call is bound to the lead that initiated it. submitCall refuses to save if this
+  // no longer matches the screen's current leadId (guards the stale-customer bug).
+  const callLeadRef = useRef(null);
+  const autoStartedRef = useRef(false);
 
   const load = useCallback(async () => {
     try { setLead(await getMetaLead(leadId)); } catch (e) {
@@ -69,6 +73,8 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
     setCallStartTime(null);
     pendingPhone.current = null;
     callIdRef.current = null;
+    callLeadRef.current = null;
+    autoStartedRef.current = false;
   }, [leadId]);
 
   const startCall = async () => {
@@ -77,9 +83,21 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
     setCallStartTime(now);
     callIdRef.current = `meta_${leadId}_${now}`;   // unique per physical call -> backend dedupe
     pendingPhone.current = lead.phone;
+    // Bind this call to THIS lead — used to reject a save if the screen later shows another lead.
+    callLeadRef.current = { id: leadId, phone: lead.phone, name: lead.full_name };
     setDetectedDuration(null); setOutcome(null); setNote(''); setReason(''); setFollowUpDate(''); setFollowUpTime('');
     await makePhoneCall(lead.phone);
   };
+
+  // Auto-start a call when arriving via the "Call" button on a lead card. Fires once per lead.
+  useEffect(() => {
+    if (autoStartCall && lead && !loading && !autoStartedRef.current) {
+      autoStartedRef.current = true;
+      navigation.setParams({ autoStartCall: false });
+      startCall();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartCall, lead, loading]);
 
   const handleAppState = useCallback(async (next) => {
     if (next === 'active' && callStartTime && pendingPhone.current) {
@@ -118,10 +136,19 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
     }
     setBusy(true);
     try {
+      // Refuse to save if the active call is no longer bound to the lead on screen.
+      const bound = callLeadRef.current;
+      if (!bound || bound.id !== leadId) {
+        setShowModal(false); setBusy(false);
+        Alert.alert('Call context changed', 'This lead was switched. Reloading — please make the call again.');
+        callLeadRef.current = null;
+        await load();
+        return;
+      }
       const isStatus = ['CALL_BACK', 'NOT_ANSWERING', 'SWITCHED_OFF', 'NOT_INTERESTED', 'NOT_QUALIFIED', 'LEAD', 'FILE'].includes(outcome);
-      const res = await addMetaCallLog(leadId, {
-        call_id: callIdRef.current || `meta_${leadId}_${Date.now()}`,
-        phone: lead.phone,
+      const res = await addMetaCallLog(bound.id, {
+        call_id: callIdRef.current || `meta_${bound.id}_${Date.now()}`,
+        phone: bound.phone,
         started_at: callStartTime ? new Date(callStartTime).toISOString() : new Date().toISOString(),
         ended_at: new Date().toISOString(),
         duration_seconds: detectedDuration || 0,
@@ -134,6 +161,7 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
       });
       setLead(res.lead);
       setShowModal(false); setOutcome(null); setNote(''); setReason(''); setFollowUpDate(''); setFollowUpTime('');
+      callLeadRef.current = null; callIdRef.current = null; pendingPhone.current = null;
     } catch (e) {
       Alert.alert('Error', e.response?.data?.detail || 'Failed to save call');
     } finally { setBusy(false); }
@@ -298,7 +326,7 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
             )}
             </ScrollView>
             <View style={[styles.rowBetween, styles.sheetFooter]}>
-              <TouchableOpacity onPress={() => setShowModal(false)} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setShowModal(false); callLeadRef.current = null; callIdRef.current = null; pendingPhone.current = null; }} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
               <TouchableOpacity onPress={submitCall} disabled={busy} style={styles.saveBtn} data-testid="meta-call-save">
                 {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save</Text>}
               </TouchableOpacity>

@@ -35,6 +35,7 @@ from routes.meta_admin_migrate import router as meta_migrate_router  # Meta lega
 from routes.meta_sync import router as meta_sync_router  # Meta Google Sheet sync + email
 from routes.admin_maintenance import router as admin_maintenance_router  # TEMPORARY - remove after prod repair
 from routes.config import router as config_router  # Canonical shared catalogs (loan types)
+from routes.tl import router as tl_router  # Team-Leader second-level calling + reporting
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -80,6 +81,7 @@ async def health_probe():
 
 app.include_router(admin_maintenance_router)  # TEMPORARY - remove after prod repair
 app.include_router(config_router)  # Canonical shared catalogs (loan types)
+app.include_router(tl_router)  # Team-Leader second-level layer
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production

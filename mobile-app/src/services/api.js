@@ -568,6 +568,14 @@ export const getMetaReportsSummary = async (params = {}) => {
   return response.data;
 };
 
+// ---- Team-Leader (TL) second-level layer ----
+export const getTLMeta = async () => (await api.get('/tl/meta')).data;
+export const getTLLeads = async (params = {}) => (await api.get('/tl/leads', { params })).data;
+export const getTLStats = async (params = {}) => (await api.get('/tl/stats', { params })).data;
+export const logTLCall = async (leadId, payload) => (await api.post(`/tl/leads/${leadId}/call`, payload)).data;
+export const getTLCallLogs = async (params = {}) => (await api.get('/tl/call-logs', { params })).data;
+export const getTLSummary = async (params = {}) => (await api.get('/tl/reports/summary', { params })).data;
+
 // Team attendance for today (Manager / TL scoped)
 export const getTeamAttendanceToday = async (date = null) => {
   const params = {};

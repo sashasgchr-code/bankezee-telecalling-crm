@@ -4,7 +4,8 @@ import api from "../../services/api";
 import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
-import { ArrowLeft, Phone, PhoneCall, Mail, MapPin, Briefcase, Wallet, Megaphone, Send, MessageSquare, Activity, UserCog, FolderOpen, Plus, Trash2, Save, Clock, Upload, Download, FileText } from "lucide-react";
+import { openMetaWhatsApp } from "../../utils/whatsapp";
+import { ArrowLeft, Phone, PhoneCall, Mail, MapPin, Briefcase, Wallet, Megaphone, Send, MessageSquare, MessageCircle, Activity, UserCog, FolderOpen, Plus, Trash2, Save, Clock, Upload, Download, FileText } from "lucide-react";
 
 const InfoRow = ({ icon: Icon, label, value }) => (
   <div className="flex items-start gap-3 py-2">
@@ -317,6 +318,7 @@ export default function MetaLeadDetail() {
         <h1 className="text-xl font-bold" style={{ color: BRAND_DARK }}>{lead.full_name || "Lead"}</h1>
         <StatusPill status={lead.status} />
         <a data-testid="meta-call-btn" href={`tel:${lead.phone}`} onClick={() => setCallOpen(true)} className="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"><Phone size={16} /> Call</a>
+        <button data-testid="meta-wa-btn" type="button" onClick={() => openMetaWhatsApp(lead.phone, lead.full_name, lead.file?.loan_type || lead.loan_type || "loan requirement", meta.name)} className="bg-green-500 hover:bg-green-600 text-white rounded-md px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"><MessageCircle size={16} /> WhatsApp</button>
       </header>
 
       <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">

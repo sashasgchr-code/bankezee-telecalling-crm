@@ -11,6 +11,8 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "").strip()
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "BankEzee").strip()
 HR_EMAIL = os.environ.get("HR_EMAIL", "")  # HR/Admin email for notifications
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
 
@@ -43,18 +45,37 @@ async def _resolve_resend():
 
 
 async def _resolve_sender() -> str:
-    """Resolve the 'from' address AT SEND TIME. DB app_settings.sender_email wins (so it can be
-    set via the admin Settings API across all replicas without a deployment secret), then env
-    SENDER_EMAIL, then the Resend testing default."""
+    """Resolve the 'from' header AT SEND TIME as a single centralized value, formatted as
+    'BankEzee <noreply@bankezee.com>' so every Meta + Connect email uses the same verified
+    BankEzee identity.
+
+    Address precedence (first non-empty wins):
+      1. env EMAIL_FROM         (authoritative deployment secret)
+      2. DB app_settings.sender_email  (admin Settings, seen by all replicas, survives redeploy)
+      3. env SENDER_EMAIL       (legacy)
+      4. Resend testing default
+    Display-name precedence:
+      1. DB app_settings.sender_name  2. env EMAIL_FROM_NAME  3. 'BankEzee'
+    If the resolved address already contains a display name ('Name <email>'), it is returned as-is.
+    """
+    addr = ""
+    name = ""
     try:
         from utils.database import db
-        doc = await db.app_settings.find_one({"type": "integrations"}, {"_id": 0, "sender_email": 1})
-        v = ((doc or {}).get("sender_email") or "").strip()
-        if v:
-            return v
+        doc = await db.app_settings.find_one({"type": "integrations"},
+                                             {"_id": 0, "sender_email": 1, "sender_name": 1})
+        db_addr = ((doc or {}).get("sender_email") or "").strip()
+        name = ((doc or {}).get("sender_name") or "").strip()
     except Exception:
-        pass
-    return (os.environ.get("SENDER_EMAIL") or "onboarding@resend.dev").strip()
+        db_addr = ""
+    # Address: env EMAIL_FROM overrides DB so a deploy secret is always authoritative.
+    addr = EMAIL_FROM or db_addr or (os.environ.get("SENDER_EMAIL") or "").strip() or "onboarding@resend.dev"
+    # Already a "Name <email>" — respect it verbatim.
+    if "<" in addr and ">" in addr:
+        return addr
+    if not name:
+        name = EMAIL_FROM_NAME or "BankEzee"
+    return f"{name} <{addr}>" if name else addr
 
 
 async def send_email(to: str, subject: str, html: str) -> bool:

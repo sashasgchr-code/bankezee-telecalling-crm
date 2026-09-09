@@ -3,6 +3,7 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Alert } from 'rea
 
 const ITEMS = {
   MyTeam: { icon: '👥', label: 'My Team', desc: 'Your mapped team & stats' },
+  TLTeamLeads: { icon: '🎯', label: 'Team Leads (TL)', desc: 'Second-level calling on GP-generated leads' },
   Reports: { icon: '📈', label: 'Reports', desc: 'Team performance summary' },
   MyHourly: { icon: '⏱️', label: 'My Hourly Report', desc: 'Your own calls, leads & files by hour' },
   TeamHourly: { icon: '📊', label: 'Team Hourly Report', desc: "Your team's activity by hour" },
@@ -15,8 +16,8 @@ const ITEMS = {
 // Menu contents per mobile role. Tabs already cover the primary screens for each role.
 const MENU_BY_ROLE = {
   gp: ['MyHourly', 'Attendance', 'PolicyMaster', 'Leave'],
-  tl: ['MyTeam', 'Reports', 'MyHourly', 'TeamHourly', 'Attendance', 'PolicyMaster', 'Leave'],
-  manager: ['TeamHourly', 'TeamAttendance', 'PolicyMaster', 'Leave'],
+  tl: ['MyTeam', 'TLTeamLeads', 'Reports', 'MyHourly', 'TeamHourly', 'Attendance', 'PolicyMaster', 'Leave'],
+  manager: ['TLTeamLeads', 'TeamHourly', 'TeamAttendance', 'PolicyMaster', 'Leave'],
 };
 
 // Map menu keys to the actual navigator screen + params.

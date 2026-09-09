@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-  TextInput, ActivityIndicator, SafeAreaView, StatusBar,
+  TextInput, ActivityIndicator, SafeAreaView, StatusBar, Linking,
 } from 'react-native';
 import { getMetaLeads, refreshProfile } from '../services/api';
 import { IS_PREVIEW, API_HOST } from '../config';
@@ -9,6 +9,18 @@ import { IS_PREVIEW, API_HOST } from '../config';
 const CRM_STATUSES = ['', 'NEW', 'CALL_BACK', 'NOT_ANSWERING', 'SWITCHED_OFF', 'NOT_INTERESTED', 'NOT_QUALIFIED', 'LEAD', 'FILE'];
 
 const truthy = (v) => v === true || v === 'true' || v === 1 || v === '1';
+
+// Same phone sanitization as Connect WhatsApp (mobile DataScreen/LeadDetail).
+const sanitizePhone = (raw) => {
+  let phone = String(raw ?? '').split('.')[0].replace(/[^0-9]/g, '').replace(/^0+/, '');
+  if (phone.length === 10) phone = '91' + phone;
+  else if (!phone.startsWith('91') && phone.length > 10) phone = '91' + phone;
+  return phone;
+};
+
+// Meta-specific body + the SAME BankEzee signature block used across Connect.
+const buildMetaWhatsApp = (name, loanType, agentName) =>
+  `Hi ${name || 'there'},\n\nWe have received your application regarding ${loanType || 'loan requirement'} through Instagram/Meta.\n\nWe would like to understand your requirement better and discuss the best available solution for you.\n\nIf you are looking to consolidate existing debts, reduce your EMI burden, arrange additional funding, or explore a suitable loan option, our team can assist you in checking the available possibilities.\n\nPlease call us back on this number or reply here so we can discuss your requirement.\n\nRegards,\n${agentName || 'Team'}\nBankEzee – Loan Consolidation Platform\nwww.BankEzee.com`;
 
 // PREVIEW/DEV only. Never rendered against the production backend.
 const Diagnostic = ({ profile, source }) => {
@@ -125,14 +137,36 @@ const MetaLeadsScreen = ({ navigation, user }) => {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
           contentContainerStyle={{ padding: 12 }}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.card} data-testid="meta-lead-row"
-              onPress={() => navigation.navigate('MetaLeadDetail', { leadId: item.lead_id, user: profile })}>
-              <View style={styles.cardRow}>
-                <Text style={styles.name}>{item.full_name || 'Unnamed'}</Text>
-                <Text style={styles.status}>{item.status}</Text>
+            <View style={styles.card} data-testid="meta-lead-row">
+              <TouchableOpacity activeOpacity={0.7}
+                onPress={() => navigation.navigate('MetaLeadDetail', { leadId: item.lead_id, user: profile })}>
+                <View style={styles.cardRow}>
+                  <Text style={styles.name}>{item.full_name || 'Unnamed'}</Text>
+                  <Text style={styles.status}>{item.status}</Text>
+                </View>
+                <Text style={styles.sub}>{item.phone || '—'} · {item.city || '—'}</Text>
+              </TouchableOpacity>
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.callBtn]}
+                  data-testid="meta-card-call"
+                  onPress={() => navigation.navigate('MetaLeadDetail', { leadId: item.lead_id, user: profile, autoStartCall: true })}>
+                  <Text style={styles.actionText}>📞  Call</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionBtn, styles.waBtn]}
+                  data-testid="meta-card-whatsapp"
+                  onPress={() => {
+                    const phone = sanitizePhone(item.phone);
+                    if (!phone) return;
+                    const loanType = item.file?.loan_type || item.loan_type || 'loan requirement';
+                    const msg = buildMetaWhatsApp(item.full_name, loanType, profile?.name);
+                    Linking.openURL(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`);
+                  }}>
+                  <Text style={styles.actionText}>💬  WhatsApp</Text>
+                </TouchableOpacity>
               </View>
-              <Text style={styles.sub}>{item.phone || '—'} · {item.city || '—'}</Text>
-            </TouchableOpacity>
+            </View>
           )}
           ListEmptyComponent={<Text style={styles.empty}>No Meta leads assigned</Text>}
         />
@@ -159,6 +193,11 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, fontWeight: '600', color: '#111827' },
   status: { fontSize: 11, fontWeight: '700', color: '#7c3aed' },
   sub: { fontSize: 13, color: '#6b7280', marginTop: 4 },
+  actionRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  actionBtn: { flex: 1, minWidth: 120, paddingVertical: 9, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  callBtn: { backgroundColor: '#16a34a' },
+  waBtn: { backgroundColor: '#22c55e' },
+  actionText: { color: '#fff', fontSize: 14, fontWeight: '700' },
   empty: { textAlign: 'center', color: '#9ca3af', marginTop: 40 },
   denied: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
   deniedIcon: { fontSize: 44, marginBottom: 12 },

@@ -1984,3 +1984,23 @@ Frontend (mobile, syntax-verified via babel; no emulator):
 TESTING: iteration_60.json — backend 12/12 pytest (shape, math no-double-count, all periods, GP scoping,
 403 non-meta), frontend 100% (DOM order verified: combined top, Connect middle unchanged, Meta bottom).
 Verified numbers example (today): Connect calls 0 + Meta calls 3 = 3; Connect files 0 + Meta files 1 = 1.
+
+### Team-Leader (TL) Second-Level Calling + Reporting — June 2026 (VERIFIED, iteration_62)
+ADDITIVE layer over Connect. NEVER writes to GP call_logs; GP metrics/ownership/commissions unchanged.
+Backend NEW /app/backend/routes/tl.py (registered in server.py):
+- Collection tl_call_logs (call_level='TL', call_type='TL_CALL') with tl_user_id + original gp_user_id + lead_id + timings + outcome + resulting_status + reason + notes + follow_up + converted_to_file.
+- GET /api/tl/leads (pool of status 'leads'/'converted'/'file' for team GPs), /api/tl/stats,
+  POST /api/tl/leads/{id}/call (logs TL call, updates status, pushes 'TL Call' activity to lead.activities + db.activities),
+  GET /api/tl/call-logs, /api/tl/reports/summary, /reports/hourly, /reports/conversion, /api/tl/meta.
+- FILE conversion by TL: source_id = lead.assigned_to (GP) => GP keeps file ownership/count; audit fields
+  converted_by_tl / tl_user_id / tl_user_name / tl_conversion_at; tl_call_logs.converted_to_file=true (TL credit).
+- Scoping via _tl_scope: TL -> own team (GPs where tl_id==TL); Manager -> TLs where manager_id==mgr (+their GPs);
+  Admin/Ops -> all. Only admin/ops may POST outside team. Non-TL GP -> 403.
+Frontend NEW /app/frontend/src/pages/telecaller/team/TeamLeads.js — tabs Leads/TL Call Log/TL Summary/TL Hourly,
+  stats, filters (period/custom/TL/GP/outcome/converted), lead cards (Call + WhatsApp via utils/whatsapp openWhatsApp),
+  TL post-call modal (timer + outcome + status + reason + follow-up + notes + convert-to-file). Default period 'month'.
+  Routes: /admin/team/leads, /manager/team/leads, /agent/team/leads (nav links in Admin/Manager/Telecaller layouts, TL gated by is_tl).
+Mobile NEW /app/mobile-app/src/screens/TLTeamLeadsScreen.js (pool + stats + Call via Linking + post-call modal + WhatsApp),
+  api.js getTL* helpers, registered Stack 'TLTeamLeads', More-menu entry for tl/manager. Babel-verified (no emulator).
+TESTING: iteration_62.json backend 22/22 PASS (acceptance flow, FILE ownership preserved, GP call_logs untouched,
+  scoping + 403, reports, GP + Meta regression). Frontend 100%. Post-review fixes: default month, manager scoping tightened, dead code removed.

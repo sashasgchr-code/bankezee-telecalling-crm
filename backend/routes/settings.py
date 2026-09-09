@@ -22,6 +22,7 @@ class IntegrationSettings(BaseModel):
     admin_email: Optional[str] = None
     meta_email_enabled: Optional[bool] = None
     sender_email: Optional[str] = None
+    sender_name: Optional[str] = None
 
 
 @router.get("/integrations")
@@ -46,6 +47,7 @@ async def get_integration_settings(current_user: dict = Depends(require_admin)):
         "admin_email": settings.get("admin_email", ""),
         "meta_email_enabled": bool(settings.get("meta_email_enabled", False)),
         "sender_email": settings.get("sender_email", ""),
+        "sender_name": settings.get("sender_name", ""),
     }
     
     # Mask Resend key for display (show last 4 chars)
@@ -98,6 +100,10 @@ async def save_integration_settings(
     if settings.sender_email:
         update_data["sender_email"] = settings.sender_email
         os.environ["SENDER_EMAIL"] = settings.sender_email
+
+    if settings.sender_name:
+        update_data["sender_name"] = settings.sender_name
+        os.environ["EMAIL_FROM_NAME"] = settings.sender_name
     
     if existing:
         await db.app_settings.update_one(

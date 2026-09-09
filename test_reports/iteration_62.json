@@ -1,0 +1,34 @@
+{
+  "summary": "Iteration 62 — TL 2nd-level calling + reporting layer. Backend: 22/22 pytest cases PASS (scoping, acceptance flow inc. FILE conversion with source_id=GP preserved, tl_call_logs count, GP call_logs untouched, call-log filters, summary/hourly/conversion reports, cross-team 403, admin scope, GP + Meta regression). Frontend: /admin/team/leads and /agent/team/leads load; 4 tabs (Leads / TL Call Log / TL Summary / TL Hourly) present with correct data-testid. Lead cards render with Customer, Phone, Loan, Original GP, Became Lead, Last GP Call, Last TL Call, Follow-up, and Call+WhatsApp buttons. TL Call modal opens and displays 'Second-level TL call — original GP: <name> (ownership stays with GP)'. TL Call Log tab correctly lists TL calls with TL name, Customer, Original GP, When, Duration, Outcome, Status and File check. Admin TL Summary/Hourly panels render.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/admin/team/leads (Leads tab)", "issues": ["Default period is 'Today' but lead_created_at for the pool is historical; the initial view shows 0 lead cards until user switches to 'This Month' or wider range. Consider defaulting to 'This Month' or 'All' for TL leads pool since these are leads accumulated over time, not today's."]},
+      {"screen": "TeamLeads.js hydration", "issues": ["Multiple React hydration warnings (<span> illegally wrapping <select>/<option>/<tr>/<tbody>/<table>/<tfoot>) come from the ve-dynamic instrumentation wrappers (x-source-editable). Not blocking, but noisy in console."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter62_tl_layer.py",
+    "/app/test_reports/pytest/iter62_results.xml"
+  ],
+  "action_items": [
+    "(Optional UX) Default the Leads tab period to 'This Month' (or 'All') so TLs immediately see their team's pending LEAD-status leads instead of an empty state when nothing was created today."
+  ],
+  "critical_code_review_comments": [
+    "routes/tl.py /tl/call-logs builds q twice (first q = {'tl_user_id': {'$in': ...}} at line 377 is overwritten on line 379). Dead code — harmless but confusing.",
+    "routes/tl.py /tl/call-logs, /reports/summary and /reports/hourly rely on ($or tl_user_id/gp_user_id) which broadens scoping: a TL who was reassigned but still owns a gp_user_id would surface old calls. Fine today, but keep in mind for hierarchy changes.",
+    "routes/tl.py POST /leads/{lead_id}/call allows role in ('admin','ops','manager') to call for ANY GP (skips team match). This matches the intent (admin+manager see all) but manager access is broader than _tl_scope suggests — a manager can currently POST TL calls for any GP outside their hierarchy. Consider enforcing gp_map membership for manager as well.",
+    "routes/tl.py _get_lead lookup uses ObjectId only when len==24; leads created with UUID string ids also work — good; but the len==24 heuristic will misfire on 24-char UUIDs. Rare edge.",
+    "Frontend TeamLeads.js line 114: initial useEffect sets tl to me only when meta.is_tl and me — good; but the TL filter select is hidden for solo TL, so state is correct without UI. If a TL later gets assigned other TLs (peer visibility), this UX will re-appear correctly."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter62_tl_layer.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin: admin@bankezee.com / ConnectSasha12!!  |  TL: yarragondaanusha@gmail.com / TLtest@123  |  GP (non-TL): banothunithinnaik@gmail.com / Nithin@123",
+  "seed_data_creation": "Reset lead 6a9e293846f154d5e8ce75fe back to status='leads' twice via mongo before running acceptance flow (removed converted_by_tl audit fields and cleared its tl_call_logs entries) so the fresh 2-call acceptance flow could be re-run. After test completes the lead ends up in status='file' with converted_by_tl=true and 2 tl_call_logs entries — matching acceptance requirements.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Acceptance flow re-verified end-to-end via /api/tl endpoints. Lead 6a9e293846f154d5e8ce75fe is now status=file, source_id preserved to original GP, converted_by_tl=true. If re-running, reset with: db.leads.updateOne({_id: ObjectId('6a9e293846f154d5e8ce75fe')},{$set:{status:'leads'},$unset:{converted_by_tl:'',tl_conversion_at:'',file_created_at:'',file_status:'',file_assigned_to:'',source_id:'',source_name:''}}); db.tl_call_logs.deleteMany({lead_id:'6a9e293846f154d5e8ce75fe'}). GP call_logs collection stays 0 for that lead — verified in mongo directly.",
+  "rca of the issue": "No functional bugs found. The only observable UX gap is the default 'Today' period on Leads tab returning an empty state because TL leads accumulate historically; suggest defaulting to 'This Month'."
+}

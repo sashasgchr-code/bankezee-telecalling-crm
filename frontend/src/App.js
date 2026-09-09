@@ -29,7 +29,7 @@ import TelecallerLeads from "./pages/telecaller/Leads";
 import TelecallerFollowUps from "./pages/telecaller/FollowUps";
 import TelecallerProfile from "./pages/telecaller/Profile";
 import TelecallerAttendance from "./pages/telecaller/Attendance";
-import { TeamMembers, TeamData, TeamFiles, TeamCalls } from "./pages/telecaller/team";
+import { TeamMembers, TeamData, TeamFiles, TeamCalls, TeamLeads } from "./pages/telecaller/team";
 import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
 import BankEligibilityAnalysis from "./pages/files/BankEligibilityAnalysis";
@@ -187,6 +187,7 @@ function App() {
           <Route path="users" element={<AdminUsers />} />
           <Route path="users/legacy-mapping" element={<LegacyUserMapping />} />
           <Route path="reports" element={<AdminReports />} />
+          <Route path="team/leads" element={<TeamLeads />} />
           <Route path="tracking" element={<DailyTrackingSheet />} />
           <Route path="attendance" element={<AdminAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
@@ -216,6 +217,7 @@ function App() {
           <Route path="team/data" element={<TeamData />} />
           <Route path="team/files" element={<TeamFiles />} />
           <Route path="team/calls" element={<TeamCalls />} />
+          <Route path="team/leads" element={<TeamLeads />} />
           <Route path="reports" element={<AdminReports />} />
         </Route>
 
@@ -242,6 +244,7 @@ function App() {
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="team" element={<ManagerTeam />} />
           <Route path="team/calls" element={<TeamCalls />} />
+          <Route path="team/leads" element={<TeamLeads />} />
         </Route>
 
         {/* HR Routes - Dashboard & Files are view only, Attendance & Leave same as Admin */}

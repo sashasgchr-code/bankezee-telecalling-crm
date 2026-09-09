@@ -19,6 +19,7 @@ import FileDetailScreen from './src/screens/FileDetailScreen';
 import FollowUpsScreen from './src/screens/FollowUpsScreen';
 import MyTeamScreen from './src/screens/MyTeamScreen';
 import ReportsScreen from './src/screens/ReportsScreen';
+import TLTeamLeadsScreen from './src/screens/TLTeamLeadsScreen';
 import LeaveScreen from './src/screens/LeaveScreen';
 import MoreScreen from './src/screens/MoreScreen';
 import HourlyReportScreen from './src/screens/HourlyReportScreen';
@@ -113,6 +114,7 @@ const AppNavigator = ({ user, mobileRole, onLogout }) => (
 
     <Stack.Screen name="MyTeam">{props => <MyTeamScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
     <Stack.Screen name="Reports">{props => <ReportsScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
+    <Stack.Screen name="TLTeamLeads">{props => <TLTeamLeadsScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
     <Stack.Screen name="HourlyReport">{props => <HourlyReportScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
     <Stack.Screen name="Attendance" component={AttendanceScreen} />
     <Stack.Screen name="TeamAttendance">{props => <TeamAttendanceScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>

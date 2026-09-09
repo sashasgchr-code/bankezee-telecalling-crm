@@ -1,10 +1,14 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, STATUSES, fmtDate, fmtShort, BRAND, BRAND_DARK } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
-import { Search, RefreshCw, MapPin, Phone, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { openMetaWhatsApp } from "../../utils/whatsapp";
+import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+
+const metaLoanType = (lead) => (lead?.file?.loan_type || lead?.loan_type || "loan requirement");
+
 
 export default function MetaLeads() {
   const meta = useMetaUser();
@@ -28,6 +32,11 @@ export default function MetaLeads() {
   const [selected, setSelected] = useState(new Set());
   const [bulkPartner, setBulkPartner] = useState("");
   const [callLead, setCallLead] = useState(null);
+  const callLeadRef = useRef(null);
+
+  // Bind a call explicitly to the lead that initiated it (guards against stale-customer saves).
+  const openCall = (lead) => { callLeadRef.current = lead; setCallLead(lead); };
+  const closeCall = () => { callLeadRef.current = null; setCallLead(null); };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,7 +76,17 @@ export default function MetaLeads() {
     <div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p><p className={`text-xs font-semibold truncate ${className}`}>{value || "—"}</p></div>
   );
 
-  const logCallFor = async (payload) => { await api.post(`/meta/leads/${callLead.lead_id}/calls`, payload); toast.success("Call logged"); load(); };
+  const logCallFor = async (payload) => {
+    const bound = callLeadRef.current;
+    if (!bound || (callLead && bound.lead_id !== callLead.lead_id)) {
+      toast.error("Call context changed — please reopen the call for this lead");
+      closeCall();
+      return;
+    }
+    await api.post(`/meta/leads/${bound.lead_id}/calls`, payload);
+    toast.success("Call logged");
+    load();
+  };
   const toggleOne = (id) => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
   const allOnPage = leads.length > 0 && leads.every((l) => selected.has(l.lead_id));
   const toggleAll = () => { const s = new Set(selected); allOnPage ? leads.forEach((l) => s.delete(l.lead_id)) : leads.forEach((l) => s.add(l.lead_id)); setSelected(s); };
@@ -117,7 +136,7 @@ export default function MetaLeads() {
       </header>
 
       <div className="p-4 md:p-8">
-        {callLead && <MetaCallModal phone={callLead.phone} onClose={() => setCallLead(null)} onSubmit={logCallFor} />}
+        {callLead && <MetaCallModal phone={callLead.phone} onClose={closeCall} onSubmit={logCallFor} />}
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="relative flex-1 min-w-[220px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -199,8 +218,9 @@ export default function MetaLeads() {
                     <td className="py-2.5 px-3"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p></td>
                     <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
-                        <a data-testid={`meta-call-link-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => setCallLead(lead)} className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center shrink-0" title="Call"><Phone size={14} /></a>
-                        <div><a href={`tel:${lead.phone}`} onClick={() => setCallLead(lead)} className="text-sm hover:underline" style={{ color: BRAND }}>{lead.phone}</a><p className="text-xs text-slate-400">{lead.email}</p></div>
+                        <a data-testid={`meta-call-link-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center shrink-0" title="Call"><Phone size={14} /></a>
+                        <button data-testid={`meta-wa-link-${lead.lead_id}`} type="button" onClick={() => openMetaWhatsApp(lead.phone, lead.full_name, metaLoanType(lead), meta.name)} className="h-7 w-7 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center shrink-0" title="WhatsApp"><MessageCircle size={14} /></button>
+                        <div className="min-w-0"><a href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="text-sm hover:underline" style={{ color: BRAND }}>{lead.phone}</a><p className="text-xs text-slate-400 truncate">{lead.email}</p></div>
                       </div>
                     </td>
                     <td className="py-2.5 px-3 text-sm text-slate-600"><span className="inline-flex items-center gap-1"><MapPin size={12} className="text-slate-400" />{lead.city || "—"}</span></td>
@@ -242,9 +262,11 @@ export default function MetaLeads() {
                   </div>
                   <StatusPill status={lead.status} />
                 </div>
-                <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
-                  <a data-testid={`meta-card-call-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => setCallLead(lead)} className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0" title="Call"><Phone size={15} /></a>
-                  <a href={`tel:${lead.phone}`} onClick={() => setCallLead(lead)} className="text-sm font-medium" style={{ color: BRAND }}>{lead.phone || "—"}</a>
+                <div className="flex items-center gap-2 mt-3 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                  <a data-testid={`meta-card-call-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => openCall(lead)}
+                    className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-1.5 rounded-md bg-emerald-600 text-white px-3 py-2 text-sm font-medium active:bg-emerald-700"><Phone size={15} /> Call</a>
+                  <button data-testid={`meta-card-wa-${lead.lead_id}`} type="button" onClick={() => openMetaWhatsApp(lead.phone, lead.full_name, metaLoanType(lead), meta.name)}
+                    className="flex-1 min-w-[130px] inline-flex items-center justify-center gap-1.5 rounded-md bg-green-500 text-white px-3 py-2 text-sm font-medium active:bg-green-600"><MessageCircle size={15} /> WhatsApp</button>
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
                   <Field label="City" value={lead.city} />

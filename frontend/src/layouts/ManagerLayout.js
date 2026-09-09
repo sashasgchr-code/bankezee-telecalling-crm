@@ -34,6 +34,7 @@ const ManagerLayout = () => {
   // Team pages for Manager view - Team Data / Team Files removed (covered by main nav)
   const teamNavItems = [
     { path: '/manager/team', icon: Users, label: 'My Team' },
+    { path: '/manager/team/leads', icon: PhoneCall, label: 'Team Leads' },
     { path: '/manager/team/calls', icon: PhoneCall, label: 'Team Calls' },
   ];
 

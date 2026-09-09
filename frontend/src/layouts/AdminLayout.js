@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, X, UserCheck, Boxes } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, X, UserCheck, Boxes, PhoneCall } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
@@ -29,6 +29,7 @@ const AdminLayout = () => {
     { path: '/admin/approvals', icon: UserCheck, label: 'Approvals' },
     { path: '/admin/users', icon: Users, label: 'Users' },
     { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/admin/team/leads', icon: PhoneCall, label: 'Team Leads (TL)' },
     { path: '/admin/attendance', icon: Clock, label: 'Attendance' },
     { path: '/admin/leave', icon: Calendar, label: 'Leave' },
     ...(user?.meta_access ? [{ path: '/meta', icon: Boxes, label: 'Meta CRM' }] : []),
