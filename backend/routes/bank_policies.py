@@ -259,7 +259,23 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
     lead = await db.leads.find_one(doc_ref_filter(lead_id), {"_id": 0})
     if not lead:
         raise HTTPException(status_code=404, detail="Lead/File not found")
-    
+    check_result = await analyze_eligibility(lead, lead_id, current_user.get("name", "System"))
+    # Store in history + reference on the Connect lead
+    await db.eligibility_checks.insert_one({**check_result})
+    await db.leads.update_one(
+        {"id": lead_id},
+        {"$set": {"last_eligibility_check": {
+            "id": check_result["id"], "generated_at": check_result["generated_at"],
+            "eligible_count": check_result["eligible_count"], "total_policies": check_result["total_policies"],
+            "profile_strength": check_result["profile_strength"]},
+            "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return check_result
+
+
+async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "System") -> dict:
+    """Shared eligibility engine used by Connect (db.leads) and Meta compat (meta_leads).
+    Pure analysis: takes a lead dict with file_details, returns the check_result payload."""
     file_details = lead.get("file_details") or lead.get("additional_data") or {}
     
     # Extract customer profile data
@@ -642,7 +658,7 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
         "id": str(uuid.uuid4()),
         "lead_id": lead_id,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generated_by": current_user.get("name", "System"),
+        "generated_by": generated_by,
         "profile": {
             "full_name": full_name,
             "requirement": requirement,
@@ -676,26 +692,6 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
         "required_missing": [m for m in missing_info
                              if m in ("CIBIL Score", "Net Salary", "Loan Amount Required")],
     }
-    
-    # Store in history
-    await db.eligibility_checks.insert_one({**check_result})
-    
-    # Update lead with reference
-    await db.leads.update_one(
-        {"id": lead_id},
-        {
-            "$set": {
-                "last_eligibility_check": {
-                    "id": check_result["id"],
-                    "generated_at": check_result["generated_at"],
-                    "eligible_count": eligible_count,
-                    "total_policies": len(results),
-                    "profile_strength": profile_strength
-                },
-                "updated_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-    )
     
     return check_result
 

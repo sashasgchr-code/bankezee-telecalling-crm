@@ -18,7 +18,6 @@ export default function MetaFileDetail() {
       roleOverride={meta.role}
       statusOptions={META_STATUS_OPTIONS}
       mode="meta"
-      hideEligibilityCheck
       sidebarExtra={<MetaFileSidebar leadId={leadId} meta={meta} />}
     />
   );

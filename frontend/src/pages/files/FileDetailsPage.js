@@ -498,6 +498,7 @@ const FileDetailsPage = ({
           </div>
           <button
             onClick={() => {
+              if (isMeta) { navigate(`/meta/files/${fileId}/check-eligibility`); return; }
               const basePath = isManager ? '/manager' : (isAdmin || isOps ? '/admin' : (isHr ? '/hr' : '/agent'));
               navigate(`${basePath}/files/${fileId}/check-eligibility`);
             }}

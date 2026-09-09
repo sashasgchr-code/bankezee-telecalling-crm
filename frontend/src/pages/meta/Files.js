@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
-import { PROC_STATUSES, inr, maskPhone, BRAND, BRAND_DARK } from "./metaCommon";
-import { FolderOpen, FileCheck2, FileClock, Eye, EyeOff, ChevronRight, Search } from "lucide-react";
+import { PROC_STATUSES, inr, maskPhone, BRAND, BRAND_DARK, useMetaUser } from "./metaCommon";
+import { FolderOpen, FileCheck2, FileClock, Eye, EyeOff, ChevronRight, Search, UserCheck } from "lucide-react";
 
 const GREEN = new Set(["Approved", "Disbursed", "Login Done", "Documents Collected"]);
 const RED = new Set(["Declined", "Not Eligible", "Not Login", "Not Disbursed", "FI Negative"]);
@@ -55,11 +55,15 @@ function FileRow({ f, onOpen }) {
 
 export default function MetaFiles() {
   const navigate = useNavigate();
+  const meta = useMetaUser();
   const [stats, setStats] = useState(null);
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  // Processors land on their own queue by default; staff can toggle it on.
+  const [myOnly, setMyOnly] = useState(meta.role === "processor");
+  const canFilterMine = ["processor", "admin", "ops"].includes(meta.role);
 
   useEffect(() => {
     Promise.all([
@@ -71,7 +75,8 @@ export default function MetaFiles() {
   const filtered = files.filter((f) => {
     const okS = statusFilter === "ALL" || (f.processing_status || "New") === statusFilter;
     const okQ = !q || `${f.full_name || ""} ${f.phone || ""} ${f.file?.loan_type || ""}`.toLowerCase().includes(q.toLowerCase());
-    return okS && okQ;
+    const okMine = !myOnly || f.assigned_processor_id === meta.user_id;
+    return okS && okQ && okMine;
   });
 
   return (
@@ -95,6 +100,16 @@ export default function MetaFiles() {
             <option value="ALL">All Statuses</option>
             {PROC_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          {canFilterMine && (
+            <button
+              data-testid="meta-files-my-toggle"
+              onClick={() => setMyOnly((v) => !v)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium border transition-colors ${myOnly ? "text-white border-transparent" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
+              style={myOnly ? { background: BRAND } : {}}
+            >
+              <UserCheck size={15} /> My Files
+            </button>
+          )}
         </div>
         <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden" data-testid="meta-files-list">
           {loading ? <p className="py-16 text-center text-slate-400 text-sm">Loading files...</p>

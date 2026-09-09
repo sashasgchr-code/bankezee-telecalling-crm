@@ -63,9 +63,21 @@ const InfoPill = ({ icon: Icon, label, value, className = '' }) => {
   );
 };
 
-export default function EligibilityCheck() {
+export default function EligibilityCheck({
+  idOverride = null,
+  checkUrl = null,
+  historyUrl = null,
+  leadUrl = null,
+  mode = 'connect',
+  hideDocAI = false,
+} = {}) {
   const { fileId } = useParams();
-  const leadId = fileId; // Alias for clarity - files are leads with status='file'
+  const leadId = idOverride || fileId; // Alias for clarity - files are leads with status='file'
+  const isMeta = mode === 'meta';
+  const _checkUrl = checkUrl || `/bank-policies/check-eligibility/${leadId}`;
+  const _historyUrl = historyUrl || `/bank-policies/eligibility-history/${leadId}`;
+  const _leadUrl = leadUrl || `/leads/${leadId}`;
+  const _docAiEnabled = !isMeta && !hideDocAI;
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
@@ -85,7 +97,7 @@ export default function EligibilityCheck() {
   const runCheck = async () => {
     setLoading(true);
     try {
-      const res = await api.post(`/bank-policies/check-eligibility/${leadId}`);
+      const res = await api.post(_checkUrl);
       setData(res.data);
       toast.success('Eligibility analysis complete');
     } catch (e) {
@@ -96,7 +108,7 @@ export default function EligibilityCheck() {
   const loadHistory = async () => {
     setHistoryLoading(true);
     try {
-      const res = await api.get(`/bank-policies/eligibility-history/${leadId}`);
+      const res = await api.get(_historyUrl);
       setHistory(res.data || []);
     } catch (e) {
       toast.error('Failed to load history');
@@ -105,7 +117,7 @@ export default function EligibilityCheck() {
 
   const loadLeadDocs = async () => {
     try {
-      const res = await api.get(`/leads/${leadId}`);
+      const res = await api.get(_leadUrl);
       setLeadDocs(res.data?.documents || []);
     } catch (e) { /* ignore */ }
   };
@@ -161,9 +173,11 @@ export default function EligibilityCheck() {
   useEffect(() => {
     if (leadId) {
       runCheck();
-      // Trigger auto-parse in background after a short delay
-      const timer = setTimeout(() => autoParseDocuments(), 2000);
-      return () => clearTimeout(timer);
+      // Trigger auto-parse in background after a short delay (Connect only)
+      if (_docAiEnabled) {
+        const timer = setTimeout(() => autoParseDocuments(), 2000);
+        return () => clearTimeout(timer);
+      }
     }
   }, [leadId]); // eslint-disable-line
 
@@ -300,9 +314,11 @@ export default function EligibilityCheck() {
                 <Button size="sm" variant="outline" onClick={() => { setShowHistory(!showHistory); if (!showHistory && history.length === 0) loadHistory(); }} data-testid="history-btn">
                   <History className="w-4 h-4 mr-1" /> History
                 </Button>
+                {_docAiEnabled && (
                 <Button size="sm" variant="outline" className="border-violet-300 text-violet-700 hover:bg-violet-50" onClick={() => { setShowAiParser(!showAiParser); if (!showAiParser && leadDocs.length === 0) loadLeadDocs(); }} data-testid="ai-parse-btn">
                   <Sparkles className="w-4 h-4 mr-1" /> AI Parse Docs
                 </Button>
+                )}
               </>
             )}
           </div>
@@ -651,7 +667,7 @@ export default function EligibilityCheck() {
                         <span key={i} className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded border border-amber-200">{m} not available</span>
                       ))}
                     </div>
-                    <Button variant="outline" size="sm" className="mt-2 h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-100" onClick={() => navigate(`/files/${leadId}`)}>
+                    <Button variant="outline" size="sm" className="mt-2 h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-100" onClick={() => navigate(isMeta ? `/meta/files/${leadId}` : `/files/${leadId}`)}>
                       <Upload className="w-3 h-3 mr-1" /> Update Lead Data / Upload Documents
                     </Button>
                   </div>

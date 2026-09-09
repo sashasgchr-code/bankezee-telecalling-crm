@@ -431,6 +431,11 @@ async def compat_download_document(lead_id: str, doc_id: str, user: dict = Depen
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     if not doc.get("storage_key"):
+        legacy = await _read_legacy_binary(doc_id)
+        if legacy:
+            content, ctype = legacy
+            return Response(content=content, media_type=doc.get("content_type") or ctype,
+                            headers={"Content-Disposition": f'attachment; filename="{doc.get("filename") or doc_id}"'})
         raise HTTPException(status_code=409, detail="Document migration pending")
     try:
         content, ctype = meta_storage.get_object(doc["storage_key"])
@@ -450,6 +455,59 @@ async def compat_delete_document(lead_id: str, doc_id: str, user: dict = Depends
     return {"ok": True}
 
 
+async def _read_legacy_binary(doc_id: str):
+    """Serve a legacy Meta document from the meta_fs GridFS bucket once its binary has been
+    migrated (meta_fs.files.binary_pending == False and chunks exist). Returns (bytes, ctype)."""
+    f = await db["meta_fs.files"].find_one({"_id": doc_id})
+    if not f or f.get("binary_pending"):
+        return None
+    chunks = await db["meta_fs.chunks"].find({"files_id": doc_id}).sort("n", 1).to_list(100000)
+    if not chunks:
+        return None
+    data = b"".join(bytes(c["data"]) for c in chunks)
+    ctype = (f.get("metadata") or {}).get("content_type") or "application/octet-stream"
+    return data, ctype
+
+
+@router.post("/{lead_id}/check-eligibility")
+async def compat_check_eligibility(lead_id: str, user: dict = Depends(require_meta_access)):
+    lead = await _get_lead_or_404(lead_id)
+    _authorize_read(user, lead)
+    from routes.bank_policies import analyze_eligibility
+    connect = build_connect_file(lead)
+    synth = {
+        "file_details": connect["file_details"],
+        "full_name": connect["name"],
+        "name": connect["name"],
+        "requirement": connect["requirement"],
+        "eligibilities": connect["eligibilities"],
+    }
+    result = await analyze_eligibility(synth, lead_id, user.get("name", "System"))
+    # Store history on the ISOLATED meta lead (never touch Connect's db.leads)
+    await db.meta_leads.update_one({"lead_id": lead_id}, {"$push": {"eligibility_checks": {
+        "id": result["id"], "generated_at": result["generated_at"],
+        "eligible_count": result["eligible_count"], "total_policies": result["total_policies"],
+        "profile_strength": result["profile_strength"], "generated_by": result.get("generated_by")}}})
+    return result
+
+
+@router.get("/{lead_id}/eligibility-history")
+async def compat_eligibility_history(lead_id: str, user: dict = Depends(require_meta_access)):
+    lead = await _get_lead_or_404(lead_id)
+    _authorize_read(user, lead)
+    hist = list(reversed(lead.get("eligibility_checks") or []))[:20]
+    return hist
+
+
+@router.get("/{lead_id}/lead")
+async def compat_lead_alias(lead_id: str, user: dict = Depends(require_meta_access)):
+    """Connect EligibilityCheck fetches GET /leads/{id} for the customer summary. Serve the
+    Connect-shaped file so the same page renders for Meta without a separate call."""
+    lead = await _get_lead_or_404(lead_id)
+    _authorize_read(user, lead)
+    return build_connect_file(lead)
+
+
 import io
 import zipfile
 
@@ -458,18 +516,25 @@ import zipfile
 async def compat_download_all(lead_id: str, user: dict = Depends(require_meta_access)):
     lead = await _get_lead_or_404(lead_id)
     _authorize_read(user, lead)
-    docs = [d for d in (lead.get("documents") or []) if d.get("storage_key")]
-    if not docs:
+    docs = lead.get("documents") or []
+    entries = []  # (filename, bytes)
+    for d in docs:
+        if d.get("storage_key"):
+            try:
+                content, _ = meta_storage.get_object(d["storage_key"])
+                entries.append((d.get("filename") or d.get("doc_id"), content))
+            except Exception:
+                continue
+        else:
+            legacy = await _read_legacy_binary(d.get("doc_id"))
+            if legacy:
+                entries.append((d.get("filename") or d.get("doc_id"), legacy[0]))
+    if not entries:
         raise HTTPException(status_code=404, detail="No downloadable documents (legacy binaries pending migration)")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         seen = {}
-        for d in docs:
-            try:
-                content, _ = meta_storage.get_object(d["storage_key"])
-            except Exception:
-                continue
-            name = d.get("filename") or d["doc_id"]
+        for name, content in entries:
             seen[name] = seen.get(name, 0) + 1
             if seen[name] > 1:
                 stem, dot, ext = name.rpartition(".")

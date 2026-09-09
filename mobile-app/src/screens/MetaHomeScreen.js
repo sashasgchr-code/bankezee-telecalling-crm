@@ -112,6 +112,10 @@ const FilesTab = ({ navigation, profile }) => {
   const [pstatus, setPstatus] = useState('');
   const [preset, setPreset] = useState('ALL');
   const [custom, setCustom] = useState({ from: '', to: '' });
+  const metaRole = (profile?.meta_role || '').toLowerCase();
+  const metaUid = profile?.meta_user_id;
+  const canFilterMine = ['processor', 'admin', 'ops'].includes(metaRole);
+  const [myOnly, setMyOnly] = useState(metaRole === 'processor');
 
   const range = preset === 'CUSTOM' ? custom : presetRange(preset);
   const load = useCallback(async () => {
@@ -126,13 +130,21 @@ const FilesTab = ({ navigation, profile }) => {
   }, [q, range.from, range.to]);
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
 
-  const shown = files.filter((f) => !pstatus || (f.processing_status || 'New') === pstatus);
+  const shown = files.filter((f) =>
+    (!pstatus || (f.processing_status || 'New') === pstatus) &&
+    (!myOnly || f.assigned_processor_id === metaUid));
 
   return (
     <View style={{ flex: 1 }}>
       <View style={styles.searchWrap}>
         <TextInput style={styles.search} value={q} onChangeText={setQ} placeholder="Search customer/phone…" placeholderTextColor="#9ca3af" data-testid="meta-files-search" />
       </View>
+      {canFilterMine && (
+        <TouchableOpacity data-testid="meta-files-my-toggle" onPress={() => setMyOnly((v) => !v)}
+          style={[styles.chip, { alignSelf: 'flex-start', marginLeft: 12, marginTop: 6 }, myOnly && styles.chipActive]}>
+          <Text style={[styles.chipText, myOnly && styles.chipTextActive]}>👤 My Files</Text>
+        </TouchableOpacity>
+      )}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.chipsRow}>
         {PROC_STATUSES.map((s) => (
           <TouchableOpacity key={s || 'all'} onPress={() => setPstatus(s)} style={[styles.chip, pstatus === s && styles.chipActive]}>

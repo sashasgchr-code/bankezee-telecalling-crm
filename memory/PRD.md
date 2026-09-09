@@ -1830,3 +1830,53 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
 ### Still pending (unchanged from prior)
 - P1: GridFS binary backfill (149 legacy meta docs), production Google Sheet sync cutover, prod emails.
 - Mobile Meta File Detail runtime verification on a device/emulator.
+
+---
+
+## META: CHECK-ELIGIBILITY PARITY + PROCESSOR "MY FILES" + LEGACY DOC MIGRATION PREP (June 2026)
+
+### Check Eligibility for Meta (DONE, verified web+backend)
+- Refactored `bank_policies.py` `check_eligibility` into a shared `analyze_eligibility(lead, lead_id, generated_by)`
+  engine; Connect route persists history to `db.leads` (unchanged behaviour, regression verified 200 + AI-Parse present).
+- New compat endpoints: `POST /api/meta/files-compat/{id}/check-eligibility`, `GET .../eligibility-history`,
+  `GET .../lead`. Meta history stored on the meta lead (`eligibility_checks`), never db.leads.
+- Web `EligibilityCheck.js` parameterized (`idOverride/checkUrl/historyUrl/leadUrl/mode`, doc-AI hidden in meta).
+  Meta wrapper `pages/meta/EligibilityCheck.js`; route `/meta/files/:leadId/check-eligibility`; button un-hidden
+  in Meta File Detail. Verified: Meta shows Strong profile, 8/35 eligible, ranked banks; Connect unchanged.
+
+### Processor "My Files" filter (DONE web + mobile code)
+- Web `meta/Files.js` and mobile `MetaHomeScreen.js` FilesTab: a "My Files" toggle (data-testid
+  `meta-files-my-toggle`) filtering `assigned_processor_id == meta_user_id`, defaulting ON for processors
+  (admin/ops can toggle). Backend already scopes processors to their assigned files.
+
+### Legacy 149 Meta document binaries (PARTIAL)
+- Download fallback added in `meta_compat.py` (`_read_legacy_binary`): once a binary is copied into
+  `meta_fs` GridFS (binary_pending=False + chunks), single-download and download-all serve it. Verified in
+  preview by planting/removing a synthetic binary (200, correct bytes).
+- Migration script `backend/scripts/migrate_meta_binaries.py` — read-only `--verify` + idempotent `--copy`,
+  checksum/length verified, never touches source. NEEDS the OLD Meta Mongo URI (SOURCE_MONGO_URL/SOURCE_DB)
+  to run — NOT yet provided, so the copy has NOT been executed.
+
+### Sheet & Email production cutover (NOT STARTED)
+- Requires production secret/config inspection via the deployer + is a production cutover. Blocked on inputs.
+
+### Migration tooling FINALISED & proven (June 2026)
+- `backend/scripts/migrate_meta_binaries.py` upgraded: reads the 149 expected docs from the bundled
+  `data/meta_seed.json.gz` (self-contained), and supports:
+  - `--verify [--source-local]`  read-only: source DB/bucket, fs.files/chunks counts, total bytes,
+    149-id match, filename/ctype/length alignment, corrupt/missing-chunk detection, positive-confirm flag.
+  - `--export-dump PATH --source-local`  (run in OLD Meta job) -> portable gzip JSONL of the 149 binaries.
+  - `--import-dump PATH`  (run in Connect job) -> writes meta_fs.chunks + flips binary_pending. IDEMPOTENT.
+  - `--copy`  direct source->dest when both DBs reachable.
+- Verified in preview: import 1 record -> compat download returned 200/correct bytes -> restored.
+- Download fallback (`meta_compat._read_legacy_binary`) serves migrated GridFS binaries for single + zip.
+
+### RUNBOOK (blocked on actions outside the Connect job)
+- Connect deployer cannot reach the OLD Meta deployment (ownership boundary), and cannot WRITE secrets.
+- #3 copy: run in OLD Meta job -> `python3 scripts/migrate_meta_binaries.py --verify --source-local`
+  then `--export-dump /tmp/meta_binaries.jsonl.gz --source-local`; move file to Connect job ->
+  `--import-dump /tmp/meta_binaries.jsonl.gz`.
+- #4 cutover blocked until Connect prod secrets set: GOOGLE_SHEET_ID (same as OLD Meta sheet) + a valid
+  RESEND_API_KEY (currently EMPTY); confirm SENDER_EMAIL/reply-to/META_EMAIL_ENABLED. Then follow the
+  9-step cutover order (manual sync check -> disable old sync -> enable Connect sync -> verify single
+  importer -> enable emails -> one test assignment + one FILE notification -> confirm no blast).
