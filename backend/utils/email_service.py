@@ -42,6 +42,21 @@ async def _resolve_resend():
     return resend
 
 
+async def _resolve_sender() -> str:
+    """Resolve the 'from' address AT SEND TIME. DB app_settings.sender_email wins (so it can be
+    set via the admin Settings API across all replicas without a deployment secret), then env
+    SENDER_EMAIL, then the Resend testing default."""
+    try:
+        from utils.database import db
+        doc = await db.app_settings.find_one({"type": "integrations"}, {"_id": 0, "sender_email": 1})
+        v = ((doc or {}).get("sender_email") or "").strip()
+        if v:
+            return v
+    except Exception:
+        pass
+    return (os.environ.get("SENDER_EMAIL") or "onboarding@resend.dev").strip()
+
+
 async def send_email(to: str, subject: str, html: str) -> bool:
     """
     Send an email using Resend API.
@@ -58,7 +73,7 @@ async def send_email(to: str, subject: str, html: str) -> bool:
 
     try:
         params = {
-            "from": SENDER_EMAIL,
+            "from": await _resolve_sender(),
             "to": [to],
             "subject": subject,
             "html": html

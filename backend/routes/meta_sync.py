@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 
 from utils.database import db
 from utils.auth import require_meta_access
-from utils.email_service import send_email as connect_send_email
+from utils.email_service import send_email as connect_send_email, _resolve_sender
 
 logger = logging.getLogger("meta_sync")
 router = APIRouter(prefix="/api/meta", tags=["Meta Sync"])
@@ -70,8 +70,12 @@ async def _send_safe(to: str, subject: str, html: str, event: str = "generic"):
             logger.error(f"Meta email failed to {to}: {e}")
     else:
         logger.info(f"[META EMAIL SUPPRESSED] event={event} to={to} subject={subject!r}")
+    try:
+        sender = await _resolve_sender()
+    except Exception:
+        sender = None
     await db.meta_email_log.insert_one({
-        "event": event, "to": to, "subject": subject,
+        "event": event, "to": to, "subject": subject, "from": sender,
         "sent": sent, "suppressed": (not sent and err is None), "error": err, "at": now_iso(),
     })
 
