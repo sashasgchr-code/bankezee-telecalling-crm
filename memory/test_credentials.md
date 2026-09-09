@@ -108,3 +108,9 @@ Meta entry point: log in, then click "Meta CRM" in the More menu (or navigate to
 |------|-------|----------|------|
 | Yarragonda Anusha | yarragondaanusha@gmail.com | TLtest@123 | TL (is_tl=true), 11 GPs |
 Note: password reset by agent for testing the TL layer.
+
+## Rama identities (kept separate — do not merge)
+| Login | Connect role | Password | Meta mapping | Platform |
+|-------|--------------|----------|--------------|----------|
+| rama@neosales.org | Manager | Manager@123 | Meta Ops (rama.saffronglobal@gmail.com / user_f78e7c76fd60) | Web |
+| rama@bankezee.com | Growth Partner | (existing plain_password in DB) | Meta GP (rama@neosales.org / user_ff7502ecd6a5) | Web + Mobile |
