@@ -1893,3 +1893,16 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
 - BLOCKER: GridFS production verification (Job e74b35da / meta.bankezee.com) CANNOT be run from the Connect
   deployer (hard per-conversation scope). Must be launched from the Meta app's own Deployment Panel, either
   via that job's deployer mongo_query, or by running migrate_meta_binaries.py --verify --source-local there.
+
+### Legacy-binary HTTPS migration bridge built + deploy initiated (June 2026)
+- NEW routes/meta_admin_migrate.py: POST /api/meta/admin/legacy-binaries/upload-part (chunked,
+  parts staged in Mongo meta_upload_parts = pod-independent), POST /import (assemble+import+verify),
+  GET /verify. Auth = X-Seed-Secret(==WEBHOOK_CRON_SECRET) OR admin JWT. Idempotent.
+- Preview-proven end-to-end: chunked upload -> import (copied) -> rerun (skip) -> 401 without auth ->
+  single-chunk + multi-chunk downloads HTTP 200 with correct bytes/content-type -> restored clean.
+- Meta-job client generated: backend/scripts/meta_migrate_https_client.py (self-contained, embeds the
+  149 expected records; exports source GridFS read-only, streams 5MB parts over HTTPS to Connect,
+  triggers import+verify). Also backend/scripts/meta_copy_prod.py (direct-DB alternative).
+- Connect production deploy dispatched (carries compat adapter + download fallback + migration
+  endpoints + File-Detail/eligibility/My-Files). Sheet sync + email intentionally NOT enabled.
+- After deploy: run the Meta-job client from the OLD Meta deployment to migrate all 149 binaries.
