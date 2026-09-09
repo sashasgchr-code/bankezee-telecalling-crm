@@ -108,6 +108,13 @@ async def schedule_startup_tasks():
     readiness probe allows, which would keep the new revision from rolling out.
     """
     asyncio.create_task(setup_admin_accounts())
+    # One-time idempotent data migration: fix Rama's Connect<->Meta identity mapping.
+    try:
+        from migrations.rama_mapping import run as _run_rama_migration
+        from utils.auth import get_password_hash as _gph
+        asyncio.create_task(_run_rama_migration(db, _gph))
+    except Exception as e:
+        print(f"Rama mapping migration not scheduled: {e}")
     # Start the self-contained Meta sheet auto-sync (Connect is the sole importer).
     try:
         from routes.meta_sync import start_auto_sync
