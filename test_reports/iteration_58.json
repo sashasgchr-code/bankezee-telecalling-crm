@@ -1,0 +1,32 @@
+{
+  "summary": "RETEST of iter57 loan-type canonical parity fixes. All three FIX items verified PASS on the deployed frontend. FileDetailsPage edit dropdown now renders 19 canonical loan types grouped under 5 optgroups (Personal Loans / Home Loans / Vehicle Loans / Business Loans / Other Loans); bogus 'bt_topup_hl' is GONE; previously-missing values (balance_transfer_hl, top_up_hl, balance_transfer_topup_hl, msme_loan, lap, gold_loan, education_loan, other) are all present. Read-mode label now shows canonical labels ('Used Vehicle Loan BT', 'MSME Loan') via loanTypes.find. Save/reload roundtrip persists used_vehicle_loan_bt and msme_loan and both display canonical labels. FilesDashboard Add-New-File select (data-testid new-file-loan-type) exposes the same 19 grouped canonical options with no bogus value. Loan-type filter dropdown lists canonical labels (Balance Transfer + Top Up HL, MSME Loan, LAP, ...) with no bogus. GP (banothunithinnaik) is redirected from /admin/files/{id} to /agent and sees no Edit Details button — view-only enforced. Meta Web reuses FileDetailsPage so inherits the same canonical dropdown by construction.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_items": {
+    "FIX1_file_detail_edit_dropdown": "PASS - 19 canonical options, 5 optgroups [Personal/Home/Vehicle/Business/Other Loans], no bt_topup_hl, has balance_transfer_topup_hl + msme_loan + lap + gold_loan + education_loan + other + top_up_hl + balance_transfer_hl",
+    "FIX2_read_mode_label": "PASS - after saving used_vehicle_loan_bt reload shows 'Used Vehicle Loan BT' (canonical, not lowercase). after saving msme_loan reload shows 'MSME Loan'.",
+    "save_reload_roundtrip_vehicle": "PASS - used_vehicle_loan_bt persists round trip",
+    "save_reload_roundtrip_previously_unavailable": "PASS - msme_loan persists round trip and displays canonical label",
+    "FIX3_add_new_file_modal_select": "PASS - data-testid=new-file-loan-type is a canonical grouped select (19 options, 5 optgroups, no bogus value)",
+    "filter_parity": "PASS - Loan Types filter derives from canonical list (Balance Transfer + Top Up HL, MSME Loan, LAP present; no bt_topup_hl anywhere in any <select>)",
+    "meta_web_file_detail_parity": "PASS-by-construction - Meta reuses FileDetailsPage.js which is now canonical",
+    "gp_view_only": "PASS - GP redirected from /admin/files/{id} to /agent; no Edit Details button; cannot edit loan type"
+  },
+  "test_report_links": ["/app/backend/tests/test_iter57_loan_types.py"],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Optional-but-recommended (from iter57, still applicable): FileDetailsPage.js is 1200+ lines. Extract a small <LoanTypeSelect/> primitive that internally uses useLoanTypes+optgroup so FilesDashboard, FileDetailsPage and any future page can share one implementation and prevent re-drift.",
+    "Consider a codegen/lint check that greps for hardcoded loan-type string literals in /app/frontend/src to catch future drift."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (unchanged from iter57)", "frontend": "100% - all three fixes verified on deployed UI"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!! , banothunithinnaik@gmail.com/Nithin@123",
+  "seed_data_creation": "Toggled file_details.type_of_loan on file d7c961d2-742d-4e3f-9321-4b20d6a7611c (Patamata Vijay Kumar) through used_vehicle_loan_bt -> msme_loan -> used_vehicle_loan_bt (final state = used_vehicle_loan_bt).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "iter57 loan-type canonical parity is fully resolved on the frontend. FileDetailsPage.js (lines ~697-716) now uses useLoanTypes()+optgroup and canonical label lookup. FilesDashboard.js (~line 2340) uses canonical grouped select for Add New File and canonical list for the filter. Backend GET /api/config/loan-types verified stable in iter57 (3/3 pytest). Nothing further to retest for loan types unless the canonical catalog changes."
+}

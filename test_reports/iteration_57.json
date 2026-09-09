@@ -1,0 +1,49 @@
+{
+  "summary": "Iter57 - Loan-type canonical-catalog parity. Backend endpoint /api/config/loan-types is CORRECT (3/3 pytest passed: exposes 19 loan types, correct categories/labels, vehicle_loan_values = [new_vehicle_loan, used_vehicle_loan_bt, used_vehicle_loan_fresh]). PUT /api/files/{id}/details persists type_of_loan under file_details.type_of_loan for used_vehicle_loan_bt and business_loan and it round-trips via GET. HOWEVER, the FRONTEND parity is broken: Connect Web File Detail (/admin/files/{id}) does NOT consume the new shared LoanRequirementsSection/useLoanTypes hook. Instead FileDetailsPage.js lines 697-716 renders its OWN hardcoded inline <select> with only 12 options, missing 8 canonical types (balance_transfer_hl, top_up_hl, balance_transfer_topup_hl, msme_loan, lap, gold_loan, education_loan, other), and contains a NON-CANONICAL value 'bt_topup_hl' (canonical is balance_transfer_topup_hl). No optgroup grouping. Save+reload roundtrip works, but read-mode display (line 718) uses fd.type_of_loan.replace(/_/g,' ') so the label shows 'used vehicle loan bt' (lowercase, underscore-swapped) instead of the canonical 'Used Vehicle Loan BT' from the catalog.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FileDetailsPage.js Loan Requirements edit section", "issue": "Hardcoded 12-option <select> at lines 697-716 bypasses the shared useLoanTypes() catalog. Missing 8 canonical loan types (balance_transfer_hl, top_up_hl, balance_transfer_topup_hl, msme_loan, lap, gold_loan, education_loan, other) and contains a bogus value 'bt_topup_hl' (should be 'balance_transfer_topup_hl'). No <optgroup> category grouping. LoanRequirementsSection.js was updated as spec'd but is never rendered here.", "selector": "label:has-text('Type of Loan') + select in FileDetailsPage", "priority": "CRITICAL"},
+      {"component": "FileDetailsPage.js Loan Requirements read view", "issue": "Line 718 uses `fd.type_of_loan?.replace(/_/g, ' ')` which yields raw 'used vehicle loan bt' instead of the canonical label 'Used Vehicle Loan BT' from the catalog. Should use `loanTypes.find(t=>t.value===fd.type_of_loan)?.label || fd.type_of_loan`.", "selector": "Loan Requirements > Type of Loan (view mode)", "priority": "HIGH"}
+    ],
+    "integration_issues": [
+      {"flow": "Connect Web file edit -> save -> reload", "issue": "Backend persists correctly (verified with PUT /api/files/{id}/details additional_data.type_of_loan and GET returns file_details.type_of_loan), but the dropdown that the admin sees exposes fewer/incorrect options than the canonical /api/config/loan-types response, and non-vehicle types that only exist in the canonical list (msme_loan, lap, gold_loan, etc.) cannot be set from the UI.", "affected_selectors": ["FileDetailsPage.js:697-716", "components/file-detail/LoanRequirementsSection.js (unused here)"]}
+    ],
+    "design_issues": [
+      {"screen": "Multiple pages (Dashboard, File Detail)", "issues": ["React hydration warnings from visual-editor <span data-ve-dynamic> wrapping inside <select>/<tbody>/<table> — same as prior iterations, not user-visible."]}
+    ]
+  },
+  "verified_items": {
+    "backend_endpoint_catalog": "PASS - GET /api/config/loan-types returns 19 types, correct categories, vehicle_loan_values=[new_vehicle_loan,used_vehicle_loan_bt,used_vehicle_loan_fresh], no auth required (200 OK)",
+    "backend_persistence_used_vehicle_loan_bt": "PASS - PUT then GET returns used_vehicle_loan_bt under file_details",
+    "backend_persistence_business_loan": "PASS - PUT then GET returns business_loan under file_details",
+    "frontend_web_admin_edit_dropdown_shows_19_grouped": "FAIL - only 12 options, no optgroup, has non-canonical bt_topup_hl, missing 8 types",
+    "frontend_read_display_label": "FAIL - shows raw underscore-swapped value not canonical label",
+    "meta_web_dropdown_same_19": "NOT TESTED - Meta File Detail page reuses FileDetailsPage.js so it inherits the SAME bug",
+    "gp_view_only": "PASS-adjacent - GP account (banothunithinnaik) routes to /agent/leads/{id} which is a fully separate compact view without any Edit affordance for loan type; the Type of Loan field is not surfaced at all in that GP view (spec only requires them to still SEE loan type; this UI omits it entirely and shows only name/phone/email/address/notes/call history). Flag to main agent."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iter57_loan_types.py",
+    "/app/test_reports/pytest/iter57.xml"
+  ],
+  "action_items": [
+    "In /app/frontend/src/pages/files/FileDetailsPage.js replace the hardcoded <select> at lines 697-720 to render <LoanRequirementsSection details={editedDetails} isEditing={isEditingDetails} onDetailChange={(k,v)=>setEditedDetails({...editedDetails,[k]:v})}/> OR inline the same useLoanTypes()+grouped optgroup logic. Ensure read-mode maps value->label via loanTypes.find. This will automatically satisfy Meta web parity because Meta reuses FileDetailsPage.js.",
+    "Remove the non-canonical option value 'bt_topup_hl' — the canonical id is 'balance_transfer_topup_hl'.",
+    "Consider surfacing Type of Loan (read-only) on the GP /agent/leads/{id} view so growth partners can still SEE the file's loan type (spec requirement)."
+  ],
+  "critical_code_review_comments": [
+    "FileDetailsPage.js is 1204 lines and duplicates dropdown/select markup that a shared component was created to own (LoanRequirementsSection). This is exactly what caused the drift. Recommend adopting the shared component or extracting the useLoanTypes+grouped optgroup pattern into a tiny <LoanTypeSelect/> primitive and use it in both places to prevent future drift.",
+    "loan-type display should never do raw underscore->space; always look up canonical label so renamed labels propagate.",
+    "Consider adding a lint rule / test that greps for hardcoded loan-type option values in frontend to catch future drift."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_iter57_loan_types.py"
+  ],
+  "success_rate": {"backend": "100% (3/3)", "frontend": "40% - shared component updated but not consumed by FileDetailsPage; dropdown remains a hardcoded 12-option list; save/reload works but with wrong catalog"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!!, banothunithinnaik@gmail.com/Nithin@123",
+  "seed_data_creation": "Tests toggled file_details.type_of_loan on file d7c961d2-742d-4e3f-9321-4b20d6a7611c (Patamata Vijay Kumar). Final state reverted to 'merge_multiple_loans' after tests.",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoint GET /api/config/loan-types is stable and complete. The frontend drift is entirely in /app/frontend/src/pages/files/FileDetailsPage.js (lines 690-720). The shared component /app/frontend/src/components/file-detail/LoanRequirementsSection.js is correct but not wired into FileDetailsPage.js. Meta web reuses FileDetailsPage.js so fixing that one place fixes both surfaces. Admin file for round-trip: /admin/files/d7c961d2-742d-4e3f-9321-4b20d6a7611c. GP flow uses a separate compact view at /agent/leads/{id} — that view has no Type of Loan field at all, which may violate the 'GP can still SEE loan type' spec.",
+  "rca of the issue": "E1 updated the shared LoanRequirementsSection component and the useLoanTypes hook + backend endpoint correctly, but FileDetailsPage.js (which is what actually renders both Connect Web and Meta Web file details) has its own inline <select> for Type of Loan predating the refactor. That inline select was never migrated. Reproduction: log in as admin, open /admin/files/{any-file}, click Edit Details, inspect the Type of Loan dropdown — only 12 options and includes 'bt_topup_hl'. Mitigation: replace the inline block at FileDetailsPage.js:697-720 with the shared LoanRequirementsSection or inline useLoanTypes()+grouped optgroups."
+}

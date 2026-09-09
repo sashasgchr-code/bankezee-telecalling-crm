@@ -9,6 +9,7 @@ import {
 import api from '../../services/api';
 import { toast } from 'sonner';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
+import { LOAN_TYPES as CANONICAL_LOAN_TYPES, CATEGORY_LABELS as CANONICAL_CATEGORY_LABELS } from '../../constants/loanTypes';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -65,21 +66,13 @@ const formatPhone = (phone) => {
   return str;
 };
 
-// Loan Type Options for multi-select
-const LOAN_TYPE_OPTIONS = [
-  { value: 'new_personal_loan', label: 'New Personal Loan' },
-  { value: 'balance_transfer_topup_pl', label: 'Balance Transfer+Top Up PL' },
-  { value: 'used_vehicle_loan_bt', label: 'Used Vehicle Loan BT' },
-  { value: 'used_vehicle_loan_fresh', label: 'Used Vehicle Loan Fresh' },
-  { value: 'new_vehicle_loan', label: 'New Vehicle Loan' },
-  { value: 'merge_multiple_loans', label: 'Merge Multiple Loans' },
-  { value: 'balance_transfer_pl', label: 'Balance Transfer PL' },
-  { value: 'top_up_pl', label: 'Top Up PL' },
-  { value: 'bt_topup_hl', label: 'BT Topup HL' },
-  { value: 'reduce_home_loan_emi', label: 'Reduce Home Loan EMI' },
-  { value: 'business_loan', label: 'Business Loan' },
-  { value: 'new_home_loan', label: 'New Home Loan' },
-];
+// Loan Type Options for multi-select — canonical single source of truth (matches backend/config/loan_types.py)
+const LOAN_TYPE_OPTIONS = CANONICAL_LOAN_TYPES.map((t) => ({ value: t.value, label: t.label }));
+const LOAN_TYPE_GROUPED = CANONICAL_LOAN_TYPES.reduce((acc, t) => {
+  const c = t.category || 'other';
+  (acc[c] = acc[c] || []).push(t);
+  return acc;
+}, {});
 
 const FilesDashboard = () => {
   const navigate = useNavigate();
@@ -2345,8 +2338,15 @@ const FilesDashboard = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Type of Loan</label>
-                <input type="text" value={newFile.type_of_loan} onChange={(e) => setNewFile({ ...newFile, type_of_loan: e.target.value })}
-                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm" data-testid="new-file-loan-type" placeholder="e.g. Personal Loan" />
+                <select value={newFile.type_of_loan} onChange={(e) => setNewFile({ ...newFile, type_of_loan: e.target.value })}
+                  className="w-full h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white" data-testid="new-file-loan-type">
+                  <option value="">Select Loan Type</option>
+                  {Object.entries(LOAN_TYPE_GROUPED).map(([cat, types]) => (
+                    <optgroup key={cat} label={CANONICAL_CATEGORY_LABELS[cat] || cat}>
+                      {types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Loan Amount Required</label>

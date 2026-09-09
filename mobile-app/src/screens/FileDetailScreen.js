@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLoanTypes } from '../constants/loanTypes';
 import {
   View,
   Text,
@@ -46,16 +47,6 @@ const EMPLOYMENT_TYPES = [
   { value: 'professional', label: 'Professional' },
 ];
 
-const LOAN_TYPES = [
-  { value: 'reduce_home_loan_emi', label: 'Reduce Home Loan EMI' },
-  { value: 'merge_multiple_loans', label: 'Merge Multiple Loans' },
-  { value: 'top_up_loan', label: 'Top-Up Loan' },
-  { value: 'new_personal_loan', label: 'New Personal Loan' },
-  { value: 'new_home_loan', label: 'New Home Loan' },
-  { value: 'business_loan', label: 'Business Loan' },
-  { value: 'balance_transfer', label: 'Balance Transfer' },
-];
-
 // Structured existing-loans editor (matches the web app's existing_loans array)
 const EXISTING_LOAN_TYPES = [
   'Personal Loan', 'Home Loan', 'Car Loan', 'Two Wheeler Loan', 'Education Loan',
@@ -85,6 +76,8 @@ const FileDetailScreen = ({ route, navigation }) => {
   const [selectedAssignee, setSelectedAssignee] = useState('');
   const [canManageFiles, setCanManageFiles] = useState(false);
   const [expandedElig, setExpandedElig] = useState(null);
+  // Canonical, backend-driven loan types (single source of truth; bundled fallback).
+  const { loanTypes: LOAN_TYPES, isVehicleLoan } = useLoanTypes();
   
   // Editable fields
   const [details, setDetails] = useState({

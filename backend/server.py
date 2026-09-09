@@ -34,6 +34,7 @@ from routes.meta_compat import router as meta_compat_router  # Meta File-Detail 
 from routes.meta_admin_migrate import router as meta_migrate_router  # Meta legacy-binary HTTPS migration
 from routes.meta_sync import router as meta_sync_router  # Meta Google Sheet sync + email
 from routes.admin_maintenance import router as admin_maintenance_router  # TEMPORARY - remove after prod repair
+from routes.config import router as config_router  # Canonical shared catalogs (loan types)
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -78,6 +79,7 @@ async def health_probe():
     return {"status": "healthy", "service": "BANKEZEE Connect API"}
 
 app.include_router(admin_maintenance_router)  # TEMPORARY - remove after prod repair
+app.include_router(config_router)  # Canonical shared catalogs (loan types)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production

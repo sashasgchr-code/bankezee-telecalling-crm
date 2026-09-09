@@ -407,6 +407,13 @@ export const getFileDetails = async (fileId, apiBase = '/files') => {
   return response.data;
 };
 
+// Canonical loan-type catalog (single source of truth shared with web/Meta)
+export const getLoanTypes = async () => {
+  const response = await api.get('/config/loan-types');
+  return response.data;
+};
+
+
 // Update file details
 export const updateFileDetails = async (fileId, data, apiBase = '/files') => {
   const response = await api.put(`${apiBase}/${fileId}/details`, data);

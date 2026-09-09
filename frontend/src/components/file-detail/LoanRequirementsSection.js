@@ -1,32 +1,6 @@
 import React from 'react';
 import { EditableField, EditableSelect } from './EditableField';
-
-// Complete OLD CRM Loan Types - All types preserved
-const LOAN_TYPES = [
-  // Personal Loans
-  { value: 'new_personal_loan', label: 'New Personal Loan', category: 'personal' },
-  { value: 'balance_transfer_pl', label: 'Balance Transfer PL', category: 'personal' },
-  { value: 'top_up_pl', label: 'Top Up PL', category: 'personal' },
-  { value: 'balance_transfer_topup_pl', label: 'Balance Transfer + Top Up PL', category: 'personal' },
-  { value: 'merge_multiple_loans', label: 'Merge Multiple Loans', category: 'personal' },
-  // Home Loans
-  { value: 'new_home_loan', label: 'New Home Loan', category: 'home' },
-  { value: 'balance_transfer_hl', label: 'Balance Transfer HL', category: 'home' },
-  { value: 'balance_transfer_topup_hl', label: 'Balance Transfer + Top Up HL', category: 'home' },
-  { value: 'reduce_home_loan_emi', label: 'Reduce Home Loan EMI', category: 'home' },
-  // Vehicle Loans
-  { value: 'new_vehicle_loan', label: 'New Vehicle Loan', category: 'vehicle' },
-  { value: 'used_vehicle_loan_fresh', label: 'Used Vehicle Loan (Fresh)', category: 'vehicle' },
-  { value: 'used_vehicle_loan_bt', label: 'Used Vehicle Loan BT', category: 'vehicle' },
-  // Business Loans
-  { value: 'business_loan', label: 'Business Loan', category: 'business' },
-  { value: 'msme_loan', label: 'MSME Loan', category: 'business' },
-  // Other
-  { value: 'lap', label: 'LAP (Loan Against Property)', category: 'other' },
-  { value: 'gold_loan', label: 'Gold Loan', category: 'other' },
-  { value: 'education_loan', label: 'Education Loan', category: 'other' },
-  { value: 'other', label: 'Other', category: 'other' }
-];
+import { LOAN_TYPES, CATEGORY_LABELS, useLoanTypes } from '../../constants/loanTypes';
 
 // Loan Purpose Options
 const LOAN_PURPOSES = [
@@ -50,21 +24,17 @@ const LoanRequirementsSection = ({
   isEditing, 
   onDetailChange 
 }) => {
+  // Canonical, backend-driven loan types (single source of truth; bundled fallback).
+  const { loanTypes, categoryLabels: fetchedLabels } = useLoanTypes();
+  const categoryLabels = fetchedLabels || CATEGORY_LABELS;
+
   // Group loan types by category for better UX
-  const groupedLoanTypes = LOAN_TYPES.reduce((acc, type) => {
+  const groupedLoanTypes = loanTypes.reduce((acc, type) => {
     const cat = type.category || 'other';
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(type);
     return acc;
   }, {});
-
-  const categoryLabels = {
-    personal: 'Personal Loans',
-    home: 'Home Loans',
-    vehicle: 'Vehicle Loans',
-    business: 'Business Loans',
-    other: 'Other'
-  };
 
   return (
     <div className="pt-4 border-t border-gray-200">
@@ -97,7 +67,7 @@ const LoanRequirementsSection = ({
             <div>
               <label className="block text-xs text-gray-500 mb-1">Type of Loan</label>
               <p className="text-sm font-medium text-gray-900">
-                {LOAN_TYPES.find(t => t.value === details.type_of_loan)?.label || details.type_of_loan || '-'}
+                {loanTypes.find(t => t.value === details.type_of_loan)?.label || details.type_of_loan || '-'}
               </p>
             </div>
           )}

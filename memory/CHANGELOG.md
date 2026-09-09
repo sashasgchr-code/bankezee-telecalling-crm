@@ -1,5 +1,15 @@
 
 
+## 2026-09-09 (b) — Files loan-type canonical parity (single source of truth)
+- Root cause: loan-type lists were hardcoded & DRIFTED per screen. Mobile FileDetailScreen had only 7 types with WRONG values (`balance_transfer`, `top_up_loan`) and NO vehicle types; web FileDetailsPage had its own 12-option list with a bogus `bt_topup_hl`; FilesDashboard had another 12-item list + a free-TEXT Add-New-File loan-type input.
+- Fix: created ONE backend source of truth `backend/config/loan_types.py` (19 canonical types, recovered from legacy_crm_data + web catalog; incl vehicle new_vehicle_loan/used_vehicle_loan_fresh/used_vehicle_loan_bt and previously-missing top_up_hl/msme_loan/lap/gold_loan/education_loan/balance_transfer_topup_hl) served at `GET /api/config/loan-types` (routes/config.py).
+- Web mirror `frontend/src/constants/loanTypes.js` (useLoanTypes hook: fetches endpoint, bundled canonical fallback). Wired: LoanRequirementsSection.js, FileDetailsPage.js (edit dropdown grouped + canonical read label, killed bt_topup_hl), FilesDashboard.js (filter list + Add-New-File now a canonical grouped <select>).
+- Mobile mirror `mobile-app/src/constants/loanTypes.js` + api.getLoanTypes(); FileDetailScreen.js now uses canonical list (fixes drift + enables vehicle-type selection). Meta reuses FileDetailScreen/FileDetailsPage so inherits parity.
+- Verified (iteration_58): backend 3/3; web shows 19 grouped types on Connect + Meta, save/reload persists used_vehicle_loan_bt & msme_loan with canonical labels, GP view-only enforced. Backward-compatible: existing saved types still render.
+- Backend vehicle field model (tvr_done/emi_ok/login_bank/application_id/sm_name/sm_number/approved_bank/rc_submitted/noc_submitted/hypothecation/disbursed_bank + cibil_issues/foir/company_type) already present; web edits them; mobile displays them.
+- Mobile version 2.7.0 -> 2.7.1, versionCode 27 -> 28. APK NOT built (no Expo/EXPO_TOKEN in env; keystore/EAS project must not change).
+
+
 ## 2026-09-09 — Meta email cutover to Resend + mobile call-flow bug fixes
 ### Meta email (backend)
 - Root cause of prior suppression: `meta_sync.py` sent via a non-configured EMERGENT_EMAIL_KEY proxy; Connect prod uses Resend (`utils/email_service.py`). Rewired `_send_safe` to Connect's Resend transport (no EMERGENT_EMAIL_KEY dependency). meta_email_log + caller-side idempotency preserved.

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
+import { useLoanTypes } from '../../constants/loanTypes';
 
 // Legacy CRM rows store the decision flags as 'yes'/'no'; some Connect rows stored booleans.
 // The UI works in 'yes'/'no' only, so every row is normalized on load.
@@ -111,6 +112,8 @@ const FileDetailsPage = ({
   const fileId = idOverride || paramId;
   const navigate = useNavigate();
   const isMeta = mode === 'meta';
+  // Canonical loan types (single source of truth; backend-driven with bundled fallback)
+  const { loanTypes: canonicalLoanTypes, categoryLabels: canonicalCategoryLabels } = useLoanTypes();
   
   const [fileData, setFileData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -701,21 +704,16 @@ const FileDetailsPage = ({
                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
                       >
                         <option value="">Select</option>
-                        <option value="new_personal_loan">New Personal Loan</option>
-                        <option value="balance_transfer_topup_pl">Balance Transfer+Top Up PL</option>
-                        <option value="used_vehicle_loan_bt">Used Vehicle Loan BT</option>
-                        <option value="used_vehicle_loan_fresh">Used Vehicle Loan Fresh</option>
-                        <option value="new_vehicle_loan">New Vehicle Loan</option>
-                        <option value="merge_multiple_loans">Merge Multiple Loans</option>
-                        <option value="balance_transfer_pl">Balance Transfer PL</option>
-                        <option value="top_up_pl">Top Up PL</option>
-                        <option value="bt_topup_hl">BT Topup HL</option>
-                        <option value="reduce_home_loan_emi">Reduce Home Loan EMI</option>
-                        <option value="business_loan">Business Loan</option>
-                        <option value="new_home_loan">New Home Loan</option>
+                        {Object.entries(canonicalLoanTypes.reduce((acc, t) => { const c = t.category || 'other'; (acc[c] = acc[c] || []).push(t); return acc; }, {})).map(([cat, types]) => (
+                          <optgroup key={cat} label={canonicalCategoryLabels[cat] || cat}>
+                            {types.map((t) => (
+                              <option key={t.value} value={t.value}>{t.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
                       </select>
                     ) : (
-                      <p className="font-medium text-gray-900">{fd.type_of_loan?.replace(/_/g, ' ') || '-'}</p>
+                      <p className="font-medium text-gray-900">{canonicalLoanTypes.find(t => t.value === fd.type_of_loan)?.label || fd.type_of_loan?.replace(/_/g, ' ') || '-'}</p>
                     )}
                   </div>
                   <div>
