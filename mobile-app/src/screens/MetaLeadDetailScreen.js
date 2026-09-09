@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput,
   ActivityIndicator, SafeAreaView, AppState, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { getMetaLead, addMetaCallLog, addMetaNote } from '../services/api';
+import { getMetaLead, addMetaCallLog, addMetaNote, updateMetaStatus } from '../services/api';
 import { makePhoneCall, getRecentCallForNumber } from '../services/callLogService';
 
 const OUTCOMES = [
@@ -14,6 +14,18 @@ const OUTCOMES = [
   { id: 'NOT_QUALIFIED', label: 'Not Qualified' },
   { id: 'LEAD', label: 'Interested (LEAD)' },
   { id: 'FILE', label: 'Convert to FILE' },
+];
+
+// Direct status options (change WITHOUT a call) — mirrors backend CRM_STATUSES.
+const STATUS_OPTIONS = [
+  { id: 'NEW', label: 'New' },
+  { id: 'CALL_BACK', label: 'Call Back' },
+  { id: 'NOT_ANSWERING', label: 'Not Answering' },
+  { id: 'SWITCHED_OFF', label: 'Switched Off' },
+  { id: 'NOT_INTERESTED', label: 'Not Interested' },
+  { id: 'NOT_QUALIFIED', label: 'Not Qualified' },
+  { id: 'LEAD', label: 'Lead' },
+  { id: 'FILE', label: 'File' },
 ];
 
 // Reuses the EXACT Connect native call lifecycle (makePhoneCall + AppState + getRecentCallForNumber),
@@ -108,6 +120,19 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
     } finally { setBusy(false); }
   };
 
+  const changeStatus = async (status) => {
+    if (!lead || status === lead.status) return;
+    try {
+      setBusy(true);
+      const updated = await updateMetaStatus(leadId, status);
+      setLead(updated);
+    } catch (e) {
+      Alert.alert('Error', e.response?.data?.detail || 'Failed to update status');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (loading) return <SafeAreaView style={styles.container}><ActivityIndicator style={{ marginTop: 60 }} color="#16a34a" /></SafeAreaView>;
   if (!lead) return null;
   const activities = [...(lead.activities || [])].reverse();
@@ -131,6 +156,24 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
         <TouchableOpacity style={styles.callBtn} onPress={startCall} data-testid="meta-start-call">
           <Text style={styles.callBtnText}>📞 Start Call</Text>
         </TouchableOpacity>
+
+        {/* Direct status change — no call required */}
+        <View style={styles.statusBox}>
+          <Text style={styles.section}>Update Status</Text>
+          <View style={styles.statusWrap}>
+            {STATUS_OPTIONS.map(s => (
+              <TouchableOpacity
+                key={s.id}
+                disabled={busy}
+                onPress={() => changeStatus(s.id)}
+                style={[styles.statusChip, lead.status === s.id && styles.statusChipActive]}
+                data-testid={`meta-status-${s.id}`}
+              >
+                <Text style={[styles.statusChipText, lead.status === s.id && { color: '#fff' }]}>{s.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
         {lead.status === 'FILE' && (
           <View style={styles.card} data-testid="meta-file-details">
@@ -223,6 +266,11 @@ const styles = StyleSheet.create({
   field: { fontSize: 14, color: '#374151', marginTop: 6 },
   callBtn: { backgroundColor: '#16a34a', borderRadius: 12, padding: 15, alignItems: 'center', marginBottom: 12 },
   callBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  statusBox: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: '#e5e7eb' },
+  statusWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  statusChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#16a34a', backgroundColor: '#f0fdf4' },
+  statusChipActive: { backgroundColor: '#16a34a' },
+  statusChipText: { fontSize: 12, fontWeight: '700', color: '#16a34a' },
   section: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 },
   activity: { fontSize: 13, color: '#6b7280', paddingVertical: 3 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
