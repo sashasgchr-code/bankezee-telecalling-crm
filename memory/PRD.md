@@ -1880,3 +1880,16 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
   RESEND_API_KEY (currently EMPTY); confirm SENDER_EMAIL/reply-to/META_EMAIL_ENABLED. Then follow the
   9-step cutover order (manual sync check -> disable old sync -> enable Connect sync -> verify single
   importer -> enable emails -> one test assignment + one FILE notification -> confirm no blast).
+
+### Sheet/Email cutover pre-flight findings (June 2026)
+- Meta email transport in Connect (`routes/meta_sync.py`) ALREADY uses the Emergent email PROXY:
+  POST https://integrations.emergentagent.com/api/v1/email/send with header X-Email-Key=EMERGENT_EMAIL_KEY.
+  NOT Resend. So no transport rewrite; RESEND_API_KEY is irrelevant to Meta. Real sends gated by
+  META_EMAIL_ENABLED=true AND EMERGENT_EMAIL_KEY set; otherwise captured to meta_email_log (safe).
+- GOOGLE_SHEET_ID code default already == verified OLD Meta sheet 1Ugq8BpctyY0ZdqxCknR1OdWGvvUW9Xa1FKBzs_Gyy_4.
+  Sheet CSV export URL reachable (307 redirect, httpx follows).
+- EMERGENT_EMAIL_KEY is a SEPARATELY provisioned Emergent email key (NOT the LLM/Universal key per
+  integration_expert). Currently NOT set in Connect -> must be added to Connect production before emails.
+- BLOCKER: GridFS production verification (Job e74b35da / meta.bankezee.com) CANNOT be run from the Connect
+  deployer (hard per-conversation scope). Must be launched from the Meta app's own Deployment Panel, either
+  via that job's deployer mongo_query, or by running migrate_meta_binaries.py --verify --source-local there.
