@@ -27,27 +27,43 @@ const StatCard = ({ label, value, icon: Icon, accent, testid }) => (
 function FileRow({ f, onOpen }) {
   const [reveal, setReveal] = useState(false);
   const dt = f.file_created_at || f.created_at;
+  const file = f.file || {};
+  const bank = file.disbursed_bank || file.approved_bank || file.login_bank || file.bank || file.lender;
+  const processor = f.assigned_processor_name || f.processor_name;
+  const docsReceived = file.docs_received ?? f.docs_received;
+  const Meta = ({ label, value, className = "text-slate-700" }) => (
+    <div className="min-w-0">
+      <p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p>
+      <p className={`text-xs font-semibold truncate ${className}`}>{value || "—"}</p>
+    </div>
+  );
   return (
     <div data-testid={`meta-file-row-${f.lead_id}`} onClick={onOpen}
-      className="flex items-center justify-between gap-4 px-4 py-3 border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer">
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-slate-800 truncate">{f.full_name || "—"}</p>
-        <div className="flex items-center gap-2 text-sm text-slate-600 mt-0.5">
-          <span>{reveal ? f.phone : maskPhone(f.phone)}</span>
-          <button data-testid={`meta-reveal-phone-${f.lead_id}`} onClick={(e) => { e.stopPropagation(); setReveal(!reveal); }} className="text-slate-400 hover:text-slate-700">{reveal ? <EyeOff size={13} /> : <Eye size={13} />}</button>
-          {f.file?.loan_type && <span className="text-slate-300">|</span>}
-          {f.file?.loan_type && <span className="text-slate-600 truncate">{f.file.loan_type}</span>}
+      className="p-4 border-b border-slate-100 hover:bg-slate-50/60 transition-colors cursor-pointer">
+      {/* header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-slate-800 truncate">{f.full_name || "—"}</p>
+          <div className="flex items-center gap-2 text-sm text-slate-600 mt-0.5">
+            <span>{reveal ? f.phone : maskPhone(f.phone)}</span>
+            <button data-testid={`meta-reveal-phone-${f.lead_id}`} onClick={(e) => { e.stopPropagation(); setReveal(!reveal); }} className="text-slate-400 hover:text-slate-700">{reveal ? <EyeOff size={13} /> : <Eye size={13} />}</button>
+          </div>
         </div>
-        <p className="text-xs text-slate-400 mt-0.5">
-          {dt ? new Date(dt).toLocaleDateString() : "—"}
-          {f.assigned_partner_name && <span style={{ color: BRAND }}> • {f.assigned_partner_name}</span>}
-          {f.file?.loan_amount && <span className="text-emerald-600"> • {inr(f.file.loan_amount)}</span>}
-          <span className={f.assigned_partner_id ? "text-emerald-600" : "text-slate-400"}> • {f.assigned_partner_id ? "Assigned" : "Unassigned"}</span>
-        </p>
+        <div className="flex items-center gap-2 shrink-0">
+          <span data-testid={`meta-proc-status-${f.lead_id}`} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLOR(f.processing_status || "New")}`}>{f.processing_status || "New"}</span>
+          <ChevronRight size={16} className="text-slate-300 hidden sm:block" />
+        </div>
       </div>
-      <div className="flex items-center gap-3 shrink-0">
-        <span data-testid={`meta-proc-status-${f.lead_id}`} className={`text-xs font-medium px-2.5 py-1 rounded-full border text-right ${STATUS_COLOR(f.processing_status || "New")}`}>{f.processing_status || "New"}</span>
-        <ChevronRight size={16} className="text-slate-300" />
+      {/* rich field grid — reflows to 2 cols on phones, up to 4 on desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-2 mt-3">
+        <Meta label="Loan Type" value={file.loan_type} />
+        <Meta label="Loan Amount" value={file.loan_amount ? inr(file.loan_amount) : null} className="text-emerald-600" />
+        <Meta label="Assigned GP" value={f.assigned_partner_name} className={f.assigned_partner_id ? "text-slate-700" : "text-slate-400"} />
+        <Meta label="Processor" value={processor} />
+        <Meta label="Bank / Lender" value={bank} />
+        <Meta label="Created" value={dt ? new Date(dt).toLocaleDateString() : null} />
+        <Meta label="Docs" value={docsReceived == null ? null : (docsReceived ? "Received" : "Pending")} className={docsReceived ? "text-emerald-600" : "text-amber-600"} />
+        <Meta label="Assignment" value={f.assigned_partner_id ? "Assigned" : "Unassigned"} className={f.assigned_partner_id ? "text-emerald-600" : "text-slate-400"} />
       </div>
     </div>
   );
@@ -96,7 +112,7 @@ export default function MetaFiles() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input data-testid="meta-files-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, phone, loan type..." className="w-full border border-slate-300 rounded-md pl-9 pr-3 py-2 text-sm outline-none bg-white" />
           </div>
-          <select data-testid="meta-files-status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
+          <select data-testid="meta-files-status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full sm:w-auto border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
             <option value="ALL">All Statuses</option>
             {PROC_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
@@ -104,7 +120,7 @@ export default function MetaFiles() {
             <button
               data-testid="meta-files-my-toggle"
               onClick={() => setMyOnly((v) => !v)}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium border transition-colors ${myOnly ? "text-white border-transparent" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
+              className={`w-full sm:w-auto justify-center flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium border transition-colors ${myOnly ? "text-white border-transparent" : "bg-white text-slate-600 border-slate-300 hover:bg-slate-50"}`}
               style={myOnly ? { background: BRAND } : {}}
             >
               <UserCheck size={15} /> My Files
