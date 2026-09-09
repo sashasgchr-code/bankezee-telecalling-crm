@@ -63,6 +63,9 @@ export default function MetaLeads() {
     else { setSortBy(field); setSortDir("asc"); }
   };
   const SortIcon = ({ field }) => sortBy !== field ? <ChevronsUpDown size={12} className="text-slate-300" /> : (sortDir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />);
+  const Field = ({ label, value, className = "text-slate-700" }) => (
+    <div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p><p className={`text-xs font-semibold truncate ${className}`}>{value || "—"}</p></div>
+  );
 
   const logCallFor = async (payload) => { await api.post(`/meta/leads/${callLead.lead_id}/calls`, payload); toast.success("Call logged"); load(); };
   const toggleOne = (id) => { const s = new Set(selected); s.has(id) ? s.delete(id) : s.add(id); setSelected(s); };
@@ -167,7 +170,7 @@ export default function MetaLeads() {
         )}
 
         <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto hidden md:block">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200">
@@ -222,6 +225,39 @@ export default function MetaLeads() {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile card list — desktop uses the table above; keeps Meta Leads usable on phones */}
+          <div className="md:hidden divide-y divide-slate-100" data-testid="meta-leads-cards">
+            {loading ? (
+              <p className="py-16 text-center text-slate-400 text-sm">Loading leads...</p>
+            ) : leads.length === 0 ? (
+              <p className="py-16 text-center text-slate-400 text-sm">No leads found. Sync with Google Sheets to import data.</p>
+            ) : leads.map((lead) => (
+              <div key={lead.lead_id} data-testid={`meta-lead-card-${lead.lead_id}`} onClick={() => navigate(`/meta/leads/${lead.lead_id}`)}
+                className="p-4 hover:bg-slate-50/60 cursor-pointer">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 truncate">{lead.full_name || "—"}</p>
+                    {lead.campaign_name && <p className="text-xs text-slate-400 truncate">{lead.campaign_name}</p>}
+                  </div>
+                  <StatusPill status={lead.status} />
+                </div>
+                <div className="flex items-center gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                  <a data-testid={`meta-card-call-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => setCallLead(lead)} className="h-8 w-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0" title="Call"><Phone size={15} /></a>
+                  <a href={`tel:${lead.phone}`} onClick={() => setCallLead(lead)} className="text-sm font-medium" style={{ color: BRAND }}>{lead.phone || "—"}</a>
+                </div>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-3">
+                  <Field label="City" value={lead.city} />
+                  <Field label="Employment" value={lead.employment_status} />
+                  <Field label="Salary" value={lead.monthly_salary} />
+                  <Field label="Outstanding" value={lead.outstanding_amount} />
+                  <Field label="Assigned GP" value={lead.assigned_partner_name} className={lead.assigned_partner_id ? "text-emerald-600" : "text-slate-400"} />
+                  <Field label="Date" value={fmtDate(lead.created_time || lead.created_at)} />
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm">
             <span className="text-slate-500" data-testid="meta-leads-count-label">{total} lead{total === 1 ? "" : "s"}{pages > 1 ? ` · page ${page} of ${pages}` : ""}</span>
             <div className="flex items-center gap-2">
