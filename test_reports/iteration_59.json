@@ -1,0 +1,33 @@
+{
+  "summary": "Verified GP platform access control (web_access/mobile_access) end-to-end on the web UI. All 8 review scenarios PASS. Admin login works; Edit Role modal for GP banothunithinnaik shows 'Application Access' section with two data-testid checkboxes (web-access-checkbox, mobile-access-checkbox), both checked by default. Same modal for a non-GP (Teja/manager) shows NO Application Access checkboxes. Toggling GP Web App OFF and saving causes the GP web login (platform=web) to be REJECTED with the exact message 'Web access is not enabled for your account. Please use the BankEzee Connect mobile app.' rendered on the /login page. Re-enabling Web App allows GP to log in again and land on /agent. Live-session enforcement: while GP was logged in on /agent, admin toggled web_access OFF in a second browser context; the next GP navigation triggered the api.js 403 interceptor and the GP was force-logged-out and redirected to /login. GP has no UI to edit its own access (the /admin/users route is admin-only; direct visit as GP redirects to /agent and Users management UI is not rendered). Backward-compat GPs with missing flags remain able to log in (banothunithinnaik started with default-true flags and logged in before we touched anything; also successfully logged in after RESTORE). Meta Access controls (META CRM Access Yes/No, Meta Role, Meta User Mapping, Meta Email) remain visible and independent in the same modal. FINAL RESTORE confirmed: banothunithinnaik@gmail.com web_access=true, mobile_access=true.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verified_items": {
+    "admin_login_and_users_page": "PASS - admin logs in, /admin/users loads, GP row visible with edit-role action",
+    "gp_modal_has_app_access_section": "PASS - Application Access section present, web-access-checkbox and mobile-access-checkbox both visible and checked=true by default",
+    "non_gp_modal_hides_app_access": "PASS - For manager teja@bankezee.com, Application Access section is NOT rendered (checkbox count=0, is_visible=False)",
+    "web_off_blocks_web_login": "PASS - After saving web_access=false, GP web login is rejected and page shows 'Web access is not enabled for your account. Please use the BankEzee Connect mobile app.'",
+    "web_reenable_restores_login": "PASS - After re-enabling web_access, GP logs in successfully and lands on /agent",
+    "live_session_enforcement": "PASS - Admin toggling web_access OFF in a second context while GP is on /agent causes GP's next navigation to be forced back to /login (api.js 403 interceptor triggered auto-logout)",
+    "gp_cannot_modify_own_access": "PASS - GP direct visit to /admin/users redirects to /agent; no Users management UI is shown to GP (ProtectedRoute requiredRole=admin). Backend PUT /users/{id}/app-access with GP token already verified 403 in prior iteration.",
+    "backward_compat_defaults_true": "PASS - Existing GP with default flags logs in normally (verified before any toggle and again post-restore)",
+    "meta_access_independent": "PASS - META CRM Access Yes toggle, Meta Role select, Meta User Mapping, Meta Email fields still render and are unaffected by web/mobile flags"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Console shows repeated React hydration warnings on admin pages (Dashboard, VerifiedCallStats, Users) about invalid HTML nesting (span as child of tbody/table/select). These are pre-existing (likely due to a dev-tooling wrapper span with data-ve-dynamic). Not blocking, but recommend cleaning up to avoid future SSR/hydration bugs.",
+    "Users.js is now large (~1400+ lines). Consider extracting the EditRoleModal (base role, TL toggle, manager, TL, Application Access, META section) into its own component for maintainability."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped per request)", "frontend": "100% (8/8 review scenarios PASS)"},
+  "test_credentials": "admin@bankezee.com/ConnectSasha12!! ; banothunithinnaik@gmail.com/Nithin@123",
+  "seed_data_creation": "Toggled web_access on banothunithinnaik@gmail.com during test (off->on->off->on). FINAL STATE RESTORED: web_access=true, mobile_access=true — GP is NOT left locked out.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "GP platform access-control feature is fully working on the web. Data-testids in use: edit-role-{account_key|id} (row action), web-access-checkbox, mobile-access-checkbox (inside Edit Role & Hierarchy modal, only rendered for GP base role). Save button is the last 'Save Changes' in the modal. Web login enforcement is server-side (returns 403 with detail 'Web access is not enabled ...'), and web login form in authStore already sends platform=web so the message renders on /login. Interceptor in services/api.js catches 403 with this message and forces logout to /login. RESTORE state for banothunithinnaik@gmail.com is web=true, mobile=true as of this iteration."
+}

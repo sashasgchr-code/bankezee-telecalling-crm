@@ -28,7 +28,19 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const status = error.response?.status;
+    const detail = error.response?.data?.detail || '';
+    // Platform access gate: a GP without web access hitting the web app (direct URL or an
+    // existing session) is cleanly logged out so the restriction cannot be bypassed.
+    if (status === 403 && /web access is not enabled/i.test(detail)) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      localStorage.setItem('access_denied_message', detail);
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login';
+      }
+    }
+    if (status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       if (window.location.pathname !== '/login') {

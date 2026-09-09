@@ -140,6 +140,18 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         serialized = serialize_doc(user)
         # Add normalized role for RBAC checks
         serialized["normalized_role"] = normalize_role(serialized.get("role", "growth_partner"))
+
+        # ---- Platform access gate (Growth Partners only) ----
+        # Session platform is bound into the JWT at login (web vs mobile) and cannot be changed
+        # by editing a client flag. Enforced on EVERY request (reads live DB flags) so revocation
+        # and existing sessions are respected. Missing flags default to True (backward-compatible).
+        platform = (payload.get("platform") or "web").lower()
+        serialized["platform"] = platform
+        if is_gp_role(serialized.get("role", "")):
+            if platform == "mobile" and serialized.get("mobile_access", True) is False:
+                raise HTTPException(status_code=403, detail="Mobile app access is not enabled for your account.")
+            if platform != "mobile" and serialized.get("web_access", True) is False:
+                raise HTTPException(status_code=403, detail="Web access is not enabled for your account. Please use the BankEzee Connect mobile app.")
         return serialized
     except JWTError:
         raise HTTPException(status_code=401, detail="Invalid token")

@@ -11,7 +11,7 @@ from models.schemas import UserRegister, UserLogin, ChangePassword
 from utils.database import db
 from utils.auth import (
     get_password_hash, verify_password, create_access_token, 
-    get_current_user, pwd_context
+    get_current_user, pwd_context, is_gp_role
 )
 from utils.helpers import serialize_doc
 
@@ -217,7 +217,15 @@ async def login(credentials: UserLogin):
                 "is_idle": False
             })
     
-    token = create_access_token({"user_id": str(user["_id"])})
+    # Platform access gate (Growth Partners only). Reject cleanly BEFORE issuing a token.
+    platform = (getattr(credentials, "platform", None) or "web").lower()
+    if is_gp_role(user.get("role", "")):
+        if platform == "mobile" and user.get("mobile_access", True) is False:
+            raise HTTPException(status_code=403, detail="Mobile app access is not enabled for your account.")
+        if platform != "mobile" and user.get("web_access", True) is False:
+            raise HTTPException(status_code=403, detail="Web access is not enabled for your account. Please use the BankEzee Connect mobile app.")
+
+    token = create_access_token({"user_id": str(user["_id"]), "platform": platform})
     
     # Sanitize user data - never return password fields
     safe_user = serialize_doc(user)

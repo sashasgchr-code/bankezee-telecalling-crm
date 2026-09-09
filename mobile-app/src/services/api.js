@@ -37,7 +37,7 @@ api.interceptors.response.use(
 
 // Auth functions
 export const login = async (email, password) => {
-  const response = await api.post('/auth/login', { email, password });
+  const response = await api.post('/auth/login', { email, password, platform: 'mobile' });
   if (response.data.token) {
     await AsyncStorage.setItem('auth_token', response.data.token);
     await AsyncStorage.setItem('user_data', JSON.stringify(response.data.user));

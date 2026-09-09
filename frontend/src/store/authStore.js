@@ -9,7 +9,7 @@ const useAuthStore = create((set, get) => ({
 
   login: async (email, password) => {
     try {
-      const response = await api.post('/auth/login', { email, password });
+      const response = await api.post('/auth/login', { email, password, platform: 'web' });
       const { token, user } = response.data;
       
       localStorage.setItem('token', token);

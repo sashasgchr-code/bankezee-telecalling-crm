@@ -319,9 +319,23 @@ const AdminUsers = () => {
         });
       }
 
+      // ---- Platform access gates (Growth Partners only) ----
+      const gpRoles = ['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'];
+      const isGP = gpRoles.includes(roleEditData.role || selectedUser.role);
+      const accessChanged = isGP && (
+        !!roleEditData.web_access !== (selectedUser.web_access !== false) ||
+        !!roleEditData.mobile_access !== (selectedUser.mobile_access !== false)
+      );
+      if (accessChanged) {
+        await api.put(`/users/${selectedUser.account_key || selectedUser.id}/app-access`, {
+          web_access: !!roleEditData.web_access,
+          mobile_access: !!roleEditData.mobile_access,
+        });
+      }
+
       // If nothing changed, just close
       if (Object.keys(payload).length === 0) {
-        if (metaChanged) { reloadUsers(); toast.success('Meta access updated'); }
+        if (metaChanged || accessChanged) { reloadUsers(); toast.success('Access updated'); }
         else { toast.info('No changes to save'); }
         setShowEditRoleModal(false);
         setSelectedUser(null);
@@ -439,7 +453,10 @@ const AdminUsers = () => {
       meta_access: !!user.meta_access,
       meta_role: user.meta_role || 'growth_partner',
       meta_user_id: user.meta_user_id || '',
-      meta_email: user.meta_email || user.email || ''
+      meta_email: user.meta_email || user.email || '',
+      // Platform access gates default to enabled when unset (backward-compatible)
+      web_access: user.web_access !== false,
+      mobile_access: user.mobile_access !== false
     });
     setShowEditRoleModal(true);
   };
@@ -1318,6 +1335,41 @@ const AdminUsers = () => {
                 {roleEditData.manager_id && tlOptions.length === 0 && (
                   <p className="text-xs text-gray-500 mt-1">No Team Leads available under this manager</p>
                 )}
+              </div>
+            )}
+
+            {/* PLATFORM ACCESS (Growth Partners only) — real access gates, independent of role/Meta */}
+            {['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'].includes(roleEditData.role) && (
+              <div className="border-t border-gray-200 pt-4 mt-2" data-testid="app-access-section">
+                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="font-medium text-green-800">Application Access</p>
+                  <p className="text-xs text-green-700 mb-3">Control whether this Growth Partner can use the Web app and/or the Mobile app.</p>
+                  <div className="flex flex-col gap-2">
+                    <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!roleEditData.web_access}
+                        onChange={(e) => setRoleEditData(prev => ({ ...prev, web_access: e.target.checked }))}
+                        className="w-4 h-4"
+                        data-testid="web-access-checkbox"
+                      />
+                      Web App access
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-gray-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!roleEditData.mobile_access}
+                        onChange={(e) => setRoleEditData(prev => ({ ...prev, mobile_access: e.target.checked }))}
+                        className="w-4 h-4"
+                        data-testid="mobile-access-checkbox"
+                      />
+                      Mobile App access
+                    </label>
+                  </div>
+                  {!roleEditData.web_access && !roleEditData.mobile_access && (
+                    <p className="text-xs text-red-600 mt-2">Both disabled: this GP will not be able to access either app.</p>
+                  )}
+                </div>
               </div>
             )}
 

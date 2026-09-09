@@ -1,5 +1,15 @@
 
 
+## 2026-09-09 (c) — GP Web/Mobile platform access control (real, server-side)
+- New per-GP fields web_access / mobile_access (default TRUE when missing = backward-compatible; no bulk lockout).
+- Enforcement is server-side, NOT menu-hiding: login binds platform ('web'|'mobile') into the JWT (routes/auth.py); utils/auth.py get_current_user re-checks the live DB flags on EVERY request, so direct URLs, direct API calls and existing sessions are all gated. GP-only; Admin/Ops/Manager/TL/HR unaffected. Messages: web => "Web access is not enabled for your account. Please use the BankEzee Connect mobile app."; mobile => "Mobile app access is not enabled for your account."
+- Admin/Ops API: PUT /api/users/{user_id}/app-access (require_ops_or_admin, GP-only target). GPs get 403 (cannot change own access).
+- Web UI: Users.js Edit Role modal shows an 'Application Access' section (checkboxes data-testid web-access-checkbox / mobile-access-checkbox) for GP roles only; saves via the new endpoint. authStore login sends platform:'web'; api.js 403 interceptor force-logs-out on the web-denied message. Meta Access controls remain separate/independent.
+- Mobile: api.js login sends platform:'mobile'; LoginScreen shows the backend deny message.
+- Verified: backend curl all 4 combos (web/mobile on/off) + own-access 403 + live revocation on /me; web UI iteration_59 = 8/8 PASS; GP banothunithinnaik restored to web+mobile true.
+- Mobile stays at version 2.7.1 / versionCode 28 (unbuilt release bundles call fixes + Files parity + platform login).
+
+
 ## 2026-09-09 (b) — Files loan-type canonical parity (single source of truth)
 - Root cause: loan-type lists were hardcoded & DRIFTED per screen. Mobile FileDetailScreen had only 7 types with WRONG values (`balance_transfer`, `top_up_loan`) and NO vehicle types; web FileDetailsPage had its own 12-option list with a bogus `bt_topup_hl`; FilesDashboard had another 12-item list + a free-TEXT Add-New-File loan-type input.
 - Fix: created ONE backend source of truth `backend/config/loan_types.py` (19 canonical types, recovered from legacy_crm_data + web catalog; incl vehicle new_vehicle_loan/used_vehicle_loan_fresh/used_vehicle_loan_bt and previously-missing top_up_hl/msme_loan/lap/gold_loan/education_loan/balance_transfer_topup_hl) served at `GET /api/config/loan-types` (routes/config.py).

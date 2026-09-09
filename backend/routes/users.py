@@ -12,7 +12,7 @@ from utils.database import db
 from utils.auth import (
     get_current_user, require_admin, require_manager_or_admin, require_hr_or_admin,
     get_password_hash, normalize_role, is_gp_role, get_user_team_ids,
-    validate_tl_manager_match, GP_ROLES, VALID_ROLES
+    validate_tl_manager_match, GP_ROLES, VALID_ROLES, require_ops_or_admin
 )
 from utils.helpers import serialize_doc, serialize_docs, classify_source, has_login_credential
 from utils.hierarchy import load_user_index
@@ -677,6 +677,27 @@ async def update_user(user_id: str, update: UserUpdate, current_user: dict = Dep
     
     updated_user = await db.users.find_one({"_id": user["_id"]})
     return serialize_doc(updated_user)
+
+
+
+@router.put("/users/{user_id}/app-access")
+async def update_user_app_access(user_id: str, payload: dict, current_user: dict = Depends(require_ops_or_admin)):
+    """Admin/Ops set a Growth Partner's platform access gates (web_access / mobile_access).
+    Scoped to GP accounts only; other roles are never gated here. GPs cannot call this."""
+    user = await resolve_account(db, user_id)
+    if not is_gp_role(user.get("role", "")):
+        raise HTTPException(status_code=400, detail="App-access controls apply to Growth Partners only")
+    update_data = {}
+    if "web_access" in payload:
+        update_data["web_access"] = bool(payload["web_access"])
+    if "mobile_access" in payload:
+        update_data["mobile_access"] = bool(payload["mobile_access"])
+    if not update_data:
+        raise HTTPException(status_code=400, detail="Provide web_access and/or mobile_access")
+    await db.users.update_one({"_id": user["_id"]}, {"$set": update_data})
+    updated_user = await db.users.find_one({"_id": user["_id"]})
+    return serialize_doc(updated_user)
+
 
 
 @router.put("/users/{user_id}/role-hierarchy")

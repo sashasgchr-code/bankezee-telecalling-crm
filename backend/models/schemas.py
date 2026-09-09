@@ -16,6 +16,7 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: str
     password: str
+    platform: Optional[str] = "web"  # 'web' | 'mobile' — binds the session's platform gate
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
