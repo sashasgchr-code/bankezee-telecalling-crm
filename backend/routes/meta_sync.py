@@ -221,6 +221,38 @@ async def meta_cron_sync(authorization: Optional[str] = Header(None)):
 _last_webhook_sync = {"at": 0.0}
 
 
+# ------------------- self-contained auto-sync scheduler -------------------
+# Makes Connect the SOLE importer for the Meta sheet: an internal loop polls the sheet's public
+# CSV export and reuses sync_leads_from_sheet() (same dedupe on sheet_id). No Apps Script / Google
+# service account required (the sheet is readable via CSV export). Enabled by default; interval and
+# on/off are env-configurable. Email stays gated by META_EMAIL_ENABLED (no blast).
+AUTO_SYNC_ENABLED = os.environ.get("META_AUTO_SYNC_ENABLED", "true").strip().lower() == "true"
+AUTO_SYNC_INTERVAL = int(os.environ.get("META_SYNC_INTERVAL_SECONDS", "120"))
+_auto_sync_started = False
+_auto_sync_lock = asyncio.Lock()
+
+
+async def _auto_sync_loop():
+    # small initial delay so startup/readiness isn't blocked
+    await asyncio.sleep(20)
+    while True:
+        try:
+            async with _auto_sync_lock:
+                await sync_leads_from_sheet()
+        except Exception as e:  # never let the loop die
+            logger.warning(f"Meta auto-sync tick failed: {e}")
+        await asyncio.sleep(AUTO_SYNC_INTERVAL)
+
+
+def start_auto_sync():
+    global _auto_sync_started
+    if _auto_sync_started or not AUTO_SYNC_ENABLED:
+        return
+    _auto_sync_started = True
+    asyncio.create_task(_auto_sync_loop())
+    logger.info(f"Meta auto-sync scheduler started (every {AUTO_SYNC_INTERVAL}s)")
+
+
 @router.post("/webhook/sheet-sync")
 async def meta_webhook_sync(token: Optional[str] = None, authorization: Optional[str] = Header(None)):
     provided = token or (authorization or "").replace("Bearer ", "")

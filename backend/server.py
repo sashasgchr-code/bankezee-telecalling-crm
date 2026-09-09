@@ -104,6 +104,12 @@ async def schedule_startup_tasks():
     readiness probe allows, which would keep the new revision from rolling out.
     """
     asyncio.create_task(setup_admin_accounts())
+    # Start the self-contained Meta sheet auto-sync (Connect is the sole importer).
+    try:
+        from routes.meta_sync import start_auto_sync
+        start_auto_sync()
+    except Exception as e:
+        print(f"Meta auto-sync not started: {e}")
 
 
 async def setup_admin_accounts():

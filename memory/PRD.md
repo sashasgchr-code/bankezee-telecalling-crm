@@ -1925,3 +1925,13 @@ Ported old Meta web app 1:1 into Connect at /meta/* (navy sidebar): Dashboard, L
 - Verified via compat contract: GP POST 200 (Strong, 35 policies, 19 eligible), GP history persists (1 entry),
   Admin 200, Connect /bank-policies regression 200. Results saved only on meta_leads.eligibility_checks.
 - Files: FileDetailScreen.js, EligibilityScreen.js, services/api.js, app.json (2.6.9/26), config.js.
+
+### Self-contained Meta sheet auto-sync (June 2026)
+- Added internal scheduler in routes/meta_sync.py (_auto_sync_loop/start_auto_sync); server.py startup
+  launches it. Polls the public CSV export of sheet 1Ugq8Bp…Gyy_4 every META_SYNC_INTERVAL_SECONDS
+  (default 120s) and runs existing sync_leads_from_sheet() (dedupe on sheet_id). No Apps Script / Google
+  service account needed. Env: META_AUTO_SYNC_ENABLED (default true), META_SYNC_INTERVAL_SECONDS (120).
+- Connect is the sole importer INTO meta_leads (only meta_sync.py writes sheet->meta_leads; old Meta app
+  writes only to its own DB). META_EMAIL_ENABLED stays false -> notifications captured, no blast.
+- Preview verified: first tick ~20s after startup imported 16/updated 390; repeats every 120s.
+- Prod manual-sync earlier: 401 -> 403 leads, 0 duplicate sheet_id. Deploy dispatched to make scheduler live.
