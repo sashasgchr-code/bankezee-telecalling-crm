@@ -30,8 +30,18 @@ SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?forma
 WEBHOOK_CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "BankEzee CRM")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
-# Kill-switch: real sends happen only when explicitly enabled (default OFF in preview).
-META_EMAIL_ENABLED = os.environ.get("META_EMAIL_ENABLED", "false").strip().lower() == "true"
+# Meta email enable-switch. Resolved per-send from env first, then the admin-saved DB setting
+# (app_settings.type=integrations.meta_email_enabled). DB fallback is required because production
+# reads env from the Secrets store and runs multiple replicas — the DB value is seen by every
+# replica and survives restarts. Real Meta sends happen ONLY when this returns True.
+async def _meta_email_enabled() -> bool:
+    if os.environ.get("META_EMAIL_ENABLED", "false").strip().lower() in ("true", "1", "yes", "on"):
+        return True
+    try:
+        s = await db.app_settings.find_one({"type": "integrations"}, {"_id": 0, "meta_email_enabled": 1})
+        return bool((s or {}).get("meta_email_enabled"))
+    except Exception:
+        return False
 
 SHEET_STATUS_MAP = {"CREATED": "NEW", "FILE": "FILE"}
 
@@ -48,7 +58,7 @@ async def _send_safe(to: str, subject: str, html: str, event: str = "generic"):
         return
     sent = False
     err = None
-    if META_EMAIL_ENABLED:
+    if await _meta_email_enabled():
         try:
             ok = await connect_send_email(to, subject, html)
             sent = bool(ok)
@@ -218,8 +228,8 @@ async def meta_email_selftest(recipient: Optional[str] = None, user: dict = Depe
     if row:
         row.pop("_id", None)
     return {
-        "gate_META_EMAIL_ENABLED": META_EMAIL_ENABLED,
-        "resend_configured": bool(os.environ.get("RESEND_API_KEY")),
+        "gate_META_EMAIL_ENABLED": await _meta_email_enabled(),
+        "resend_configured": bool((os.environ.get("RESEND_API_KEY") or "").strip()),
         "recipient": to,
         "log": row,
     }

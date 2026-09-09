@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   Modal,
   AppState,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { getLead, updateLead, getLeadCallLogs, createFollowUp, logCallOutcome } from '../services/api';
 import { makePhoneCall, getRecentCallForNumber, normalizePhoneNumber } from '../services/callLogService';
@@ -67,13 +69,37 @@ const LeadDetailScreen = ({ route, navigation }) => {
     { id: 'voicemail', label: 'Voicemail', color: '#9C27B0' },
   ];
 
+  // Rebind to the lead passed in params. React Navigation can REUSE this screen instance
+  // when moving from one lead to another (params merge without a remount). Without this,
+  // the previous lead and its in-flight call state would persist, so starting a call for
+  // Lead B would reopen/process the old Call A. Whenever the lead id changes, hard-reset
+  // ALL call-related state so a finished/older call can never bleed into the new one.
   useEffect(() => {
-    loadLeadDetails();
-  }, []);
+    const paramLead = route.params?.lead;
+    if (paramLead && paramLead.id !== lead?.id) {
+      setLead(paramLead);
+      setCallLogs([]);
+      setShowCallModal(false);
+      setSelectedOutcome(null);
+      setSelectedStatus(null);
+      setCallNotes('');
+      setDetectedCallDuration(null);
+      setLookingUpCall(false);
+      setCallStartTime(null);
+      pendingCallPhone.current = null;
+      autoCallTriggered.current = false;
+    }
+  }, [route.params?.lead?.id]);
 
-  // Handle autoCall - automatically initiate call when navigated from DataScreen
+  // Load details whenever the bound lead changes (also covers instance reuse).
   useEffect(() => {
-    if (autoCall && !autoCallTriggered.current) {
+    if (lead?.id) loadLeadDetails();
+  }, [lead?.id]);
+
+  // Auto-initiate the call for the CURRENT lead. Keyed on lead id (not the static autoCall
+  // param) so it also fires correctly when this screen instance is reused for a new lead.
+  useEffect(() => {
+    if (route.params?.autoCall && !autoCallTriggered.current) {
       autoCallTriggered.current = true;
       // Small delay to ensure screen is loaded
       const timer = setTimeout(() => {
@@ -81,7 +107,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [autoCall]);
+  }, [lead?.id]);
 
   // Function to initiate call (used by both manual press and autoCall)
   const initiateCall = async () => {
@@ -522,6 +548,10 @@ const LeadDetailScreen = ({ route, navigation }) => {
         }}
       >
         <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={styles.modalKAV}
+          >
           <View style={styles.modalContent}>
             {lookingUpCall ? (
               <View style={styles.lookingUpContainer}>
@@ -530,6 +560,12 @@ const LeadDetailScreen = ({ route, navigation }) => {
               </View>
             ) : (
               <>
+                <ScrollView
+                  style={styles.modalScroll}
+                  contentContainerStyle={styles.modalScrollContent}
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={true}
+                >
                 <Text style={styles.modalTitle}>Log Call Outcome</Text>
                 <Text style={styles.modalSubtitle}>How did the call go with {lead.name}?</Text>
 
@@ -619,8 +655,9 @@ const LeadDetailScreen = ({ route, navigation }) => {
                   multiline
                   numberOfLines={2}
                 />
+                </ScrollView>
 
-                {/* Modal Actions */}
+                {/* Modal Actions - sticky footer, always accessible */}
                 <View style={styles.modalActions}>
                   <TouchableOpacity
                     style={styles.cancelModalBtn}
@@ -637,6 +674,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
                   <TouchableOpacity
                     style={styles.submitModalBtn}
                     onPress={handleSubmitCallOutcome}
+                    data-testid="save-call-outcome-btn"
                   >
                     <Text style={styles.submitModalBtnText}>Save</Text>
                   </TouchableOpacity>
@@ -644,6 +682,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
               </>
             )}
           </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -990,8 +1029,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '85%',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    maxHeight: '90%',
+  },
+  modalKAV: {
+    width: '100%',
+  },
+  modalScroll: {
+    flexShrink: 1,
+  },
+  modalScrollContent: {
+    paddingBottom: 8,
   },
   lookingUpContainer: {
     alignItems: 'center',
@@ -1102,7 +1152,10 @@ const styles = StyleSheet.create({
   },
   modalActions: {
     flexDirection: 'row',
-    marginTop: 20,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
     gap: 12,
   },
   cancelModalBtn: {

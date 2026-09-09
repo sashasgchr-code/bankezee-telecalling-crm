@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput,
-  ActivityIndicator, SafeAreaView, AppState, Alert,
+  ActivityIndicator, SafeAreaView, AppState, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { getMetaLead, addMetaCallLog, addMetaNote } from '../services/api';
 import { makePhoneCall, getRecentCallForNumber } from '../services/callLogService';
@@ -38,6 +38,19 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
     } finally { setLoading(false); }
   }, [leadId]);
   useEffect(() => { load(); }, [load]);
+
+  // If this screen instance is reused for a DIFFERENT meta lead, hard-reset all in-flight
+  // call state so a finished/older call can never bleed into the new lead's call.
+  useEffect(() => {
+    setShowModal(false);
+    setOutcome(null);
+    setNote('');
+    setDetectedDuration(null);
+    setLookingUp(false);
+    setCallStartTime(null);
+    pendingPhone.current = null;
+    callIdRef.current = null;
+  }, [leadId]);
 
   const startCall = async () => {
     if (!lead?.phone) { Alert.alert('No phone', 'This lead has no phone number'); return; }
@@ -162,7 +175,9 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
       {/* Post-call modal (shared UX pattern, Meta data destination) */}
       <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
         <View style={styles.overlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ width: '100%' }}>
           <View style={styles.sheet}>
+            <ScrollView style={styles.sheetScroll} contentContainerStyle={{ paddingBottom: 8 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
             <Text style={styles.sheetTitle}>Call Outcome</Text>
             {lookingUp ? <ActivityIndicator color="#16a34a" /> : (
               <Text style={styles.duration}>
@@ -183,13 +198,15 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
               })}
             </View>
             <TextInput style={styles.noteInput} value={note} onChangeText={setNote} placeholder="Note (optional)" placeholderTextColor="#9ca3af" data-testid="meta-call-note" />
-            <View style={styles.rowBetween}>
+            </ScrollView>
+            <View style={[styles.rowBetween, styles.sheetFooter]}>
               <TouchableOpacity onPress={() => setShowModal(false)} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
               <TouchableOpacity onPress={submitCall} disabled={busy} style={styles.saveBtn} data-testid="meta-call-save">
                 {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save</Text>}
               </TouchableOpacity>
             </View>
           </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -209,7 +226,9 @@ const styles = StyleSheet.create({
   section: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 6 },
   activity: { fontSize: 13, color: '#6b7280', paddingVertical: 3 },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
+  sheet: { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 20, paddingBottom: 16, maxHeight: '90%' },
+  sheetScroll: { flexShrink: 1 },
+  sheetFooter: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
   sheetTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 6 },
   duration: { fontSize: 14, color: '#16a34a', fontWeight: '600', marginBottom: 12 },
   outcomeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },

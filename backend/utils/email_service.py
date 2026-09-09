@@ -10,21 +10,36 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Check if Resend is configured
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "onboarding@resend.dev")
 HR_EMAIL = os.environ.get("HR_EMAIL", "")  # HR/Admin email for notifications
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
 
-# Only import resend if API key is configured
-resend = None
-if RESEND_API_KEY:
+
+async def _resolve_resend():
+    """Return a configured `resend` module, or None if no API key is available.
+    The key is resolved AT SEND TIME: env var first, then the admin-saved DB setting
+    (app_settings.type=integrations.resend_api_key). This keeps email working whether the
+    key is provided via deployment secret OR the in-app Settings screen, and survives redeploys
+    (a fresh process no longer caches a blank key at import time)."""
     try:
         import resend
-        resend.api_key = RESEND_API_KEY
-        logger.info("Resend email service initialized")
     except ImportError:
         logger.warning("Resend library not installed. Email notifications disabled.")
+        return None
+    key = (os.environ.get("RESEND_API_KEY") or "").strip()
+    if not key:
+        try:
+            from utils.database import db
+            s = await db.app_settings.find_one({"type": "integrations"}, {"_id": 0, "resend_api_key": 1})
+            key = ((s or {}).get("resend_api_key") or "").strip()
+            if key:
+                os.environ["RESEND_API_KEY"] = key
+        except Exception as e:
+            logger.warning(f"Could not load Resend key from settings: {e}")
+    if not key:
+        return None
+    resend.api_key = key
+    return resend
 
 
 async def send_email(to: str, subject: str, html: str) -> bool:
@@ -32,14 +47,15 @@ async def send_email(to: str, subject: str, html: str) -> bool:
     Send an email using Resend API.
     Returns True if successful, False otherwise.
     """
-    if not resend or not RESEND_API_KEY:
-        logger.warning(f"Email not sent (Resend not configured): {subject} to {to}")
-        return False
-    
     if not to:
         logger.warning(f"Email not sent (no recipient): {subject}")
         return False
-    
+
+    resend = await _resolve_resend()
+    if not resend:
+        logger.warning(f"Email not sent (Resend not configured): {subject} to {to}")
+        return False
+
     try:
         params = {
             "from": SENDER_EMAIL,
@@ -47,7 +63,6 @@ async def send_email(to: str, subject: str, html: str) -> bool:
             "subject": subject,
             "html": html
         }
-        
         # Run sync SDK in thread to keep FastAPI non-blocking
         result = await asyncio.to_thread(resend.Emails.send, params)
         logger.info(f"Email sent successfully: {subject} to {to}")
