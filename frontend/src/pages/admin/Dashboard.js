@@ -4,12 +4,13 @@ import api from '../../services/api';
 import { StatusColors, StatusLabels } from '../../constants/colors';
 import VerifiedCallStats from '../../components/VerifiedCallStats';
 import useAuthStore from '../../store/authStore';
-import { CombinedTotalsCard, MetaSummaryTable } from '../../components/meta/MetaReportBlocks';
+import { CombinedTotalsCard, MetaSummaryTable, TLSummaryTable } from '../../components/meta/MetaReportBlocks';
 
 const AdminDashboard = () => {
   const { user } = useAuthStore();
   const hasMeta = !!user?.meta_access;
   const [metaSummary, setMetaSummary] = useState(null);
+  const [tlSummary, setTlSummary] = useState(null);
   const [stats, setStats] = useState(null);
   const [telecallers, setTelecallers] = useState([]);
   const [period, setPeriod] = useState('today');
@@ -58,6 +59,8 @@ const AdminDashboard = () => {
           const mRes = await api.get(mUrl);
           setMetaSummary(mRes.data);
         } catch (e) { setMetaSummary(null); }
+        const tlUrl = mUrl.replace('/meta/reports/summary', '/tl/reports/summary');
+        try { setTlSummary((await api.get(tlUrl)).data); } catch (e) { setTlSummary(null); }
       }
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
@@ -212,6 +215,7 @@ const AdminDashboard = () => {
                 total_file: stats?.total_file || 0,
               }}
               meta={metaSummary?.overall}
+              tl={tlSummary?.overall}
             />
           )}
           {/* Main Stats Row */}
@@ -349,6 +353,7 @@ const AdminDashboard = () => {
             <VerifiedCallStats />
           </div>
           {hasMeta && <MetaSummaryTable data={metaSummary} />}
+          {hasMeta && <TLSummaryTable data={tlSummary} />}
         </>
       )}
     </div>

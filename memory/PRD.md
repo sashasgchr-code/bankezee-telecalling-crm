@@ -2004,3 +2004,14 @@ Mobile NEW /app/mobile-app/src/screens/TLTeamLeadsScreen.js (pool + stats + Call
   api.js getTL* helpers, registered Stack 'TLTeamLeads', More-menu entry for tl/manager. Babel-verified (no emulator).
 TESTING: iteration_62.json backend 22/22 PASS (acceptance flow, FILE ownership preserved, GP call_logs untouched,
   scoping + 403, reports, GP + Meta regression). Frontend 100%. Post-review fixes: default month, manager scoping tightened, dead code removed.
+
+### TL/Meta Production Defect Fixes — June 2026 (VERIFIED)
+1. TL pool root cause: `/tl/leads` filtered by CURRENT status ('leads') and ignored `period`, while lead_created_at is never populated -> leads that progressed were lost & list/stats contradicted. FIX: pool = status in LEAD_OR_BEYOND ['leads','converted','file'] with became-LEAD date = lead_created_at||activity-to-leads||file_created_at||created_at; `/tl/leads` now honors `period` identical to `/tl/stats`. Verified: month pool==stats (2==2), historical Sep-7 lead shows.
+2. Date filtering: TL leads+stats share `_period_bounds` (today/yesterday/week/month/custom); filter by became-LEAD date.
+3. RECURSIVE hierarchy: `_tl_scope` rewritten with BFS over manager_id -> resolves Manager->sub-Manager->TL->GP at any depth (canonical resolver reused by all /tl/* endpoints). Verified via nested chain (MgrTop->MgrMid->TL_X->GP_Y all resolved). rama@neosales.org is production-only (not in preview DB).
+4. Meta Files "Loading..." root cause: my earlier `_report_match(user)` SHADOWED pre-existing `_report_match(user,partner,processor)` -> /meta/files/report threw 500 -> frontend had no error handling. FIX: renamed mine to `_reports_scope_match`; FileReports.js now has loading/empty/error states. /meta/files/report + export now 200; my meta reports still 200.
+5-10. TL is a THIRD reporting source (tl_call_logs only). CombinedTotalsCard extended: Combined Calls/Connected/Talk = Connect+Meta+TL; Files stays Connect+Meta (TL->File is same underlying file, shown as attribution). TLSummaryTable added. Wired into admin Reports (Summary combined+TL section, Hourly combined includes TL calls), admin Dashboard (combined+TL section), mobile ReportsScreen (combined+TL section). TL talk time from actual tl_call_logs durations.
+11. No double-count verified: Combined unique Files = Connect 1 + Meta 21 = 22; TL files=1 attribution-only (source_id=GP keeps GP ownership).
+Combined math (verified): Connect 0 + Meta 337 + TL 2 = 339 calls; Talk 0 + 8h24m + 5m35s = 8h29m.
+Files changed: backend routes/tl.py, routes/meta.py; frontend components/meta/MetaReportBlocks.js, pages/admin/Reports.js, pages/admin/Dashboard.js, pages/meta/FileReports.js; mobile src/screens/ReportsScreen.js, src/services/api.js.
+Regression: all 14 Connect/Meta/TL endpoints 200. GP call_logs untouched (TL never writes there).

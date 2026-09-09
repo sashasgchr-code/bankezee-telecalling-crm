@@ -55,10 +55,11 @@ def _now():
 
 
 async def _tl_scope(current_user: dict):
-    """Return (tl_ids set, gp_map {id->name}, allowed_tl_list) honoring the hierarchy.
-    - admin/ops: all TLs + all GPs.
-    - manager: TLs under them (+ their GPs).
-    - TL: themselves (+ their GPs).
+    """Return (tl_ids set, gp_map {id->name}, allowed_tl_list) using ONE canonical RECURSIVE
+    descendant resolver so every TL endpoint scopes identically.
+    - admin/ops/hr: all TLs + all GPs.
+    - manager (incl. senior/nested): recursively resolve ALL descendant managers -> TLs -> GPs.
+    - TL: themselves + their GPs.
     - GP (non-TL): blocked.
     """
     role = (current_user.get("role") or "").lower()
@@ -66,30 +67,38 @@ async def _tl_scope(current_user: dict):
     me = _uid_variants(current_user)
 
     all_users = await db.users.find({}).to_list(5000)
-    by_id = {}
-    for u in all_users:
-        for v in _uid_variants(u):
-            by_id[v] = u
 
-    def is_tl_user(u):
-        return bool(u.get("is_tl"))
-
-    def gp_ids_for_tl(tl_ids: set):
+    def gp_map_for(tl_id_set: set):
         gps = {}
         for u in all_users:
-            if (u.get("role") or "").lower() in GP_ROLES:
-                if str(u.get("tl_id") or "") in tl_ids:
-                    for v in _uid_variants(u):
-                        gps[v] = (u.get("name") or u.get("full_name") or "GP")
+            if (u.get("role") or "").lower() in GP_ROLES and str(u.get("tl_id") or "") in tl_id_set:
+                for v in _uid_variants(u):
+                    gps[v] = (u.get("name") or u.get("full_name") or "GP")
         return gps
 
     if role in ("admin", "ops", "hr"):
-        tls = [u for u in all_users if is_tl_user(u)]
+        tls = [u for u in all_users if u.get("is_tl")]
     elif role == "manager":
-        mgr = me
-        tls = [u for u in all_users if is_tl_user(u) and str(u.get("manager_id") or "") in mgr]
+        # Recursive BFS over manager_id edges to gather every descendant (sub-managers + TLs + staff).
+        reached = set(me)
+        frontier = set(me)
+        for _ in range(12):  # depth guard
+            nxt = set()
+            for u in all_users:
+                uv = _uid_variants(u)
+                if reached & uv:
+                    continue
+                if str(u.get("manager_id") or "") in reached:
+                    nxt |= uv
+            new = nxt - reached
+            if not new:
+                break
+            reached |= new
+            frontier = new
+        tls = [u for u in all_users if u.get("is_tl") and (_uid_variants(u) & reached)]
     elif is_tl:
         tls = [u for u in all_users if me & _uid_variants(u)]
+        reached = set(me)
     else:
         raise HTTPException(status_code=403, detail="Team Leader access required")
 
@@ -99,12 +108,30 @@ async def _tl_scope(current_user: dict):
         vs = _uid_variants(t)
         tl_ids |= vs
         allowed_tl_list.append({"id": (t.get("id") or str(t.get("_id"))), "name": t.get("name") or t.get("full_name") or "TL"})
-    gp_map = gp_ids_for_tl(tl_ids)
+    gp_map = gp_map_for(tl_ids)
+    # Managers also see GPs attached directly under any reached node (defensive: GP.manager_id chain).
+    if role == "manager":
+        for u in all_users:
+            if (u.get("role") or "").lower() in GP_ROLES and str(u.get("manager_id") or "") in reached:
+                for v in _uid_variants(u):
+                    gp_map.setdefault(v, (u.get("name") or u.get("full_name") or "GP"))
     return tl_ids, gp_map, allowed_tl_list
 
 
-def _lead_dt(lead):
-    v = lead.get("lead_created_at") or lead.get("updated_at") or lead.get("created_at")
+# Statuses that indicate a customer reached the LEAD stage or beyond (converted to FILE).
+LEAD_OR_BEYOND = ["leads", "converted", "file"]
+
+
+def _became_lead_dt(lead):
+    """Stable 'became LEAD' timestamp. Prefer lead_created_at; then a status-change-to-leads
+    activity; then file_created_at; then created_at. Robust to missing lead_created_at."""
+    v = lead.get("lead_created_at")
+    if not v:
+        for a in (lead.get("activities") or []):
+            if (a.get("resulting_status") or a.get("to_status")) == "leads" and a.get("timestamp"):
+                v = a.get("timestamp"); break
+    if not v:
+        v = lead.get("file_created_at") or lead.get("created_at") or lead.get("updated_at")
     if isinstance(v, str):
         try:
             v = datetime.fromisoformat(v.replace("Z", "+00:00"))
@@ -154,6 +181,7 @@ async def tl_leads(current_user: dict = Depends(get_current_user),
                    tl: Optional[str] = None, gp: Optional[str] = None,
                    status: Optional[str] = None, outcome: Optional[str] = None,
                    converted: Optional[str] = None, q: Optional[str] = None,
+                   period: Optional[str] = None,
                    from_date: Optional[str] = None, to_date: Optional[str] = None):
     tl_ids, gp_map, _ = await _tl_scope(current_user)
     gp_ids = set(gp_map.keys())
@@ -161,12 +189,13 @@ async def tl_leads(current_user: dict = Depends(get_current_user),
         gp_ids = gp_ids & {gp}
     if not gp_ids:
         return {"leads": [], "total": 0}
-    match = {"assigned_to": {"$in": list(gp_ids)}, "status": {"$in": LEAD_STATUSES + ["file"]}}
+    match = {"assigned_to": {"$in": list(gp_ids)}, "status": {"$in": LEAD_OR_BEYOND}}
     if status and status != "ALL":
         match["status"] = status
-    leads = await db.leads.find(match).sort("lead_created_at", -1).to_list(3000)
+    leads = await db.leads.find(match).to_list(5000)
 
-    s, e = _period_bounds(None, from_date, to_date)
+    # Filter by the date the customer BECAME a LEAD (period identical to /tl/stats).
+    s, e = _period_bounds(period, from_date, to_date)
     # TL calls per lead for enrichment
     lids = [str(l.get("_id")) for l in leads] + [l.get("id") for l in leads if l.get("id")]
     tl_calls = await db.tl_call_logs.find({"lead_id": {"$in": lids}}).to_list(20000)
@@ -177,8 +206,10 @@ async def tl_leads(current_user: dict = Depends(get_current_user),
     out = []
     for l in leads:
         lid = str(l.get("_id"))
-        dt = _lead_dt(l)
+        dt = _became_lead_dt(l)
         if s and dt and not (s <= dt < e):
+            continue
+        if s and not dt:
             continue
         my_calls = sorted(calls_by_lead.get(lid, []), key=lambda c: c.get("created_at") or datetime.min.replace(tzinfo=timezone.utc))
         last_tl = my_calls[-1] if my_calls else None
@@ -204,7 +235,7 @@ async def tl_leads(current_user: dict = Depends(get_current_user),
             "status": l.get("status"),
             "gp_id": l.get("assigned_to"),
             "gp_name": gp_map.get(str(l.get("assigned_to")), l.get("telecaller_name") or "—"),
-            "lead_created_at": (_lead_dt(l).isoformat() if _lead_dt(l) else None),
+            "lead_created_at": (_became_lead_dt(l).isoformat() if _became_lead_dt(l) else None),
             "last_call_at": (l.get("last_call_at").isoformat() if isinstance(l.get("last_call_at"), datetime) else l.get("last_call_at")),
             "last_call_outcome": l.get("last_call_outcome"),
             "follow_up_date": l.get("follow_up_date"),
@@ -233,11 +264,11 @@ async def tl_stats(current_user: dict = Depends(get_current_user),
         return s, e
 
     async def leads_in(s, e):
-        leads = await db.leads.find({"assigned_to": {"$in": list(gp_ids)}, "status": {"$in": LEAD_STATUSES + ["file"]}},
-                                    {"lead_created_at": 1, "updated_at": 1, "created_at": 1}).to_list(5000)
+        leads = await db.leads.find({"assigned_to": {"$in": list(gp_ids)}, "status": {"$in": LEAD_OR_BEYOND}},
+                                    {"lead_created_at": 1, "updated_at": 1, "created_at": 1, "file_created_at": 1, "activities": 1}).to_list(8000)
         n = 0
         for l in leads:
-            dt = _lead_dt(l)
+            dt = _became_lead_dt(l)
             if dt and (not s or s <= dt < e):
                 n += 1
         return n

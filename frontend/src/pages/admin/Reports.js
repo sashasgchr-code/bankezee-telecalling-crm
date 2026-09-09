@@ -4,7 +4,7 @@ import api from '../../services/api';
 import { GrowthPartnerFilter } from '../../components/GrowthPartnerFilter';
 import { PrintReportButton } from '../../components/PrintReportButton';
 import useAuthStore from '../../store/authStore';
-import { CombinedTotalsCard, MetaSummaryTable, MetaHourlyTable } from '../../components/meta/MetaReportBlocks';
+import { CombinedTotalsCard, MetaSummaryTable, MetaHourlyTable, TLSummaryTable } from '../../components/meta/MetaReportBlocks';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -13,6 +13,8 @@ const AdminReports = () => {
   const hasMeta = !!user?.meta_access;
   const [metaSummary, setMetaSummary] = useState(null);
   const [metaHourly, setMetaHourly] = useState(null);
+  const [tlSummary, setTlSummary] = useState(null);
+  const [tlHourly, setTlHourly] = useState(null);
   const [reports, setReports] = useState(null);
   const [hourlyReports, setHourlyReports] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
@@ -60,6 +62,10 @@ const AdminReports = () => {
           const mRes = await api.get(mUrl);
           setMetaSummary(mRes.data);
         } catch (e) { setMetaSummary(null); }
+        // TL is a THIRD source (from tl_call_logs only) — fetched with the same period window.
+        let tUrl = `/tl/reports/summary?period=${period}`;
+        if (showDateRange && fromDate && toDate) tUrl = `/tl/reports/summary?from_date=${fromDate}&to_date=${toDate}`;
+        try { setTlSummary((await api.get(tUrl)).data); } catch (e) { setTlSummary(null); }
       }
     } catch (error) {
       console.error('Error fetching reports:', error);
@@ -85,6 +91,7 @@ const AdminReports = () => {
           const mRes = await api.get(`/meta/reports/hourly?date=${hourlyDate}`);
           setMetaHourly(mRes.data);
         } catch (e) { setMetaHourly(null); }
+        try { setTlHourly((await api.get(`/tl/reports/hourly?date=${hourlyDate}`)).data); } catch (e) { setTlHourly(null); }
       }
     } catch (error) {
       console.error('Error fetching hourly reports:', error);
@@ -1052,7 +1059,7 @@ const AdminReports = () => {
             </div>
           ) : reports ? (
             <>
-              {hasMeta && <CombinedTotalsCard connect={reports.overall} meta={metaSummary?.overall} testid="combined-totals-summary" />}
+              {hasMeta && <CombinedTotalsCard connect={reports.overall} meta={metaSummary?.overall} tl={tlSummary?.overall} testid="combined-totals-summary" />}
               {/* Overall Stats */}
               <div className="card p-4 mb-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Overall Performance</h3>
@@ -1262,6 +1269,7 @@ const AdminReports = () => {
             </div>
           </div>
           {hasMeta && <MetaSummaryTable data={metaSummary} />}
+          {hasMeta && <TLSummaryTable data={tlSummary} />}
         </>
       ) : null}
         </>
@@ -1299,6 +1307,9 @@ const AdminReports = () => {
                     total_calls: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_calls || 0), 0),
                     total_leads_generated: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_leads || 0), 0),
                     total_file: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_file || 0), 0),
+                  }}
+                  tl={{
+                    tl_calls: (tlHourly?.hours || []).reduce((s, h) => s + (h.tl_calls || 0), 0),
                   }}
                 />
               )}

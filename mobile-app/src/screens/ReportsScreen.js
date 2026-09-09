@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Dimensions } from 'react-native';
-import { getTeamHourly, getMetaReportsHourly } from '../services/api';
+import { getTeamHourly, getMetaReportsHourly, getTLSummary } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -15,6 +15,7 @@ const ReportsScreen = ({ mobileRole, user }) => {
   const hasMeta = !!user?.meta_access;
   const [data, setData] = useState(null);
   const [metaData, setMetaData] = useState(null);
+  const [tlData, setTlData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dayOffset, setDayOffset] = useState(0);
@@ -32,6 +33,10 @@ const ReportsScreen = ({ mobileRole, user }) => {
       setData(res);
       if (hasMeta) {
         try { setMetaData(await getMetaReportsHourly(date)); } catch (e) { setMetaData(null); }
+      }
+      // TL is a third source (tl_call_logs only), aligned to the selected day.
+      if (user?.is_tl || mobileRole === 'manager' || mobileRole === 'tl') {
+        try { setTlData(await getTLSummary({ from_date: date, to_date: date })); } catch (e) { setTlData(null); }
       }
     } catch (e) {
       console.error('Reports load error', e?.message);
@@ -65,9 +70,10 @@ const ReportsScreen = ({ mobileRole, user }) => {
     leads: a.leads + (m.total_leads || 0),
     file: a.file + (m.total_file || 0),
   }), { calls: 0, connected: 0, leads: 0, file: 0 });
+  const tlOverall = tlData?.overall || {};
   const combined = {
-    calls: overall.calls + metaOverall.calls,
-    connected: overall.connected + metaOverall.connected,
+    calls: overall.calls + metaOverall.calls + (tlOverall.tl_calls || 0),
+    connected: overall.connected + metaOverall.connected + (tlOverall.connected || 0),
     leads: overall.leads + metaOverall.leads,
     file: overall.file + metaOverall.file,
   };
@@ -95,7 +101,7 @@ const ReportsScreen = ({ mobileRole, user }) => {
             <View style={[styles.statCard, styles.combinedCard]}><Text style={styles.combinedValue}>{combined.leads}</Text><Text style={styles.statLabel}>Leads</Text></View>
             <View style={[styles.statCard, styles.combinedCard]}><Text style={styles.combinedValue}>{combined.file}</Text><Text style={styles.statLabel}>Files</Text></View>
           </View>
-          <Text style={styles.splitLine}>Connect calls: {overall.calls} · Meta calls: {metaOverall.calls} · Connect files: {overall.file} · Meta files: {metaOverall.file}</Text>
+          <Text style={styles.splitLine}>Connect calls: {overall.calls} · Meta calls: {metaOverall.calls} · TL calls: {tlOverall.tl_calls || 0} · Connect files: {overall.file} · Meta files: {metaOverall.file}</Text>
         </View>
       )}
 
@@ -163,6 +169,34 @@ const ReportsScreen = ({ mobileRole, user }) => {
                 <View style={styles.tcStatItem}><Text style={styles.tcStatValue}>{m.total_connected || 0}</Text><Text style={styles.tcStatLabel}>Connected</Text></View>
                 <View style={styles.tcStatItem}><Text style={styles.tcStatValue}>{m.total_leads || 0}</Text><Text style={styles.tcStatLabel}>Leads</Text></View>
                 <View style={styles.tcStatItem}><Text style={styles.tcStatValue}>{m.total_file || 0}</Text><Text style={styles.tcStatLabel}>Files</Text></View>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {tlData && (
+        <View style={styles.section} data-testid="tl-report-section">
+          <View style={styles.metaHead}>
+            <Text style={[styles.metaTitle, { color: '#4f46e5' }]}>TL Second-Level</Text>
+            <Text style={styles.metaSub}>tl_call_logs only</Text>
+          </View>
+          <View style={styles.statsGrid}>
+            <View style={[styles.statCard, { borderColor: '#e0e7ff' }]}><Text style={[styles.statValue, { color: '#4f46e5' }]}>{tlOverall.tl_calls || 0}</Text><Text style={styles.statLabel}>TL Calls</Text></View>
+            <View style={[styles.statCard, { borderColor: '#e0e7ff' }]}><Text style={[styles.statValue, { color: '#7c3aed' }]}>{tlOverall.connected || 0}</Text><Text style={styles.statLabel}>Connected</Text></View>
+            <View style={[styles.statCard, { borderColor: '#e0e7ff' }]}><Text style={[styles.statValue, { color: '#ea580c' }]}>{tlOverall.files || 0}</Text><Text style={styles.statLabel}>Files</Text></View>
+            <View style={[styles.statCard, { borderColor: '#e0e7ff' }]}><Text style={[styles.statValue, { color: '#059669' }]}>{tlOverall.conversion_pct || 0}%</Text><Text style={styles.statLabel}>Conv%</Text></View>
+          </View>
+          {(tlData.tls || []).map((t) => (
+            <View key={t.tl_id} style={styles.memberCard}>
+              <View style={styles.tcHeader}>
+                <Text style={styles.tcName}>{t.tl_name}</Text>
+                <View style={styles.tcMainStat}><Text style={[styles.tcMainValue, { color: '#4f46e5' }]}>{t.tl_calls}</Text><Text style={styles.tcMainLabel}>calls</Text></View>
+              </View>
+              <View style={styles.tcStats}>
+                <View style={styles.tcStatItem}><Text style={styles.tcStatValue}>{t.connected}</Text><Text style={styles.tcStatLabel}>Connected</Text></View>
+                <View style={styles.tcStatItem}><Text style={styles.tcStatValue}>{t.follow_ups}</Text><Text style={styles.tcStatLabel}>Follow-ups</Text></View>
+                <View style={styles.tcStatItem}><Text style={styles.tcStatValue}>{t.files}</Text><Text style={styles.tcStatLabel}>Files</Text></View>
               </View>
             </View>
           ))}

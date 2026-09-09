@@ -865,7 +865,7 @@ def _in_range(dt, start, end):
     return True
 
 
-def _report_match(user):
+def _reports_scope_match(user):
     """Meta report visibility: staff see all; others see only their assigned leads."""
     role, uid = _ctx(user)
     match = dict(NOT_DELETED)
@@ -880,7 +880,7 @@ async def meta_reports_summary(user: dict = Depends(require_meta_access),
                                to_date: Optional[str] = None):
     """Per-partner Meta performance for the Connect Reports 'Summary' tab (Meta table)."""
     start, end = _period_bounds_utc(period, from_date, to_date)
-    match = _report_match(user)
+    match = _reports_scope_match(user)
     leads = await db.meta_leads.find(match, {"_id": 0, "assigned_partner_id": 1, "assigned_partner_name": 1,
         "status": 1, "call_logs": 1, "updated_at": 1, "file_created_at": 1, "created_at": 1,
         "created_time": 1}).to_list(20000)
@@ -930,7 +930,7 @@ async def meta_reports_summary(user: dict = Depends(require_meta_access),
 async def meta_reports_hourly(user: dict = Depends(require_meta_access), date: Optional[str] = None):
     """Per-partner Meta hourly breakdown (IST) for the Connect Reports 'Hourly' tab."""
     start, end = _ist_day_bounds_utc(date)
-    match = _report_match(user)
+    match = _reports_scope_match(user)
     leads = await db.meta_leads.find(match, {"_id": 0, "assigned_partner_id": 1, "assigned_partner_name": 1,
         "status": 1, "call_logs": 1, "updated_at": 1, "file_created_at": 1}).to_list(20000)
 

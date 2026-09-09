@@ -19,6 +19,8 @@ export default function MetaFileReports() {
   const meta = useMetaUser();
   const isAdminOps = meta.isStaff;
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [partners, setPartners] = useState([]);
   const [processors, setProcessors] = useState([]);
   const [f, setF] = useState({ from_date: "", to_date: "", partner: "ALL", processor: "ALL" });
@@ -38,8 +40,16 @@ export default function MetaFileReports() {
   const load = useCallback(async () => {
     const params = {};
     Object.entries(f).forEach(([k, v]) => { if (v && v !== "ALL") params[k] = v; });
-    const { data } = await api.get("/meta/files/report", { params });
-    setData(data);
+    setLoading(true); setLoadError(false);
+    try {
+      const { data } = await api.get("/meta/files/report", { params });
+      setData(data);
+    } catch (e) {
+      setLoadError(true); setData(null);
+      toast.error("Failed to load file reports");
+    } finally {
+      setLoading(false);
+    }
   }, [f]);
 
   useEffect(() => { load(); }, [load]);
@@ -83,7 +93,9 @@ export default function MetaFileReports() {
           )}
         </div>
 
-        {!o ? <p className="text-slate-400 text-sm">Loading...</p> : (
+        {loading ? <p className="text-slate-400 text-sm" data-testid="meta-reports-loading">Loading...</p>
+          : loadError ? <p className="text-red-500 text-sm" data-testid="meta-reports-error">Could not load file reports. Please retry.</p>
+          : !o || o.total_files === 0 ? <p className="text-slate-400 text-sm" data-testid="meta-reports-empty">No files found for the selected range.</p> : (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <Card label="Total Files" value={o.total_files} icon={FolderOpen} accent="bg-violet-50 text-violet-600" testid="meta-rep-total" />
