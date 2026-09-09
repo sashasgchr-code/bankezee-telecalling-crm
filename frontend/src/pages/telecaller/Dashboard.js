@@ -4,8 +4,17 @@ import { Phone, Clock, TrendingUp, Target, Loader2, RefreshCw, PhoneOff, PhoneMi
 import api from '../../services/api';
 import AttendanceCard from '../../components/attendance/AttendanceCard';
 import EarningsCard from '../../components/EarningsCard';
+import useAuthStore from '../../store/authStore';
+import { CombinedTotalsCard, MetaSummaryTable, TLSummaryTable } from '../../components/meta/MetaReportBlocks';
+
+const PERIOD_MAP = { today: 'today', this_week: 'week', this_month: 'month', all_time: 'lifetime' };
 
 const TelecallerDashboard = () => {
+  const { user } = useAuthStore();
+  const hasMeta = !!user?.meta_access;
+  const isTl = !!user?.is_tl;
+  const [metaSum, setMetaSum] = useState(null);
+  const [tlSum, setTlSum] = useState(null);
   const [stats, setStats] = useState(null);
   const [activityStats, setActivityStats] = useState(null);
   const [hourlyData, setHourlyData] = useState(null);
@@ -37,6 +46,15 @@ const TelecallerDashboard = () => {
       ]);
       setStats(statsRes.data);
       setActivityStats(activityRes.data);
+
+      const mp = (showDateRange && fromDate && toDate)
+        ? `from_date=${fromDate}&to_date=${toDate}` : `period=${PERIOD_MAP[period] || 'lifetime'}`;
+      if (hasMeta) {
+        try { setMetaSum((await api.get(`/meta/reports/summary?${mp}`)).data); } catch (e) { setMetaSum(null); }
+      }
+      if (isTl) {
+        try { setTlSum((await api.get(`/tl/reports/summary?${mp}`)).data); } catch (e) { setTlSum(null); }
+      }
     } catch (error) {
       console.error('Error fetching stats:', error);
     } finally {
@@ -198,6 +216,19 @@ const TelecallerDashboard = () => {
         </div>
       ) : (
         <>
+          {(hasMeta || isTl) && (
+            <CombinedTotalsCard
+              testid="combined-totals-personal"
+              connect={{
+                total_calls: activityStats?.calls_made || stats?.my_connected || 0,
+                total_leads_generated: stats?.leads_by_status?.leads || 0,
+                total_file: stats?.leads_by_status?.file || 0,
+                total_call_seconds: activityStats?.total_call_seconds || 0,
+              }}
+              meta={hasMeta ? metaSum?.overall : undefined}
+              tl={isTl ? tlSum?.overall : undefined}
+            />
+          )}
           {/* Main Stats */}
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="card p-4 text-center">
@@ -412,6 +443,8 @@ const TelecallerDashboard = () => {
               </div>
             )}
           </div>
+          {hasMeta && <MetaSummaryTable data={metaSum} />}
+          {isTl && <TLSummaryTable data={tlSum} />}
         </>
       )}
     </div>

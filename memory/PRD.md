@@ -2015,3 +2015,11 @@ TESTING: iteration_62.json backend 22/22 PASS (acceptance flow, FILE ownership p
 Combined math (verified): Connect 0 + Meta 337 + TL 2 = 339 calls; Talk 0 + 8h24m + 5m35s = 8h29m.
 Files changed: backend routes/tl.py, routes/meta.py; frontend components/meta/MetaReportBlocks.js, pages/admin/Reports.js, pages/admin/Dashboard.js, pages/meta/FileReports.js; mobile src/screens/ReportsScreen.js, src/services/api.js.
 Regression: all 14 Connect/Meta/TL endpoints 200. GP call_logs untouched (TL never writes there).
+
+### Personal Meta/TL Dashboard Metrics + Meta Mobile Parity — June 2026 (VERIFIED)
+- Web GP/TL dashboard (pages/telecaller/Dashboard.js): added personal Combined (Connect+Meta[+TL]) card + own Meta section (MetaSummaryTable) if meta_access + own TL section (TLSummaryTable) if is_tl. Reuses /meta/reports/summary (server-scoped to own meta_user_id) and /tl/reports/summary (TL=self). Period mapped today/week/month/lifetime + custom.
+- Mobile dashboard (DashboardScreen.js): compact responsive Combined + My Meta + My TL stat cards (getMetaReportsSummary/getTLSummary), gated by user.meta_access / is_tl.
+- Scoping verified: GP sees ONLY own Meta (Banothu Nithin, 158 calls, no team data); GP->/tl/reports/summary = 403. Admin/Manager collective dashboards unchanged (same logic).
+- Combined files = unique (Connect+Meta only); TL files shown as attribution (no double-count). Talk time from real durations.
+- Meta MOBILE PARITY: MetaHomeScreen already has Leads/Files/File Reports tabs + gating + filters + date presets + FileDetail(mode=meta) + getMetaFilesReport; MetaLeadDetailScreen has post-call reason/notes/follow-up/duration + direct status; Leads cards have Call/WhatsApp. Mobile Meta File Reports was fixed by the backend _reports_scope_match rename (500->200). Personal Meta dashboard now added on mobile too.
+Test numbers: GP Meta lifetime calls 158/connected 157/leads 6/files 4/talk 14752s. TL month tl_calls 2/connected 1/files 1/conv 100%/talk 335s.

@@ -11,7 +11,7 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { getDashboardStats, pingActivity, logout as apiLogout, getMyEarnings } from '../services/api';
+import { getDashboardStats, pingActivity, logout as apiLogout, getMyEarnings, getMetaReportsSummary, getTLSummary } from '../services/api';
 import { 
   syncCallLogsWithBackend, 
   requestAllPermissions,
@@ -39,6 +39,16 @@ const DashboardScreen = ({ user, onLogout }) => {
   const [diagnostics, setDiagnostics] = useState(null);
   const [earnings, setEarnings] = useState(null);
   const [showEarnings, setShowEarnings] = useState(false);
+  const [metaSum, setMetaSum] = useState(null);
+  const [tlSum, setTlSum] = useState(null);
+  const hasMeta = !!user?.meta_access;
+  const isTl = !!user?.is_tl;
+
+  useEffect(() => {
+    const p = { period: 'today' };
+    if (hasMeta) getMetaReportsSummary(p).then(setMetaSum).catch(() => {});
+    if (isTl) getTLSummary(p).then(setTlSum).catch(() => {});
+  }, [hasMeta, isTl]);
 
   useEffect(() => {
     getMyEarnings({}).then(setEarnings).catch(() => {});
@@ -356,6 +366,57 @@ const DashboardScreen = ({ user, onLogout }) => {
           <Text style={styles.quickStatLabel}>Calls</Text>
         </View>
       </View>
+
+      {(hasMeta || isTl) && (() => {
+        const mo = metaSum?.overall || {}; const to = tlSum?.overall || {};
+        const cCalls = stats?.my_connected || 0;
+        const cTalk = (stats?.daily_session?.total_call_seconds || 0);
+        const combCalls = cCalls + (hasMeta ? (mo.total_calls || 0) : 0) + (isTl ? (to.tl_calls || 0) : 0);
+        const combTalk = cTalk + (hasMeta ? (mo.total_call_seconds || 0) : 0) + (isTl ? (to.talk_seconds || 0) : 0);
+        const Card = ({ v, l, c }) => (
+          <View style={styles.mtCard}><Text style={[styles.mtVal, c && { color: c }]}>{v}</Text><Text style={styles.mtLbl}>{l}</Text></View>
+        );
+        return (
+          <View style={{ paddingHorizontal: 16, marginTop: 8 }} data-testid="mobile-personal-meta-tl">
+            <View style={styles.mtHead}><Text style={styles.mtTitle}>Combined (Connect{hasMeta ? ' + Meta' : ''}{isTl ? ' + TL' : ''})</Text></View>
+            <View style={styles.mtGrid}>
+              <Card v={combCalls} l="Calls" c="#4f46e5" />
+              <Card v={formatTime(combTalk)} l="Talk" c="#7c3aed" />
+              <Card v={(stats?.leads_by_status?.file || 0) + (hasMeta ? (mo.total_file || 0) : 0)} l="Files" c="#ea580c" />
+            </View>
+            {hasMeta && (
+              <>
+                <View style={styles.mtHead}><Text style={[styles.mtTitle, { color: '#059669' }]}>My Meta</Text></View>
+                <View style={styles.mtGrid}>
+                  <Card v={mo.total_calls || 0} l="Calls" c="#059669" />
+                  <Card v={mo.total_connected || 0} l="Connected" c="#7c3aed" />
+                  <Card v={mo.total_leads_generated || 0} l="Leads" c="#2563eb" />
+                </View>
+                <View style={styles.mtGrid}>
+                  <Card v={mo.total_file || 0} l="Files" c="#ea580c" />
+                  <Card v={formatTime(mo.total_call_seconds || 0)} l="Talk" />
+                  <Card v="" l="" />
+                </View>
+              </>
+            )}
+            {isTl && (
+              <>
+                <View style={styles.mtHead}><Text style={[styles.mtTitle, { color: '#4f46e5' }]}>My TL Second-Level</Text></View>
+                <View style={styles.mtGrid}>
+                  <Card v={to.tl_calls || 0} l="TL Calls" c="#4f46e5" />
+                  <Card v={to.connected || 0} l="Connected" c="#7c3aed" />
+                  <Card v={to.follow_ups || 0} l="Follow-ups" c="#2563eb" />
+                </View>
+                <View style={styles.mtGrid}>
+                  <Card v={to.files || 0} l="Files" c="#ea580c" />
+                  <Card v={`${to.conversion_pct || 0}%`} l="Conv%" c="#059669" />
+                  <Card v={formatTime(to.talk_seconds || 0)} l="Talk" />
+                </View>
+              </>
+            )}
+          </View>
+        );
+      })()}
 
       {/* Today's Activity */}
       <View style={styles.section}>
@@ -696,8 +757,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 8,
   },
-  quickStatCard: {
-    flex: 1,
+  mtHead: { marginTop: 12, marginBottom: 6 },
+  mtTitle: { fontSize: 14, fontWeight: '700', color: '#4f46e5' },
+  mtGrid: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  mtCard: { flex: 1, backgroundColor: '#fff', borderRadius: 10, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#eef2ff' },
+  mtVal: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  mtLbl: { fontSize: 10, color: '#6b7280', marginTop: 2 },
+  quickStatCard: {    flex: 1,
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
