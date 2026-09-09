@@ -20,6 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 
 from utils.database import db
 from utils.auth import require_meta_access
+from utils.email_service import send_email as connect_send_email
 
 logger = logging.getLogger("meta_sync")
 router = APIRouter(prefix="/api/meta", tags=["Meta Sync"])
@@ -27,10 +28,7 @@ router = APIRouter(prefix="/api/meta", tags=["Meta Sync"])
 SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1Ugq8BpctyY0ZdqxCknR1OdWGvvUW9Xa1FKBzs_Gyy_4")
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 WEBHOOK_CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "")
-EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "BankEzee CRM")
-EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
 # Kill-switch: real sends happen only when explicitly enabled (default OFF in preview).
 META_EMAIL_ENABLED = os.environ.get("META_EMAIL_ENABLED", "false").strip().lower() == "true"
@@ -42,27 +40,21 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-# ------------------- email transport (captured by default in preview) -------------------
-async def _real_send(to: str, subject: str, html: str) -> Optional[str]:
-    payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
-    if EMAIL_REPLY_TO:
-        payload["contact_email"] = EMAIL_REPLY_TO
-    async with httpx.AsyncClient(timeout=30) as hc:
-        resp = await hc.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
-                             headers={"X-Email-Key": EMAIL_KEY}, json=payload)
-    resp.raise_for_status()
-    return resp.json().get("id")
-
-
+# ------------------- email transport (uses Connect's production Resend service) -------------------
+# Meta reuses the SAME transport as the rest of Connect (utils.email_service -> Resend). Sends are
+# gated by META_EMAIL_ENABLED so preview/backfill never blasts. Every attempt is logged.
 async def _send_safe(to: str, subject: str, html: str, event: str = "generic"):
     if not to:
         return
     sent = False
     err = None
-    if META_EMAIL_ENABLED and EMAIL_KEY:
+    if META_EMAIL_ENABLED:
         try:
-            await _real_send(to, subject, html)
-            sent = True
+            ok = await connect_send_email(to, subject, html)
+            sent = bool(ok)
+            if not ok:
+                err = "email transport unavailable (RESEND_API_KEY not configured or send failed)"
+                logger.error(f"Meta email not delivered to {to} (transport returned false)")
         except Exception as e:
             err = str(e)
             logger.error(f"Meta email failed to {to}: {e}")
@@ -208,6 +200,31 @@ async def meta_manual_sync(user: dict = Depends(require_meta_access)):
     if (user.get("meta_role_normalized") or "") not in ("admin", "ops"):
         raise HTTPException(status_code=403, detail="Admin/Ops only")
     return await sync_leads_from_sheet()
+
+@router.post("/email/selftest")
+async def meta_email_selftest(recipient: Optional[str] = None, user: dict = Depends(require_meta_access)):
+    """Admin-only controlled cutover test: fire exactly ONE assignment email via the real
+    production transport to a controlled recipient, then return the resulting meta_email_log row.
+    Awaited (not fire-and-forget) so the caller sees the exact delivery outcome."""
+    if (user.get("meta_role_normalized") or "") != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    to = (recipient or user.get("meta_email") or user.get("email") or "").strip()
+    if not to:
+        raise HTTPException(status_code=400, detail="No recipient available")
+    partner = {"name": user.get("name") or "Admin", "email": to}
+    lead = {"lead_id": "SELFTEST", "full_name": "Cutover Self-Test Lead", "phone": "0000000000"}
+    await notify_partner_assignment(partner, lead, user.get("name") or "Admin")
+    row = await db.meta_email_log.find_one({"event": "assignment", "to": to}, sort=[("at", -1)])
+    if row:
+        row.pop("_id", None)
+    return {
+        "gate_META_EMAIL_ENABLED": META_EMAIL_ENABLED,
+        "resend_configured": bool(os.environ.get("RESEND_API_KEY")),
+        "recipient": to,
+        "log": row,
+    }
+
+
 
 
 @router.post("/cron/sync-leads")
