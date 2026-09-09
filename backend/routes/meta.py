@@ -73,6 +73,9 @@ class MetaCallInput(BaseModel):
     disposition: str
     reason: Optional[str] = ""
     docs_received: Optional[bool] = None
+    notes: Optional[str] = ""
+    follow_up_date: Optional[str] = None
+    follow_up_time: Optional[str] = None
 
 
 class MetaFileInput(BaseModel):
@@ -443,19 +446,26 @@ async def meta_log_call(lead_id: str, inp: MetaCallInput, user: dict = Depends(r
     now = _now_iso()
     call = {"call_id": f"call_{uuid.uuid4().hex[:10]}", "user_id": uid, "user_name": user.get("name"),
             "at": now, "duration_seconds": dur, "disposition": inp.disposition,
-            "reason": inp.reason or "", "docs_received": inp.docs_received}
+            "reason": inp.reason or "", "docs_received": inp.docs_received,
+            "notes": (inp.notes or "").strip(),
+            "follow_up_date": inp.follow_up_date, "follow_up_time": inp.follow_up_time}
     detail = f"{user.get('name')} logged a call ({dur // 60}m {dur % 60}s) — {inp.disposition.replace('_', ' ').title()}"
     set_fields = {"disposition": inp.disposition, "updated_at": now}
     if lead.get("status") != "FILE":
         set_fields["status"] = inp.disposition
+    if inp.follow_up_date:
+        set_fields["follow_up_date"] = inp.follow_up_date
+        set_fields["follow_up_time"] = inp.follow_up_time
+    push = {"call_logs": call, "activities": {"type": "call", "detail": detail, "at": now}}
+    if (inp.notes or "").strip():
+        push["notes"] = {"text": inp.notes.strip(), "author": user.get("name"), "at": now}
     if inp.disposition == "FILE" and not lead.get("file_created_at"):
         set_fields["file_created_at"] = now
     if inp.docs_received is not None:
         set_fields["docs_received"] = inp.docs_received
     if inp.disposition == "FILE" and not lead.get("file"):
         set_fields["file"] = {}
-    await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": set_fields,
-        "$push": {"call_logs": call, "activities": {"type": "call", "detail": detail, "at": now}}})
+    await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": set_fields, "$push": push})
     is_new_file = inp.disposition == "FILE" and lead.get("status") != "FILE"
     if is_new_file:
         await _auto_assign_processor(lead_id, {**lead, **set_fields})

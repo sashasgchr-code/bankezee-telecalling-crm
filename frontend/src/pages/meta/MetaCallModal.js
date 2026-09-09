@@ -8,8 +8,12 @@ export default function MetaCallModal({ phone, onClose, onSubmit }) {
   const [disposition, setDisposition] = useState("");
   const [reason, setReason] = useState("");
   const [docs, setDocs] = useState("");
+  const [notes, setNotes] = useState("");
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpTime, setFollowUpTime] = useState("");
   const [saving, setSaving] = useState(false);
   const startRef = useRef(Date.now());
+  const needsFollowUp = disposition === "CALL_BACK" || disposition === "NOT_ANSWERING" || disposition === "SWITCHED_OFF";
 
   useEffect(() => {
     const t = setInterval(() => setSeconds(Math.floor((Date.now() - startRef.current) / 1000)), 1000);
@@ -25,6 +29,9 @@ export default function MetaCallModal({ phone, onClose, onSubmit }) {
         duration_seconds: Math.floor((Date.now() - startRef.current) / 1000),
         disposition, reason: reason.trim() || "",
         docs_received: disposition === "FILE" ? (docs === "yes") : null,
+        notes: notes.trim() || "",
+        follow_up_date: needsFollowUp ? (followUpDate || null) : null,
+        follow_up_time: needsFollowUp ? (followUpTime || null) : null,
       });
       onClose();
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed to log call"); } finally { setSaving(false); }
@@ -32,7 +39,7 @@ export default function MetaCallModal({ phone, onClose, onSubmit }) {
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()} data-testid="meta-call-modal">
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-5 sm:p-6 max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()} data-testid="meta-call-modal">
         <div className="flex items-center gap-3 mb-4">
           <div className="h-10 w-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center animate-pulse"><PhoneCall size={20} /></div>
           <div>
@@ -65,6 +72,25 @@ export default function MetaCallModal({ phone, onClose, onSubmit }) {
             </select>
           </div>
         )}
+        {needsFollowUp && (
+          <div className="mb-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Follow-up Date</label>
+              <input type="date" data-testid="meta-followup-date" value={followUpDate} onChange={(e) => setFollowUpDate(e.target.value)}
+                className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm outline-none" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Follow-up Time</label>
+              <input type="time" data-testid="meta-followup-time" value={followUpTime} onChange={(e) => setFollowUpTime(e.target.value)}
+                className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm outline-none" />
+            </div>
+          </div>
+        )}
+        <div className="mb-3">
+          <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Notes</label>
+          <textarea data-testid="meta-call-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+            placeholder="Add call notes / next step..." className="mt-1 w-full border border-slate-300 rounded-md px-3 py-2 text-sm outline-none resize-none" />
+        </div>
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={onClose} className="border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md px-4 py-2 text-sm font-medium transition-colors">Cancel</button>
           <button data-testid="meta-log-call-btn" disabled={saving} onClick={submit}
