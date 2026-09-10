@@ -33,6 +33,8 @@ const DataScreen = ({ user }) => {
   const [statusCounts, setStatusCounts] = useState({});
   const [allCount, setAllCount] = useState(0);
   const filtersLoaded = useRef(false);
+  const loadingMoreRef = useRef(false); // synchronous guard so fast scrolls can't double-load a page
+  const reqSeqRef = useRef(0); // ignore stale responses after a newer filter/search/page load
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -134,6 +136,7 @@ const DataScreen = ({ user }) => {
   }, [isAdmin, selectedTelecaller, searchQuery]);
 
   const loadLeads = useCallback(async (applyFilters = true, page = 1, append = false) => {
+    const seq = ++reqSeqRef.current;
     try {
       // Build params for filtered/searched leads
       let params = {
@@ -159,15 +162,20 @@ const DataScreen = ({ user }) => {
       }
       
       const response = await getLeads(params);
+      if (seq !== reqSeqRef.current) return; // a newer load started -> discard this stale response
       
       // Handle paginated response
       const leadsData = response.leads || response || [];
       const pagination = response.pagination || {};
       
       if (append && page > 1) {
-        // Append to existing leads for infinite scroll
-        setLeads(prev => [...prev, ...leadsData]);
-        setFilteredLeads(prev => [...prev, ...leadsData]);
+        // Append next page, deduped by canonical lead id (defends against any double-load / overlap)
+        const mergeDedup = (prev) => {
+          const seen = new Set(prev.map(l => l.id));
+          return [...prev, ...leadsData.filter(l => l.id && !seen.has(l.id))];
+        };
+        setLeads(mergeDedup);
+        setFilteredLeads(mergeDedup);
       } else {
         // Replace leads for initial load or filter change
         setLeads(leadsData);
@@ -180,17 +188,23 @@ const DataScreen = ({ user }) => {
     } catch (error) {
       console.error('Error loading leads:', error);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
+      if (seq === reqSeqRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+        loadingMoreRef.current = false;
+      }
     }
   }, [statusFilter, outcomeFilter, selectedTelecaller, isAdmin, searchQuery]);
 
   const loadMoreLeads = useCallback(() => {
-    if (!loadingMore && currentPage < totalPages) {
-      setLoadingMore(true);
-      loadLeads(true, currentPage + 1, true);
-    }
-  }, [loadingMore, currentPage, totalPages, loadLeads]);
+    // Ref guard is synchronous -> prevents the multiple onEndReached fires during a fast
+    // scroll from each passing an async `loadingMore` state check and double-appending a page.
+    if (loadingMoreRef.current) return;
+    if (currentPage >= totalPages) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    loadLeads(true, currentPage + 1, true);
+  }, [currentPage, totalPages, loadLeads]);
 
   const loadTelecallers = async () => {
     if (isAdmin) {
@@ -495,7 +509,7 @@ const DataScreen = ({ user }) => {
       {/* Leads List */}
       <FlatList
         data={filteredLeads}
-        keyExtractor={item => item.id}
+        keyExtractor={item => String(item.id)}
         renderItem={renderLead}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         contentContainerStyle={styles.listContent}

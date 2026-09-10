@@ -235,3 +235,16 @@ FIX: use the shared index.canonical_id() to canonicalize each member's id and tl
 VERIFIED (preview, manager Teja e37774a4-8b44-4f6f-a282-faeaa5ab6800): 7 members = 1 TL (Nagulapally pinky, id 6a86994835a1d0070f83970d) + 6 GPs. Pinky team=5 (SHIVASAI/J Vishnu Vardhan/Wameezuddin/Vijayendra/Lellamarychandana) all labeled correctly; Gujjari Sai kiran shows DIRECT (his tl_id='' on preview -> not inferred as Pinky). 0 GPs with tl_id not matching a listed TL; 0 duplicates. Backend 200.
 LIMITATION: preview lacks Mathangi Nikitha & Monisha Satya (not in Teja subtree here) and Gujjari's stored TL edge (empty on preview). On production, where their tl_id points to a Pinky variant, canonicalization groups all 7 under Pinky. Fix verified for the variant-resolution mechanism.
 Not deployed.
+
+## 2026-09-10 (g) — Mobile Data list repeating-card glitch fixed (frontend only)
+FILE: mobile-app/src/screens/DataScreen.js ONLY. No backend/web/Meta/reports/call-flow change.
+API CHECK: /api/leads is clean — page 1/2/3 each 50 records, 0 null ids, 0 in-page dupes, 0 cross-page overlap (P1∩P2∩P3=0). So NOT a data/pagination-overlap bug.
+ROOT CAUSE (frontend): infinite-scroll double-append. loadMoreLeads guarded on the async `loadingMore` STATE, so a fast scroll fired onEndReached several times before state committed -> multiple loadLeads(currentPage+1) with the same stale page -> that page appended 2+ times with NO dedup -> duplicate keys in FlatList -> RN recycled/repeated cards (e.g. Byredla Aravind repeating).
+FIX:
+- loadingMoreRef (useRef) synchronous guard so only one page-load runs at a time.
+- Append now dedupes by canonical lead id (immutable merge) — defends against any double-load/overlap.
+- reqSeqRef sequence token: a stale in-flight response is discarded if a newer filter/search/page load started (prevents old results mixing into a new filtered list).
+- keyExtractor item.id -> String(item.id) (stable unique key; never index/phone/name).
+CALL SAFETY: unchanged & intact — renderLead uses its own row `item`; handleCall(item) dials item.phone. No shared selectedLead. Duplicates no longer occur, and each row always carried its own item anyway.
+VERIFY: FlatList keys were unique per API but pages were double-appended on fast scroll -> now deduped + guarded. babel-preset-expo compile OK. Web untouched; other mobile screens untouched (Meta list uses single page_size=100 fetch, not affected).
+Not deployed / no APK built.
