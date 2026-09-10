@@ -3,6 +3,32 @@ import { Phone, PhoneIncoming, Users, FileText, TrendingUp, Loader2, RefreshCw, 
 import { useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 
+// Clean, self-contained table pager (10/page). Used independently by each dashboard table.
+const TablePager = ({ page, setPage, total, rowsPerPage, testid }) => {
+  const pages = Math.max(1, Math.ceil(total / rowsPerPage));
+  if (total <= rowsPerPage) return null;
+  const start = (page - 1) * rowsPerPage + 1;
+  const end = Math.min(page * rowsPerPage, total);
+  return (
+    <div className="flex items-center justify-between gap-2 px-3 py-2 border-t border-gray-100 text-xs" data-testid={`${testid}-pager`}>
+      <span className="text-gray-500" data-testid={`${testid}-range`}>Showing {start}–{end} of {total}</span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          className="px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+          data-testid={`${testid}-prev`}>Prev</button>
+        <span className="px-2 text-gray-600" data-testid={`${testid}-page`}>{page} / {pages}</span>
+        <button
+          onClick={() => setPage((p) => Math.min(pages, p + 1))}
+          disabled={page >= pages}
+          className="px-2.5 py-1 rounded-md border border-gray-200 text-gray-600 disabled:opacity-40 hover:bg-gray-50"
+          data-testid={`${testid}-next`}>Next</button>
+      </div>
+    </div>
+  );
+};
+
 const ManagerDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
@@ -15,6 +41,12 @@ const ManagerDashboard = () => {
   const [customTo, setCustomTo] = useState('');
   const [dateError, setDateError] = useState('');
   const [activeMetric, setActiveMetric] = useState('calls'); // calls, connected, leads, files
+  const [filesPage, setFilesPage] = useState(1);
+  const [callsPage, setCallsPage] = useState(1);
+  const ROWS_PER_PAGE = 10;
+
+  // Changing the date filter must reset BOTH tables back to page 1 (independent of each other).
+  useEffect(() => { setFilesPage(1); setCallsPage(1); }, [period, customFrom, customTo]);
 
   // Mirrors the backend get_date_range() so every dashboard section is driven by one range
   const resolveRange = () => {
@@ -366,7 +398,7 @@ const ManagerDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {(stats?.gp_performance || []).slice(0, 10).map((gp, idx) => (
+                  {(stats?.gp_performance || []).slice((filesPage - 1) * ROWS_PER_PAGE, filesPage * ROWS_PER_PAGE).map((gp, idx) => (
                     <tr key={gp.id || idx} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-2 px-3 font-medium text-gray-900 truncate max-w-[120px]">
                         {gp.name}
@@ -389,6 +421,7 @@ const ManagerDashboard = () => {
                 </tbody>
               </table>
             </div>
+            <TablePager page={filesPage} setPage={setFilesPage} total={(stats?.gp_performance || []).length} rowsPerPage={ROWS_PER_PAGE} testid="files-performance" />
           </div>
 
           {/* Call Stats by GP */}
@@ -412,7 +445,7 @@ const ManagerDashboard = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {(stats?.gp_call_stats || []).slice(0, 10).map((gp, idx) => (
+                  {(stats?.gp_call_stats || []).slice((callsPage - 1) * ROWS_PER_PAGE, callsPage * ROWS_PER_PAGE).map((gp, idx) => (
                     <tr key={gp.id || idx} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-2 px-3 font-medium text-gray-900 truncate max-w-[120px]">
                         {gp.name}
@@ -434,6 +467,7 @@ const ManagerDashboard = () => {
                 </tbody>
               </table>
             </div>
+            <TablePager page={callsPage} setPage={setCallsPage} total={(stats?.gp_call_stats || []).length} rowsPerPage={ROWS_PER_PAGE} testid="call-activity" />
           </div>
         </>
       )}

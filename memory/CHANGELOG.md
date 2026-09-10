@@ -1,3 +1,13 @@
+## 2026-06 — Manager Dashboard table row-display fix (WEB frontend only, NOT deployed)
+Root cause: FRONTEND truncation. `pages/manager/ManagerDashboard.js` rendered `(gp_performance||[]).slice(0,10)` and `(gp_call_stats||[]).slice(0,10)` on the Files Performance and Call Activity by GP tables. The backend `/api/reports/manager-team-stats` already returns the COMPLETE scoped list (merged per person, sorted, no `[:N]` limit), so no backend change was needed.
+
+Fix: added a self-contained `TablePager` (10 rows/page, Prev/Next, "Showing X–Y of N", page x/y) and independent page state (`filesPage`, `callsPage`) for the two tables. Slicing is on the full scoped dataset; a `useEffect` resets both tables to page 1 whenever the Manager date filter (period/customFrom/customTo) changes. Pager auto-hides when total ≤ 10.
+
+Truncation: FRONTEND only. Backend returns all scoped GPs; zero-activity GPs included (LEFT-JOIN).
+Before: max 10 GP rows visible per table regardless of scope. After: every scoped GP accessible via pagination.
+Verified on preview: Rama (9 members) renders all 9 in both tables with zero-activity GPs shown and no pager (≤10); page renders with no JS errors. On production Rama's ~39 GPs will paginate (4 pages). No mobile/version/APK/backend/hierarchy/legacy/User-Management changes.
+
+
 ## 2026-06 — Admin Team Leads → Leads/KPI parity fix (WEB + BACKEND, small, NOT deployed)
 Root cause: `/tl/leads` fetched the whole scoped pool capped at an unsorted `to_list(5000)`. For a TL's own login the pool is small (their team) so it was complete; for Admin/Manager the pool spans ALL GPs (~183k prod), so the 5000-cap (natural/oldest order) dropped recent leads → a selected TL showed wrong/zero counts and the client-side per-period KPIs collapsed. The web Leads tab also never passed the selected TL to the backend (all filtering was client-side on the truncated pool).
 
