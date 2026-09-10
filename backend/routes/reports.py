@@ -1004,22 +1004,14 @@ async def get_hourly_report(
             "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]}
         }).to_list(2000)
     elif user_role == "manager":
-        # Manager sees GPs assigned to them (directly or via TLs)
-        # First, get TLs under this manager
-        tls_under_manager = await db.users.find({
-            "manager_id": user_id,
-            "is_tl": True
-        }).to_list(100)
-        tl_ids = [str(tl.get("_id", tl.get("id", ""))) for tl in tls_under_manager]
-        
-        # Get GPs directly under manager OR under their TLs
-        telecallers = await db.users.find({
-            "$or": [
-                {"manager_id": user_id},  # Direct reports
-                {"tl_id": {"$in": tl_ids}}  # Reports via TLs
-            ],
-            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]}
-        }).to_list(2000)
+        # Use the SAME canonical hierarchy resolver as Manager Dashboard / User Management so
+        # subordinates linked by any identity alias (email/legacy id) are included. Manual
+        # manager_id matching misses managers whose subordinates reference a non-canonical id
+        # (e.g. rama@neosales.org), yielding an empty report.
+        _idx = await load_user_index(db)
+        _members = _idx.subtree_members(user_uuid or user_id, include_self=False)
+        telecallers = [m for m in _members
+                       if (m.get("role") or "").lower() in ["telecaller", "growth_partner", "sales_agent", "partner"]]
     elif is_tl:
         # TL sees their team members - match by both possible ID formats
         telecallers = await db.users.find({
@@ -1042,8 +1034,20 @@ async def get_hourly_report(
             # Fallback if ObjectId conversion fails
             telecallers = await db.users.find({"id": user_uuid}).to_list(1)
     
-    telecaller_ids = [str(tc["_id"]) for tc in telecallers]
-    telecaller_map = {str(tc["_id"]): tc for tc in telecallers}
+    # Include BOTH id forms so activity recorded under either the uuid `id` or the Mongo `_id`
+    # resolves to the same member (managers like rama@neosales.org store id != _id).
+    telecaller_ids = []
+    telecaller_map = {}
+    for tc in telecallers:
+        keys = []
+        if tc.get("_id"):
+            keys.append(str(tc["_id"]))
+        if tc.get("id"):
+            keys.append(tc["id"])
+        for k in keys:
+            telecaller_ids.append(k)
+            telecaller_map[k] = tc
+    telecaller_ids = list(dict.fromkeys(telecaller_ids))
     
     # Aggregation for calls by hour per user
     call_pipeline = [
@@ -1941,8 +1945,8 @@ async def get_manager_team_stats(
         "files_approved": total_approved,
         "files_disbursed": total_disbursed,
         "disbursed_amount": total_disbursed_amount,
-        "gp_performance": gp_performance[:20],
-        "gp_call_stats": gp_call_stats[:20]
+        "gp_performance": gp_performance,
+        "gp_call_stats": gp_call_stats
     }
 
 

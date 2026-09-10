@@ -10,7 +10,7 @@ Read-only: nothing here writes to the database.
 from collections import defaultdict
 
 EMAIL_PREFIX = "email:"
-PARENT_FIELDS = ("manager_id", "tl_id")
+PARENT_FIELDS = ("manager_id", "tl_id", "team_lead_id", "team_lead")
 ALIAS_FIELDS = ("id", "connect_id", "legacy_user_id")
 MAX_DEPTH = 25  # guard against pathological chains; cycles are handled separately
 

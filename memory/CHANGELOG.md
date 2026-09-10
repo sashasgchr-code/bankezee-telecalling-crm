@@ -258,3 +258,11 @@ MOBILE: NO code change needed — DataScreen sends status=new -> canonical backe
 VERIFIED (preview): NEW list total=3, 0 violating (none called); NEW chip=3 (matches). no_answer outcome=1, that lead NOT in NEW. Frontend compiled (no errors); stats/list endpoints 200.
 EXCLUDED (untouched): calling, post-call modal, phone resolution, Meta, reports, dashboard metrics, assignment, file conversion, commissions, eligibility, permissions, prod config, package id.
 Not deployed / no APK built.
+
+## 2026-09-10 (i) — Manager scoping fixes (web/backend only; mobile & version untouched)
+ROOT CAUSE: Manager-side surfaces used non-canonical hierarchy resolution. (a) Hourly report manager branch selected telecallers via db manager_id == user_id where user_id was str(_id); subordinates reference the manager by other aliases (uuid/email) -> 0 telecallers -> empty report for managers like rama@neosales.org. (b) manager-team-stats truncated gp_performance/gp_call_stats to [:20], dropping GPs. (c) UserIndex PARENT_FIELDS lacked team_lead_id/team_lead aliases.
+FILES CHANGED:
+- backend/routes/reports.py: hourly manager branch now uses the canonical index.subtree_members (same resolver as Manager Dashboard/User Management); telecaller_ids/telecaller_map now key by BOTH id and _id forms; removed [:20] cap on gp_performance & gp_call_stats (Files Performance + Call Activity show ALL scoped GPs, zero-activity included via existing left-join over full user_map).
+- backend/utils/hierarchy.py: PARENT_FIELDS += ("team_lead_id","team_lead").
+VERIFIED (preview): Rama canonical id 7db92ece-2b63-4846-9db0-5b003078c9c9; scope = 9 members (1 TL + 7 GP-role). Hourly HTTP 200 (was empty-scope); manager-team-stats total_team=9, gp_performance=9, gp_call_stats=9 (all GPs incl zero-activity). Admin hourly 200 (no regression). Rama team has 0 call/lead/file rows on preview, so hourly shows 0 rows legitimately (empty-scope bug fixed). Pinky TL scoping uses /tl canonicalization (prior turn); on preview her leads are all FILE (excluded) so list=0 — production non-file leads resolve under her.
+NOT deployed. Mobile/app.json untouched.
