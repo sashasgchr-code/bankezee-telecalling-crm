@@ -519,11 +519,19 @@ async def get_manager_team_members(current_user: dict = Depends(get_current_user
     # Get today's date for active today calculation
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     
-    # Build TL name map for quick lookup
+    # Build TL name map keyed by CANONICAL id (records may store tl_id as a non-canonical
+    # variant, e.g. Mongo _id, so we resolve every identity through the shared index).
+    def _canon(k):
+        if not k:
+            return None
+        return index.canonical_id(k) or str(k)
+
     tl_map = {}
     for member in team_members:
         if member.get("is_tl"):
-            tl_map[member.get("id")] = member.get("full_name") or member.get("name") or member.get("email", "").split("@")[0]
+            cid = _canon(member.get("id") or str(member.get("_id")))
+            if cid:
+                tl_map[cid] = member.get("full_name") or member.get("name") or member.get("email", "").split("@")[0]
     
     # Get stats for all members in one batch
     member_ids = [m.get("id") for m in team_members if m.get("id")]
@@ -562,30 +570,36 @@ async def get_manager_team_members(current_user: dict = Depends(get_current_user
     disbursement_data = await db.leads.aggregate(disbursement_pipeline).to_list(500)
     disbursement_map = {d["_id"]: d["amount"] for d in disbursement_data}
     
-    # Count team members per TL
+    # Count team members per TL (canonical tl_id, only when it maps to a real TL in this team)
     team_count_map = {}
     for member in team_members:
-        tl_id = member.get("tl_id")
-        if tl_id:
-            team_count_map[tl_id] = team_count_map.get(tl_id, 0) + 1
+        ctl = _canon(member.get("tl_id"))
+        if ctl and ctl in tl_map:
+            team_count_map[ctl] = team_count_map.get(ctl, 0) + 1
     
     # Enrich members with stats
     enriched_members = []
     for member in team_members:
         member_id = member.get("id") or str(member.get("_id"))
-        
+        canonical_id = _canon(member_id) or member_id
+        # Resolve this member's Team Lead to a canonical id; label ONLY if it is an actual
+        # TL in this team. Members with no (resolvable) tl_id stay directly under the manager.
+        ctl = _canon(member.get("tl_id"))
+        if ctl not in tl_map:
+            ctl = None
+
         member_data = {
-            "id": member_id,
+            "id": canonical_id,
             "name": member.get("full_name") or member.get("name") or member.get("email", "").split("@")[0],
             "email": member.get("email"),
             "is_tl": member.get("is_tl", False),
-            "tl_id": member.get("tl_id"),
-            "tl_name": tl_map.get(member.get("tl_id"), None),
+            "tl_id": ctl,
+            "tl_name": tl_map.get(ctl) if ctl else None,
             "calls": calls_map.get(member_id, 0),
             "leads": leads_map.get(member_id, 0),
             "files": files_map.get(member_id, 0),
             "disbursed_amount": disbursement_map.get(member_id, 0),
-            "team_count": team_count_map.get(member_id, 0) if member.get("is_tl") else 0
+            "team_count": team_count_map.get(canonical_id, 0) if member.get("is_tl") else 0
         }
         enriched_members.append(member_data)
     

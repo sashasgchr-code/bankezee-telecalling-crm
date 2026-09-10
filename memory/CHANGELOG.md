@@ -227,3 +227,11 @@ FIX (backend, /tl/meta ONLY — smallest targeted change): resolve each GP's TL 
 VERIFIED (preview, admin): /tl/meta returns 16 GPs, 0 non-canonical tl_ids; Pinky=5 GPs, Anusha=11, overlap=0 (no cross-TL leakage). Resolver proof: Pinky _id/email/name/canonical-id all resolve -> 6a86994835a1d0070f83970d; simulated production Gujjari(tl_id=Pinky._id) -> Pinky canonical (PASS). Name-join places Pinky scope = 14 leads (was 8 pre-name-join). backend 200, frontend 200.
 LIMITATION: preview Gujjari.tl_id='' (no stored edge) and his exact leads (Gandrothula Sriram/Dasari Srikanth, status LEADS, dated today) exist only on PRODUCTION, so that exact card list can't be rendered on preview; the fix resolves the production root cause (variant mismatch) as proven by the resolver simulation.
 Not deployed.
+
+## 2026-09-10 (f) — Manager Team view: canonicalize GP->TL grouping in /users/manager-team-members
+FILE: backend/routes/users.py (get_manager_team_members) ONLY. Read/render mapping fix — NO user records mutated. No frontend/mobile change.
+ROOT CAUSE: tl_map was keyed by raw member.id and member_data.tl_id/tl_name/team_count used the RAW stored tl_id. When a GP's tl_id was a non-canonical variant (e.g. Mongo _id) of the TL, tl_map.get() missed -> GP not grouped/labeled under the TL; grouping/labels were inconsistent.
+FIX: use the shared index.canonical_id() to canonicalize each member's id and tl_id. tl_map keyed by canonical TL id; member.tl_id/tl_name set ONLY when the canonical tl_id maps to an actual TL in this team (else null => shown directly under the manager). No inference from manager_id. team_count keyed by canonical tl id.
+VERIFIED (preview, manager Teja e37774a4-8b44-4f6f-a282-faeaa5ab6800): 7 members = 1 TL (Nagulapally pinky, id 6a86994835a1d0070f83970d) + 6 GPs. Pinky team=5 (SHIVASAI/J Vishnu Vardhan/Wameezuddin/Vijayendra/Lellamarychandana) all labeled correctly; Gujjari Sai kiran shows DIRECT (his tl_id='' on preview -> not inferred as Pinky). 0 GPs with tl_id not matching a listed TL; 0 duplicates. Backend 200.
+LIMITATION: preview lacks Mathangi Nikitha & Monisha Satya (not in Teja subtree here) and Gujjari's stored TL edge (empty on preview). On production, where their tl_id points to a Pinky variant, canonicalization groups all 7 under Pinky. Fix verified for the variant-resolution mechanism.
+Not deployed.
