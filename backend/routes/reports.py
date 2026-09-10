@@ -230,13 +230,16 @@ async def get_dashboard_stats(
             db.leads.count_documents({**leads_filter, **leads_created_at_filter, "status": {"$in": ["leads", "converted"]}}),
             db.leads.count_documents({**leads_filter, **files_created_filter, "status": "file"}),
             db.leads.count_documents({**leads_filter, **leads_created_at_filter, "status": "leads"}),
+            db.call_logs.count_documents({**calls_filter, **calls_time_query, "outcome": "connected"}),
         ]
         
         results = await asyncio.gather(*queries)
-        unused_data, total_data, connected, total_leads_generated, total_file, leads_status_count = results
+        unused_data, total_data, connected, total_leads_generated, total_file, leads_status_count, connected_calls = results
         
-        # Status counts aggregation
-        status_match = {**leads_filter, **leads_time_filter} if leads_time_filter else leads_filter
+        # Status counts aggregation — count leads by the day the DATA was added (created_at),
+        # so the breakdown is bounded to data added in the period (never inflated by later edits).
+        status_time_filter = date_range_match("created_at", start_date, end_date)
+        status_match = {**leads_filter, **status_time_filter} if status_time_filter else leads_filter
         status_pipeline = [{"$match": status_match}, {"$group": {"_id": "$status", "count": {"$sum": 1}}}] if status_match else [{"$group": {"_id": "$status", "count": {"$sum": 1}}}]
         
         # Calls per user aggregation
@@ -284,6 +287,8 @@ async def get_dashboard_stats(
             "total_data": total_data,
             "unused_data": unused_data,
             "connected": connected,
+            "calls": connected,
+            "connected_calls": connected_calls,
             "total_leads_generated": total_leads_generated,
             "total_file": total_file,
             "leads_by_status": leads_by_status,

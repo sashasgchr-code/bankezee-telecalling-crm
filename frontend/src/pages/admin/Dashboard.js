@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Database, Phone, TrendingUp, Users, Loader2, RefreshCw, Calendar, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
+import { Database, Phone, PhoneCall, TrendingUp, Users, Loader2, RefreshCw, Calendar, PhoneIncoming, PhoneOutgoing, Clock } from 'lucide-react';
 import api from '../../services/api';
 import { StatusColors, StatusLabels } from '../../constants/colors';
 import VerifiedCallStats from '../../components/VerifiedCallStats';
@@ -219,26 +219,33 @@ const AdminDashboard = () => {
             />
           )}
           {/* Main Stats Row */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="card p-4 text-center">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="card p-4 text-center" data-testid="stat-total-data">
               <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-2">
                 <Database size={24} className="text-green-600" />
               </div>
               <p className="text-2xl font-bold text-gray-900">{stats?.total_data || 0}</p>
               <p className="text-xs text-gray-500">Total Data</p>
             </div>
-            <div className="card p-4 text-center">
+            <div className="card p-4 text-center" data-testid="stat-unused-data">
               <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-2">
                 <Database size={24} className="text-orange-600" />
               </div>
               <p className="text-2xl font-bold text-orange-600">{stats?.unused_data || 0}</p>
               <p className="text-xs text-gray-500">Unused Data</p>
             </div>
-            <div className="card p-4 text-center">
+            <div className="card p-4 text-center" data-testid="stat-calls">
               <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center mx-auto mb-2">
                 <Phone size={24} className="text-blue-600" />
               </div>
-              <p className="text-2xl font-bold text-gray-900">{stats?.connected || 0}</p>
+              <p className="text-2xl font-bold text-gray-900">{stats?.calls ?? stats?.connected ?? 0}</p>
+              <p className="text-xs text-gray-500">Calls</p>
+            </div>
+            <div className="card p-4 text-center" data-testid="stat-connected">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-2">
+                <PhoneCall size={24} className="text-emerald-600" />
+              </div>
+              <p className="text-2xl font-bold text-emerald-700">{stats?.connected_calls || 0}</p>
               <p className="text-xs text-gray-500">Connected</p>
             </div>
           </div>

@@ -892,36 +892,46 @@ async def meta_reports_summary(user: dict = Depends(require_meta_access),
         if key not in partners:
             partners[key] = {"user_id": key, "user_name": pname or "Unassigned",
                              "total_calls": 0, "total_connected": 0, "total_call_seconds": 0,
-                             "leads_generated": 0, "file": 0}
+                             "leads_generated": 0, "file": 0, "outcomes": {}}
         elif pname and partners[key]["user_name"] == "Unassigned":
             partners[key]["user_name"] = pname
         return partners[key]
 
     for l in leads:
         b = _bucket(l.get("assigned_partner_id"), l.get("assigned_partner_name"))
+        # CALLS/CONNECTED/LEAD are derived ONLY from genuine call-log events in range.
+        # A Meta Lead = a call-log event whose disposition == LEAD (NOT the imported/assigned record).
         for c in (l.get("call_logs") or []):
-            if _in_range(_parse_dt(c.get("at")), start, end):
-                dur = int(c.get("duration_seconds") or 0)
-                b["total_calls"] += 1
-                b["total_call_seconds"] += dur
-                if dur > 0:
-                    b["total_connected"] += 1
-        status = l.get("status")
-        lead_dt = _parse_dt(l.get("file_created_at")) or _parse_dt(l.get("updated_at")) \
-            or _parse_dt(l.get("created_at")) or _parse_dt(l.get("created_time"))
-        if status in _LEAD_STATUSES and _in_range(lead_dt, start, end):
-            b["leads_generated"] += 1
-            if status == "FILE":
-                b["file"] += 1
+            if not _in_range(_parse_dt(c.get("at")), start, end):
+                continue
+            dur = int(c.get("duration_seconds") or 0)
+            b["total_calls"] += 1
+            b["total_call_seconds"] += dur
+            if dur > 0:
+                b["total_connected"] += 1
+            disp = (c.get("disposition") or "").upper()
+            if disp:
+                b["outcomes"][disp] = b["outcomes"].get(disp, 0) + 1
+            if disp == "LEAD":
+                b["leads_generated"] += 1
+        # FILES use the file-conversion event date (file_created_at), independent of call logs.
+        fdt = _parse_dt(l.get("file_created_at"))
+        if fdt is not None and _in_range(fdt, start, end):
+            b["file"] += 1
 
     rows = [p for p in partners.values() if p["total_calls"] or p["leads_generated"] or p["file"]]
     rows.sort(key=lambda r: (-r["total_calls"], r["user_name"]))
+    outcome_totals = {}
+    for r in rows:
+        for k, v in r["outcomes"].items():
+            outcome_totals[k] = outcome_totals.get(k, 0) + v
     overall = {
         "total_calls": sum(r["total_calls"] for r in rows),
         "total_connected": sum(r["total_connected"] for r in rows),
         "total_call_seconds": sum(r["total_call_seconds"] for r in rows),
         "total_leads_generated": sum(r["leads_generated"] for r in rows),
         "total_file": sum(r["file"] for r in rows),
+        "outcomes": outcome_totals,
     }
     return {"overall": overall, "partners": rows}
 
@@ -951,6 +961,7 @@ async def meta_reports_hourly(user: dict = Depends(require_meta_access), date: O
 
     for l in leads:
         b = _bucket(l.get("assigned_partner_id"), l.get("assigned_partner_name"))
+        # Calls / Connected / Leads come ONLY from call-log events, placed in the hour they occurred.
         for c in (l.get("call_logs") or []):
             dt = _parse_dt(c.get("at"))
             if not _in_range(dt, start, end):
@@ -962,17 +973,16 @@ async def meta_reports_hourly(user: dict = Depends(require_meta_access), date: O
             if int(c.get("duration_seconds") or 0) > 0:
                 slot["connected"] += 1
                 b["total_connected"] += 1
-        status = l.get("status")
-        if status in _LEAD_STATUSES:
-            lead_dt = _parse_dt(l.get("file_created_at")) or _parse_dt(l.get("updated_at"))
-            if _in_range(lead_dt, start, end):
-                hr = _hour_of(lead_dt)
-                slot = b["hours"].setdefault(hr, {"hour": hr, "calls": 0, "connected": 0, "leads": 0, "file": 0})
+            if (c.get("disposition") or "").upper() == "LEAD":
                 slot["leads"] += 1
                 b["total_leads"] += 1
-                if status == "FILE":
-                    slot["file"] += 1
-                    b["total_file"] += 1
+        # File conversion placed in the hour of file_created_at (event date), not last-edit.
+        fdt = _parse_dt(l.get("file_created_at"))
+        if fdt is not None and _in_range(fdt, start, end):
+            hr = _hour_of(fdt)
+            slot = b["hours"].setdefault(hr, {"hour": hr, "calls": 0, "connected": 0, "leads": 0, "file": 0})
+            slot["file"] += 1
+            b["total_file"] += 1
 
     out = []
     for p in partners.values():
