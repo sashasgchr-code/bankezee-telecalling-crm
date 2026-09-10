@@ -169,22 +169,29 @@ async def _get_lead(lead_id):
 @router.get("/leads")
 async def tl_leads(current_user: dict = Depends(get_current_user),
                    tl: Optional[str] = None, gp: Optional[str] = None,
+                   tl_team: Optional[str] = None,
                    status: Optional[str] = None, outcome: Optional[str] = None,
                    converted: Optional[str] = None, q: Optional[str] = None,
                    period: Optional[str] = None,
                    from_date: Optional[str] = None, to_date: Optional[str] = None):
     tl_ids, gp_map, _ = await _tl_scope(current_user)
     gp_ids = set(gp_map.keys())
-    if gp and gp != "ALL":
+    if (gp and gp != "ALL") or (tl_team and tl_team != "ALL"):
         from utils.hierarchy import load_user_index
         _idx = await load_user_index(db)
-        gp_ids = gp_ids & (_idx.aliases(gp) or {gp})
+        if gp and gp != "ALL":
+            gp_ids = gp_ids & (_idx.aliases(gp) or {gp})
+        # tl_team narrows the pool to the SELECTED Team Leader's canonical active team, so an
+        # Admin/Manager viewing a specific TL gets the identical (complete, un-truncated) lead
+        # population that TL sees in their own login - not a 5000-row slice of ALL GPs.
+        if tl_team and tl_team != "ALL":
+            gp_ids = gp_ids & set(_idx.descendants(tl_team, include_self=True, active_only=True))
     if not gp_ids:
         return {"leads": [], "total": 0}
     match = {"assigned_to": {"$in": list(gp_ids)}, "status": {"$in": LEAD_OR_BEYOND}}
     if status and status != "ALL":
         match["status"] = status
-    leads = await db.leads.find(match).to_list(5000)
+    leads = await db.leads.find(match).to_list(20000)
 
     # Filter by the date the customer BECAME a LEAD (period identical to /tl/stats).
     s, e = _period_bounds(period, from_date, to_date)

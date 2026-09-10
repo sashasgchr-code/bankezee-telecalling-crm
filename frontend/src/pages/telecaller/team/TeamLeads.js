@@ -141,10 +141,15 @@ const TeamLeads = () => {
   const loadLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get('/tl/leads', { params: { period: 'lifetime' } });
+      // When a specific TL is selected we ask the backend to scope the pool to that TL's
+      // canonical team (tl_team) so Admin sees the SAME complete population as the TL's own
+      // login. For "All Team Leaders" we fetch the full scoped set and bucket client-side.
+      const params = { period: 'lifetime' };
+      if (tl !== 'ALL') params.tl_team = tl;
+      const { data } = await api.get('/tl/leads', { params });
       setAllLeads(data.leads || []);
     } catch (e) { /* interceptor handles */ } finally { setLoading(false); }
-  }, []);
+  }, [tl]);
   useEffect(() => { loadLeads(); }, [loadLeads]);
 
   // Secondary tabs keep their existing backend endpoints unchanged.
@@ -189,7 +194,8 @@ const TeamLeads = () => {
   // ===== CLIENT-SIDE Leads-tab derivation (base = ALL assigned leads; NOT TL-contacted) =====
   const derived = React.useMemo(() => {
     let scoped = allLeads;
-    if (tl !== 'ALL') scoped = scoped.filter((l) => nameToTl[norm(l.gp_name)] === String(tl));
+    // TL scope is enforced SERVER-SIDE via tl_team (see loadLeads), so the pool already contains
+    // exactly the selected TL's team - no fragile client-side gp_name->tl re-filtering needed.
     if (gp !== 'ALL') { const gn = gpIdToName[String(gp)]; scoped = scoped.filter((l) => norm(l.gp_name) === gn); }
 
     const isFile = (l) => (l.status || '').toLowerCase() === 'file';

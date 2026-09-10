@@ -1,3 +1,13 @@
+## 2026-06 — Admin Team Leads → Leads/KPI parity fix (WEB + BACKEND, small, NOT deployed)
+Root cause: `/tl/leads` fetched the whole scoped pool capped at an unsorted `to_list(5000)`. For a TL's own login the pool is small (their team) so it was complete; for Admin/Manager the pool spans ALL GPs (~183k prod), so the 5000-cap (natural/oldest order) dropped recent leads → a selected TL showed wrong/zero counts and the client-side per-period KPIs collapsed. The web Leads tab also never passed the selected TL to the backend (all filtering was client-side on the truncated pool).
+
+Fix (surgical, non-breaking):
+- `routes/tl.py` `/tl/leads`: added optional `tl_team` param that narrows the pool server-side to the selected TL's canonical active team via `UserIndex.descendants(tl_team, include_self=True, active_only=True)` (include_self=True so the TL's own assigned leads count). Raised cap `5000 -> 20000`. Existing `tl` (personal-call) param left untouched so mobile is unaffected.
+- `frontend/.../team/TeamLeads.js`: `loadLeads` now passes `tl_team=<selected TL>` (refetches on TL change); removed the fragile client-side `gp_name -> tl` re-filter since the backend now guarantees scope.
+
+Verified on preview DB: Admin→Team Leads→Pinky pool == Pinky's own login pool EXACTLY (46 == 46, identical lead IDs). Per-period KPIs are computed independently (no Today=Week=Month collapse). Page renders with no JS errors. NOT deployed (stopped for review). No mobile/version/APK/legacy/User-Management/data changes.
+
+
 ## 2026-06 — Unified canonical hierarchy resolution across all Connect reporting (WEB + BACKEND)
 Consolidated every hierarchy/identity resolution onto the single `utils/hierarchy.py` UserIndex so all Manager/TL/GP reports scope from the same User Management fields (`role, is_tl, manager_id, tl_id, is_active, id, source`) and match activity by each active Connect identity's FULL alias set (id, _id, connect_id, legacy_user_id).
 
