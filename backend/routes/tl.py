@@ -553,16 +553,49 @@ async def tl_conversion(current_user: dict = Depends(get_current_user),
 
 @router.get("/meta")
 async def tl_meta(current_user: dict = Depends(get_current_user)):
-    """Filter option lists (allowed TLs + GPs) and whether the caller is a TL (for UI defaults)."""
+    """Filter option lists (allowed TLs + GPs) and whether the caller is a TL (for UI defaults).
+
+    Each GP carries a CANONICAL tl_id (the same id exposed in `tls`) so the web page can scope
+    the lead list under a selected TL. GP->TL is resolved from the user's stored tl_id /
+    team_lead_id / team_lead, canonicalized across id/_id/name/email/username variants — records
+    frequently store a non-canonical id variant (e.g. Mongo _id) which otherwise breaks scoping.
+    """
     tl_ids, gp_map, allowed = await _tl_scope(current_user)
-    # Build GP -> tl_id map so the UI can scope the GP dropdown under a selected TL.
     all_users = await db.users.find({}).to_list(5000)
+
+    def _norm(s):
+        return (str(s).strip().lower()) if s else ""
+
+    # Map every identifier of an allowed TL -> its canonical id (the id used in `allowed`/`tls`).
+    allowed_ids = {t["id"] for t in allowed}
+    tl_resolver = {}
+    for u in all_users:
+        if not u.get("is_tl"):
+            continue
+        cid = u.get("id") or str(u.get("_id"))
+        if cid not in allowed_ids:
+            continue
+        for key in (u.get("id"), str(u.get("_id")), u.get("email"), u.get("username"),
+                    u.get("name"), u.get("full_name")):
+            k = _norm(key)
+            if k:
+                tl_resolver[k] = cid
+
+    def _resolve_tl(u):
+        for raw in (u.get("tl_id"), u.get("team_lead_id"), u.get("team_lead")):
+            if raw:
+                c = tl_resolver.get(_norm(raw))
+                if c:
+                    return c
+        return ""
+
     gp_tl = {}
     for u in all_users:
         if (u.get("role") or "").lower() in GP_ROLES:
-            tlid = str(u.get("tl_id") or "")
+            canonical = _resolve_tl(u)
             for v in _uid_variants(u):
-                gp_tl[v] = tlid
+                gp_tl[v] = canonical
+
     # dedupe gp by name->id (ids have variants); build simple list
     seen = set()
     gp_list = []
