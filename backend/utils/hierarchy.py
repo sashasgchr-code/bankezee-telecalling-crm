@@ -177,6 +177,19 @@ class UserIndex:
             members.append(_primary_doc(group))
         return members
 
+    def all_members(self, active_only=True):
+        """One representative document per person in the WHOLE index (deduplicated).
+
+        Used by Admin/Ops scopes that legitimately see everyone, so they still go through
+        the same canonical person-dedup as every scoped view.
+        """
+        members = []
+        for root, group in self.groups.items():
+            if active_only and not group["active"]:
+                continue
+            members.append(_primary_doc(group))
+        return members
+
     def team_leads_under(self, key, include_self=False):
         """Active Team Leads anywhere in the subtree below `key`."""
         leads = []

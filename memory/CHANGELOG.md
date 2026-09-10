@@ -1,3 +1,17 @@
+## 2026-06 — Unified canonical hierarchy resolution across all Connect reporting (WEB + BACKEND)
+Consolidated every hierarchy/identity resolution onto the single `utils/hierarchy.py` UserIndex so all Manager/TL/GP reports scope from the same User Management fields (`role, is_tl, manager_id, tl_id, is_active, id, source`) and match activity by each active Connect identity's FULL alias set (id, _id, connect_id, legacy_user_id).
+
+Backend files changed:
+- `utils/hierarchy.py`: added `all_members(active_only=True)` (Admin/Ops whole-index dedup helper).
+- `routes/tl.py`: rewrote `_tl_scope` — removed hand-rolled raw-string BFS + `str(tl_id)==user_id` matching; now uses `subtree_members`/`descendants`/`aliases`/`root_for`. `tl_meta` GP→TL resolution now canonical (was name/email string matching). `tl_leads`/`tl_stats` single-GP filter expands to the person's full alias set.
+- `routes/reports.py`: Manager+TL Hourly (`/reports/hourly`) now keys telecaller activity by full alias set (was `{_id,id}` only); TL branch now canonical subtree (was raw `tl_id`). GP `/reports/my-hourly` and GP `/dashboard/stats` now match leads/calls/files by the GP's full alias set.
+- `routes/users.py`: `/users/manager-team-members` now matches per-member calls/leads/files by full alias set folded to canonical id (was canonical-`id`-only).
+
+Explicitly NOT done (per instruction): no legacy backfill, no `user_mappings` apply, no name-based merge, no Pinky/akshaya merge, no production data mutation, no mobile changes, no version/APK change, no deploy. Manager Dashboard `manager-team-stats` already canonical+LEFT-JOIN — left as-is.
+
+Verified on preview DB: Teja expected active GPs (7) == manager-team-members (7) == manager-team-stats gp_performance (7), zero-activity GPs remain visible; TL Leads shows team leads even when Last TL Call is blank; non-TL GP blocked (403) from `/tl/*`; GP sees own data only.
+
+
 
 
 ## 2026-09-09 (c) — GP Web/Mobile platform access control (real, server-side)

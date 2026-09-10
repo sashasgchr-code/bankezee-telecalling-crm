@@ -533,42 +533,61 @@ async def get_manager_team_members(current_user: dict = Depends(get_current_user
             if cid:
                 tl_map[cid] = member.get("full_name") or member.get("name") or member.get("email", "").split("@")[0]
     
-    # Get stats for all members in one batch
-    member_ids = [m.get("id") for m in team_members if m.get("id")]
-    
+    # Full alias set per person + reverse map to the member's canonical id, so activity keyed
+    # under any already-linked identifier (id/_id/connect_id/legacy_user_id) of the SAME active
+    # Connect person is counted - identical to the Manager Dashboard resolution.
+    alias_to_canon = {}
+    all_alias_ids = []
+    for m in team_members:
+        cid = m.get("id") or str(m.get("_id"))
+        canon = _canon(cid) or cid
+        for a in (index.aliases(cid) or {cid}):
+            alias_to_canon[a] = canon
+            all_alias_ids.append(a)
+    all_alias_ids = list(dict.fromkeys(all_alias_ids))
+
+    def _fold(rows, count_field):
+        out = {}
+        for r in rows:
+            canon = alias_to_canon.get(r["_id"])
+            if not canon:
+                continue
+            out[canon] = out.get(canon, 0) + r[count_field]
+        return out
+
     # Count calls by user
     calls_pipeline = [
-        {"$match": {"user_id": {"$in": member_ids}}},
+        {"$match": {"user_id": {"$in": all_alias_ids}}},
         {"$group": {"_id": "$user_id", "calls": {"$sum": 1}}}
     ]
-    calls_data = await db.call_logs.aggregate(calls_pipeline).to_list(500)
-    calls_map = {c["_id"]: c["calls"] for c in calls_data}
+    calls_data = await db.call_logs.aggregate(calls_pipeline).to_list(2000)
+    calls_map = _fold(calls_data, "calls")
     
     # Count leads by user
     leads_pipeline = [
-        {"$match": {"assigned_to": {"$in": member_ids}, "status": {"$nin": ["file"]}}},
+        {"$match": {"assigned_to": {"$in": all_alias_ids}, "status": {"$nin": ["file"]}}},
         {"$group": {"_id": "$assigned_to", "leads": {"$sum": 1}}}
     ]
-    leads_data = await db.leads.aggregate(leads_pipeline).to_list(500)
-    leads_map = {l["_id"]: l["leads"] for l in leads_data}
+    leads_data = await db.leads.aggregate(leads_pipeline).to_list(2000)
+    leads_map = _fold(leads_data, "leads")
     
     # Count files by user
     files_pipeline = [
-        {"$match": {"source_id": {"$in": member_ids}, "status": "file"}},
+        {"$match": {"source_id": {"$in": all_alias_ids}, "status": "file"}},
         {"$group": {"_id": "$source_id", "files": {"$sum": 1}}}
     ]
-    files_data = await db.leads.aggregate(files_pipeline).to_list(500)
-    files_map = {f["_id"]: f["files"] for f in files_data}
+    files_data = await db.leads.aggregate(files_pipeline).to_list(2000)
+    files_map = _fold(files_data, "files")
     
     # Count disbursed amounts
     disbursement_pipeline = [
-        {"$match": {"source_id": {"$in": member_ids}, "status": "file", "eligibilities": {"$exists": True, "$ne": []}}},
+        {"$match": {"source_id": {"$in": all_alias_ids}, "status": "file", "eligibilities": {"$exists": True, "$ne": []}}},
         {"$unwind": "$eligibilities"},
         {"$match": {"eligibilities.disbursed": True}},
         {"$group": {"_id": "$source_id", "amount": {"$sum": {"$toDouble": {"$ifNull": ["$eligibilities.disbursed_amount", 0]}}}}}
     ]
-    disbursement_data = await db.leads.aggregate(disbursement_pipeline).to_list(500)
-    disbursement_map = {d["_id"]: d["amount"] for d in disbursement_data}
+    disbursement_data = await db.leads.aggregate(disbursement_pipeline).to_list(2000)
+    disbursement_map = _fold(disbursement_data, "amount")
     
     # Count team members per TL (canonical tl_id, only when it maps to a real TL in this team)
     team_count_map = {}
@@ -595,10 +614,10 @@ async def get_manager_team_members(current_user: dict = Depends(get_current_user
             "is_tl": member.get("is_tl", False),
             "tl_id": ctl,
             "tl_name": tl_map.get(ctl) if ctl else None,
-            "calls": calls_map.get(member_id, 0),
-            "leads": leads_map.get(member_id, 0),
-            "files": files_map.get(member_id, 0),
-            "disbursed_amount": disbursement_map.get(member_id, 0),
+            "calls": calls_map.get(canonical_id, 0),
+            "leads": leads_map.get(canonical_id, 0),
+            "files": files_map.get(canonical_id, 0),
+            "disbursed_amount": disbursement_map.get(canonical_id, 0),
             "team_count": team_count_map.get(canonical_id, 0) if member.get("is_tl") else 0
         }
         enriched_members.append(member_data)

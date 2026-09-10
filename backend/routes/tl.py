@@ -55,66 +55,56 @@ def _now():
 
 
 async def _tl_scope(current_user: dict):
-    """Return (tl_ids set, gp_map {id->name}, allowed_tl_list) using ONE canonical RECURSIVE
-    descendant resolver so every TL endpoint scopes identically.
-    - admin/ops/hr: all TLs + all GPs.
-    - manager (incl. senior/nested): recursively resolve ALL descendant managers -> TLs -> GPs.
-    - TL: themselves + their GPs.
+    """Return (tl_ids set, gp_map {alias_id->name}, allowed_tl_list) using the ONE canonical
+    identity/hierarchy resolver (utils.hierarchy.UserIndex) so every TL endpoint scopes
+    identically to Admin User Management, the Manager Dashboard and the Files scope.
+
+    - admin/ops/hr: all active TLs + all active GPs.
+    - manager (incl. nested): full active subtree -> its TLs + its GPs.
+    - TL: themselves + their active GPs.
     - GP (non-TL): blocked.
+
+    `gp_ids`/`tl_ids` carry the FULL alias set (id, _id, connect_id, legacy_user_id) of each
+    active Connect identity, so activity keyed under any already-linked identifier of the SAME
+    person is matched. Separate/legacy duplicate accounts (different email, not linked) are NOT
+    merged - they never enter the active subtree, so operational totals stay current-era only.
     """
+    from utils.hierarchy import load_user_index
+
     role = (current_user.get("role") or "").lower()
     is_tl = bool(current_user.get("is_tl"))
-    me = _uid_variants(current_user)
+    uid = current_user.get("id") or str(current_user.get("_id") or "")
 
-    all_users = await db.users.find({}).to_list(5000)
-
-    def gp_map_for(tl_id_set: set):
-        gps = {}
-        for u in all_users:
-            if (u.get("role") or "").lower() in GP_ROLES and str(u.get("tl_id") or "") in tl_id_set:
-                for v in _uid_variants(u):
-                    gps[v] = (u.get("name") or u.get("full_name") or "GP")
-        return gps
+    index = await load_user_index(db)
 
     if role in ("admin", "ops", "hr"):
-        tls = [u for u in all_users if u.get("is_tl")]
+        members = index.all_members(active_only=True)
     elif role == "manager":
-        # Recursive BFS over manager_id edges to gather every descendant (sub-managers + TLs + staff).
-        reached = set(me)
-        frontier = set(me)
-        for _ in range(12):  # depth guard
-            nxt = set()
-            for u in all_users:
-                uv = _uid_variants(u)
-                if reached & uv:
-                    continue
-                if str(u.get("manager_id") or "") in reached:
-                    nxt |= uv
-            new = nxt - reached
-            if not new:
-                break
-            reached |= new
-            frontier = new
-        tls = [u for u in all_users if u.get("is_tl") and (_uid_variants(u) & reached)]
+        members = index.subtree_members(uid, include_self=False, active_only=True)
     elif is_tl:
-        tls = [u for u in all_users if me & _uid_variants(u)]
-        reached = set(me)
+        members = index.subtree_members(uid, include_self=True, active_only=True)
     else:
         raise HTTPException(status_code=403, detail="Team Leader access required")
 
+    gp_role_set = set(GP_ROLES)
     tl_ids = set()
     allowed_tl_list = []
-    for t in tls:
-        vs = _uid_variants(t)
-        tl_ids |= vs
-        allowed_tl_list.append({"id": (t.get("id") or str(t.get("_id"))), "name": t.get("name") or t.get("full_name") or "TL"})
-    gp_map = gp_map_for(tl_ids)
-    # Managers also see GPs attached directly under any reached node (defensive: GP.manager_id chain).
-    if role == "manager":
-        for u in all_users:
-            if (u.get("role") or "").lower() in GP_ROLES and str(u.get("manager_id") or "") in reached:
-                for v in _uid_variants(u):
-                    gp_map.setdefault(v, (u.get("name") or u.get("full_name") or "GP"))
+    seen_tl_root = set()
+    gp_map = {}
+    for m in members:
+        cid = m.get("id") or str(m.get("_id"))
+        aliases = index.aliases(cid) or {cid}
+        role_l = (m.get("role") or "").lower()
+        if m.get("is_tl"):
+            root = index.root_for(cid) or cid
+            if root not in seen_tl_root:
+                seen_tl_root.add(root)
+                allowed_tl_list.append({"id": cid, "name": m.get("name") or m.get("full_name") or "TL"})
+            tl_ids |= aliases
+        if role_l in gp_role_set:
+            name = m.get("name") or m.get("full_name") or "GP"
+            for a in aliases:
+                gp_map[a] = name
     return tl_ids, gp_map, allowed_tl_list
 
 
@@ -186,7 +176,9 @@ async def tl_leads(current_user: dict = Depends(get_current_user),
     tl_ids, gp_map, _ = await _tl_scope(current_user)
     gp_ids = set(gp_map.keys())
     if gp and gp != "ALL":
-        gp_ids = gp_ids & {gp}
+        from utils.hierarchy import load_user_index
+        _idx = await load_user_index(db)
+        gp_ids = gp_ids & (_idx.aliases(gp) or {gp})
     if not gp_ids:
         return {"leads": [], "total": 0}
     match = {"assigned_to": {"$in": list(gp_ids)}, "status": {"$in": LEAD_OR_BEYOND}}
@@ -257,7 +249,9 @@ async def tl_stats(current_user: dict = Depends(get_current_user),
     tl_ids, gp_map, _ = await _tl_scope(current_user)
     gp_ids = set(gp_map.keys())
     if gp and gp != "ALL":
-        gp_ids &= {gp}
+        from utils.hierarchy import load_user_index
+        _idx = await load_user_index(db)
+        gp_ids &= (_idx.aliases(gp) or {gp})
 
     def count_leads(p):
         s, e = _period_bounds(p)
@@ -561,31 +555,20 @@ async def tl_meta(current_user: dict = Depends(get_current_user)):
     frequently store a non-canonical id variant (e.g. Mongo _id) which otherwise breaks scoping.
     """
     tl_ids, gp_map, allowed = await _tl_scope(current_user)
+    from utils.hierarchy import load_user_index
+    index = await load_user_index(db)
     all_users = await db.users.find({}).to_list(5000)
 
-    def _norm(s):
-        return (str(s).strip().lower()) if s else ""
-
-    # Map every identifier of an allowed TL -> its canonical id (the id used in `allowed`/`tls`).
+    # Every allowed TL by its canonical id (the id used in `allowed`/`tls`).
     allowed_ids = {t["id"] for t in allowed}
-    tl_resolver = {}
-    for u in all_users:
-        if not u.get("is_tl"):
-            continue
-        cid = u.get("id") or str(u.get("_id"))
-        if cid not in allowed_ids:
-            continue
-        for key in (u.get("id"), str(u.get("_id")), u.get("email"), u.get("username"),
-                    u.get("name"), u.get("full_name")):
-            k = _norm(key)
-            if k:
-                tl_resolver[k] = cid
 
     def _resolve_tl(u):
+        """Canonical TL id for a GP, resolved through the shared identity index. Only returns
+        a TL that is actually in this caller's allowed scope."""
         for raw in (u.get("tl_id"), u.get("team_lead_id"), u.get("team_lead")):
             if raw:
-                c = tl_resolver.get(_norm(raw))
-                if c:
+                c = index.canonical_id(raw)
+                if c and c in allowed_ids:
                     return c
         return ""
 

@@ -308,7 +308,11 @@ async def get_dashboard_stats(
     else:
         # Telecaller view - optimized with parallel queries
         user_id = current_user["id"]
-        
+
+        # Full alias set of this SAME active Connect identity for lead/call ownership matching.
+        _gp_index = await load_user_index(db)
+        uids = list(set(_gp_index.aliases(user_id) or {user_id}) | ({str(current_user["_id"])} if current_user.get("_id") else set()))
+
         leads_time_filter = date_range_match("updated_at", start_date, end_date)
         leads_created_filter = date_range_match("created_at", start_date, end_date)
         files_created_filter = file_created_match(start_date, end_date)
@@ -324,13 +328,13 @@ async def get_dashboard_stats(
 
         # Run all queries in parallel
         queries = [
-            db.leads.count_documents({"assigned_to": user_id, "status": "new", "created_at": {"$lt": today_naive}}),
-            db.leads.count_documents({"assigned_to": user_id, **leads_created_filter}) if leads_created_filter else db.leads.count_documents({"assigned_to": user_id}),
-            db.leads.count_documents({"assigned_to": user_id, "status": "file", **files_created_filter}),
-            db.leads.count_documents({"assigned_to": user_id, "status": {"$in": ["leads", "converted"]}, **leads_created_at_filter}),
-            db.leads.aggregate([{"$match": {"assigned_to": user_id, **leads_time_filter}}, {"$group": {"_id": "$status", "count": {"$sum": 1}}}]).to_list(20),
+            db.leads.count_documents({"assigned_to": {"$in": uids}, "status": "new", "created_at": {"$lt": today_naive}}),
+            db.leads.count_documents({"assigned_to": {"$in": uids}, **leads_created_filter}) if leads_created_filter else db.leads.count_documents({"assigned_to": {"$in": uids}}),
+            db.leads.count_documents({"assigned_to": {"$in": uids}, "status": "file", **files_created_filter}),
+            db.leads.count_documents({"assigned_to": {"$in": uids}, "status": {"$in": ["leads", "converted"]}, **leads_created_at_filter}),
+            db.leads.aggregate([{"$match": {"assigned_to": {"$in": uids}, **leads_time_filter}}, {"$group": {"_id": "$status", "count": {"$sum": 1}}}]).to_list(20),
             db.call_logs.aggregate([
-                {"$match": {"user_id": user_id, **calls_time_filter}},
+                {"$match": {"user_id": {"$in": uids}, **calls_time_filter}},
                 {"$group": {
                     "_id": None,
                     "total": {"$sum": 1},
@@ -343,7 +347,7 @@ async def get_dashboard_stats(
                 }}
             ]).to_list(1),
             db.daily_sessions.find_one({"user_id": user_id, "date": today}),
-            db.leads.count_documents({"assigned_to": user_id, "status": "leads", **leads_created_at_filter})
+            db.leads.count_documents({"assigned_to": {"$in": uids}, "status": "leads", **leads_created_at_filter})
         ]
         
         results = await asyncio.gather(*queries)
@@ -995,32 +999,28 @@ async def get_hourly_report(
         user_id = user_uuid
     
     is_tl = current_user.get("is_tl", False)
-    
+
+    # ONE shared canonical resolver for scope AND identity aliases (same as User Management).
+    index = await load_user_index(db)
+    gp_role_names = ["telecaller", "growth_partner", "sales_agent", "partner"]
+
     # Determine which telecallers to show based on role
     if user_role in ["admin", "ops"]:
         # Admin/Ops see all growth partners/telecallers (files are historical records -
         # count them even if the originating GP is now inactive; empty rows are suppressed below)
         telecallers = await db.users.find({
-            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]}
+            "role": {"$in": gp_role_names}
         }).to_list(2000)
     elif user_role == "manager":
-        # Use the SAME canonical hierarchy resolver as Manager Dashboard / User Management so
-        # subordinates linked by any identity alias (email/legacy id) are included. Manual
-        # manager_id matching misses managers whose subordinates reference a non-canonical id
-        # (e.g. rama@neosales.org), yielding an empty report.
-        _idx = await load_user_index(db)
-        _members = _idx.subtree_members(user_uuid or user_id, include_self=False)
+        # Canonical recursive subtree - identical to Manager Dashboard / User Management.
+        _members = index.subtree_members(user_uuid or user_id, include_self=False)
         telecallers = [m for m in _members
-                       if (m.get("role") or "").lower() in ["telecaller", "growth_partner", "sales_agent", "partner"]]
+                       if (m.get("role") or "").lower() in gp_role_names]
     elif is_tl:
-        # TL sees their team members - match by both possible ID formats
-        telecallers = await db.users.find({
-            "$or": [
-                {"tl_id": user_id},
-                {"tl_id": user_uuid}
-            ],
-            "role": {"$in": ["telecaller", "growth_partner", "sales_agent", "partner"]}
-        }).to_list(2000)
+        # TL sees their active team GPs - canonical subtree (NOT raw tl_id string match).
+        _members = index.subtree_members(user_uuid or user_id, include_self=False)
+        telecallers = [m for m in _members
+                       if (m.get("role") or "").lower() in gp_role_names]
     else:
         # GP sees only themselves - find by either _id or id field
         try:
@@ -1033,20 +1033,23 @@ async def get_hourly_report(
         except Exception:
             # Fallback if ObjectId conversion fails
             telecallers = await db.users.find({"id": user_uuid}).to_list(1)
-    
-    # Include BOTH id forms so activity recorded under either the uuid `id` or the Mongo `_id`
-    # resolves to the same member (managers like rama@neosales.org store id != _id).
+
+    # Key each telecaller by their FULL alias set (id, _id, connect_id, legacy_user_id) so
+    # activity recorded under any already-linked identifier of the SAME active Connect person
+    # is captured. Separate/legacy duplicate accounts are NOT merged (they are not aliases).
     telecaller_ids = []
     telecaller_map = {}
     for tc in telecallers:
-        keys = []
+        cid = tc.get("id") or str(tc.get("_id") or "")
+        keys = set(index.aliases(cid) or set())
         if tc.get("_id"):
-            keys.append(str(tc["_id"]))
+            keys.add(str(tc["_id"]))
         if tc.get("id"):
-            keys.append(tc["id"])
+            keys.add(tc["id"])
         for k in keys:
-            telecaller_ids.append(k)
-            telecaller_map[k] = tc
+            if k not in telecaller_map:
+                telecaller_ids.append(k)
+                telecaller_map[k] = tc
     telecaller_ids = list(dict.fromkeys(telecaller_ids))
     
     # Aggregation for calls by hour per user
@@ -1094,7 +1097,6 @@ async def get_hourly_report(
     # single canonical person so nothing is lost or double-counted. Files are counted for
     # EVERY owner (any role) so totals match the Summary/dashboard exactly; managers/TLs
     # stay scoped to their own team.
-    index = await load_user_index(db)
     is_admin_ops = user_role in ["admin", "ops"]
     scope_roots = None if is_admin_ops else {
         (index.root_for(tid) or f"raw:{tid}") for tid in telecaller_ids
@@ -1204,10 +1206,18 @@ async def get_my_hourly_report(
     
     user_id = current_user["id"]
     user_name = current_user.get("name", current_user.get("email", "Unknown"))
-    
+
+    # Full alias set of this SAME active Connect identity (id, _id, connect_id, legacy_user_id)
+    # so the GP's own activity keyed under any already-linked identifier is counted.
+    index = await load_user_index(db)
+    alias_ids = set(index.aliases(user_id) or {user_id})
+    if current_user.get("_id"):
+        alias_ids.add(str(current_user["_id"]))
+    alias_ids = list(alias_ids)
+
     # Aggregation for calls by hour
     call_pipeline = [
-        {"$match": {"user_id": user_id, "created_at": {"$gte": start_of_day, "$lt": end_of_day}}},
+        {"$match": {"user_id": {"$in": alias_ids}, "created_at": {"$gte": start_of_day, "$lt": end_of_day}}},
         {"$addFields": {
             "hour": {"$hour": {"$add": ["$created_at", 19800000]}}  # IST offset
         }},
@@ -1220,7 +1230,7 @@ async def get_my_hourly_report(
     
     # Aggregation for lead status updates by hour (leads only; Files handled separately)
     lead_pipeline = [
-        {"$match": {"assigned_to": user_id, **lead_created_match(start_of_day, end_of_day)}},
+        {"$match": {"assigned_to": {"$in": alias_ids}, **lead_created_match(start_of_day, end_of_day)}},
         {"$addFields": {
             "hour": {"$hour": {"$add": [_lead_created_date(), 19800000]}}
         }},
@@ -1231,9 +1241,7 @@ async def get_my_hourly_report(
     ]
 
     # Files counted ONLY by the hour the lead BECAME a File (file_created_at), never updated_at
-    owner_ids = [user_id]
-    if current_user.get("_id"):
-        owner_ids.append(str(current_user["_id"]))
+    owner_ids = alias_ids
     file_pipeline = [
         {"$match": {"status": "file", "$expr": {"$and": [
             {"$in": [FILE_OWNER, owner_ids]},
