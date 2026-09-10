@@ -17,6 +17,30 @@ const STATUS_OPTS = [
 const fmtDur = (s) => `${String(Math.floor((s || 0) / 60)).padStart(2, '0')}:${String((s || 0) % 60).padStart(2, '0')}`;
 const fmtT = (s) => { if (!s) return '0m'; const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return h ? `${h}h ${m}m` : `${m}m`; };
 
+// IST-aware period bounds (mirrors backend _period_bounds) returned as epoch-ms [start, end).
+// null start => lifetime (no lower bound). Used for CLIENT-SIDE Leads-tab filtering only.
+const IST_OFFSET = 5.5 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const istBounds = (period, fromDate, toDate) => {
+  if (fromDate && toDate) {
+    const s = Date.parse(`${fromDate}T00:00:00+05:30`);
+    const e = Date.parse(`${toDate}T00:00:00+05:30`) + DAY_MS;
+    return [s, e];
+  }
+  const nowIst = new Date(Date.now() + IST_OFFSET); // UTC getters now read IST wall-clock
+  const y = nowIst.getUTCFullYear(), m = nowIst.getUTCMonth(), d = nowIst.getUTCDate();
+  const weekdayMon = (nowIst.getUTCDay() + 6) % 7; // Mon=0
+  const istMidnight = (yy, mm, dd) => Date.UTC(yy, mm, dd) - IST_OFFSET;
+  const todayS = istMidnight(y, m, d);
+  switch (period) {
+    case 'today': return [todayS, todayS + DAY_MS];
+    case 'yesterday': return [todayS - DAY_MS, todayS];
+    case 'week': return [todayS - weekdayMon * DAY_MS, todayS + DAY_MS];
+    case 'month': return [istMidnight(y, m, 1), todayS + DAY_MS];
+    default: return [null, null]; // lifetime / custom handled above
+  }
+};
+
 const Stat = ({ label, value, color = '#0f172a' }) => (
   <div className="bg-white border border-gray-200 rounded-lg p-3 text-center" data-testid={`tl-stat-${label}`}>
     <p className="text-2xl font-bold" style={{ color }}>{value}</p>
@@ -95,12 +119,11 @@ const TeamLeads = () => {
   const [fromDate, setFromDate] = useState(''); const [toDate, setToDate] = useState('');
   const [tl, setTl] = useState('ALL'); const [gp, setGp] = useState('ALL');
   const [status, setStatus] = useState('ALL'); const [outcome, setOutcome] = useState('ALL'); const [converted, setConverted] = useState('ALL');
-  const [stats, setStats] = useState(null);
-  const [leads, setLeads] = useState([]);
   const [callLog, setCallLog] = useState([]);
   const [summary, setSummary] = useState(null);
   const [hourly, setHourly] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [allLeads, setAllLeads] = useState([]); // full TL-assigned set; Leads tab filters it client-side
   const [callLead, setCallLead] = useState(null);
   const callRef = useRef(null);
 
@@ -113,23 +136,29 @@ const TeamLeads = () => {
 
   useEffect(() => { api.get('/tl/meta').then(({ data }) => { setMeta(data); if (data.is_tl && data.me) setTl(data.me); }).catch(() => {}); }, []);
 
-  const load = useCallback(async () => {
+  // Full TL-assigned lead set. period=lifetime => backend applies NO date filter and NO
+  // tl-contacted filter, so we get EVERY assigned lead and do all Leads-tab filtering client-side.
+  const loadLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const rp = rangeParams();
-      const [st, ld] = await Promise.all([
-        api.get('/tl/stats', { params: rp }),
-        api.get('/tl/leads', { params: { ...rp, status, outcome, converted } }),
-      ]);
-      setStats(st.data); setLeads(ld.data.leads || []);
+      const { data } = await api.get('/tl/leads', { params: { period: 'lifetime' } });
+      setAllLeads(data.leads || []);
+    } catch (e) { /* interceptor handles */ } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { loadLeads(); }, [loadLeads]);
+
+  // Secondary tabs keep their existing backend endpoints unchanged.
+  const loadTab = useCallback(async () => {
+    const rp = rangeParams();
+    try {
       if (tab === 'calllog') setCallLog((await api.get('/tl/call-logs', { params: { ...rp, outcome, status, converted } })).data.logs || []);
       if (tab === 'summary') setSummary((await api.get('/tl/reports/summary', { params: rp })).data);
       if (tab === 'hourly') setHourly((await api.get('/tl/reports/hourly', { params: { date: (toDate || undefined), tl: tl !== 'ALL' ? tl : undefined } })).data);
-    } catch (e) { /* interceptor handles */ } finally { setLoading(false); }
-  }, [rangeParams, status, outcome, converted, tab, tl, toDate]);
+    } catch (e) { /* interceptor handles */ }
+  }, [rangeParams, outcome, status, converted, tab, tl, toDate]);
+  useEffect(() => { loadTab(); }, [loadTab]);
 
-  useEffect(() => { load(); }, [load]);
-
+  const load = useCallback(() => { loadLeads(); loadTab(); }, [loadLeads, loadTab]);
   const openCall = (lead) => { callRef.current = lead; setCallLead(lead); };
   const periods = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This Week'], ['month', 'This Month']];
 
@@ -142,6 +171,55 @@ const TeamLeads = () => {
   useEffect(() => {
     if (gp !== 'ALL' && !scopedGps.some((g) => g.id === gp)) setGp('ALL');
   }, [scopedGps]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // GP -> Team Leader map (from /tl/meta) so we can scope the lead list by TL client-side.
+  const gpToTl = React.useMemo(() => {
+    const m = {};
+    (meta.gps || []).forEach((g) => { m[String(g.id)] = g.tl_id ? String(g.tl_id) : ''; });
+    return m;
+  }, [meta.gps]);
+
+  // ===== CLIENT-SIDE Leads-tab derivation (base = ALL assigned leads; NOT TL-contacted) =====
+  const derived = React.useMemo(() => {
+    let scoped = allLeads;
+    if (tl !== 'ALL') scoped = scoped.filter((l) => gpToTl[String(l.gp_id)] === String(tl));
+    if (gp !== 'ALL') scoped = scoped.filter((l) => String(l.gp_id) === String(gp));
+
+    const isFile = (l) => (l.status || '').toLowerCase() === 'file';
+    const inB = (l, b) => {
+      if (!b[0]) return true;
+      const t = Date.parse(l.lead_created_at);
+      return !isNaN(t) && t >= b[0] && t < b[1];
+    };
+    const selB = istBounds((fromDate && toDate) ? null : period, fromDate, toDate);
+    const inRangeScoped = scoped.filter((l) => inB(l, selB)); // includes FILE (needed for Converted)
+
+    const outMatch = (l) => outcome === 'ALL' || (l.last_tl_call && l.last_tl_call.outcome === outcome);
+    const convMatch = (l) => converted === 'ALL' || (converted === 'yes' ? !!l.converted_by_tl : !l.converted_by_tl);
+    // Visible cards = assigned leads in range, FILE excluded, then explicit outcome/converted filters.
+    const visible = inRangeScoped.filter((l) => !isFile(l) && outMatch(l) && convMatch(l));
+
+    const countNonFile = (b) => scoped.filter((l) => !isFile(l) && inB(l, b)).length;
+    const rangeTotal = visible.length;
+    const contacted = visible.filter((l) => (l.tl_calls_count || 0) > 0).length;
+    const filesConverted = inRangeScoped.filter((l) => l.converted_by_tl).length;
+    const base = rangeTotal + filesConverted;
+    return {
+      list: visible,
+      kpis: {
+        range_total_leads: rangeTotal,
+        today: countNonFile(istBounds('today')),
+        week: countNonFile(istBounds('week')),
+        month: countNonFile(istBounds('month')),
+        contacted_leads: contacted,
+        files_converted: filesConverted,
+        pending: Math.max(0, rangeTotal - contacted),
+        file_conversion_rate: base ? Math.round((1000 * filesConverted) / base) / 10 : 0,
+      },
+    };
+  }, [allLeads, tl, gp, gpToTl, period, fromDate, toDate, outcome, converted]);
+  const stats = derived.kpis;
+  const leads = derived.list;
 
   return (
     <div className="p-4" data-testid="tl-team-leads">

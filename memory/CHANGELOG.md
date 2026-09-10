@@ -203,3 +203,13 @@ FIX (frontend admin/Dashboard.js): renamed the old Connected card -> "Calls" (sa
 DATA LIMITATION (reported): Connect call_logs store only outcome+duration (no lead link, no per-call disposition), so a Connect per-call status breakdown is impossible from existing data; breakdown now reflects data-added-in-period by current status.
 RECONCILE (preview, IST): Meta TODAY imported=3 calls=0 LEAD=0 -> Meta Leads=0. Meta THIS WEEK imported=26 calls=5 connected=3 files=3 dispositions{NOT_INTERESTED1,CALL_BACK2,NOT_QUALIFIED1,FILE1} LEAD=0 -> sum=5==calls, connected3<=5. Connect this_month calls=7 connected=6; all_time calls=59 connected=35 (invariant holds). Endpoints match raw DB exactly.
 Not deployed; held for user DEPLOY confirmation. No workflow/import/assign/call/post-call/file-conversion code touched.
+
+## 2026-09-10 (c) — WEB Team Leads (TL) page: client-side filtering correction (frontend only)
+FILE: frontend/src/pages/telecaller/team/TeamLeads.js ONLY. No backend/mobile/other files changed.
+ROOT CAUSE: KPI cards came from /tl/stats which computes today/week/month/range over the WHOLE scope (never narrows GPs by the selected TL) -> selecting a TL didn't change them. The card list came from /tl/leads?tl=X which the backend restricts to TL-CONTACTED leads, and it included FILE-status records.
+FIX (all client-side, no backend change): fetch the full assigned set once via /tl/leads?period=lifetime (backend then applies NO date filter and NO tl-contacted filter). Derive list + all 8 KPIs client-side with useMemo:
+- TL scope via GP->tl_id map from /tl/meta; then GP filter; then IST date range (new istBounds mirrors backend _period_bounds); exclude status==='file'; then explicit outcome/converted filters.
+- Leads(range)=visible non-file count; Today/Week/Month=scope non-file in fixed IST periods; TL Contacted=visible with tl_calls_count>0 (subset); Converted=in-range converted_by_tl (includes file); Pending=range-contacted; Conv%=converted/(range+converted).
+- Card list now = ALL assigned leads in scope+range (FILE excluded), regardless of TL contact; Last TL Call = — still visible.
+VERIFIED (preview, admin): TL scoping reacts -> assigned totals ALL=52, Anusha(69b24...)=32, Pinky=6. All 52 preview leads are status=file so non-file counts=0 after exclusion (old behaviour counted files). Frontend compiled successfully; page renders, cards react. NOTE: duplicate TL identity "Y Anusha" (f259e847) maps to 0 GPs; the populated "Yarragonda Anusha "(69b24) is correct. Production has real non-file leads that will now display/react.
+Not deployed.
