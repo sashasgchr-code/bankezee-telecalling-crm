@@ -213,3 +213,10 @@ FIX (all client-side, no backend change): fetch the full assigned set once via /
 - Card list now = ALL assigned leads in scope+range (FILE excluded), regardless of TL contact; Last TL Call = — still visible.
 VERIFIED (preview, admin): TL scoping reacts -> assigned totals ALL=52, Anusha(69b24...)=32, Pinky=6. All 52 preview leads are status=file so non-file counts=0 after exclusion (old behaviour counted files). Frontend compiled successfully; page renders, cards react. NOTE: duplicate TL identity "Y Anusha" (f259e847) maps to 0 GPs; the populated "Yarragonda Anusha "(69b24) is correct. Production has real non-file leads that will now display/react.
 Not deployed.
+
+## 2026-09-10 (d) — TL page fix: join leads to TL by gp_name (id variant mismatch)
+BUG (frontend, TeamLeads.js): my client-side TL/GP scope joined lead.gp_id to /tl/meta gp.id, but the SAME GP has DIFFERENT id variants in lead.assigned_to vs /tl/meta -> 12 of 52 leads unmapped; Pinky undercounted (8 vs actual 14), Anusha (32 vs 38). That's why "Pinky's leads not showing".
+FIX: join on normalized gp_name instead of gp_id. nameToTl={norm(name):tl_id}; gpIdToName maps the GP-dropdown value(id) back to a name for the GP filter. Verified name-join maps all 52 (ALL=52, Anusha=38, Pinky=14). Compiled OK; UI select works.
+NOTE: on preview every TL lead is status=file, so the FILE-exclusion (per prior spec) still yields 0 visible cards there; on production Pinky's non-file leads will now appear.
+CLARIFICATION (Dashboard): "Connected(664) < Not Interested(900)" is expected, NOT a bug — Connect call_logs have no per-call disposition, so the Status Breakdown shows lead statuses of data ADDED in the period (not call outcomes). Invariants hold: connected<=calls (664<=1776), not_interested<=total_data (900<=4481).
+Not deployed.

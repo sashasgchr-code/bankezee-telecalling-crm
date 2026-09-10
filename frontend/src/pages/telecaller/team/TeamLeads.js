@@ -172,18 +172,25 @@ const TeamLeads = () => {
     if (gp !== 'ALL' && !scopedGps.some((g) => g.id === gp)) setGp('ALL');
   }, [scopedGps]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // GP -> Team Leader map (from /tl/meta) so we can scope the lead list by TL client-side.
-  const gpToTl = React.useMemo(() => {
+  // GP -> Team Leader map keyed by NAME. Lead.gp_id and /tl/meta gp.id use different id
+  // variants for the same GP, so we join on gp_name (reliable) instead of gp_id.
+  const norm = (s) => (s || '').trim().toLowerCase();
+  const nameToTl = React.useMemo(() => {
     const m = {};
-    (meta.gps || []).forEach((g) => { m[String(g.id)] = g.tl_id ? String(g.tl_id) : ''; });
+    (meta.gps || []).forEach((g) => { m[norm(g.name)] = g.tl_id ? String(g.tl_id) : ''; });
+    return m;
+  }, [meta.gps]);
+  const gpIdToName = React.useMemo(() => {
+    const m = {};
+    (meta.gps || []).forEach((g) => { m[String(g.id)] = norm(g.name); });
     return m;
   }, [meta.gps]);
 
   // ===== CLIENT-SIDE Leads-tab derivation (base = ALL assigned leads; NOT TL-contacted) =====
   const derived = React.useMemo(() => {
     let scoped = allLeads;
-    if (tl !== 'ALL') scoped = scoped.filter((l) => gpToTl[String(l.gp_id)] === String(tl));
-    if (gp !== 'ALL') scoped = scoped.filter((l) => String(l.gp_id) === String(gp));
+    if (tl !== 'ALL') scoped = scoped.filter((l) => nameToTl[norm(l.gp_name)] === String(tl));
+    if (gp !== 'ALL') { const gn = gpIdToName[String(gp)]; scoped = scoped.filter((l) => norm(l.gp_name) === gn); }
 
     const isFile = (l) => (l.status || '').toLowerCase() === 'file';
     const inB = (l, b) => {
@@ -217,7 +224,7 @@ const TeamLeads = () => {
         file_conversion_rate: base ? Math.round((1000 * filesConverted) / base) / 10 : 0,
       },
     };
-  }, [allLeads, tl, gp, gpToTl, period, fromDate, toDate, outcome, converted]);
+  }, [allLeads, tl, gp, nameToTl, gpIdToName, period, fromDate, toDate, outcome, converted]);
   const stats = derived.kpis;
   const leads = derived.list;
 
