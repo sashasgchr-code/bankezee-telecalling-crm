@@ -12,11 +12,14 @@ const AdminLeads = () => {
   const [telecallers, setTelecallers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [outcomeFilter, setOutcomeFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState(() => sessionStorage.getItem('admin_leads_status') || '');
+  const [outcomeFilter, setOutcomeFilter] = useState(() => sessionStorage.getItem('admin_leads_outcome') || '');
   const [assignedFilter, setAssignedFilter] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
+  // Persist Connect data filters so returning from a lead detail / re-fetch keeps them selected
+  useEffect(() => { sessionStorage.setItem('admin_leads_status', statusFilter || ''); }, [statusFilter]);
+  useEffect(() => { sessionStorage.setItem('admin_leads_outcome', outcomeFilter || ''); }, [outcomeFilter]);
   
   // Stats from backend (for accurate filter counts)
   const [statusCounts, setStatusCounts] = useState({});

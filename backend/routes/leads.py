@@ -136,10 +136,26 @@ def build_leads_query(
         else:
             query["assigned_to"] = assigned_to
     
+    # Canonical NEW = never called (no call activity AND no logged outcome), regardless of the
+    # display status field which can remain "new" after a Not Answering/Busy/etc. call.
+    NEW_NEVER_CALLED = [
+        {"$or": [{"last_call_at": {"$exists": False}}, {"last_call_at": None}]},
+        {"$or": [{"last_call_outcome": {"$exists": False}}, {"last_call_outcome": None}, {"last_call_outcome": ""}]},
+        {"$or": [{"call_count": {"$exists": False}}, {"call_count": None}, {"call_count": 0}]},
+    ]
+    _status_new_or = {"status": "new"}
+
+    def _apply_new_filter():
+        query.setdefault("$and", [])
+        query["$and"].append(_status_new_or)
+        query["$and"].extend(NEW_NEVER_CALLED)
+
     # Status filter (single or multi-select)
     if statuses:
         status_list = [s.strip() for s in statuses.split(",") if s.strip()]
-        if status_list:
+        if status_list == ["new"]:
+            _apply_new_filter()
+        elif status_list:
             # Handle special filter for leads without status
             if "unset" in status_list or "none" in status_list or "no_status" in status_list:
                 # Include leads with null/empty status
@@ -165,7 +181,9 @@ def build_leads_query(
             else:
                 query["status"] = {"$in": status_list}
     elif status:
-        if status in ("unset", "none", "no_status"):
+        if status == "new":
+            _apply_new_filter()
+        elif status in ("unset", "none", "no_status"):
             status_condition = {"$or": [
                 {"status": {"$exists": False}},
                 {"status": None},
@@ -523,6 +541,15 @@ async def get_leads_stats(
             "by_status": [
                 {"$group": {"_id": "$status", "count": {"$sum": 1}}}
             ],
+            "new_canonical": [
+                {"$match": {"$and": [
+                    {"status": "new"},
+                    {"$or": [{"last_call_at": {"$exists": False}}, {"last_call_at": None}]},
+                    {"$or": [{"last_call_outcome": {"$exists": False}}, {"last_call_outcome": None}, {"last_call_outcome": ""}]},
+                    {"$or": [{"call_count": {"$exists": False}}, {"call_count": None}, {"call_count": 0}]}
+                ]}},
+                {"$count": "count"}
+            ],
             "by_outcome": [
                 {"$group": {"_id": "$last_call_outcome", "count": {"$sum": 1}}}
             ],
@@ -560,6 +587,14 @@ async def get_leads_stats(
     # Add no_status count if there are any
     if no_status_count > 0:
         by_status["no_status"] = no_status_count
+
+    # NEW chip must match the NEW filter list (never-called), not the raw status field.
+    new_canon = data.get("new_canonical") or []
+    new_count = new_canon[0]["count"] if new_canon else 0
+    if new_count > 0:
+        by_status["new"] = new_count
+    else:
+        by_status.pop("new", None)
     
     # Process by_outcome - include null/empty as "never_called" if leads have no outcome
     by_outcome = {}

@@ -248,3 +248,13 @@ FIX:
 CALL SAFETY: unchanged & intact — renderLead uses its own row `item`; handleCall(item) dials item.phone. No shared selectedLead. Duplicates no longer occur, and each row always carried its own item anyway.
 VERIFY: FlatList keys were unique per API but pages were double-appended on fast scroll -> now deduped + guarded. babel-preset-expo compile OK. Web untouched; other mobile screens untouched (Meta list uses single page_size=100 fetch, not affected).
 Not deployed / no APK built.
+
+## 2026-09-10 (h) — Canonical NEW = never-called (Connect leads), web+mobile via one backend rule + web admin filter persistence
+BACKEND (backend/routes/leads.py):
+- build_leads_query: status=='new' (single) or statuses==['new'] now means status=='new' AND never-called (last_call_at null AND last_call_outcome empty AND call_count 0). A lead called with any outcome (Not Answering/Busy/Switched Off/Not Interested/Not Qualified/Call Back/Lead/File) leaves NEW even if its display status stayed 'new'. Outcome filters unchanged (driven by last_call_outcome) so they stay separate.
+- get_leads_stats: added `new_canonical` facet; by_status['new'] now uses the never-called count so the NEW chip/badge matches the NEW filter list.
+WEB: frontend/src/pages/admin/Leads.js — persist statusFilter/outcomeFilter in sessionStorage so returning from lead detail / re-fetch after a call keeps the filter selected. telecaller/Leads.js already persists via useSearchParams (URL) — unchanged.
+MOBILE: NO code change needed — DataScreen sends status=new -> canonical backend; statusCounts.new -> canonical stat; already persists filter via AsyncStorage + useFocusEffect reload (called lead drops from NEW on return, filter stays); pagination dedupe/synchronous guard/request-sequence protection from prior fix intact.
+VERIFIED (preview): NEW list total=3, 0 violating (none called); NEW chip=3 (matches). no_answer outcome=1, that lead NOT in NEW. Frontend compiled (no errors); stats/list endpoints 200.
+EXCLUDED (untouched): calling, post-call modal, phone resolution, Meta, reports, dashboard metrics, assignment, file conversion, commissions, eligibility, permissions, prod config, package id.
+Not deployed / no APK built.
