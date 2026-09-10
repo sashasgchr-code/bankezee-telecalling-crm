@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl,
-  TextInput, ActivityIndicator, SafeAreaView, StatusBar, ScrollView, Linking,
+  TextInput, ActivityIndicator, SafeAreaView, StatusBar, ScrollView, Linking, Modal, Alert,
 } from 'react-native';
-import { getMetaLeads, getMetaFilesReport, getMetaFilesStats, refreshProfile } from '../services/api';
+import { getMetaLeads, getMetaFilesReport, getMetaFilesStats, getMetaPartners, assignMetaLead, refreshProfile } from '../services/api';
 import { IS_PREVIEW, API_HOST } from '../config';
 
 // ---- Web Meta design tokens (mirrors frontend/src/pages/meta/metaCommon.js) ----
@@ -99,6 +99,64 @@ const Field = ({ label: l, value, color }) => (
   </View>
 );
 
+// Permission-gated GP assignment control (Admin/Ops only — backend is final authority).
+const AssignGP = ({ lead, partners, onAssigned }) => {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const current = partners.find((p) => p.user_id === lead.assigned_partner_id);
+  const currentName = lead.assigned_partner_name || (current && current.name) || 'Unassigned';
+
+  const doAssign = async (partnerId, name) => {
+    if (saving) return; // block rapid duplicate taps
+    setSaving(true);
+    try {
+      await assignMetaLead(lead.lead_id, partnerId);
+      onAssigned(lead.lead_id, partnerId || null, partnerId ? name : null); // update only after backend confirms
+      setOpen(false);
+    } catch (e) {
+      Alert.alert('Assignment failed', e?.response?.data?.detail || 'Could not update assignment');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <View style={styles.assignWrap}>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.fieldLabel}>Assign Growth Partner</Text>
+        <Text style={[styles.fieldValue, { color: lead.assigned_partner_id ? '#047857' : '#9ca3af' }]} numberOfLines={1}>{currentName}</Text>
+      </View>
+      <TouchableOpacity style={styles.assignBtn} onPress={() => setOpen(true)} disabled={saving} data-testid={`meta-assign-open-${lead.lead_id}`}>
+        {saving ? <ActivityIndicator size="small" color={BRAND} /> : <Text style={styles.assignBtnText}>{lead.assigned_partner_id ? 'Reassign' : 'Assign'}</Text>}
+      </TouchableOpacity>
+
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
+        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => !saving && setOpen(false)}>
+          <View style={styles.modalSheet} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>Assign Growth Partner</Text>
+            <Text style={styles.modalSub} numberOfLines={1}>{lead.full_name || 'Lead'}</Text>
+            <FlatList
+              data={[{ user_id: '', name: 'Unassigned' }, ...partners]}
+              keyExtractor={(p) => p.user_id || 'none'}
+              style={{ maxHeight: 320 }}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => {
+                const active = (item.user_id || '') === (lead.assigned_partner_id || '');
+                return (
+                  <TouchableOpacity style={[styles.partnerRow, active && styles.partnerRowActive]} disabled={saving}
+                    onPress={() => doAssign(item.user_id || null, item.name)} data-testid={`meta-assign-pick-${item.user_id || 'none'}`}>
+                    <Text style={[styles.partnerName, active && { color: BRAND, fontWeight: '700' }]}>{item.name}</Text>
+                    {active && <Text style={{ color: BRAND, fontWeight: '700' }}>✓</Text>}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <TouchableOpacity style={styles.modalCancel} onPress={() => !saving && setOpen(false)}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+};
+
 const pad = (n) => String(n).padStart(2, '0');
 const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const presetRange = (preset) => {
@@ -143,6 +201,9 @@ const LeadsTab = ({ navigation, profile }) => {
   const [status, setStatus] = useState('');
   const [preset, setPreset] = useState('ALL');
   const [custom, setCustom] = useState({ from: '', to: '' });
+  const [partners, setPartners] = useState([]);
+  const metaRole = (profile?.meta_role || '').toLowerCase();
+  const canAssign = ['admin', 'ops'].includes(metaRole);
 
   const range = preset === 'CUSTOM' ? custom : presetRange(preset);
   const load = useCallback(async () => {
@@ -156,6 +217,11 @@ const LeadsTab = ({ navigation, profile }) => {
     } catch (e) {} finally { setLoading(false); setRefreshing(false); }
   }, [q, status, range.from, range.to]);
   useEffect(() => { const t = setTimeout(load, 300); return () => clearTimeout(t); }, [load]);
+  useEffect(() => { if (canAssign) getMetaPartners().then(setPartners).catch(() => {}); }, [canAssign]);
+
+  const applyAssign = (leadId, partnerId, name) => {
+    setData((d) => ({ ...d, leads: d.leads.map((l) => l.lead_id === leadId ? { ...l, assigned_partner_id: partnerId, assigned_partner_name: name } : l) }));
+  };
 
   const openDetail = (item) => {
     if ((item.status || '').toUpperCase() === 'FILE') {
@@ -184,7 +250,8 @@ const LeadsTab = ({ navigation, profile }) => {
           data={data.leads}
           keyExtractor={(l) => l.lead_id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
-          contentContainerStyle={{ padding: 12 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 96 }}
+          keyboardShouldPersistTaps="handled"
           ListHeaderComponent={<Text style={styles.countLabel}>{data.total} lead(s)</Text>}
           renderItem={({ item }) => (
             <View style={styles.card} data-testid="meta-lead-row">
@@ -207,6 +274,7 @@ const LeadsTab = ({ navigation, profile }) => {
                   <Text style={styles.actionText}>💬  WhatsApp</Text>
                 </TouchableOpacity>
               </View>
+              {canAssign && <AssignGP lead={item} partners={partners} onAssigned={applyAssign} />}
               <View style={styles.grid}>
                 <Field label="City" value={item.city} />
                 <Field label="Employment" value={item.employment_status} />
@@ -294,7 +362,8 @@ const FilesTab = ({ navigation, profile }) => {
           data={shown}
           keyExtractor={(f) => f.lead_id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }} />}
-          contentContainerStyle={{ padding: 12 }}
+          contentContainerStyle={{ padding: 12, paddingBottom: 96 }}
+          keyboardShouldPersistTaps="handled"
           ListHeaderComponent={<Text style={styles.countLabel}>{shown.length} file(s)</Text>}
           renderItem={({ item }) => {
             const file = item.file || {};
@@ -361,7 +430,7 @@ const ReportsTab = () => {
 
   const o = data?.overall; const m = data?.this_month;
   return (
-    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
+    <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12, paddingBottom: 96 }}>
       <DateBar preset={preset} setPreset={setPreset} custom={custom} setCustom={setCustom}
         presets={[{ k: 'ALL', label: 'All time' }, { k: 'MONTH', label: 'This Month' }]} />
       {loading || !o ? <ActivityIndicator style={{ marginTop: 30 }} color={BRAND} /> : (
@@ -492,8 +561,8 @@ const styles = StyleSheet.create({
   cardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   name: { fontSize: 15, fontWeight: '600', color: '#1e293b' },
   campaign: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
-  pill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, borderWidth: 1 },
-  pillText: { fontSize: 11, fontWeight: '700' },
+  pill: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 999, borderWidth: 1, flexShrink: 1, maxWidth: '52%' },
+  pillText: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
   actionRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   actionBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
   callBtn: { backgroundColor: '#16a34a' },
@@ -501,6 +570,18 @@ const styles = StyleSheet.create({
   actionText: { color: '#fff', fontWeight: '600', fontSize: 14 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 12 },
   field: { width: '50%', marginBottom: 8, paddingRight: 6 },
+  assignWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
+  assignBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: BRAND, minWidth: 84, alignItems: 'center' },
+  assignBtnText: { color: BRAND, fontWeight: '700', fontSize: 13 },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'flex-end' },
+  modalSheet: { backgroundColor: '#fff', borderTopLeftRadius: 18, borderTopRightRadius: 18, padding: 16, paddingBottom: 28 },
+  modalTitle: { fontSize: 16, fontWeight: '700', color: BRAND_DARK },
+  modalSub: { fontSize: 12, color: '#94a3b8', marginBottom: 10 },
+  partnerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  partnerRowActive: { backgroundColor: '#eff6ff', borderRadius: 8 },
+  partnerName: { fontSize: 14, color: '#334155' },
+  modalCancel: { marginTop: 12, paddingVertical: 12, alignItems: 'center', backgroundColor: '#f1f5f9', borderRadius: 10 },
+  modalCancelText: { color: '#475569', fontWeight: '600' },
   fieldLabel: { fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.4, color: '#94a3b8' },
   fieldValue: { fontSize: 13, fontWeight: '600', color: '#334155', marginTop: 1 },
   statRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingTop: 12 },

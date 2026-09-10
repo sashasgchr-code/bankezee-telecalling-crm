@@ -399,6 +399,16 @@ export const getMetaFilesReport = async (params = {}) => {
 export const getMetaFilesStats = async () => {
   const response = await api.get('/meta/files/stats');  return response.data;
 };
+// Meta partners (approved growth partners) — Admin/Ops only (backend enforces).
+export const getMetaPartners = async () => {
+  const response = await api.get('/meta/partners');
+  return response.data;
+};
+// Assign / reassign a Meta lead to a growth partner. partnerId null = unassign.
+export const assignMetaLead = async (leadId, partnerId) => {
+  const response = await api.patch(`/meta/leads/${leadId}/assign`, { partner_id: partnerId || null });
+  return response.data;
+};
 
 // Get file details
 export const getFileDetails = async (fileId, apiBase = '/files') => {

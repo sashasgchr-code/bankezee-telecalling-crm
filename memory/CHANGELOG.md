@@ -178,3 +178,18 @@ DELIVERY: no git remote in workspace -> user must click "Save to Github" to push
   - MetaLeadsScreen.js confirmed dead code (not referenced in App.js) — left untouched.
 - app.json bumped: version 2.7.2 -> 2.7.3, android.versionCode 30 -> 31.
 - Validated: babel-preset-expo (@babel/core 7) transformSync OK. No web/backend files changed. Native app not emulator-testable here (per project policy: babel + web cross-check).
+
+## 2026-09-10 — Controlled fix pass: Manager menu, TL filters, Meta UI parity, mobile assign; APK 2.7.4 (32)
+STEP 1 — Manager + Team Leads:
+- ManagerLayout.js: Team Management now exposes ONLY "Team Leads" (removed My Team + Team Calls). Grid changed cols-4 -> cols-3. Verified: team-nav testids = ['team-nav-team-leads'] only.
+- TeamLeads.js filters restructured into clean responsive groups: "Date:" labelled pill row (Today/Yesterday/This Week/This Month as rounded chips, selected = solid emerald) + From/To labelled date inputs; dropdown row uses grid-cols-2 sm:flex-wrap with w-full sm:w-auto min-w so nothing clips/overflows. All stat metrics unchanged.
+- GP filter now scopes under selected Team Leader: backend GET /tl/meta adds tl_id to each gp; frontend scopedGps filters gps by selected TL with safe fallback to all when no tl_id match (Anusha's GPs have empty tl_id -> fallback; Pinky's 5 GPs scope correctly). GP resets to ALL when TL changes and current gp not in scope.
+STEP 2 — Meta UI parity:
+- Web Meta Leads card (Leads.js, md:hidden): customer name text-sm/semibold -> text-base/bold text-slate-900; card separation strengthened via border-b-4 border-slate-200 (removed light divide). Desktop table + GP assign dropdown unchanged.
+- Mobile MetaHomeScreen.js: added permission-gated AssignGP control on each lead card (Admin/Ops only via meta_role) — shows current GP, opens a native bottom-sheet Modal partner picker, saving spinner, blocks rapid duplicate taps, updates card ONLY after backend 200, Alert on failure. partners loaded via new api getMetaPartners; assign via assignMetaLead (PATCH /meta/leads/{id}/assign). Long processing statuses constrained (pill flexShrink + maxWidth 52%, centered wrap). Added paddingBottom 96 to Leads/Files FlatLists and Reports ScrollView so content clears bottom nav; keyboardShouldPersistTaps on lists.
+STEP 3 — Mobile regression (code-verified, no emulator):
+- Call safety: MetaLeadDetailScreen resets ALL call state on leadId change and binds callLeadRef to leadId; startCall uses the freshly-loaded lead.phone; submitCall refuses if bound.id !== leadId. Connect LeadDetailScreen initiateCall likewise uses current lead.phone (per-tap navigation). No stale selectedLead/route-param/session reliance.
+- Backend permission verified by curl: admin assign/unassign = HTTP 200 (reverted); Meta growth_partner assign = HTTP 403. Backend STAFF_ROLES remains final authority.
+- Validated babel-preset-expo (@babel/core 7) OK for MetaHomeScreen.js + api.js. Frontend webpack compiled with no errors.
+- app.json: version 2.7.3 -> 2.7.4, versionCode 31 -> 32. package com.bankezee.connect, production API https://connect.bankezee.com/api, signing/keystore untouched.
+- NOT deployed / NOT built — held at release gate pending user confirmation.

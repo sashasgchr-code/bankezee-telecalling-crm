@@ -133,6 +133,16 @@ const TeamLeads = () => {
   const openCall = (lead) => { callRef.current = lead; setCallLead(lead); };
   const periods = [['today', 'Today'], ['yesterday', 'Yesterday'], ['week', 'This Week'], ['month', 'This Month']];
 
+  // Scope GP dropdown to the selected Team Leader (fallback to all if hierarchy data missing)
+  const scopedGps = React.useMemo(() => {
+    if (tl === 'ALL') return meta.gps;
+    const under = meta.gps.filter((g) => g.tl_id && String(g.tl_id) === String(tl));
+    return under.length ? under : meta.gps;
+  }, [meta.gps, tl]);
+  useEffect(() => {
+    if (gp !== 'ALL' && !scopedGps.some((g) => g.id === gp)) setGp('ALL');
+  }, [scopedGps]); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="p-4" data-testid="tl-team-leads">
       <div className="flex items-center justify-between mb-4">
@@ -149,28 +159,39 @@ const TeamLeads = () => {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {periods.map(([k, l]) => (
-          <button key={k} onClick={() => { setFromDate(''); setToDate(''); setPeriod(k); }} className={`px-3 py-1.5 rounded-lg text-sm ${period === k && !fromDate ? 'bg-emerald-600 text-white' : 'bg-white border border-gray-200 text-gray-700'}`}>{l}</button>
-        ))}
-        <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-xs" data-testid="tl-from" />
-        <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-xs" data-testid="tl-to" />
-      </div>
-      <div className="flex flex-wrap gap-2 mb-4">
-        {(meta.tls.length > 1 || !meta.is_tl) && (
-          <select value={tl} onChange={(e) => setTl(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white" data-testid="tl-filter-tl">
-            <option value="ALL">All Team Leaders</option>{meta.tls.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+      <div className="space-y-3 mb-4">
+        {/* Date presets + custom range */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-gray-500 mr-1">Date:</span>
+          {periods.map(([k, l]) => (
+            <button key={k} onClick={() => { setFromDate(''); setToDate(''); setPeriod(k); }}
+              data-testid={`tl-period-${k}`}
+              className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${period === k && !fromDate ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'}`}>{l}</button>
+          ))}
+          <div className="flex items-center gap-1.5 ml-auto flex-wrap">
+            <label className="text-[11px] text-gray-500">From</label>
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-xs" data-testid="tl-from" />
+            <label className="text-[11px] text-gray-500">To</label>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-xs" data-testid="tl-to" />
+          </div>
+        </div>
+        {/* Dropdown filters (wrap cleanly, full-width on mobile) */}
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+          {(meta.tls.length > 1 || !meta.is_tl) && (
+            <select value={tl} onChange={(e) => setTl(e.target.value)} className="w-full sm:w-auto sm:min-w-[160px] border border-gray-300 rounded-md px-2 py-2 text-sm bg-white" data-testid="tl-filter-tl">
+              <option value="ALL">All Team Leaders</option>{meta.tls.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          )}
+          <select value={gp} onChange={(e) => setGp(e.target.value)} className="w-full sm:w-auto sm:min-w-[160px] border border-gray-300 rounded-md px-2 py-2 text-sm bg-white" data-testid="tl-filter-gp">
+            <option value="ALL">All Growth Partners</option>{scopedGps.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </select>
-        )}
-        <select value={gp} onChange={(e) => setGp(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white" data-testid="tl-filter-gp">
-          <option value="ALL">All Growth Partners</option>{meta.gps.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-        </select>
-        <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white" data-testid="tl-filter-outcome">
-          <option value="ALL">Any outcome</option>{OUTCOMES.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
-        </select>
-        <select value={converted} onChange={(e) => setConverted(e.target.value)} className="border border-gray-300 rounded-md px-2 py-1.5 text-sm bg-white" data-testid="tl-filter-conv">
-          <option value="ALL">All</option><option value="yes">TL-converted to File</option><option value="no">Not converted</option>
-        </select>
+          <select value={outcome} onChange={(e) => setOutcome(e.target.value)} className="w-full sm:w-auto sm:min-w-[140px] border border-gray-300 rounded-md px-2 py-2 text-sm bg-white" data-testid="tl-filter-outcome">
+            <option value="ALL">Any outcome</option>{OUTCOMES.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
+          </select>
+          <select value={converted} onChange={(e) => setConverted(e.target.value)} className="w-full sm:w-auto sm:min-w-[150px] border border-gray-300 rounded-md px-2 py-2 text-sm bg-white" data-testid="tl-filter-conv">
+            <option value="ALL">All</option><option value="yes">TL-converted to File</option><option value="no">Not converted</option>
+          </select>
+        </div>
       </div>
 
       {/* Stats */}

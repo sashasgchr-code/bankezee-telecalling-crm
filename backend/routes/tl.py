@@ -555,7 +555,14 @@ async def tl_conversion(current_user: dict = Depends(get_current_user),
 async def tl_meta(current_user: dict = Depends(get_current_user)):
     """Filter option lists (allowed TLs + GPs) and whether the caller is a TL (for UI defaults)."""
     tl_ids, gp_map, allowed = await _tl_scope(current_user)
-    gps = sorted([{"id": k, "name": v} for k, v in {gp_map[k]: k for k in gp_map}.items()], key=lambda x: x["id"])
+    # Build GP -> tl_id map so the UI can scope the GP dropdown under a selected TL.
+    all_users = await db.users.find({}).to_list(5000)
+    gp_tl = {}
+    for u in all_users:
+        if (u.get("role") or "").lower() in GP_ROLES:
+            tlid = str(u.get("tl_id") or "")
+            for v in _uid_variants(u):
+                gp_tl[v] = tlid
     # dedupe gp by name->id (ids have variants); build simple list
     seen = set()
     gp_list = []
@@ -563,7 +570,7 @@ async def tl_meta(current_user: dict = Depends(get_current_user)):
         if gname in seen:
             continue
         seen.add(gname)
-        gp_list.append({"id": gid, "name": gname})
+        gp_list.append({"id": gid, "name": gname, "tl_id": gp_tl.get(gid, "")})
     my_id = current_user.get("id")
     return {"tls": allowed, "gps": sorted(gp_list, key=lambda x: x["name"]),
             "is_tl": bool(current_user.get("is_tl")), "me": my_id, "outcomes": TL_OUTCOMES}

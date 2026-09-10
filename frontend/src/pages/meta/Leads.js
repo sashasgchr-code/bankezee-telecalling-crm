@@ -247,17 +247,17 @@ export default function MetaLeads() {
           </div>
 
           {/* Mobile card list — desktop uses the table above; keeps Meta Leads usable on phones */}
-          <div className="md:hidden divide-y divide-slate-100" data-testid="meta-leads-cards">
+          <div className="md:hidden" data-testid="meta-leads-cards">
             {loading ? (
               <p className="py-16 text-center text-slate-400 text-sm">Loading leads...</p>
             ) : leads.length === 0 ? (
               <p className="py-16 text-center text-slate-400 text-sm">No leads found. Sync with Google Sheets to import data.</p>
             ) : leads.map((lead) => (
               <div key={lead.lead_id} data-testid={`meta-lead-card-${lead.lead_id}`} onClick={() => navigate(`/meta/leads/${lead.lead_id}`)}
-                className="p-4 hover:bg-slate-50/60 cursor-pointer">
+                className="p-4 border-b-4 border-slate-200 last:border-b-0 hover:bg-slate-50/60 cursor-pointer">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-800 truncate">{lead.full_name || "—"}</p>
+                    <p className="text-base font-bold text-slate-900 truncate">{lead.full_name || "—"}</p>
                     {lead.campaign_name && <p className="text-xs text-slate-400 truncate">{lead.campaign_name}</p>}
                   </div>
                   <StatusPill status={lead.status} />

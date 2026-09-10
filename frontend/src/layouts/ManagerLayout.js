@@ -31,11 +31,9 @@ const ManagerLayout = () => {
     ...(user?.meta_access ? [{ path: '/meta', icon: Boxes, label: 'Meta CRM' }] : []),
   ];
 
-  // Team pages for Manager view - Team Data / Team Files removed (covered by main nav)
+  // Team pages for Manager view - only Team Leads exposed under Team Management
   const teamNavItems = [
-    { path: '/manager/team', icon: Users, label: 'My Team' },
     { path: '/manager/team/leads', icon: PhoneCall, label: 'Team Leads' },
-    { path: '/manager/team/calls', icon: PhoneCall, label: 'Team Calls' },
   ];
 
   return (
@@ -132,7 +130,7 @@ const ManagerLayout = () => {
                   <Users size={16} />
                   Team Management
                 </h3>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {teamNavItems.map((item) => (
                     <NavLink
                       key={item.path}
