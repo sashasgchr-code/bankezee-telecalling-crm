@@ -1,3 +1,16 @@
+## 2026-06 — Incoming calls not showing in call log (BACKEND only, NOT deployed)
+Root cause (backend display gap, NOT mobile): device-synced INCOMING calls are written ONLY to `db.verified_call_logs` by `/call-logs/sync`. But the call-log READ endpoints — `/call-logs/unified` (the GP call-log screen), `/call-logs`, and `/leads/{id}/call-logs` — read ONLY `db.call_logs`. Outgoing app calls get a `call_logs` row (post-call modal) so they show; incoming calls, living only in `verified_call_logs`, never appeared. Compounded by an identity-alias gap: verified rows are often keyed by the user's `_id` while `current_user["id"]` is the uuid, so even a naive lookup would miss them.
+
+Fix (`routes/calls.py`, backend only):
+- Added `_verified_to_display()` (maps a verified_call_logs row to the call-log display shape; incoming/outgoing/missed + outcome derived from duration), `_dedupe_key()` (lead+direction+minute), and `_merge_verified()` (appends device-synced calls not already in call_logs, date-scoped, sorted).
+- `/call-logs/unified` and `/leads/{id}/call-logs` now merge verified calls so INCOMING calls show.
+- Verified lookups use the user's FULL alias set via new `_user_alias_ids()` (id/_id/connect_id/legacy_user_id).
+- `/leads/{id}/call-logs` access check + own-calls filter made alias-aware (previously 403'd GPs whose lead was assigned under an alias id).
+- Capture side: `sync_device_call_logs` now matches the GP's leads by full alias set (was single `current_user["id"]`), so alias-assigned leads' incoming calls are captured.
+
+Verified on preview: `/call-logs/unified` now returns incoming calls (was 0); date filter + dedup correct; lead-detail history shows a seeded incoming call (self-cleaning test) and no longer 403s on alias-assigned leads. NO mobile/app.json/version/versionCode/APK/calling/Meta/TL/legacy/User-Management changes. NOT deployed (reported for review).
+
+
 ## 2026-06 — Manager Dashboard table row-display fix (WEB frontend only, NOT deployed)
 Root cause: FRONTEND truncation. `pages/manager/ManagerDashboard.js` rendered `(gp_performance||[]).slice(0,10)` and `(gp_call_stats||[]).slice(0,10)` on the Files Performance and Call Activity by GP tables. The backend `/api/reports/manager-team-stats` already returns the COMPLETE scoped list (merged per person, sorted, no `[:N]` limit), so no backend change was needed.
 

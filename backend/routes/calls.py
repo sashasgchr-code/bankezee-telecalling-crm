@@ -13,6 +13,100 @@ from utils.helpers import serialize_doc, serialize_docs, format_duration, conver
 
 router = APIRouter(prefix="/api", tags=["Calls"])
 
+async def _user_alias_ids(current_user):
+    """Every id form of THIS same user (id, _id, connect_id, legacy_user_id) so activity keyed
+    under any of them is matched - device-synced verified calls are often stored under _id."""
+    uid = current_user.get("id")
+    ids = {uid} if uid else set()
+    doc = await db.users.find_one({"id": uid}) if uid else None
+    if not doc and uid:
+        try:
+            doc = await db.users.find_one({"_id": ObjectId(uid)})
+        except Exception:
+            doc = None
+    if doc:
+        if doc.get("_id"):
+            ids.add(str(doc["_id"]))
+        for f in ("connect_id", "legacy_user_id"):
+            if doc.get(f):
+                ids.add(str(doc[f]))
+    return list(ids)
+
+
+def _verified_to_display(v):
+    """Map a verified_call_logs (device-synced) record into the same shape the call-log
+    screens render, so device-synced INCOMING calls (which only ever live in
+    verified_call_logs) show up alongside app-logged calls."""
+    ctype = (v.get("call_type") or "").lower()
+    dur = v.get("duration_seconds", 0) or 0
+    if ctype in ("missed", "rejected"):
+        outcome = "no_answer"
+    elif dur > 0:
+        outcome = "connected"
+    else:
+        outcome = "not_connecting"
+    ts = v.get("device_timestamp") or v.get("synced_at")
+    if isinstance(ts, datetime):
+        ts = ts.isoformat()
+    return {
+        "id": str(v.get("_id")),
+        "user_id": v.get("user_id"),
+        "user_name": v.get("user_name", ""),
+        "lead_id": v.get("lead_id"),
+        "lead_name": v.get("lead_name", ""),
+        "phone": v.get("original_phone") or v.get("phone_number"),
+        "phone_number": v.get("phone_number"),
+        "created_at": ts,
+        "call_type": ctype,
+        "direction": "incoming" if ctype == "incoming" else ("missed" if ctype in ("missed", "rejected") else "outgoing"),
+        "duration": dur,
+        "duration_seconds": dur,
+        "outcome": outcome,
+        "notes": "",
+        "source": "device_sync",
+        "is_verified": True,
+    }
+
+
+def _dedupe_key(lead_id, call_type, ts):
+    """Same lead + same direction + same minute => the same physical call."""
+    if isinstance(ts, str):
+        try:
+            ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        except Exception:
+            ts = None
+    minute = ts.strftime("%Y%m%d%H%M") if isinstance(ts, datetime) else ""
+    return (str(lead_id or ""), (call_type or "").lower(), minute)
+
+
+async def _merge_verified(primary_logs, vquery, start=None, end=None):
+    """Append device-synced calls (mainly INCOMING) that are not already represented in the
+    primary call_logs list. Dedupes by (lead, direction, minute)."""
+    seen = set()
+    for l in primary_logs:
+        seen.add(_dedupe_key(l.get("lead_id"), l.get("call_type") or l.get("direction"), l.get("created_at")))
+    verified = await db.verified_call_logs.find(vquery).sort("device_timestamp", -1).to_list(1000)
+    merged = list(primary_logs)
+    for v in verified:
+        ts = v.get("device_timestamp") or v.get("synced_at")
+        tsdt = ts
+        if isinstance(tsdt, str):
+            try:
+                tsdt = datetime.fromisoformat(tsdt.replace("Z", "+00:00"))
+            except Exception:
+                tsdt = None
+        if isinstance(tsdt, datetime) and tsdt.tzinfo is None:
+            tsdt = tsdt.replace(tzinfo=timezone.utc)
+        if start and end and isinstance(tsdt, datetime) and not (start <= tsdt < end):
+            continue
+        key = _dedupe_key(v.get("lead_id"), v.get("call_type"), ts)
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(_verified_to_display(v))
+    merged.sort(key=lambda x: (x.get("created_at") or ""), reverse=True)
+    return merged
+
 # ===================== CALL SESSIONS =====================
 
 @router.post("/call-sessions/start")
@@ -293,8 +387,10 @@ async def get_lead_call_logs(lead_id: str, current_user: dict = Depends(get_curr
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
     
-    if current_user["role"] == "telecaller" and lead.get("assigned_to") != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    if current_user["role"] == "telecaller":
+        _alias_ids = await _user_alias_ids(current_user)
+        if lead.get("assigned_to") not in _alias_ids:
+            raise HTTPException(status_code=403, detail="Access denied")
     
     query = {"lead_id": lead_id}
     
@@ -302,11 +398,16 @@ async def get_lead_call_logs(lead_id: str, current_user: dict = Depends(get_curr
     if current_user["role"] == "telecaller":
         query["$or"] = [
             {"is_previous_agent_history": {"$ne": True}},
-            {"user_id": current_user["id"]}  # Show their own calls
+            {"user_id": {"$in": _alias_ids}}  # Show their own calls (any alias)
         ]
     
     logs = await db.call_logs.find(query).sort("created_at", -1).to_list(100)
-    return serialize_docs(logs)
+    primary = serialize_docs(logs)
+    # Include device-synced calls for this lead (INCOMING calls live only in verified_call_logs).
+    vquery = {"lead_id": lead_id}
+    if current_user["role"] == "telecaller":
+        vquery["user_id"] = {"$in": await _user_alias_ids(current_user)}
+    return await _merge_verified(primary, vquery)
 
 @router.get("/call-outcomes")
 async def get_call_outcomes(current_user: dict = Depends(get_current_user)):
@@ -426,10 +527,12 @@ async def sync_device_call_logs(
     if not data.call_logs:
         return {"synced": 0, "matched": 0, "verified_calls": []}
     
-    # Get all leads assigned to this user
+    # Leads assigned to this GP under ANY of their identity aliases (id/_id/connect_id/legacy)
+    # so incoming calls on alias-assigned leads are still captured.
+    alias_ids = await _user_alias_ids(current_user)
     user_leads = await db.leads.find({
-        "assigned_to": current_user["id"]
-    }).to_list(1000)
+        "assigned_to": {"$in": alias_ids}
+    }).to_list(2000)
     
     # Create a map of normalized phone numbers to leads
     lead_phone_map = {}
@@ -759,10 +862,14 @@ async def get_unified_call_logs(
         try:
             target_date = datetime.fromisoformat(date.replace('Z', '+00:00'))
             start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            if start_of_day.tzinfo is None:
+                start_of_day = start_of_day.replace(tzinfo=timezone.utc)
             end_of_day = start_of_day + timedelta(days=1)
             query["created_at"] = {"$gte": start_of_day, "$lt": end_of_day}
         except ValueError:
-            pass
+            start_of_day = end_of_day = None
+    else:
+        start_of_day = end_of_day = None
     
     logs = await db.call_logs.find(query).sort("created_at", -1).to_list(500)
     
@@ -773,5 +880,16 @@ async def get_unified_call_logs(
         log_data["source"] = log.get("source", "web")  # Default to web for legacy logs
         log_data["is_verified"] = log.get("is_verified", log.get("source") == "mobile")
         enriched_logs.append(log_data)
-    
-    return enriched_logs
+
+    # Merge device-synced calls (INCOMING calls exist ONLY in verified_call_logs) so they appear
+    # in the call log too. Filtered to the same user/lead scope; deduped against call_logs.
+    if source and source != "device_sync":
+        return enriched_logs
+    vquery = {}
+    if current_user["role"] == "telecaller":
+        vquery["user_id"] = {"$in": await _user_alias_ids(current_user)}
+    elif user_id:
+        vquery["user_id"] = user_id
+    if lead_id:
+        vquery["lead_id"] = lead_id
+    return await _merge_verified(enriched_logs, vquery, start_of_day, end_of_day)
