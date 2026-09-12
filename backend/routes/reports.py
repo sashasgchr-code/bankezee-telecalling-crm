@@ -109,6 +109,16 @@ async def resolve_report_scope(current_user: dict):
     raise HTTPException(status_code=403, detail="Admin, Operations, Manager or Team Lead access required")
 
 
+async def resolve_report_scope_or_self(current_user: dict):
+    """Like resolve_report_scope but a plain Growth Partner is allowed - self-scoped to their
+    own canonical identity aliases (used by the GP self Track Report)."""
+    role = normalize_role(current_user.get("role", ""))
+    if is_gp_role(role) and not current_user.get("is_tl") and role != "manager":
+        index = await load_user_index(db)
+        return set(index.aliases(current_user["id"]) or {current_user["id"]})
+    return await resolve_report_scope(current_user)
+
+
 async def resolve_agent_query(user_id: Optional[str], active_only: bool = True, scope_ids=None):
     """Build the users query for reporting agents, resolving all identities of `user_id`.
 
@@ -1449,8 +1459,13 @@ async def get_daily_tracking_sheet(
 
     Admin/Ops see every agent; Manager/TL are restricted to their recursive subtree.
     """
-    scope_ids = await resolve_report_scope(current_user)
+    scope_ids = await resolve_report_scope_or_self(current_user)
     now = datetime.now(timezone.utc)
+    # Growth Partners are self-scoped: force the reporting identity to the authenticated user,
+    # ignoring any user_id passed from the client (cannot view another GP).
+    _role = normalize_role(current_user.get("role", ""))
+    if is_gp_role(_role) and not current_user.get("is_tl") and _role != "manager":
+        user_id = current_user["id"]
     
     if not year:
         year = now.year
@@ -1671,6 +1686,7 @@ async def get_daily_tracking_sheet(
             "user_id": index.canonical_id(tc_id) or tc_id,
             "user_name": tc_name,
             "month": (range_start + IST_OFFSET).strftime("%B %Y"),
+            "file_goal": file_goal,
             "achieved_files": total_files,
             "daily_data": daily_data,
             "totals": {

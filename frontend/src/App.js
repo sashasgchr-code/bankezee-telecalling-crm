@@ -29,6 +29,7 @@ import TelecallerLeads from "./pages/telecaller/Leads";
 import TelecallerFollowUps from "./pages/telecaller/FollowUps";
 import TelecallerProfile from "./pages/telecaller/Profile";
 import TelecallerAttendance from "./pages/telecaller/Attendance";
+import TelecallerTrackReport from "./pages/telecaller/TrackReport";
 import { TeamMembers, TeamData, TeamFiles, TeamCalls, TeamLeads } from "./pages/telecaller/team";
 import LeadDetail from "./pages/LeadDetail";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
@@ -210,6 +211,7 @@ function App() {
           <Route path="files/:fileId/check-eligibility" element={<EligibilityCheck />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="followups" element={<TelecallerFollowUps />} />
+          <Route path="tracking" element={<TelecallerTrackReport />} />
           <Route path="attendance" element={<TelecallerAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="profile" element={<TelecallerProfile />} />

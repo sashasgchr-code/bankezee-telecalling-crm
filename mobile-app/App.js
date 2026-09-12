@@ -23,6 +23,7 @@ import TLTeamLeadsScreen from './src/screens/TLTeamLeadsScreen';
 import LeaveScreen from './src/screens/LeaveScreen';
 import MoreScreen from './src/screens/MoreScreen';
 import HourlyReportScreen from './src/screens/HourlyReportScreen';
+import TrackingScreen from './src/screens/TrackingScreen';
 import AttendanceScreen from './src/screens/AttendanceScreen';
 import TeamAttendanceScreen from './src/screens/TeamAttendanceScreen';
 import PolicyMasterScreen from './src/screens/PolicyMasterScreen';
@@ -116,6 +117,7 @@ const AppNavigator = ({ user, mobileRole, onLogout }) => (
     <Stack.Screen name="Reports">{props => <ReportsScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
     <Stack.Screen name="TLTeamLeads">{props => <TLTeamLeadsScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
     <Stack.Screen name="HourlyReport">{props => <HourlyReportScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
+    <Stack.Screen name="Tracking">{props => <TrackingScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
     <Stack.Screen name="Attendance" component={AttendanceScreen} />
     <Stack.Screen name="TeamAttendance">{props => <TeamAttendanceScreen {...props} user={user} mobileRole={mobileRole} />}</Stack.Screen>
     <Stack.Screen name="PolicyMaster" component={PolicyMasterScreen} />

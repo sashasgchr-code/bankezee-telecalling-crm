@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText, CalendarDays, MoreHorizontal, Clock, Users, Database, PhoneCall, BarChart3 } from 'lucide-react';
+import { Phone, Calendar, User, LayoutDashboard, X, PhoneOff, Coffee, LogOut, FileText, CalendarDays, MoreHorizontal, Clock, Users, Database, PhoneCall, BarChart3, TrendingUp } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import CallModal from '../components/CallModal';
@@ -213,6 +213,7 @@ const TelecallerLayout = () => {
   
   // More menu items - overflow (Reports removed - shown inline on Dashboard for GPs)
   const moreNavItems = [
+    { path: '/agent/tracking', icon: TrendingUp, label: 'Track Report' },
     { path: '/agent/attendance', icon: Clock, label: 'Attendance' },
     { path: '/agent/leave', icon: CalendarDays, label: 'Leave' },
     { path: '/agent/profile', icon: User, label: 'Profile' },

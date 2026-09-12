@@ -6,6 +6,7 @@ const ITEMS = {
   TLTeamLeads: { icon: '🎯', label: 'Team Leads (TL)', desc: 'Second-level calling on GP-generated leads' },
   Reports: { icon: '📈', label: 'Reports', desc: 'Team performance summary' },
   MyHourly: { icon: '⏱️', label: 'My Hourly Report', desc: 'Your own calls, leads & files by hour' },
+  Tracking: { icon: '📊', label: 'Track Report', desc: 'Your daily tracking sheet' },
   TeamHourly: { icon: '📊', label: 'Team Hourly Report', desc: "Your team's activity by hour" },
   Attendance: { icon: '📅', label: 'Attendance', desc: 'Check-in & monthly summary' },
   TeamAttendance: { icon: '🗓️', label: 'Team Attendance', desc: "Your team's attendance today" },
@@ -15,8 +16,8 @@ const ITEMS = {
 
 // Menu contents per mobile role. Tabs already cover the primary screens for each role.
 const MENU_BY_ROLE = {
-  gp: ['MyHourly', 'Attendance', 'PolicyMaster', 'Leave'],
-  tl: ['MyTeam', 'TLTeamLeads', 'Reports', 'MyHourly', 'TeamHourly', 'Attendance', 'PolicyMaster', 'Leave'],
+  gp: ['MyHourly', 'Tracking', 'Attendance', 'PolicyMaster', 'Leave'],
+  tl: ['MyTeam', 'TLTeamLeads', 'Reports', 'MyHourly', 'Tracking', 'TeamHourly', 'Attendance', 'PolicyMaster', 'Leave'],
   manager: ['TLTeamLeads', 'TeamHourly', 'TeamAttendance', 'PolicyMaster', 'Leave'],
 };
 
