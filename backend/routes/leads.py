@@ -696,6 +696,57 @@ async def get_leads_stats(
     }
 
 
+@router.post("/admin/fix-phone-dot-zero")
+async def fix_phone_dot_zero(apply: bool = False, current_user: dict = Depends(require_admin)):
+    """One-time SAFE repair of existing phone fields with a spreadsheet '.0' artifact.
+    Dry-run by default (apply=false). Only strips a trailing '.0' from phone-like numeric
+    strings; never changes ids/assignments/statuses/dates/counts. Admin only."""
+    import re as _re
+    dot_re = _re.compile(r'^(\+?\d{6,})\.0+$')
+    targets = [("leads", ["phone", "mobile"]),
+               ("call_logs", ["phone", "phone_number"]),
+               ("verified_call_logs", ["phone_number", "original_phone"])]
+    details = {}
+    total_fixable = 0
+    total_applied = 0
+    collisions = 0
+    for coll, fields in targets:
+        for f in fields:
+            docs = await db[coll].find({f: {"$regex": r"\.0+$"}}, {f: 1, "id": 1}).to_list(200000)
+            scanned = len(docs)
+            fixable = 0
+            skipped = 0
+            applied = 0
+            samples = []
+            for d in docs:
+                val = str(d.get(f, "")).strip()
+                m = dot_re.match(val)
+                if not m:
+                    skipped += 1
+                    continue
+                newv = m.group(1)
+                fixable += 1
+                if len(samples) < 5:
+                    samples.append({"before": val, "after": newv})
+                if coll == "leads" and f == "phone":
+                    other = await db.leads.count_documents({"phone": newv, "_id": {"$ne": d["_id"]}})
+                    if other:
+                        collisions += 1
+                if apply:
+                    upd = {f: newv}
+                    if f in ("phone", "mobile"):
+                        upd["normalized_phone"] = normalize_phone(newv)
+                    await db[coll].update_one({"_id": d["_id"]}, {"$set": upd})
+                    applied += 1
+            details[f"{coll}.{f}"] = {"scanned": scanned, "fixable": fixable,
+                                       "skipped_ambiguous": skipped, "applied": applied, "samples": samples}
+            total_fixable += fixable
+            total_applied += applied
+    return {"mode": "APPLIED" if apply else "DRY_RUN", "total_fixable": total_fixable,
+            "total_applied": total_applied, "duplicate_phone_collisions": collisions, "details": details}
+
+
+
 @router.get("/leads/outcomes/distinct")
 async def get_distinct_outcomes(current_user: dict = Depends(require_admin)):
     """
