@@ -1,3 +1,12 @@
+## 2026-09-12 — Meta Today filter + Meta status-filter responsive + Hourly Today's Call Activity (BACKEND + WEB + MOBILE code; NOT deployed, NO APK build)
+
+1. **Meta Leads 'Today' filter used wrong date basis** — `meta.py` `meta_leads()` filtered `created_time` (sheet/import creation). Now filters canonical **`assigned_at`** (set at assignment, `_now_iso()`), so Today/Yesterday/Week/Month/Custom = leads whose assignment happened in range; unassigned (`assigned_at=None`) excluded. Verified via curl: Today UI==DB==2 (incl. a 40-day-old lead assigned today); 7D/30D use assignment date. No ownership/date/assignment mutation.
+2. **Meta Leads status filter squeezed on mobile** — `frontend/src/pages/meta/Leads.js`: chip row wrapped in `w-full md:w-auto md:flex-1 overflow-x-auto` with `flex-nowrap md:flex-wrap` and `shrink-0 whitespace-nowrap` chips → clean horizontal scroll on mobile (no squeeze/overlap, selection stays highlighted, no layout jump); desktop unchanged (wraps as before).
+3. **Added 'Today's Call Activity' to Hourly Report** — new reusable web component `frontend/src/components/TodaysCallActivity.js` (Outgoing / Incoming / Total Talk / Incoming Time) reusing GET `/dashboard/stats?period=today` (SAME source, no second engine; role-scoped by the endpoint). Placed at top of the Hourly tab in `admin/Reports.js` (above date picker/table). Mobile: same 4-card block added to `mobile-app/src/screens/HourlyReportScreen.js` via `getDashboardStats('today')` (shown for today only). Reconciles with the Dashboard's Today's Activity per user.
+
+Verified: backend via curl; frontend via testing agent iteration_64 (all 3 items PASS, no regressions). Mobile version untouched 2.7.4 / versionCode 32; no APK built; nothing deployed. Unrelated mobile code (DataScreen, call safety, sync logic, post-call modal, NEW filter, persistence, Files, GP Track Report, EAS) not touched.
+
+
 ## 2026-09-12 — Mobile GP call metrics + Data page filter rework (BACKEND + WEB + MOBILE code; NOT deployed, NO APK build)
 
 ### Part 1 — Mobile GP Dashboard call metrics / incoming tracking

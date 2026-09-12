@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, StyleSheet, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
-import { getMyHourlyReport, getTeamHourly, getMetaReportsHourly } from '../services/api';
+import { getMyHourlyReport, getTeamHourly, getMetaReportsHourly, getDashboardStats } from '../services/api';
+
+const fmtTalk = (seconds) => {
+  const s = Number(seconds || 0);
+  if (s <= 0) return '0m';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+};
 
 const toDateStr = (d) => {
   const y = d.getFullYear();
@@ -43,6 +51,12 @@ const HourlyReportScreen = ({ navigation, route, mobileRole, user }) => {
   const [dayOffset, setDayOffset] = useState(0);
   const [expanded, setExpanded] = useState(null);
   const [metaExpanded, setMetaExpanded] = useState(null);
+  const [todayAct, setTodayAct] = useState(null);
+
+  useEffect(() => {
+    // Today's Call Activity reuses the SAME dashboard-stats source (reconciles with Dashboard).
+    getDashboardStats('today').then(setTodayAct).catch(() => {});
+  }, []);
 
   const dateObj = new Date();
   dateObj.setDate(dateObj.getDate() + dayOffset);
@@ -119,6 +133,26 @@ const HourlyReportScreen = ({ navigation, route, mobileRole, user }) => {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#16a34a']} />}>
+        {isToday && (() => {
+          const co = todayAct?.call_outcomes;
+          const outgoing = co
+            ? (co.connected || 0) + (co.not_connecting || 0) + (co.no_answer || 0) + (co.busy || 0) + (co.wrong_number || 0) + (co.voicemail || 0)
+            : (todayAct?.outgoing_calls?.count ?? todayAct?.calls ?? 0);
+          const incoming = todayAct?.incoming_calls?.count || 0;
+          const incomingTime = todayAct?.incoming_calls?.total_time_seconds || 0;
+          const outTalk = todayAct?.daily_session?.total_call_seconds ?? todayAct?.outgoing_calls?.total_time_seconds ?? 0;
+          return (
+            <View style={styles.tcaWrap} data-testid="hourly-todays-activity">
+              <Text style={styles.tcaTitle}>Today's Call Activity</Text>
+              <View style={styles.totalsRow}>
+                <View style={styles.tcaCard}><Text style={[styles.tcaVal, { color: '#16a34a' }]}>{outgoing}</Text><Text style={styles.totalLabel}>Outgoing</Text></View>
+                <View style={styles.tcaCard}><Text style={[styles.tcaVal, { color: '#2563eb' }]}>{incoming}</Text><Text style={styles.totalLabel}>Incoming</Text></View>
+                <View style={styles.tcaCard}><Text style={[styles.tcaVal, { color: '#7c3aed' }]}>{fmtTalk(outTalk + incomingTime)}</Text><Text style={styles.totalLabel}>Total Talk</Text></View>
+                <View style={styles.tcaCard}><Text style={[styles.tcaVal, { color: '#ea580c' }]}>{fmtTalk(incomingTime)}</Text><Text style={styles.totalLabel}>Incoming Time</Text></View>
+              </View>
+            </View>
+          );
+        })()}
         {loading ? (
           <ActivityIndicator color="#16a34a" style={{ margin: 30 }} />
         ) : isTeam ? (
@@ -234,6 +268,10 @@ const styles = StyleSheet.create({
   metaTitle: { fontSize: 18, fontWeight: '700', color: '#059669' },
   metaSub: { fontSize: 12, color: '#9ca3af', marginLeft: 6 },
   metaCaption: { fontSize: 11, color: '#6b7280', marginBottom: 10, textAlign: 'center' },
+  tcaWrap: { marginBottom: 12 },
+  tcaTitle: { fontSize: 13, fontWeight: '700', color: '#374151', marginBottom: 8 },
+  tcaCard: { flex: 1, backgroundColor: '#fff', borderRadius: 10, paddingVertical: 12, paddingHorizontal: 4, alignItems: 'center', borderWidth: 1, borderColor: '#e5e7eb' },
+  tcaVal: { fontSize: 17, fontWeight: '700' },
 });
 
 export default HourlyReportScreen;

@@ -280,13 +280,16 @@ async def meta_leads(
     if partner and partner != "ALL" and role in STAFF_ROLES:
         query["assigned_partner_id"] = None if partner == "UNASSIGNED" else partner
     if from_date or to_date:
+        # Meta Leads date filtering is by ASSIGNMENT date (assigned_at, set when a lead is
+        # assigned to a GP/user) — NOT created_time / imported / sheet-row date. Unassigned
+        # leads (assigned_at=None) are naturally excluded from a date-scoped view.
         ct = {}
         if from_date:
             ct["$gte"] = f"{from_date}T00:00:00"
         if to_date:
-            ct["$lte"] = f"{to_date}T23:59:59"
+            ct["$lte"] = f"{to_date}T23:59:59.999999+00:00"
         if ct:
-            query["created_time"] = ct
+            query["assigned_at"] = ct
     if q:
         query["$or"] = [
             {"full_name": {"$regex": q, "$options": "i"}},

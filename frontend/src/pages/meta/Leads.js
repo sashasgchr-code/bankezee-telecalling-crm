@@ -143,12 +143,14 @@ export default function MetaLeads() {
             <input data-testid="meta-leads-search-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search name, email, phone, city..."
               className="w-full border border-slate-300 rounded-md pl-9 pr-3 py-2 text-sm outline-none bg-white" />
           </div>
-          <div className="flex gap-1.5 flex-wrap">
-            {STATUSES.map((s) => (
-              <button key={s} data-testid={`meta-status-filter-${s}`} onClick={() => setStatus(s)}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${status === s ? "text-white" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
-                style={status === s ? { background: BRAND, borderColor: BRAND } : {}}>{s === "ALL" ? "ALL" : STATUS_LABEL(s)}</button>
-            ))}
+          <div className="w-full md:w-auto md:flex-1 -mx-1 px-1 overflow-x-auto">
+            <div className="flex gap-1.5 flex-nowrap md:flex-wrap">
+              {STATUSES.map((s) => (
+                <button key={s} data-testid={`meta-status-filter-${s}`} onClick={() => setStatus(s)}
+                  className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${status === s ? "text-white" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+                  style={status === s ? { background: BRAND, borderColor: BRAND } : {}}>{s === "ALL" ? "ALL" : STATUS_LABEL(s)}</button>
+              ))}
+            </div>
           </div>
           {isStaff && (
             <select data-testid="meta-partner-filter" value={partnerFilter} onChange={(e) => setPartnerFilter(e.target.value)}

@@ -1,0 +1,46 @@
+{
+  "summary": "Frontend-only verification of 3 web changes (Meta Today=assigned_at, responsive status chips, Hourly Today's Call Activity). All 3 items PASS. Admin logged in as admin@bankezee.com.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Global (Dashboard, VerifiedCallStats, Meta Leads)", "issues": ["Pre-existing React hydration warnings from a dev-tool wrapper span (data-ve-dynamic) around <select>/<option>/<tr>/<td>/<tbody>/<tfoot>/<th>/<table>. Not introduced by this PR (visible on unrelated pages too). Cosmetic console noise only; UI renders correctly."]}
+    ]
+  },
+  "verification_details": {
+    "item1_meta_today_assignment_filter": {
+      "counts": {"ALL": 462, "TODAY": 0, "7D": 5, "30D": 317},
+      "monotonic_all_ge_30d_ge_7d_ge_today": true,
+      "page_stays_mounted_after_preset_clicks": true,
+      "note": "TODAY=0 (no leads assigned today in this env) so 'by ... · <date>' row-level assertion could not be inspected, but 7D/30D/ALL counts scale correctly with an assignment-date filter and the endpoint returned without error."
+    },
+    "item2_status_chips_responsive": {
+      "mobile_390": {"chips_on_single_row_y_range": [186, 186], "horizontally_scrollable": true, "scrollWidth": 847, "clientWidth": 358, "click_NEW_bg": "rgb(15, 82, 186)", "click_NEW_color": "rgb(255, 255, 255)", "page_still_mounted": true},
+      "desktop_1440": {"chip_rows": [96, 132, 168], "wraps_naturally_no_horizontal_scroll": true}
+    },
+    "item3_hourly_todays_call_activity": {
+      "todays-call-activity_visible": true,
+      "cards": {"outgoing": "0", "incoming": "3", "total-talk": "1m", "incoming-time": "1m"},
+      "position": "Above date picker and hourly table (TCA y=189 with date picker below)",
+      "hourly_table_below_unchanged": true,
+      "dashboard_reconciliation": "Admin /admin dashboard does not expose tca-* testids, so exact-testid match not measurable. Fallback requirement met: Hourly TCA renders numbers without error. Source code confirms shared endpoint GET /dashboard/stats?period=today (see TodaysCallActivity.js line 25)."
+    }
+  },
+  "test_report_links": [],
+  "action_items": [
+    "OPTIONAL: The pre-existing data-ve-dynamic wrapper span (from Emergent visual editor) inserts a <span> as child of <table>/<tbody>/<tr>/<select>, causing React hydration warnings across many pages. Not blocking, but worth investigating if it can be scoped out on non-editor builds."
+  ],
+  "critical_code_review_comments": [
+    "TodaysCallActivity.js: silent .catch(() => {}) hides fetch errors — consider surfacing an inline error state so the 4 cards don't display stale zeros when the endpoint fails.",
+    "Meta Leads: status filter row uses overflow-x-auto with flex-nowrap on mobile — works correctly; no code issue."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "test_credentials": "admin@bankezee.com / ConnectSasha12!! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 3 items verified on preview URL. Meta Today filter now assignment-date based (0 today, 5/317/462 for 7D/30D/ALL). Mobile status chip row is single-row horizontally scrollable (scrollWidth 847 vs clientWidth 358). Desktop chips wrap onto 3 rows naturally. Hourly tab shows todays-call-activity with all 4 tca-* cards above the date picker; existing table unchanged.",
+  "rca of the issue": "n/a — no issues found."
+}

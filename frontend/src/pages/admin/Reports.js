@@ -5,6 +5,7 @@ import { GrowthPartnerFilter } from '../../components/GrowthPartnerFilter';
 import { PrintReportButton } from '../../components/PrintReportButton';
 import useAuthStore from '../../store/authStore';
 import { CombinedTotalsCard, MetaSummaryTable, MetaHourlyTable, TLSummaryTable } from '../../components/meta/MetaReportBlocks';
+import TodaysCallActivity from '../../components/TodaysCallActivity';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
@@ -1278,6 +1279,9 @@ const AdminReports = () => {
       {/* Hourly Tab Content */}
       {activeTab === 'hourly' && (
         <>
+          {/* Today's Call Activity — same source as Dashboard (reconciles per user) */}
+          <TodaysCallActivity />
+
           {/* Date Picker for Hourly */}
           <div className="flex items-center gap-2 mb-4">
             <span className="text-sm text-gray-600">Select Date:</span>
