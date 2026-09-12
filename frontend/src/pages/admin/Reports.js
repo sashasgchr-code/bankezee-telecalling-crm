@@ -1299,24 +1299,6 @@ const AdminReports = () => {
             </div>
           ) : hourlyReports ? (
             <div className="space-y-6">
-              {hasMeta && (
-                <CombinedTotalsCard
-                  testid="combined-totals-hourly"
-                  connect={{
-                    total_calls: (hourlyReports.telecallers || []).reduce((s, tc) => s + (tc.total_calls || 0), 0),
-                    total_leads_generated: (hourlyReports.telecallers || []).reduce((s, tc) => s + (tc.total_leads || 0), 0),
-                    total_file: (hourlyReports.telecallers || []).reduce((s, tc) => s + (tc.total_file || 0), 0),
-                  }}
-                  meta={{
-                    total_calls: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_calls || 0), 0),
-                    total_leads_generated: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_leads || 0), 0),
-                    total_file: (metaHourly?.telecallers || []).reduce((s, tc) => s + (tc.total_file || 0), 0),
-                  }}
-                  tl={{
-                    tl_calls: (tlHourly?.hours || []).reduce((s, h) => s + (h.tl_calls || 0), 0),
-                  }}
-                />
-              )}
               {(() => {
                 const allHours = new Set();
                 hourlyReports.telecallers?.forEach(tc => {
