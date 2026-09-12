@@ -2,7 +2,7 @@
   "expo": {
     "name": "BANKEZEE Connect",
     "slug": "bankezee-connect",
-    "version": "2.7.4",
+    "version": "2.7.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -24,7 +24,7 @@
         "backgroundColor": "#16a34a"
       },
       "package": "com.bankezee.connect",
-      "versionCode": 32,
+      "versionCode": 33,
       "permissions": [
         "android.permission.READ_CALL_LOG",
         "android.permission.READ_CONTACTS",
