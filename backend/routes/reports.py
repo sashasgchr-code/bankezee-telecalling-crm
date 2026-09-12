@@ -323,6 +323,17 @@ async def get_dashboard_stats(
         _gp_index = await load_user_index(db)
         uids = list(set(_gp_index.aliases(user_id) or {user_id}) | ({str(current_user["_id"])} if current_user.get("_id") else set()))
 
+        # Today's Call Activity is TEAM-scoped for Manager/TL (same subtree resolver as the
+        # Hourly report). A plain GP stays self-scoped. Only the CALL-activity metrics use this
+        # wider scope; the lead counts below remain the user's own.
+        _nrole = normalize_role(current_user.get("role", ""))
+        is_team_view = _nrole == "manager" or bool(current_user.get("is_tl"))
+        if is_team_view:
+            _team = await resolve_report_scope(current_user)
+            activity_uids = list(_team) if _team else uids
+        else:
+            activity_uids = uids
+
         leads_time_filter = date_range_match("updated_at", start_date, end_date)
         leads_created_filter = date_range_match("created_at", start_date, end_date)
         files_created_filter = file_created_match(start_date, end_date)
@@ -344,7 +355,7 @@ async def get_dashboard_stats(
             db.leads.count_documents({"assigned_to": {"$in": uids}, "status": {"$in": ["leads", "converted"]}, **leads_created_at_filter}),
             db.leads.aggregate([{"$match": {"assigned_to": {"$in": uids}, **leads_time_filter}}, {"$group": {"_id": "$status", "count": {"$sum": 1}}}]).to_list(20),
             db.call_logs.aggregate([
-                {"$match": {"user_id": {"$in": uids}, **calls_time_filter}},
+                {"$match": {"user_id": {"$in": activity_uids}, **calls_time_filter}},
                 {"$group": {
                     "_id": None,
                     "total": {"$sum": 1},
@@ -370,7 +381,7 @@ async def get_dashboard_stats(
         # are deduped on insert by (user_id, phone_number, device_timestamp), so re-syncing
         # the same handset cannot inflate the count. This isolates each GP's incoming calls.
         incoming_match = {
-            "user_id": user_id,
+            "user_id": {"$in": activity_uids},
             "call_type": "incoming",
             "duration_seconds": {"$gt": 0},
         }
@@ -398,6 +409,18 @@ async def get_dashboard_stats(
         my_leads_by_status["leads"] = my_leads_only
         my_leads_by_status["file"] = my_file
 
+        # Outgoing talk-time + calls from daily_sessions over the activity scope (team for
+        # Manager/TL, personal otherwise). Powers Total-Talk when a Manager's personal session
+        # is empty. Uses the SAME daily_sessions source as the Admin dashboard (no new engine).
+        _sess_agg = await db.daily_sessions.aggregate([
+            {"$match": {"date": today, "user_id": {"$in": activity_uids}}},
+            {"$group": {"_id": None,
+                        "calls": {"$sum": {"$ifNull": ["$calls_made", 0]}},
+                        "talk": {"$sum": {"$ifNull": ["$total_call_seconds", 0]}}}}
+        ]).to_list(1)
+        _sess_row = _sess_agg[0] if _sess_agg else {}
+        outgoing_calls_out = {"count": _sess_row.get("calls", 0), "total_time_seconds": _sess_row.get("talk", 0)}
+
         return {
             "my_data": my_data,
             "my_unused_data": my_unused_data,
@@ -418,7 +441,8 @@ async def get_dashboard_stats(
                 "total_time_seconds": verified_incoming_time
             },
             "verified_talk_time_seconds": verified_talk_time,
-            "daily_session": serialize_doc(session) if session else None,
+            "outgoing_calls": outgoing_calls_out,
+            "daily_session": None if is_team_view else (serialize_doc(session) if session else None),
             "period": period
         }
 
