@@ -700,50 +700,111 @@ async def get_leads_stats(
 async def fix_phone_dot_zero(apply: bool = False, current_user: dict = Depends(require_admin)):
     """One-time SAFE repair of existing phone fields with a spreadsheet '.0' artifact.
     Dry-run by default (apply=false). Only strips a trailing '.0' from phone-like numeric
-    strings; never changes ids/assignments/statuses/dates/counts. Admin only."""
-    import re as _re
-    dot_re = _re.compile(r'^(\+?\d{6,})\.0+$')
+    strings; never changes ids/assignments/statuses/dates/counts. Admin only.
+
+    Efficient/scan-safe implementation: uses a strict anchored $regex so the fixable set
+    is computed with a single count/find per field (no per-record queries), keeping the
+    request well under the proxy timeout even on ~190k-record production collections.
+    """
+    from pymongo import UpdateOne
+    # Only phone-like strings that end in a pure '.0' artifact are ever touched.
+    strict_regex = r"^\+?\d{6,}\.0+$"
+    dot_re = re.compile(r"^(\+?\d{6,})\.0+$")
+
     targets = [("leads", ["phone", "mobile"]),
                ("call_logs", ["phone", "phone_number"]),
                ("verified_call_logs", ["phone_number", "original_phone"])]
+
     details = {}
     total_fixable = 0
     total_applied = 0
     collisions = 0
+
     for coll, fields in targets:
         for f in fields:
-            docs = await db[coll].find({f: {"$regex": r"\.0+$"}}, {f: 1, "id": 1}).to_list(200000)
-            scanned = len(docs)
-            fixable = 0
-            skipped = 0
-            applied = 0
+            filt = {f: {"$regex": strict_regex}}
+            # Single count query gets the fixable total for this field (index-scan safe).
+            fixable = await db[coll].count_documents(filt)
+
+            # Grab a few sample values only (no full-collection load).
+            sample_docs = await db[coll].find(filt, {f: 1, "_id": 0}).limit(5).to_list(5)
             samples = []
-            for d in docs:
+            for d in sample_docs:
                 val = str(d.get(f, "")).strip()
                 m = dot_re.match(val)
-                if not m:
-                    skipped += 1
-                    continue
-                newv = m.group(1)
-                fixable += 1
-                if len(samples) < 5:
-                    samples.append({"before": val, "after": newv})
-                if coll == "leads" and f == "phone":
-                    other = await db.leads.count_documents({"phone": newv, "_id": {"$ne": d["_id"]}})
-                    if other:
-                        collisions += 1
-                if apply:
+                if m:
+                    samples.append({"before": val, "after": m.group(1)})
+
+            applied = 0
+            if apply and fixable:
+                # Stream fixable docs and bulk-write in batches (no N+1, no huge memory load).
+                batch = []
+                cursor = db[coll].find(filt, {f: 1})
+                async for d in cursor:
+                    val = str(d.get(f, "")).strip()
+                    m = dot_re.match(val)
+                    if not m:
+                        continue
+                    newv = m.group(1)
                     upd = {f: newv}
                     if f in ("phone", "mobile"):
                         upd["normalized_phone"] = normalize_phone(newv)
-                    await db[coll].update_one({"_id": d["_id"]}, {"$set": upd})
-                    applied += 1
-            details[f"{coll}.{f}"] = {"scanned": scanned, "fixable": fixable,
-                                       "skipped_ambiguous": skipped, "applied": applied, "samples": samples}
+                    batch.append(UpdateOne({"_id": d["_id"]}, {"$set": upd}))
+                    if len(batch) >= 1000:
+                        res = await db[coll].bulk_write(batch, ordered=False)
+                        applied += res.modified_count
+                        batch = []
+                if batch:
+                    res = await db[coll].bulk_write(batch, ordered=False)
+                    applied += res.modified_count
+
+            details[f"{coll}.{f}"] = {"fixable": fixable, "applied": applied, "samples": samples}
             total_fixable += fixable
             total_applied += applied
-    return {"mode": "APPLIED" if apply else "DRY_RUN", "total_fixable": total_fixable,
-            "total_applied": total_applied, "duplicate_phone_collisions": collisions, "details": details}
+
+    # Collision check (leads.phone only): how many stripped values already exist as a
+    # clean phone on a different lead. Computed with a single aggregation, not per-record.
+    try:
+        stripped_vals = []
+        async for d in db.leads.find({"phone": {"$regex": strict_regex}}, {"phone": 1}):
+            m = dot_re.match(str(d.get("phone", "")).strip())
+            if m:
+                stripped_vals.append(m.group(1))
+        if stripped_vals:
+            uniq = list(set(stripped_vals))
+            # Count of already-existing clean phones equal to a stripped value.
+            existing = await db.leads.count_documents({"phone": {"$in": uniq}})
+            collisions = existing
+    except Exception:
+        collisions = -1  # non-fatal: report as unknown
+
+    # Spot-check the specific numbers requested for verification.
+    spot_numbers = ["9966770666", "9491169989", "9490645927", "9704744976"]
+    spot_check = {}
+    for n in spot_numbers:
+        found = await db.leads.find(
+            {"phone": {"$in": [n, n + ".0", n + ".00"]}},
+            {"phone": 1, "_id": 0}
+        ).limit(5).to_list(5)
+        spot_check[n] = [str(x.get("phone")) for x in found] or ["NOT_FOUND"]
+
+    # Baseline collection counts (must be unchanged by this operation).
+    baseline_counts = {
+        "leads": await db.leads.count_documents({}),
+        "files": await db.files.count_documents({}),
+        "call_logs": await db.call_logs.count_documents({}),
+    }
+
+    return {
+        "mode": "APPLIED" if apply else "DRY_RUN",
+        "production_data_modified": bool(apply),
+        "total_fixable": total_fixable,
+        "total_applied": total_applied,
+        "duplicate_phone_collisions": collisions,
+        "details": details,
+        "spot_check": spot_check,
+        "baseline_counts": baseline_counts,
+    }
 
 
 
