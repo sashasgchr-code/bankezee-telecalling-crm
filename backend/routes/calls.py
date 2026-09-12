@@ -568,11 +568,14 @@ async def sync_device_call_logs(
             except (ValueError, AttributeError):
                 call_timestamp = datetime.now(timezone.utc)
             
-            # Check if we already have this verified call log
+            # Dedupe on (user, phone, timestamp, DIRECTION) so an incoming and an outgoing
+            # call to the same number are never collapsed into one, while a re-sync of the
+            # exact same handset call stays idempotent (no double counting).
             existing = await db.verified_call_logs.find_one({
                 "user_id": current_user["id"],
                 "phone_number": normalized_phone,
-                "device_timestamp": call_timestamp.isoformat()
+                "device_timestamp": call_timestamp.isoformat(),
+                "call_type": device_log.type
             })
             
             if not existing:

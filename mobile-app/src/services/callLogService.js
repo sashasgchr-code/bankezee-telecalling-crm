@@ -289,24 +289,25 @@ export const getCallLogs = async (daysBack = 7, showErrors = false) => {
   }
 };
 
-// Convert call type to readable string
+// Convert call type to readable direction. Handles react-native-call-log string labels
+// (INCOMING/OUTGOING/WIFI_INCOMING/WIFI_OUTGOING/ANSWERED_EXTERNALLY/MISSED/REJECTED)
+// AND raw Android integer codes. WiFi-calling (VoWiFi) incoming/outgoing were previously
+// mapped to 'unknown', which is why incoming calls never counted on Indian networks.
 const getCallType = (type) => {
-  switch (type) {
-    case '1':
-    case 'INCOMING':
-      return 'incoming';
-    case '2':
-    case 'OUTGOING':
-      return 'outgoing';
-    case '3':
-    case 'MISSED':
-      return 'missed';
-    case '5':
-    case 'REJECTED':
-      return 'rejected';
-    default:
-      return 'unknown';
+  const t = String(type == null ? '' : type).toUpperCase();
+  // Incoming (including WiFi calling and externally-answered)
+  if (t === '1' || t === 'INCOMING' || t === 'WIFI_INCOMING' || t === 'ANSWERED_EXTERNALLY') {
+    return 'incoming';
   }
+  // Outgoing (including WiFi calling)
+  if (t === '2' || t === 'OUTGOING' || t === 'WIFI_OUTGOING') {
+    return 'outgoing';
+  }
+  if (t === '3' || t === 'MISSED') return 'missed';
+  if (t === '5' || t === 'REJECTED') return 'rejected';
+  if (t === '4' || t === 'VOICEMAIL') return 'voicemail';
+  if (t === '6' || t === 'BLOCKED') return 'blocked';
+  return 'unknown';
 };
 
 // Sync call logs with backend - WITH VISIBLE ERROR HANDLING

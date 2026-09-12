@@ -132,12 +132,26 @@ def build_leads_query(
         # GP roles only see their own data
         query["assigned_to"] = current_user["id"]
     elif assigned_to:
-        if assigned_to == "unassigned":
-            query["assigned_to"] = None
-        elif assigned_to == "all":
-            pass  # No filter
-        else:
-            query["assigned_to"] = assigned_to
+        # Multi-select: comma-separated GP ids, plus the special token "unassigned".
+        # Multiple values are OR-ed together; combined with the rest of the query via AND.
+        tokens = [t.strip() for t in str(assigned_to).split(",") if t.strip()]
+        if tokens and "all" not in tokens:
+            real_ids = [t for t in tokens if t != "unassigned"]
+            # Unassigned = genuinely empty current assignment (null / missing / "").
+            unassigned_cond = {"$or": [
+                {"assigned_to": None},
+                {"assigned_to": {"$exists": False}},
+                {"assigned_to": ""},
+            ]}
+            or_conds = []
+            if real_ids:
+                or_conds.append({"assigned_to": {"$in": real_ids}})
+            if "unassigned" in tokens:
+                or_conds.append(unassigned_cond)
+            if len(or_conds) == 1 and real_ids and "unassigned" not in tokens:
+                query["assigned_to"] = {"$in": real_ids}
+            elif or_conds:
+                query.setdefault("$and", []).append({"$or": or_conds})
     
     # Canonical NEW = never called (no call activity AND no logged outcome), regardless of the
     # display status field which can remain "new" after a Not Answering/Busy/etc. call.
@@ -305,6 +319,56 @@ def build_leads_query(
     
     return query
 
+
+async def _mgmt_history_lead_ids(previous_gp=None, assigned_from=None, assigned_to_date=None):
+    """Resolve lead ids for the management history filters (Admin/Manager/Ops only).
+
+    - previous_gp: comma-separated canonical GP ids (multi-select, OR). A lead matches if
+      it was EVER assigned to any of them (appears as from_user_id OR to_user_id in history).
+    - assigned_from / assigned_to_date: canonical CURRENT-assignment date range. A lead
+      matches when its MOST-RECENT assignment (latest reassigned_at, whose to_user_id is a
+      real GP) falls inside the range. Currently-unassigned leads are never fabricated in.
+
+    When both are supplied, the result is their intersection (AND). Read-only; no writes.
+    """
+    id_sets = []
+
+    prev_ids = [p.strip() for p in str(previous_gp).split(",") if p.strip()] if previous_gp else []
+    if prev_ids:
+        hist = await db.lead_assignment_history.find(
+            {"$or": [{"from_user_id": {"$in": prev_ids}}, {"to_user_id": {"$in": prev_ids}}]},
+            {"lead_id": 1}
+        ).to_list(200000)
+        id_sets.append({h.get("lead_id") for h in hist if h.get("lead_id")})
+
+    dq = {}
+    if assigned_from:
+        try: dq["$gte"] = datetime.fromisoformat(assigned_from.replace('Z', '+00:00'))
+        except ValueError: pass
+    if assigned_to_date:
+        try: dq["$lte"] = datetime.fromisoformat(assigned_to_date.replace('Z', '+00:00')) + timedelta(days=1)
+        except ValueError: pass
+    if dq:
+        pipeline = [
+            {"$match": {"reassigned_at": {"$ne": None}}},
+            {"$sort": {"reassigned_at": -1}},
+            {"$group": {"_id": "$lead_id",
+                        "last_at": {"$first": "$reassigned_at"},
+                        "last_to": {"$first": "$to_user_id"}}},
+            {"$match": {"last_at": dq, "last_to": {"$nin": [None, ""]}}},
+            {"$project": {"_id": 1}},
+        ]
+        rows = await db.lead_assignment_history.aggregate(pipeline, allowDiskUse=True).to_list(200000)
+        id_sets.append({r["_id"] for r in rows if r.get("_id")})
+
+    if not id_sets:
+        return []
+    result = id_sets[0]
+    for s in id_sets[1:]:
+        result &= s
+    return list(result)
+
+
 @router.get("/leads")
 async def list_leads(
     # Pagination
@@ -379,7 +443,7 @@ async def list_leads(
         company=company
     )
 
-    # Internal management filters (Source/Company/Previous-GP/Last-Assigned) are ADMIN/MANAGER/OPS
+    # Internal management filters (Source/Company/Previous-GP/Assigned-Date) are ADMIN/MANAGER/OPS
     # only. Silently ignore them for GP/TL so they can never scope by internal metadata.
     _role = current_user.get("role", "")
     is_mgmt = _role in ("admin", "manager", "ops")
@@ -387,25 +451,11 @@ async def list_leads(
         query.pop("source", None)
         query.pop("company_name", None)
     elif previous_gp or last_assigned_from or last_assigned_to:
-        # Derive from the append-only assignment history (no lead writes needed).
-        hq = {}
-        if previous_gp:
-            hq["$or"] = [{"from_user_id": previous_gp}, {"to_user_id": previous_gp}]
-        if last_assigned_from or last_assigned_to:
-            dq = {}
-            if last_assigned_from:
-                try: dq["$gte"] = datetime.fromisoformat(last_assigned_from.replace('Z', '+00:00'))
-                except ValueError: pass
-            if last_assigned_to:
-                try: dq["$lte"] = datetime.fromisoformat(last_assigned_to.replace('Z', '+00:00')) + timedelta(days=1)
-                except ValueError: pass
-            if dq:
-                hq["reassigned_at"] = dq
-        hist = await db.lead_assignment_history.find(hq, {"lead_id": 1}).to_list(20000)
-        lead_ids = list({h.get("lead_id") for h in hist if h.get("lead_id")})
+        lead_ids = await _mgmt_history_lead_ids(previous_gp, last_assigned_from, last_assigned_to)
         existing = query.get("id")
         if isinstance(existing, dict) and "$in" in existing:
-            lead_ids = [i for i in lead_ids if i in set(existing["$in"])]
+            allowed = set(existing["$in"])
+            lead_ids = [i for i in lead_ids if i in allowed]
         query["id"] = {"$in": lead_ids or ["__none__"]}
 
     
@@ -591,6 +641,11 @@ async def get_leads_stats(
     created_to: Optional[str] = None,
     archived: Optional[bool] = None,
     is_invalid: Optional[bool] = None,
+    source: Optional[str] = None,
+    company: Optional[str] = None,
+    previous_gp: Optional[str] = None,
+    last_assigned_from: Optional[str] = None,
+    last_assigned_to: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -610,9 +665,26 @@ async def get_leads_stats(
         created_from=created_from,
         created_to=created_to,
         archived=archived,
-        is_invalid=is_invalid
+        is_invalid=is_invalid,
+        source=source,
+        company=company
     )
-    
+
+    # Apply the same Admin/Manager/Ops management history filters as the list endpoint,
+    # so the status/outcome badge counts reconcile with the filtered records.
+    _role = current_user.get("role", "")
+    is_mgmt = _role in ("admin", "manager", "ops")
+    if not is_mgmt:
+        base_query.pop("source", None)
+        base_query.pop("company_name", None)
+    elif previous_gp or last_assigned_from or last_assigned_to:
+        lead_ids = await _mgmt_history_lead_ids(previous_gp, last_assigned_from, last_assigned_to)
+        existing = base_query.get("id")
+        if isinstance(existing, dict) and "$in" in existing:
+            allowed = set(existing["$in"])
+            lead_ids = [i for i in lead_ids if i in allowed]
+        base_query["id"] = {"$in": lead_ids or ["__none__"]}
+
     pipeline = [
         {"$match": base_query},
         {"$facet": {

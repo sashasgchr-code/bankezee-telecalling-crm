@@ -1,3 +1,21 @@
+## 2026-09-12 — Mobile GP call metrics + Data page filter rework (BACKEND + WEB + MOBILE code; NOT deployed, NO APK build)
+
+### Part 1 — Mobile GP Dashboard call metrics / incoming tracking
+- Root cause of "Incoming always 0": `getCallType` (mobile `callLogService.js`) mapped only INCOMING/OUTGOING. react-native-call-log v3 also returns `WIFI_INCOMING`/`WIFI_OUTGOING` (VoWiFi/WiFi-calling, very common on Indian networks) and `ANSWERED_EXTERNALLY` → these fell through to 'unknown' and were never stored as incoming. Fixed: robust mapping (string labels incl. WiFi + external-answered, and numeric Android codes, case-insensitive). Unit-tested 12 cases.
+- Sync dedupe (`calls.py` /call-logs/sync): dedupe key now includes `call_type` (was user+phone+device_timestamp), so an incoming and outgoing to the same number aren't collapsed; re-sync stays idempotent. Verified: 2 incoming + 1 outgoing all stored; re-sync adds nothing; dashboard Incoming=2/65s.
+- Definitions (mobile Today's Activity + quick-stat), now consistent: Outgoing = outgoing call attempts (sum of the 6 outcome buckets); Incoming = actual incoming handset calls synced for the authed GP (verified_call_logs, call_type incoming, duration>0, scoped to user_id → no cross-user leak); "Calls" quick-stat card changed from `my_connected` to **Outgoing + Incoming** (no more two definitions under one label).
+- Report consistency (unchanged, explicit): Hourly (`/reports/hourly`), Daily Summary (`/reports/daily-summary` + `/reports/verified-call-stats`), Daily Tracking / call-log report and GP Track Report continue to use CRM call attempts (`call_logs`) + matched verified logs. verified_call_logs semantics kept (matched-to-lead only) so no report counts changed.
+- Mobile version untouched: 2.7.4 / versionCode 32. No APK built. No EAS/app.json change.
+
+### Part 2 — Data page filters (Admin/Manager/Ops) — backend + web
+- `build_leads_query` assigned_to: now multi-select (comma-separated ids) + "unassigned" token OR-ed; **Unassigned fixed** to mean genuinely empty current assignment (null OR missing OR ""). Applies to list + stats.
+- Previously Assigned To: multi-select (comma-separated) via `_mgmt_history_lead_ids` — matches `lead_assignment_history` from_user_id/to_user_id $in; **includes INACTIVE GPs** (new `/users/telecallers?include_inactive=true`, inactive only surfaced in this filter, tagged `is_active:false`).
+- Assigned Date (`last_assigned_from/to`): fixed to canonical CURRENT-assignment date — a lead matches when its most-recent assignment (latest reassigned_at with a real to_user_id) falls in range; currently-unassigned never fabricated. Never uses uploaded/created/modified/call dates.
+- Filter combination: OR within a multi-select, AND across groups. `get_leads_stats` now applies the same management filters so badges reconcile.
+- Frontend: new `MultiSelectDropdown.js` (checkbox popover, count label, Select All / Clear); Assigned To + Previously Assigned To converted to it; Company/Source/Uploaded/Assigned inputs preserved. No assignment/status/data mutation — filtering only.
+- Verified: backend via curl (unassigned=null/missing/empty; multi OR; previous incl. inactive; assigned-date canonical; combined AND) and frontend via testing agent iteration_63 (all flows pass, no regressions/crashes).
+
+
 ## 2026-09-12 — Phone `.0` cleanup EXECUTED on PRODUCTION (connect.bankezee.com) + endpoint hardened
 Ran the one-time historical phone `.0` normalization on prod and completed it fully (0 remaining).
 

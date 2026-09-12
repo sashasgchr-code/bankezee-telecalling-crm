@@ -362,7 +362,12 @@ const DashboardScreen = ({ user, onLogout }) => {
         </View>
         <View style={styles.quickStatCard}>
           <Text style={styles.quickStatIcon}>📞</Text>
-          <Text style={[styles.quickStatValue, { color: '#2196F3' }]}>{stats?.my_connected || 0}</Text>
+          <Text style={[styles.quickStatValue, { color: '#2196F3' }]}>{
+            ((stats?.call_outcomes?.connected || 0) + (stats?.call_outcomes?.not_connecting || 0) +
+             (stats?.call_outcomes?.no_answer || 0) + (stats?.call_outcomes?.busy || 0) +
+             (stats?.call_outcomes?.wrong_number || 0) + (stats?.call_outcomes?.voicemail || 0))
+            + (stats?.incoming_calls?.count || 0)
+          }</Text>
           <Text style={styles.quickStatLabel}>Calls</Text>
         </View>
       </View>

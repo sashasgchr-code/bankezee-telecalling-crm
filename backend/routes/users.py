@@ -317,13 +317,21 @@ async def list_growth_partners(
 
 
 @router.get("/users/telecallers")
-async def list_telecallers(current_user: dict = Depends(get_current_user)):
-    """Legacy endpoint - returns active GPs"""
-    users = await db.users.find({
-        "role": {"$in": GP_ROLES},
-        "is_active": True
-    }).to_list(1000)
-    return serialize_docs(users)
+async def list_telecallers(include_inactive: bool = False, current_user: dict = Depends(get_current_user)):
+    """Returns GPs. Default: active only (legacy behaviour, unchanged).
+
+    include_inactive=true additionally returns INACTIVE GPs, each tagged with `is_active`.
+    This is used ONLY by the historical "Previously Assigned To" filter so past assignees
+    who have since been deactivated remain selectable. Never use this for current-assignee
+    dropdowns."""
+    q = {"role": {"$in": GP_ROLES}}
+    if not include_inactive:
+        q["is_active"] = True
+    users = await db.users.find(q).to_list(5000)
+    docs = serialize_docs(users)
+    for d in docs:
+        d["is_active"] = bool(d.get("is_active"))
+    return docs
 
 
 @router.get("/users/managers")

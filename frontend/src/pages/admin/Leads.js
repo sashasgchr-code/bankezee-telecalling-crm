@@ -4,6 +4,7 @@ import { Search, Filter, Upload, Plus, Users, Trash2, RefreshCw, Loader2, CheckS
 import api from '../../services/api';
 import LeadCard from '../../components/LeadCard';
 import Modal from '../../components/Modal';
+import MultiSelectDropdown from '../../components/MultiSelectDropdown';
 import { StatusColors, StatusLabels } from '../../constants/colors';
 import useAuthStore from '../../store/authStore';
 
@@ -12,17 +13,18 @@ const AdminLeads = () => {
   const [leads, setLeads] = useState([]);
   const { user } = useAuthStore();
   const [telecallers, setTelecallers] = useState([]);
+  const [historyAssignees, setHistoryAssignees] = useState([]); // includes inactive - Previously Assigned filter only
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState(() => sessionStorage.getItem('admin_leads_status') || '');
   const [outcomeFilter, setOutcomeFilter] = useState(() => sessionStorage.getItem('admin_leads_outcome') || '');
-  const [assignedFilter, setAssignedFilter] = useState('');
+  const [assignedFilter, setAssignedFilter] = useState([]); // multi-select: array of GP ids + 'unassigned'
   // Internal management filters (Admin/Manager/Ops only)
   const [companyFilter, setCompanyFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
   const [uploadedFrom, setUploadedFrom] = useState('');
   const [uploadedTo, setUploadedTo] = useState('');
-  const [previousGpFilter, setPreviousGpFilter] = useState('');
+  const [previousGpFilter, setPreviousGpFilter] = useState([]); // multi-select: array of GP ids (incl inactive)
   const [lastAssignedFrom, setLastAssignedFrom] = useState('');
   const [lastAssignedTo, setLastAssignedTo] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -79,12 +81,19 @@ const AdminLeads = () => {
     try {
       const params = {};
       if (searchQuery) params.search = searchQuery;
-      if (assignedFilter) params.assigned_to = assignedFilter;
+      if (assignedFilter.length) params.assigned_to = assignedFilter.join(',');
       if (outcomeFilter) {
         if (outcomeFilter === 'never_called') params.never_called = true;
         else params.last_call_outcome = outcomeFilter;
       }
-      
+      if (companyFilter) params.company = companyFilter;
+      if (sourceFilter) params.source = sourceFilter;
+      if (uploadedFrom) params.created_from = uploadedFrom;
+      if (uploadedTo) params.created_to = uploadedTo;
+      if (previousGpFilter.length) params.previous_gp = previousGpFilter.join(',');
+      if (lastAssignedFrom) params.last_assigned_from = lastAssignedFrom;
+      if (lastAssignedTo) params.last_assigned_to = lastAssignedTo;
+
       const response = await api.get('/leads/stats', { params });
       setStatusCounts(response.data.by_status || {});
       setOutcomeCounts(response.data.by_outcome || {});
@@ -108,12 +117,12 @@ const AdminLeads = () => {
           params.last_call_outcome = outcomeFilter;
         }
       }
-      if (assignedFilter) params.assigned_to = assignedFilter;
+      if (assignedFilter.length) params.assigned_to = assignedFilter.join(',');
       if (companyFilter) params.company = companyFilter;
       if (sourceFilter) params.source = sourceFilter;
       if (uploadedFrom) params.created_from = uploadedFrom;
       if (uploadedTo) params.created_to = uploadedTo;
-      if (previousGpFilter) params.previous_gp = previousGpFilter;
+      if (previousGpFilter.length) params.previous_gp = previousGpFilter.join(',');
       if (lastAssignedFrom) params.last_assigned_from = lastAssignedFrom;
       if (lastAssignedTo) params.last_assigned_to = lastAssignedTo;
       
@@ -143,6 +152,15 @@ const AdminLeads = () => {
     fetchData(1);
     fetchStats(); // Also fetch stats when filters change (respects search/assigned filters)
   }, [searchQuery, statusFilter, outcomeFilter, assignedFilter, companyFilter, sourceFilter, uploadedFrom, uploadedTo, previousGpFilter, lastAssignedFrom, lastAssignedTo]);
+
+  // Previously-Assigned dropdown must include INACTIVE GPs (historical assignees). Fetched
+  // once for Admin/Manager/Ops only; never used for the current-assignee dropdown.
+  useEffect(() => {
+    if (!['admin', 'manager', 'ops'].includes(user?.role)) return;
+    api.get('/users/telecallers', { params: { include_inactive: true } })
+      .then((res) => setHistoryAssignees(res.data || []))
+      .catch(() => {});
+  }, [user?.role]);
 
   // Get count from stats endpoint
   const getStatusCount = (status) => statusCounts[status] || 0;
@@ -222,7 +240,7 @@ const AdminLeads = () => {
     try {
       const filters = {};
       if (statusFilter) filters.statuses = statusFilter;
-      if (assignedFilter) filters.assigned_to = assignedFilter;
+      if (assignedFilter.length) filters.assigned_to = assignedFilter.join(',');
       if (searchQuery) filters.search = searchQuery;
       if (outcomeFilter) {
         if (outcomeFilter === 'never_called') {
@@ -248,7 +266,7 @@ const AdminLeads = () => {
     try {
       const filters = {};
       if (statusFilter) filters.statuses = statusFilter;
-      if (assignedFilter) filters.assigned_to = assignedFilter;
+      if (assignedFilter.length) filters.assigned_to = assignedFilter.join(',');
       if (searchQuery) filters.search = searchQuery;
       if (outcomeFilter) {
         if (outcomeFilter === 'never_called') {
@@ -289,7 +307,7 @@ const AdminLeads = () => {
           // Archive by filter
           const filters = {};
           if (statusFilter) filters.statuses = statusFilter;
-          if (assignedFilter) filters.assigned_to = assignedFilter;
+          if (assignedFilter.length) filters.assigned_to = assignedFilter.join(',');
           if (searchQuery) filters.search = searchQuery;
           if (outcomeFilter) {
             if (outcomeFilter === 'never_called') {
@@ -555,17 +573,17 @@ const AdminLeads = () => {
                 );
               })}
             </div>
-            <select
-              value={assignedFilter}
-              onChange={(e) => setAssignedFilter(e.target.value)}
-              className="w-full input-field text-sm"
-            >
-              <option value="">All Assignments</option>
-              <option value="unassigned">Unassigned</option>
-              {telecallers.map((tc) => (
-                <option key={tc.id} value={tc.id}>{tc.name || tc.full_name} ({tc.email?.split('@')[0]})</option>
-              ))}
-            </select>
+            {/* Current Assigned To - multi-select (OR within, AND with other filters). Includes Unassigned. */}
+            <MultiSelectDropdown
+              testId="filter-assigned"
+              placeholder="Assigned To"
+              options={[
+                { value: 'unassigned', label: 'Unassigned' },
+                ...telecallers.map((tc) => ({ value: tc.id, label: `${tc.name || tc.full_name} (${tc.email?.split('@')[0]})` })),
+              ]}
+              selected={assignedFilter}
+              onChange={setAssignedFilter}
+            />
 
             {/* Internal management filters - Admin/Manager/Ops only */}
             {['admin', 'manager', 'ops'].includes(user?.role) && (
@@ -574,13 +592,18 @@ const AdminLeads = () => {
                   placeholder="Company" className="input-field text-sm" data-testid="filter-company" />
                 <input type="text" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
                   placeholder="Source" className="input-field text-sm" data-testid="filter-source" />
-                <select value={previousGpFilter} onChange={(e) => setPreviousGpFilter(e.target.value)}
-                  className="input-field text-sm" data-testid="filter-previous-gp">
-                  <option value="">Previously Assigned To — Any</option>
-                  {telecallers.map((tc) => (
-                    <option key={tc.id} value={tc.id}>{tc.name || tc.full_name}</option>
-                  ))}
-                </select>
+                {/* Previously Assigned To - historical, multi-select, INCLUDES inactive GPs */}
+                <MultiSelectDropdown
+                  testId="filter-previous-gp"
+                  placeholder="Previously Assigned To"
+                  options={(historyAssignees.length ? historyAssignees : telecallers).map((tc) => ({
+                    value: tc.id,
+                    label: tc.name || tc.full_name,
+                    hint: tc.is_active === false ? 'Inactive' : undefined,
+                  }))}
+                  selected={previousGpFilter}
+                  onChange={setPreviousGpFilter}
+                />
                 <div className="flex items-center gap-1">
                   <label className="text-xs text-gray-500 whitespace-nowrap">Uploaded</label>
                   <input type="date" value={uploadedFrom} onChange={(e) => setUploadedFrom(e.target.value)}
