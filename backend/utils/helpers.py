@@ -3,6 +3,7 @@ Helper functions for the BANKEZEE Connect API
 """
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
+import re
 
 # IST timezone offset (UTC+5:30)
 IST_OFFSET = timedelta(hours=5, minutes=30)
@@ -58,12 +59,43 @@ def format_duration(seconds):
         return f"{minutes}m {secs}s"
     return f"{secs}s"
 
-def normalize_phone(phone: str) -> str:
-    """Normalize phone number for comparison"""
+def _strip_float_artifact(s: str) -> str:
+    """Remove a spreadsheet float serialization suffix (a trailing '.0', '.00', ...) that
+    appears ONLY because a phone column was read as numeric. Never touches real digits."""
+    s = s.strip()
+    # e.g. '9966770666.0' -> '9966770666'  (only a pure trailing .0*, nothing else)
+    return re.sub(r'\.0+$', '', s)
+
+
+def canonical_phone(value) -> str:
+    """ONE canonical phone string for storage/display/dialling. String-only, never int/float.
+    - strips the spreadsheet '.0' artifact
+    - removes spaces, hyphens, parentheses, dots
+    - preserves a single leading '+'
+    Returns '' for empty / NaN-like inputs. Does NOT strip legitimate digits."""
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if s.lower() in ("", "nan", "none", "null"):
+        return ""
+    s = _strip_float_artifact(s)
+    plus = s.startswith("+")
+    # keep digits only from the rest
+    digits = re.sub(r'\D', '', s)
+    if not digits:
+        return ""
+    return ("+" + digits) if plus else digits
+
+
+def normalize_phone(phone) -> str:
+    """Normalize phone number for MATCHING (last 10 digits for Indian numbers)."""
     if not phone:
         return ""
+    # Strip the '.0' float artifact BEFORE extracting digits, otherwise '9966770666.0'
+    # becomes 11 digits ('99667706660') and the last-10 rule returns the WRONG number.
+    cleaned = _strip_float_artifact(str(phone))
     # Remove all non-digit characters
-    normalized = ''.join(c for c in phone if c.isdigit())
+    normalized = ''.join(c for c in cleaned if c.isdigit())
     # Remove leading country code (91 for India)
     if len(normalized) > 10 and normalized.startswith('91'):
         normalized = normalized[2:]

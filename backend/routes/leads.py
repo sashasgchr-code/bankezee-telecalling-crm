@@ -14,7 +14,7 @@ import uuid
 from models.schemas import LeadCreate, LeadUpdate, LeadAssign, AutoDistribute, BulkDeleteRequest, BulkOperationByFilter, BulkAssignByFilter, BulkArchiveRequest, SuppressionEntry
 from utils.database import db
 from utils.auth import get_current_user, require_admin, require_manager_or_admin, require_not_hr
-from utils.helpers import serialize_doc, serialize_docs, object_id_or_none
+from utils.helpers import serialize_doc, serialize_docs, object_id_or_none, canonical_phone
 from utils.hierarchy import load_user_index
 
 router = APIRouter(prefix="/api", tags=["Leads"])
@@ -85,11 +85,13 @@ def normalize_call_outcome(outcome: str) -> str:
     return CALL_OUTCOME_NORMALIZATION.get(normalized, outcome)
 
 # Phone number normalization helper
-def normalize_phone(phone: str) -> str:
+def normalize_phone(phone) -> str:
     """Normalize phone number to last 10 digits for Indian numbers"""
     if not phone:
         return ""
-    digits = re.sub(r'\D', '', str(phone))
+    # Strip spreadsheet '.0' float artifact first so '9966770666.0' does not become 11 digits.
+    cleaned = re.sub(r'\.0+$', '', str(phone).strip())
+    digits = re.sub(r'\D', '', cleaned)
     if len(digits) > 10:
         return digits[-10:]
     return digits
@@ -1117,9 +1119,9 @@ async def import_leads(
         content = await file.read()
         
         if file.filename.endswith('.csv'):
-            df = pd.read_csv(io.BytesIO(content))
+            df = pd.read_csv(io.BytesIO(content), dtype=str)
         elif file.filename.endswith(('.xlsx', '.xls')):
-            df = pd.read_excel(io.BytesIO(content))
+            df = pd.read_excel(io.BytesIO(content), dtype=str)
         else:
             raise HTTPException(status_code=400, detail="Unsupported file format")
         
@@ -1165,7 +1167,7 @@ async def import_leads(
                 existing_phones.add(normalize_phone(lead["phone"]))
         
         for _, row in df.iterrows():
-            phone = str(row.get('phone', '')).strip()
+            phone = canonical_phone(row.get('phone', ''))
             if not phone:
                 continue
             

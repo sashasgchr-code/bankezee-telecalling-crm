@@ -1,3 +1,16 @@
+## 2026-06 — Phone number normalization end-to-end (BACKEND + import + repair script; NOT deployed)
+Root cause: `import_leads` read CSV/Excel with `pd.read_csv/read_excel` WITHOUT `dtype=str`, so pandas inferred phone columns as float → stored `9966770666.0`. Worse, `normalize_phone` stripped non-digits so `9966770666.0` → `99667706660` (11 digits) → last-10 = `9667706660` (WRONG number), breaking incoming-call matching and any exact-phone lookup.
+
+Fix (backend only):
+- `utils/helpers.py`: added `import re`, `canonical_phone()` (string-only canonical phone: strips trailing `.0` artifact + spaces/hyphens/parens/dots, preserves leading `+`, never int/float, `''` for nan/empty) and `_strip_float_artifact()`. Fixed `normalize_phone()` to strip the `.0` artifact BEFORE digit extraction so matching is correct.
+- `routes/leads.py`: fixed the local `normalize_phone` the same way; `import_leads` now reads with `dtype=str` (no float inference) and stores `phone = canonical_phone(...)` + recomputed `normalized_phone`.
+- Added `scripts/fix_phone_dot_zero.py`: READ-ONLY dry-run by default, `--apply` to write; normalizes ONLY phone fields ending in a pure trailing `.0` across leads(phone,mobile,normalized_phone), verified_call_logs, call_logs, meta_leads; reports counts + duplicate-phone collisions; never merges/deletes records or touches ids/status/assignments/dates.
+
+Verified on preview: unit cases all pass incl. `(040) 12345678`→`04012345678`, `+91 99667 70666`→`+919966770666`; incoming match `+919966770666 == 9966770666.0` → True; import parsing keeps phones clean; repair dry-run+apply verified on seeded temp records (`9966770666.0`→`9966770666`, normalized fixed) then cleaned up. Preview DB has 0 `.0` records (artifacts are in production). Outgoing dial: mobile `makePhoneCall` already strips `.0`; web dial/display resolve once stored data is repaired.
+
+Data integrity: no counts/status/assignments/dates/hierarchy/reports changed — phone formatting only. NO mobile/app.json/version(2.7.4)/versionCode(32) changes. NOT deployed. Production data repair still pending (run `fix_phone_dot_zero.py` against production after deploy).
+
+
 ## 2026-06 — Incoming calls not showing in call log (BACKEND only, NOT deployed)
 Root cause (backend display gap, NOT mobile): device-synced INCOMING calls are written ONLY to `db.verified_call_logs` by `/call-logs/sync`. But the call-log READ endpoints — `/call-logs/unified` (the GP call-log screen), `/call-logs`, and `/leads/{id}/call-logs` — read ONLY `db.call_logs`. Outgoing app calls get a `call_logs` row (post-call modal) so they show; incoming calls, living only in `verified_call_logs`, never appeared. Compounded by an identity-alias gap: verified rows are often keyed by the user's `_id` while `current_user["id"]` is the uuid, so even a naive lookup would miss them.
 
