@@ -1,3 +1,20 @@
+## 2026-09-12 — Phone `.0` cleanup EXECUTED on PRODUCTION (connect.bankezee.com) + endpoint hardened
+Ran the one-time historical phone `.0` normalization on prod and completed it fully (0 remaining).
+
+Endpoint fix (`routes/leads.py` `fix_phone_dot_zero`, deployed run d0af3c9b):
+- Rewrote dry-run to be scan-safe: `count_documents` per field (anchored regex `^\+?\d{6,}\.0+$`), `find().limit(5)` samples, single `$in` collision count — no more 200k-doc load or per-record N+1 (fixed the earlier HTTP 524 dry-run timeout).
+- Apply path now uses batched `bulk_write` (1000/batch). Response includes `production_data_modified`, `spot_check`, `baseline_counts`.
+- Note: apply of ~159k rows exceeds the ~100s proxy/worker limit in ONE call → returns 500/524 but each pass commits its batches. Operation is idempotent; completed across 6 passes.
+
+Production result (admin curl against prod):
+- total records normalized: 158,717 (`xxxxxx.0` → `xxxxxx`); remaining fixable now 0.
+- Fields touched: leads.phone (+ derived normalized_phone); leads.mobile / call_logs.phone(_number) / verified_call_logs.phone_number/original_phone were cleared in pass 1 (small counts). No merge/delete/dedup/reassign — only phone-string values rewritten in place.
+- Spot-check 9966770666 / 9491169989 / 9490645927 / 9704744976 → all clean.
+- leads count 190,009 → 190,009 (no adds/deletes). call_logs grew via normal live sync only (not this op).
+- CSV import normalization PASS (`canonical_phone` strips `.0`/`.00`); incoming-call matching PASS (both sides normalized). Mobile untouched (2.7.4 / versionCode 32).
+- `baseline_counts.files`=0 is a cosmetic label bug (queries `db.files`; real files live in `import_batches`); unrelated to cleanup.
+
+
 ## 2026-06 — Part A: Data Management enhancements (BACKEND + WEB; no mobile; NOT deployed)
 Added Company Name + Source + management filters + role-gated internal metadata to the Data/Leads surface. Reused existing `source` field, `created_at` (=Uploaded Date), and the append-only `lead_assignment_history` collection (no assignment-endpoint or data changes).
 
