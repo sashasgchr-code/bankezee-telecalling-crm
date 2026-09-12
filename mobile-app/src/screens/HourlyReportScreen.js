@@ -197,13 +197,6 @@ const HourlyReportScreen = ({ navigation, route, mobileRole, user }) => {
               <Text style={styles.metaTitle}>Meta CRM — Hourly</Text>
               <Text style={styles.metaSub}>isolated Meta data</Text>
             </View>
-            <View style={styles.totalsRow}>
-              <TotCard v={teamTotals.calls + metaTotals.calls} l="All Calls" />
-              <TotCard v={teamTotals.connected + metaTotals.connected} l="Connected" />
-              <TotCard v={teamTotals.leads + metaTotals.leads} l="Leads" />
-              <TotCard v={teamTotals.file + metaTotals.file} l="Files" />
-            </View>
-            <Text style={styles.metaCaption}>Combined (Connect + Meta) · Connect calls {teamTotals.calls} + Meta calls {metaTotals.calls}</Text>
             <Text style={styles.sectionLabel}>Meta Total by Hour</Text>
             <HourColumns rows={metaOverallByHour} />
             <Text style={styles.sectionLabel}>Meta by Partner ({metaMembers.length})</Text>
