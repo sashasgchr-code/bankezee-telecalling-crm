@@ -1,3 +1,17 @@
+## 2026-06 — Part A: Data Management enhancements (BACKEND + WEB; no mobile; NOT deployed)
+Added Company Name + Source + management filters + role-gated internal metadata to the Data/Leads surface. Reused existing `source` field, `created_at` (=Uploaded Date), and the append-only `lead_assignment_history` collection (no assignment-endpoint or data changes).
+
+Backend (`routes/leads.py`, `models/schemas.py`):
+- `company_name` added to `LeadCreate`/`LeadUpdate` (optional) → flows through Add Lead (`**lead.dict()`).
+- CSV import reads `company_name` with header aliases (`company_name`/`company name`/`company`); `source` already supported; phone normalization (canonical_phone/dtype=str) unchanged → no `.0` regression.
+- `build_leads_query` + `list_leads`: new filters `company` (regex), `source` (existing), Uploaded Date = existing `created_from/to`, plus `previous_gp` and `last_assigned_from/to` derived read-only from `lead_assignment_history` (from_user_id/to_user_id/reassigned_at). All management filters honored ONLY for admin/manager/ops; silently ignored for GP/TL.
+- Role-gated output: `source`, `last_assigned_at`, `previous_gps` returned only to admin/manager/ops (derived from history per page); `company_name` visible to all roles.
+
+Web (`pages/admin/Leads.js`, `components/LeadCard.js`): Add Lead form gets Company Name input; management filter row (Company, Source, Previously Assigned To, Uploaded from/to, Last Assigned from/to) shown only to admin/manager/ops; LeadCard shows `Company: …` (all roles) and an internal block (Source/Uploaded/Last Assigned/Previous GP) only for admin/manager/ops.
+
+Verified on preview: create lead w/ company+source persists; admin company & source filters work; GP output hides source/previous/last-assigned and ignores those filters, company kept; admin Data page renders all filters + card fields (screenshot). No mobile changes; version 2.7.4/versionCode 32 unchanged. GP Track Report (Part B) untouched. NOT deployed.
+
+
 ## 2026-06 — Phone number normalization end-to-end (BACKEND + import + repair script; NOT deployed)
 Root cause: `import_leads` read CSV/Excel with `pd.read_csv/read_excel` WITHOUT `dtype=str`, so pandas inferred phone columns as float → stored `9966770666.0`. Worse, `normalize_phone` stripped non-digits so `9966770666.0` → `99667706660` (11 digits) → last-10 = `9667706660` (WRONG number), breaking incoming-call matching and any exact-phone lookup.
 

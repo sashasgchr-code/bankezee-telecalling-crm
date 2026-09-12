@@ -35,6 +35,7 @@ class LeadCreate(BaseModel):
     phone: str
     email: Optional[str] = None
     source: Optional[str] = None
+    company_name: Optional[str] = None
     city: Optional[str] = None
     status: str = "new"
     notes: Optional[str] = None
@@ -48,6 +49,7 @@ class LeadUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     source: Optional[str] = None
+    company_name: Optional[str] = None
     city: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None

@@ -5,16 +5,26 @@ import api from '../../services/api';
 import LeadCard from '../../components/LeadCard';
 import Modal from '../../components/Modal';
 import { StatusColors, StatusLabels } from '../../constants/colors';
+import useAuthStore from '../../store/authStore';
 
 const AdminLeads = () => {
   const navigate = useNavigate();
   const [leads, setLeads] = useState([]);
+  const { user } = useAuthStore();
   const [telecallers, setTelecallers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState(() => sessionStorage.getItem('admin_leads_status') || '');
   const [outcomeFilter, setOutcomeFilter] = useState(() => sessionStorage.getItem('admin_leads_outcome') || '');
   const [assignedFilter, setAssignedFilter] = useState('');
+  // Internal management filters (Admin/Manager/Ops only)
+  const [companyFilter, setCompanyFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
+  const [uploadedFrom, setUploadedFrom] = useState('');
+  const [uploadedTo, setUploadedTo] = useState('');
+  const [previousGpFilter, setPreviousGpFilter] = useState('');
+  const [lastAssignedFrom, setLastAssignedFrom] = useState('');
+  const [lastAssignedTo, setLastAssignedTo] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   // Persist Connect data filters so returning from a lead detail / re-fetch keeps them selected
@@ -56,7 +66,7 @@ const AdminLeads = () => {
   const [gpSearchQuery, setGpSearchQuery] = useState(''); // Search in assign modal
   
   // Form
-  const [newLead, setNewLead] = useState({ name: '', phone: '', email: '', city: '', source: '', notes: '' });
+  const [newLead, setNewLead] = useState({ name: '', phone: '', email: '', city: '', source: '', company_name: '', notes: '' });
   const [importFile, setImportFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -99,6 +109,13 @@ const AdminLeads = () => {
         }
       }
       if (assignedFilter) params.assigned_to = assignedFilter;
+      if (companyFilter) params.company = companyFilter;
+      if (sourceFilter) params.source = sourceFilter;
+      if (uploadedFrom) params.created_from = uploadedFrom;
+      if (uploadedTo) params.created_to = uploadedTo;
+      if (previousGpFilter) params.previous_gp = previousGpFilter;
+      if (lastAssignedFrom) params.last_assigned_from = lastAssignedFrom;
+      if (lastAssignedTo) params.last_assigned_to = lastAssignedTo;
       
       const [leadsRes, telecallersRes] = await Promise.all([
         api.get('/leads', { params }),
@@ -125,7 +142,7 @@ const AdminLeads = () => {
     setCurrentPage(1); // Reset to page 1 when filters change
     fetchData(1);
     fetchStats(); // Also fetch stats when filters change (respects search/assigned filters)
-  }, [searchQuery, statusFilter, outcomeFilter, assignedFilter]);
+  }, [searchQuery, statusFilter, outcomeFilter, assignedFilter, companyFilter, sourceFilter, uploadedFrom, uploadedTo, previousGpFilter, lastAssignedFrom, lastAssignedTo]);
 
   // Get count from stats endpoint
   const getStatusCount = (status) => statusCounts[status] || 0;
@@ -309,7 +326,7 @@ const AdminLeads = () => {
     try {
       await api.post('/leads', newLead);
       setShowAddModal(false);
-      setNewLead({ name: '', phone: '', email: '', city: '', source: '', notes: '' });
+      setNewLead({ name: '', phone: '', email: '', city: '', source: '', company_name: '', notes: '' });
       fetchData();
     } catch (error) {
       alert(error.response?.data?.detail || 'Failed to add lead');
@@ -549,6 +566,37 @@ const AdminLeads = () => {
                 <option key={tc.id} value={tc.id}>{tc.name || tc.full_name} ({tc.email?.split('@')[0]})</option>
               ))}
             </select>
+
+            {/* Internal management filters - Admin/Manager/Ops only */}
+            {['admin', 'manager', 'ops'].includes(user?.role) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2" data-testid="mgmt-filters">
+                <input type="text" value={companyFilter} onChange={(e) => setCompanyFilter(e.target.value)}
+                  placeholder="Company" className="input-field text-sm" data-testid="filter-company" />
+                <input type="text" value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)}
+                  placeholder="Source" className="input-field text-sm" data-testid="filter-source" />
+                <select value={previousGpFilter} onChange={(e) => setPreviousGpFilter(e.target.value)}
+                  className="input-field text-sm" data-testid="filter-previous-gp">
+                  <option value="">Previously Assigned To — Any</option>
+                  {telecallers.map((tc) => (
+                    <option key={tc.id} value={tc.id}>{tc.name || tc.full_name}</option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-1">
+                  <label className="text-xs text-gray-500 whitespace-nowrap">Uploaded</label>
+                  <input type="date" value={uploadedFrom} onChange={(e) => setUploadedFrom(e.target.value)}
+                    className="input-field text-xs" data-testid="filter-uploaded-from" />
+                  <input type="date" value={uploadedTo} onChange={(e) => setUploadedTo(e.target.value)}
+                    className="input-field text-xs" data-testid="filter-uploaded-to" />
+                </div>
+                <div className="flex items-center gap-1">
+                  <label className="text-xs text-gray-500 whitespace-nowrap">Assigned</label>
+                  <input type="date" value={lastAssignedFrom} onChange={(e) => setLastAssignedFrom(e.target.value)}
+                    className="input-field text-xs" data-testid="filter-lastassigned-from" />
+                  <input type="date" value={lastAssignedTo} onChange={(e) => setLastAssignedTo(e.target.value)}
+                    className="input-field text-xs" data-testid="filter-lastassigned-to" />
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -781,8 +829,16 @@ const AdminLeads = () => {
             type="text"
             value={newLead.source}
             onChange={(e) => setNewLead({ ...newLead, source: e.target.value })}
-            placeholder="Source"
+            placeholder="Source (internal)"
             className="input-field"
+          />
+          <input
+            type="text"
+            value={newLead.company_name}
+            onChange={(e) => setNewLead({ ...newLead, company_name: e.target.value })}
+            placeholder="Company Name"
+            className="input-field"
+            data-testid="add-lead-company"
           />
           <textarea
             value={newLead.notes}

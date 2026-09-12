@@ -114,7 +114,8 @@ def build_leads_query(
     is_invalid: Optional[bool] = None,
     import_batch_id: Optional[str] = None,
     team_view: Optional[bool] = None,
-    team_ids: Optional[list] = None
+    team_ids: Optional[list] = None,
+    company: Optional[str] = None
 ) -> dict:
     """Build MongoDB query from filter parameters - reusable across endpoints"""
     query = {}
@@ -208,6 +209,11 @@ def build_leads_query(
     # Source filter
     if source:
         query["source"] = {"$regex": source, "$options": "i"}
+
+    # Company filter (case-insensitive) - internal management filter (Admin/Manager/Ops only,
+    # enforced by the caller which only passes `company` for those roles)
+    if company:
+        query["company_name"] = {"$regex": company, "$options": "i"}
     
     # Date range filters
     if created_from or created_to:
@@ -312,6 +318,10 @@ async def list_leads(
     last_call_outcome: Optional[str] = None,
     outcomes: Optional[str] = None,  # Comma-separated for multi-select
     source: Optional[str] = None,
+    company: Optional[str] = None,
+    previous_gp: Optional[str] = None,
+    last_assigned_from: Optional[str] = None,
+    last_assigned_to: Optional[str] = None,
     # Date filters
     created_from: Optional[str] = None,
     created_to: Optional[str] = None,
@@ -365,8 +375,39 @@ async def list_leads(
         is_invalid=is_invalid,
         import_batch_id=import_batch_id,
         team_view=is_team_view,
-        team_ids=team_ids
+        team_ids=team_ids,
+        company=company
     )
+
+    # Internal management filters (Source/Company/Previous-GP/Last-Assigned) are ADMIN/MANAGER/OPS
+    # only. Silently ignore them for GP/TL so they can never scope by internal metadata.
+    _role = current_user.get("role", "")
+    is_mgmt = _role in ("admin", "manager", "ops")
+    if not is_mgmt:
+        query.pop("source", None)
+        query.pop("company_name", None)
+    elif previous_gp or last_assigned_from or last_assigned_to:
+        # Derive from the append-only assignment history (no lead writes needed).
+        hq = {}
+        if previous_gp:
+            hq["$or"] = [{"from_user_id": previous_gp}, {"to_user_id": previous_gp}]
+        if last_assigned_from or last_assigned_to:
+            dq = {}
+            if last_assigned_from:
+                try: dq["$gte"] = datetime.fromisoformat(last_assigned_from.replace('Z', '+00:00'))
+                except ValueError: pass
+            if last_assigned_to:
+                try: dq["$lte"] = datetime.fromisoformat(last_assigned_to.replace('Z', '+00:00')) + timedelta(days=1)
+                except ValueError: pass
+            if dq:
+                hq["reassigned_at"] = dq
+        hist = await db.lead_assignment_history.find(hq, {"lead_id": 1}).to_list(20000)
+        lead_ids = list({h.get("lead_id") for h in hist if h.get("lead_id")})
+        existing = query.get("id")
+        if isinstance(existing, dict) and "$in" in existing:
+            lead_ids = [i for i in lead_ids if i in set(existing["$in"])]
+        query["id"] = {"$in": lead_ids or ["__none__"]}
+
     
     # Get total count for pagination info
     total_count = await db.leads.count_documents(query)
@@ -401,8 +442,43 @@ async def list_leads(
                 except Exception:
                     pass  # Skip if user lookup fails
     
+    serialized = serialize_docs(leads)
+
+    # Role-gated output. Company is visible to everyone. Source + assignment metadata
+    # (previous GPs, last-assigned) are INTERNAL -> Admin/Manager/Ops only.
+    if is_mgmt:
+        page_lead_ids = [l.get("id") for l in serialized if l.get("id")]
+        if page_lead_ids:
+            hist = await db.lead_assignment_history.find(
+                {"lead_id": {"$in": page_lead_ids}}
+            ).sort("reassigned_at", -1).to_list(20000)
+            by_lead = {}
+            for h in hist:
+                by_lead.setdefault(h.get("lead_id"), []).append(h)
+            for l in serialized:
+                entries = by_lead.get(l.get("id"), [])
+                if entries:
+                    l["last_assigned_at"] = entries[0].get("reassigned_at")
+                    # latest 2 previous GPs (the "from" side of each reassignment)
+                    prev = []
+                    for e in entries:
+                        nm = e.get("from_user_name")
+                        if nm and nm != "Unknown" and nm not in prev:
+                            prev.append(nm)
+                        if len(prev) >= 2:
+                            break
+                    l["previous_gps"] = prev
+                else:
+                    l.setdefault("last_assigned_at", None)
+                    l.setdefault("previous_gps", [])
+    else:
+        for l in serialized:
+            l.pop("source", None)
+            l.pop("previous_gps", None)
+            l.pop("last_assigned_at", None)
+
     return {
-        "leads": serialize_docs(leads),
+        "leads": serialized,
         "pagination": {
             "page": page,
             "page_size": page_size,
@@ -1213,6 +1289,7 @@ async def import_leads(
                 "normalized_phone": normalized,
                 "email": str(row.get('email', '')).strip() if pd.notna(row.get('email')) else None,
                 "source": str(row.get('source', '')).strip() if pd.notna(row.get('source')) else None,
+                "company_name": next((str(row.get(k)).strip() for k in ('company_name', 'company name', 'company') if pd.notna(row.get(k)) and str(row.get(k)).strip()), None),
                 "city": str(row.get('city', '')).strip() if pd.notna(row.get('city')) else None,
                 "status": str(row.get('status', 'new')).strip().lower() or "new",
                 "notes": str(row.get('notes', '')).strip() if pd.notna(row.get('notes')) else None,
@@ -1225,7 +1302,7 @@ async def import_leads(
                 "created_by": current_user["id"]
             }
             
-            standard_fields = ['name', 'phone', 'email', 'source', 'city', 'status', 'notes', 'telecaller']
+            standard_fields = ['name', 'phone', 'email', 'source', 'company_name', 'company name', 'company', 'city', 'status', 'notes', 'telecaller']
             for col in df.columns:
                 if col not in standard_fields and pd.notna(row.get(col)):
                     lead_doc["custom_fields"][col] = str(row.get(col))

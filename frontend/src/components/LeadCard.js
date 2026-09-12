@@ -78,6 +78,23 @@ const LeadCard = ({ lead, onPress, onCall, showAssignment, assignableAgents, onA
             <span className="text-xs text-gray-500 ml-1">{lead.city}</span>
           </div>
         )}
+
+        {/* Company Name - visible to ALL roles */}
+        <div className="mt-1 pl-14 text-xs text-gray-600" data-testid={`lead-company-${lead.id}`}>
+          Company: <span className="text-gray-800">{lead.company_name || '—'}</span>
+        </div>
+
+        {/* Internal management metadata - Admin/Manager/Ops only */}
+        {['admin', 'manager', 'ops'].includes(user?.role) && (
+          <div className="mt-1 pl-14 space-y-0.5 text-xs text-gray-500" data-testid={`lead-internal-${lead.id}`}>
+            {lead.source && <div>Source: <span className="text-gray-700">{lead.source}</span></div>}
+            {lead.created_at && <div>Uploaded: <span className="text-gray-700">{new Date(lead.created_at).toLocaleDateString()}</span></div>}
+            {lead.last_assigned_at && <div>Last Assigned: <span className="text-gray-700">{new Date(lead.last_assigned_at).toLocaleDateString()}</span></div>}
+            {Array.isArray(lead.previous_gps) && lead.previous_gps.length > 0 && (
+              <div>Previous GP(s): <span className="text-gray-700">{lead.previous_gps.join(', ')}</span></div>
+            )}
+          </div>
+        )}
         
         {showAssignment && Array.isArray(assignableAgents) && assignableAgents.length > 0 ? (
           <div className="mt-2 pt-2 border-t border-gray-100 pl-14" onClick={(e) => { e.stopPropagation(); }}>
