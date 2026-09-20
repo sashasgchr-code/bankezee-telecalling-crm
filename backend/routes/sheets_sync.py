@@ -182,6 +182,92 @@ async def get_attendance_summary_for_sheets(
     }
 
 
+def _to_str(v):
+    """Stringify datetimes/None safely for JSON + Sheets."""
+    if v is None:
+        return ""
+    if isinstance(v, datetime):
+        return v.isoformat()
+    return str(v)
+
+
+@router.get("/meta-leads")
+async def get_meta_leads_for_sheets(
+    api_key: str = Query(None, description="API key for authentication"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(500, ge=1, le=2000),
+):
+    """
+    Export ALL Meta CRM leads (every status) from the authoritative `meta_leads`
+    collection for Google Sheets. Paginated + returns the true total so Apps Script
+    can page through every record and verify counts. api_key auth (Apps Script).
+    """
+    if api_key != SHEETS_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    # Authoritative Meta collection, excluding soft-deleted (matches Meta CRM UI count).
+    base = {"$or": [{"deleted": {"$exists": False}}, {"deleted": False}]}
+    total = await db.meta_leads.count_documents(base)
+    total_pages = (total + page_size - 1) // page_size if page_size else 1
+    skip = (page - 1) * page_size
+
+    docs = await db.meta_leads.find(base).sort("created_time", -1).skip(skip).limit(page_size).to_list(page_size)
+
+    records = []
+    for l in docs:
+        notes = l.get("notes")
+        if isinstance(notes, list):
+            notes_txt = " | ".join(
+                str(n.get("text") or n.get("detail") or n) if isinstance(n, dict) else str(n) for n in notes
+            )
+        else:
+            notes_txt = _to_str(notes)
+        acts = l.get("activities")
+        if isinstance(acts, list):
+            followups = " | ".join(
+                f"{a.get('type', '')}: {a.get('detail', '')} ({_to_str(a.get('at'))})"
+                for a in acts if isinstance(a, dict)
+            )
+        else:
+            followups = ""
+        records.append({
+            "lead_id": l.get("lead_id") or str(l.get("_id")),
+            "full_name": l.get("full_name", "") or "",
+            "phone": _to_str(l.get("phone", "")),
+            "email": l.get("email", "") or "",
+            "city": l.get("city", "") or "",
+            "status": l.get("status", "") or "",
+            "sheet_status": l.get("sheet_status", "") or "",
+            "assigned_partner_id": l.get("assigned_partner_id", "") or "",
+            "assigned_partner_name": l.get("assigned_partner_name", "") or "",
+            "assigned_by": l.get("assigned_by", "") or "",
+            "assigned_at": _to_str(l.get("assigned_at")),
+            "campaign_name": l.get("campaign_name", "") or "",
+            "form_name": l.get("form_name", "") or "",
+            "platform": l.get("platform", "") or "",
+            "employment_status": l.get("employment_status", "") or "",
+            "monthly_salary": l.get("monthly_salary", "") or "",
+            "outstanding_amount": l.get("outstanding_amount", "") or "",
+            "docs_received": _to_str(l.get("docs_received", "")),
+            "created_time": _to_str(l.get("created_time")),
+            "created_at": _to_str(l.get("created_at")),
+            "updated_at": _to_str(l.get("updated_at")),
+            "notes": notes_txt,
+            "follow_ups": followups,
+        })
+
+    return {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": total_pages,
+        "count": len(records),
+        "records": records,
+    }
+
+
+
 # ===================== DATA RETENTION ENDPOINTS =====================
 
 @router.get("/retention/call-logs-stats")
