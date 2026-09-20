@@ -20,7 +20,7 @@
 var CONFIG = {
   BASE_URL: 'https://connect.bankezee.com/api',   // PRODUCTION – do not change to preview
   API_KEY:  'bankezee_sheets_sync_2026',          // sheets-sync api_key
-  SPREADSHEET_ID: 'PUT_YOUR_SPREADSHEET_ID_HERE', // e.g. from the sheet URL /d/<ID>/edit
+  SPREADSHEET_ID: '1keN8GR_sLFQFdvMA1p3_Z2cYAgL1F9dGWaeG4lCGxDc', // e.g. from the sheet URL /d/<ID>/edit
   META_PAGE_SIZE: 500,                            // max 2000
   TIMEOUT_TRIES: 3
 };
