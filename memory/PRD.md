@@ -2044,3 +2044,12 @@ Test numbers: GP Meta lifetime calls 158/connected 157/leads 6/files 4/talk 1475
    - Response/batch now report `reassigned` and `protected` counts.
    - E2E test `scripts/test_csv_import_reassign.py`: 8/8 PASS (reassign, 2x protect, new insert,
      history, response counts).
+
+### Import Preview (dry-run) — June 2026
+- `POST /api/leads/import?dry_run=true` computes the full decision summary (would-create,
+  reassign, protected, skipped, suppressed, unmatched GP names) WITHOUT any DB write.
+- Admin Data import UI now runs a Preview step first: upload -> "Preview Import" -> summary modal
+  (tiles + unmatched-GP warning) -> "Confirm Import" (or Back). data-testids: import-preview,
+  preview-new/reassign/protected/skipped, preview-unmatched-gps, confirm-import-btn, preview-back-btn.
+- Tests: `scripts/test_csv_import_dryrun.py` 10/10 PASS (correct counts + zero writes verified);
+  real import `scripts/test_csv_import_reassign.py` 8/8 PASS; UI smoke PASS.

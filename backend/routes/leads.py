@@ -1367,6 +1367,7 @@ async def bulk_delete_leads(data: BulkDeleteRequest, current_user: dict = Depend
 @router.post("/leads/import")
 async def import_leads(
     file: UploadFile = File(...),
+    dry_run: bool = Query(False, description="Preview only - compute the summary without writing"),
     current_user: dict = Depends(require_admin)
 ):
     """
@@ -1483,6 +1484,9 @@ async def import_leads(
                     old_assignee = m.get("assigned_to")
                     if old_assignee == new_assigned:
                         continue  # already owned by this GP
+                    did_reassign = True
+                    if dry_run:
+                        continue  # preview only - no writes
                     mid = str(m["_id"])
                     # Preserve the old GP's reports: mark their call logs, keep history immutable
                     if old_assignee:
@@ -1562,6 +1566,23 @@ async def import_leads(
             leads_to_insert.append(lead_doc)
         
         total_imported = 0
+        if dry_run:
+            # Preview only: report how many WOULD be inserted; no DB writes performed.
+            total_imported = len(leads_to_insert)
+            return {
+                "dry_run": True,
+                "message": "Preview only - nothing has been imported yet",
+                "total_rows": len(df),
+                "total_imported": total_imported,
+                "assigned": assigned_count,
+                "unassigned": unassigned_count,
+                "suppressed": suppressed_count,
+                "duplicates": duplicate_count,
+                "reassigned": reassigned_count,
+                "protected": protected_count,
+                "unassigned_telecallers": list(unassigned_telecallers)
+            }
+
         if leads_to_insert:
             result = await db.leads.insert_many(leads_to_insert)
             total_imported = len(result.inserted_ids)

@@ -354,6 +354,29 @@ const AdminLeads = () => {
   };
 
   const [importResult, setImportResult] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+
+  const handlePreview = async () => {
+    if (!importFile) {
+      alert('Please select a file');
+      return;
+    }
+    setIsSubmitting(true);
+    setImportPreview(null);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', importFile);
+      const response = await api.post('/leads/import?dry_run=true', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setImportPreview(response.data);
+    } catch (error) {
+      alert(error.response?.data?.detail || 'Failed to preview import');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleImport = async () => {
     if (!importFile) {
@@ -370,6 +393,7 @@ const AdminLeads = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setImportResult(response.data);
+      setImportPreview(null);
       setImportFile(null);
       fetchData();
     } catch (error) {
@@ -881,9 +905,125 @@ const AdminLeads = () => {
       </Modal>
 
       {/* Import Modal */}
-      <Modal isOpen={showImportModal} onClose={() => { setShowImportModal(false); setImportResult(null); setImportFile(null); }} title="Import Leads">
+      <Modal isOpen={showImportModal} onClose={() => { setShowImportModal(false); setImportResult(null); setImportPreview(null); setImportFile(null); }} title="Import Leads">
         <div className="p-4 space-y-4">
-          {!importResult ? (
+          {importResult ? (
+            <div className="space-y-4">
+              <div className="text-center">
+                <CheckCircle2 size={48} className="mx-auto text-green-500 mb-3" />
+                <h3 className="text-xl font-bold text-gray-900">Import Complete</h3>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-green-600">{importResult.total_imported}</p>
+                  <p className="text-sm text-green-700">New Imported</p>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">{importResult.assigned || 0}</p>
+                  <p className="text-sm text-blue-700">Assigned</p>
+                </div>
+                {importResult.reassigned > 0 && (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-indigo-600">{importResult.reassigned}</p>
+                    <p className="text-sm text-indigo-700">Reassigned to new GP</p>
+                  </div>
+                )}
+                {importResult.protected > 0 && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-purple-600">{importResult.protected}</p>
+                    <p className="text-sm text-purple-700">Leads/Files Protected</p>
+                  </div>
+                )}
+                {importResult.duplicates > 0 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-yellow-600">{importResult.duplicates}</p>
+                    <p className="text-sm text-yellow-700">Skipped</p>
+                  </div>
+                )}
+                {importResult.suppressed > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-red-600">{importResult.suppressed}</p>
+                    <p className="text-sm text-red-700">Suppressed</p>
+                  </div>
+                )}
+              </div>
+
+              {importResult.unassigned_telecallers?.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
+                  <p className="font-medium text-orange-800 mb-1">⚠️ Unmatched Growth Partners:</p>
+                  <p className="text-orange-700">{importResult.unassigned_telecallers.join(', ')}</p>
+                </div>
+              )}
+
+              <button
+                onClick={() => { setShowImportModal(false); setImportResult(null); setImportPreview(null); }}
+                className="btn-primary w-full"
+                data-testid="import-done-btn"
+              >
+                Done
+              </button>
+            </div>
+          ) : importPreview ? (
+            <div className="space-y-4" data-testid="import-preview">
+              <div className="text-center">
+                <h3 className="text-lg font-bold text-gray-900">Import Preview</h3>
+                <p className="text-sm text-gray-500">{importPreview.total_rows} rows in file — review before committing</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center" data-testid="preview-new">
+                  <p className="text-2xl font-bold text-green-600">{importPreview.total_imported}</p>
+                  <p className="text-sm text-green-700">Will be created</p>
+                </div>
+                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3 text-center" data-testid="preview-reassign">
+                  <p className="text-2xl font-bold text-indigo-600">{importPreview.reassigned || 0}</p>
+                  <p className="text-sm text-indigo-700">Reassigned to new GP</p>
+                </div>
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center" data-testid="preview-protected">
+                  <p className="text-2xl font-bold text-purple-600">{importPreview.protected || 0}</p>
+                  <p className="text-sm text-purple-700">Leads/Files protected</p>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center" data-testid="preview-skipped">
+                  <p className="text-2xl font-bold text-yellow-600">{importPreview.duplicates || 0}</p>
+                  <p className="text-sm text-yellow-700">Skipped (no target GP)</p>
+                </div>
+                {importPreview.suppressed > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                    <p className="text-2xl font-bold text-red-600">{importPreview.suppressed}</p>
+                    <p className="text-sm text-red-700">Suppressed</p>
+                  </div>
+                )}
+              </div>
+
+              {importPreview.unassigned_telecallers?.length > 0 && (
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm" data-testid="preview-unmatched-gps">
+                  <p className="font-medium text-orange-800 mb-1">⚠️ Unmatched GP names (check for typos in the telecaller column):</p>
+                  <p className="text-orange-700">{importPreview.unassigned_telecallers.join(', ')}</p>
+                  <p className="text-orange-600 mt-1 text-xs">New rows for these will be created <strong>unassigned</strong>. Existing Data leads with these names will be left unchanged.</p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setImportPreview(null)}
+                  disabled={isSubmitting}
+                  className="btn-secondary flex-1"
+                  data-testid="preview-back-btn"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleImport}
+                  disabled={isSubmitting}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2"
+                  data-testid="confirm-import-btn"
+                >
+                  {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Confirm Import'}
+                </button>
+              </div>
+            </div>
+          ) : (
             <>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
                 <input
@@ -905,65 +1045,21 @@ const AdminLeads = () => {
                 <p className="font-medium mb-2">Required columns:</p>
                 <p>• name, phone</p>
                 <p className="font-medium mt-2 mb-1">Optional columns:</p>
-                <p>• email, source, city, status, notes, growth_partner</p>
+                <p>• email, source, city, status, notes, telecaller</p>
               </div>
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
-                <p className="font-medium mb-1">📱 Phone Deduplication Active</p>
-                <p>Duplicate phone numbers will be automatically skipped during import.</p>
+                <p className="font-medium mb-1">🔎 Preview before import</p>
+                <p>Existing <strong>Leads/Files</strong> are protected. Existing <strong>Data</strong> leads are reassigned to the GP in the file. New phone numbers create new entries.</p>
               </div>
               <button
-                onClick={handleImport}
+                onClick={handlePreview}
                 disabled={isSubmitting || !importFile}
                 className="btn-primary w-full flex items-center justify-center gap-2"
                 data-testid="submit-import-btn"
               >
-                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Import'}
+                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Preview Import'}
               </button>
             </>
-          ) : (
-            <div className="space-y-4">
-              <div className="text-center">
-                <CheckCircle2 size={48} className="mx-auto text-green-500 mb-3" />
-                <h3 className="text-xl font-bold text-gray-900">Import Complete</h3>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                  <p className="text-2xl font-bold text-green-600">{importResult.total_imported}</p>
-                  <p className="text-sm text-green-700">Imported</p>
-                </div>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                  <p className="text-2xl font-bold text-blue-600">{importResult.assigned || 0}</p>
-                  <p className="text-sm text-blue-700">Assigned</p>
-                </div>
-                {importResult.duplicates > 0 && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-yellow-600">{importResult.duplicates}</p>
-                    <p className="text-sm text-yellow-700">Duplicates Skipped</p>
-                  </div>
-                )}
-                {importResult.suppressed > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                    <p className="text-2xl font-bold text-red-600">{importResult.suppressed}</p>
-                    <p className="text-sm text-red-700">Suppressed</p>
-                  </div>
-                )}
-              </div>
-
-              {importResult.unassigned_telecallers?.length > 0 && (
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm">
-                  <p className="font-medium text-orange-800 mb-1">⚠️ Unmatched Growth Partners:</p>
-                  <p className="text-orange-700">{importResult.unassigned_telecallers.join(', ')}</p>
-                </div>
-              )}
-
-              <button
-                onClick={() => { setShowImportModal(false); setImportResult(null); }}
-                className="btn-primary w-full"
-              >
-                Done
-              </button>
-            </div>
           )}
         </div>
       </Modal>
