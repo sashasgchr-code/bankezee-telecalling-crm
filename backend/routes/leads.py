@@ -1411,21 +1411,28 @@ async def import_leads(
         unassigned_count = 0
         suppressed_count = 0
         duplicate_count = 0
+        reassigned_count = 0   # existing Data leads reassigned to a new GP (no new entry)
+        protected_count = 0    # existing Leads/Files left untouched (no new entry, no reassign)
         unassigned_telecallers = set()
         suppressed_numbers = []
-        
-        # Get existing phone numbers for duplicate detection
-        existing_phones = set()
+        now = datetime.now(timezone.utc)
+
+        # Statuses that are PROTECTED from CSV import: a matching Lead or File is never
+        # duplicated and never reassigned.
+        PROTECTED_STATUSES = {"file", "leads", "converted"}
+
+        # Preload existing (non-archived) records keyed by normalized phone so we can decide,
+        # per row, whether to reassign an existing Data lead, protect a Lead/File, or insert new.
+        existing_by_phone = {}
         existing_cursor = db.leads.find(
             {"$or": [{"archived": {"$exists": False}}, {"archived": False}]},
-            {"normalized_phone": 1, "phone": 1}
+            {"normalized_phone": 1, "phone": 1, "status": 1, "assigned_to": 1, "telecaller_name": 1, "name": 1}
         )
         async for lead in existing_cursor:
-            if lead.get("normalized_phone"):
-                existing_phones.add(lead["normalized_phone"])
-            elif lead.get("phone"):
-                existing_phones.add(normalize_phone(lead["phone"]))
-        
+            key = lead.get("normalized_phone") or normalize_phone(lead.get("phone", ""))
+            if key:
+                existing_by_phone.setdefault(key, []).append(lead)
+
         for _, row in df.iterrows():
             phone = canonical_phone(row.get('phone', ''))
             if not phone:
@@ -1444,29 +1451,90 @@ async def import_leads(
                 suppressed_numbers.append(phone)
                 continue
             
-            # Check for duplicates
-            if normalized in existing_phones:
-                duplicate_count += 1
+            # Resolve the GP named in the CSV (telecaller column), if any
+            tc = None
+            telecaller_col = row.get('telecaller', '')
+            telecaller_provided = pd.notna(telecaller_col) and str(telecaller_col).strip()
+            if telecaller_provided:
+                tc = telecaller_map.get(str(telecaller_col).lower().strip())
+
+            # Decide against any existing records with the same phone
+            matches = existing_by_phone.get(normalized, [])
+            if matches:
+                # PROTECTED: if ANY match is a Lead or File, do NOT create a new entry and do
+                # NOT reassign. Leave everything untouched.
+                if any(m.get("status") in PROTECTED_STATUSES for m in matches):
+                    protected_count += 1
+                    continue
+
+                # Normal Data lead(s): do NOT create a new entry, only REASSIGN to the new GP.
+                # If the CSV GP cannot be resolved, leave the existing record's assignment as-is.
+                if tc is None:
+                    if telecaller_provided:
+                        unassigned_telecallers.add(str(telecaller_col))
+                    duplicate_count += 1  # matched an existing Data lead but no target GP -> skip
+                    continue
+
+                new_assigned = str(tc["_id"])
+                did_reassign = False
+                for m in matches:
+                    if m.get("status") in PROTECTED_STATUSES:
+                        continue
+                    old_assignee = m.get("assigned_to")
+                    if old_assignee == new_assigned:
+                        continue  # already owned by this GP
+                    mid = str(m["_id"])
+                    # Preserve the old GP's reports: mark their call logs, keep history immutable
+                    if old_assignee:
+                        await db.call_logs.update_many(
+                            {"lead_id": mid, "user_id": old_assignee},
+                            {"$set": {"is_previous_agent_history": True}}
+                        )
+                        await db.lead_assignment_history.insert_one({
+                            "lead_id": mid,
+                            "from_user_id": old_assignee,
+                            "to_user_id": new_assigned,
+                            "from_user_name": m.get("telecaller_name", "Unknown"),
+                            "to_user_name": tc["name"],
+                            "previous_status": m.get("status", "new"),
+                            "reassigned_by": current_user["id"],
+                            "reassigned_by_name": current_user.get("name", "Admin"),
+                            "reassigned_at": now,
+                            "reason": "CSV import reassignment"
+                        })
+                    # Clean slate for the new GP; old GP no longer sees this record
+                    await db.leads.update_one(
+                        {"_id": m["_id"]},
+                        {"$set": {
+                            "assigned_to": new_assigned,
+                            "telecaller_name": tc["name"],
+                            "status": "new",
+                            "last_call_outcome": None,
+                            "reassigned_at": now,
+                            "reassigned_from_status": m.get("status", "new"),
+                            "reassigned_from_user": old_assignee,
+                            "import_batch_id": batch_id,
+                            "updated_at": now
+                        }}
+                    )
+                    did_reassign = True
+                if did_reassign:
+                    reassigned_count += 1
+                else:
+                    duplicate_count += 1  # already assigned to this GP, nothing to do
                 continue
-            
-            # Add to existing phones to prevent duplicates within this import
-            existing_phones.add(normalized)
-            
+
+            # NO existing match -> insert a new entry (duplicates allowed for genuinely new phones)
             assigned_to = None
             telecaller_name = None
-            telecaller_col = row.get('telecaller', '')
-            
-            if pd.notna(telecaller_col) and telecaller_col:
-                tc_search = str(telecaller_col).lower().strip()
-                if tc_search in telecaller_map:
-                    tc = telecaller_map[tc_search]
-                    assigned_to = str(tc["_id"])
-                    telecaller_name = tc["name"]
-                    assigned_count += 1
-                else:
-                    unassigned_count += 1
-                    unassigned_telecallers.add(str(telecaller_col))
-            
+            if tc is not None:
+                assigned_to = str(tc["_id"])
+                telecaller_name = tc["name"]
+                assigned_count += 1
+            elif telecaller_provided:
+                unassigned_count += 1
+                unassigned_telecallers.add(str(telecaller_col))
+
             lead_doc = {
                 "name": name,
                 "phone": phone,
@@ -1508,6 +1576,8 @@ async def import_leads(
             "unassigned_count": unassigned_count,
             "suppressed_count": suppressed_count,
             "duplicate_count": duplicate_count,
+            "reassigned_count": reassigned_count,
+            "protected_count": protected_count,
             "suppressed_numbers": suppressed_numbers[:100],  # Store first 100 for reference
             "imported_by": current_user["id"],
             "imported_at": datetime.now(timezone.utc)
@@ -1515,13 +1585,17 @@ async def import_leads(
         await db.import_batches.insert_one(batch_doc)
         
         # Build response message
-        message_parts = [f"Successfully imported {total_imported} leads"]
+        message_parts = [f"Successfully imported {total_imported} new leads"]
         if assigned_count > 0:
             message_parts.append(f"{assigned_count} assigned to telecallers")
+        if reassigned_count > 0:
+            message_parts.append(f"{reassigned_count} existing Data leads reassigned to new GP")
+        if protected_count > 0:
+            message_parts.append(f"{protected_count} skipped (existing Lead/File protected)")
         if suppressed_count > 0:
             message_parts.append(f"{suppressed_count} skipped (suppressed)")
         if duplicate_count > 0:
-            message_parts.append(f"{duplicate_count} skipped (duplicates)")
+            message_parts.append(f"{duplicate_count} skipped (already assigned / no target GP)")
         if unassigned_count > 0:
             message_parts.append(f"{unassigned_count} could not be assigned")
         
@@ -1533,6 +1607,8 @@ async def import_leads(
             "unassigned": unassigned_count,
             "suppressed": suppressed_count,
             "duplicates": duplicate_count,
+            "reassigned": reassigned_count,
+            "protected": protected_count,
             "unassigned_telecallers": list(unassigned_telecallers)
         }
     

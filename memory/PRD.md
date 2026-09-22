@@ -2023,3 +2023,24 @@ Regression: all 14 Connect/Meta/TL endpoints 200. GP call_logs untouched (TL nev
 - Combined files = unique (Connect+Meta only); TL files shown as attribution (no double-count). Talk time from real durations.
 - Meta MOBILE PARITY: MetaHomeScreen already has Leads/Files/File Reports tabs + gating + filters + date presets + FileDetail(mode=meta) + getMetaFilesReport; MetaLeadDetailScreen has post-call reason/notes/follow-up/duration + direct status; Leads cards have Call/WhatsApp. Mobile Meta File Reports was fixed by the backend _reports_scope_match rename (500->200). Personal Meta dashboard now added on mobile too.
 Test numbers: GP Meta lifetime calls 158/connected 157/leads 6/files 4/talk 14752s. TL month tl_calls 2/connected 1/files 1/conv 100%/talk 335s.
+
+## DATA MANAGEMENT: DEFAULT SORT + CSV IMPORT REASSIGNMENT (June 2026)
+
+1. **Default sort (Data Management list)** — `/api/leads` already defaults to `created_at` desc
+   (newest uploaded/created first); frontend passes no sort override. Verified via curl: page 1
+   returns records in strictly descending `created_at` order (519 total).
+
+2. **CSV import duplicate handling rewritten** (`routes/leads.py` `import_leads`), matching by
+   normalized last-10-digit phone against non-archived records:
+   - Match is a **Lead (status leads/converted) or File (status file)** -> PROTECTED: no new entry,
+     no reassignment, left untouched (`protected_count`).
+   - Match is a **normal Data lead** (any other stage) -> NO new entry; REASSIGN to the GP named in
+     the CSV `telecaller` column (clean slate: status->new, outcome cleared), old GP call logs
+     marked `is_previous_agent_history` and a `lead_assignment_history` row written so previous
+     reports are unchanged; old GP no longer sees it (`reassigned_count`). If CSV GP unresolved,
+     existing record left unchanged.
+   - **No phone match** -> insert new entry (duplicates allowed for genuinely new phones). Unmatched
+     CSV GP -> created unassigned.
+   - Response/batch now report `reassigned` and `protected` counts.
+   - E2E test `scripts/test_csv_import_reassign.py`: 8/8 PASS (reassign, 2x protect, new insert,
+     history, response counts).
