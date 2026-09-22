@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { getMetaLead, addMetaCallLog, addMetaNote, updateMetaStatus } from '../services/api';
 import { makePhoneCall, getRecentCallForNumber } from '../services/callLogService';
+import { savePendingCall, clearPendingCall } from '../services/pendingCall';
 
 const OUTCOMES = [
   { id: 'CALL_BACK', label: 'Call Back' },
@@ -51,6 +52,7 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
   // no longer matches the screen's current leadId (guards the stale-customer bug).
   const callLeadRef = useRef(null);
   const autoStartedRef = useRef(false);
+  const resumedRef = useRef(false);
 
   const load = useCallback(async () => {
     try { setLead(await getMetaLead(leadId)); } catch (e) {
@@ -80,14 +82,43 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
   const startCall = async () => {
     if (!lead?.phone) { Alert.alert('No phone', 'This lead has no phone number'); return; }
     const now = Date.now();
+    const callId = `meta_${leadId}_${now}`;
     setCallStartTime(now);
-    callIdRef.current = `meta_${leadId}_${now}`;   // unique per physical call -> backend dedupe
+    callIdRef.current = callId;   // unique per physical call -> backend dedupe
     pendingPhone.current = lead.phone;
+    resumedRef.current = false;
     // Bind this call to THIS lead — used to reject a save if the screen later shows another lead.
     callLeadRef.current = { id: leadId, phone: lead.phone, name: lead.full_name };
     setDetectedDuration(null); setOutcome(null); setNote(''); setReason(''); setFollowUpDate(''); setFollowUpTime('');
+    // Persist so the modal can be reopened if Android kills the app during the call.
+    await savePendingCall({
+      kind: 'meta',
+      startTime: now,
+      phone: lead.phone,
+      leadId,
+      callId,
+      leadName: lead.full_name,
+    });
     await makePhoneCall(lead.phone);
   };
+
+  // Shared post-call processing (warm AppState path + cold-start resume path).
+  const processEndedCall = useCallback(async (phone, startTime) => {
+    if (!phone || !startTime) return;
+    const elapsed = Math.round((Date.now() - startTime) / 1000);
+    if (elapsed <= 3) return;
+    setCallStartTime(startTime);
+    setLookingUp(true);
+    try {
+      const res = await getRecentCallForNumber(phone, startTime, 8000);
+      if (res.success && res.call) {
+        setDetectedDuration(res.call.duration_seconds);
+        setOutcome(res.call.duration_seconds > 0 ? 'CALL_BACK' : 'NOT_ANSWERING');
+      } else setDetectedDuration(null);
+    } catch { setDetectedDuration(null); }
+    setLookingUp(false);
+    setShowModal(true);
+  }, []);
 
   // Auto-start a call when arriving via the "Call" button on a lead card. Fires once per lead.
   useEffect(() => {
@@ -101,27 +132,36 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
 
   const handleAppState = useCallback(async (next) => {
     if (next === 'active' && callStartTime && pendingPhone.current) {
-      const elapsed = Math.round((Date.now() - callStartTime) / 1000);
-      if (elapsed > 3) {
-        setLookingUp(true);
-        try {
-          const res = await getRecentCallForNumber(pendingPhone.current, callStartTime, 8000);
-          if (res.success && res.call) {
-            setDetectedDuration(res.call.duration_seconds);
-            setOutcome(res.call.duration_seconds > 0 ? 'CALL_BACK' : 'NOT_ANSWERING');
-          } else setDetectedDuration(null);
-        } catch { setDetectedDuration(null); }
-        setLookingUp(false);
-        setShowModal(true);
-      }
+      const phone = pendingPhone.current;
+      const start = callStartTime;
       setCallStartTime(null); pendingPhone.current = null;
+      await clearPendingCall();
+      await processEndedCall(phone, start);
     }
-  }, [callStartTime]);
+  }, [callStartTime, processEndedCall]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', handleAppState);
     return () => sub?.remove();
   }, [handleAppState]);
+
+  // Cold-start resume: App.js navigates here with resumePendingCall after the OS killed the
+  // app during the call. Restore the call binding and reopen the modal.
+  useEffect(() => {
+    const resume = route.params?.resumePendingCall;
+    if (resume && lead && !resumedRef.current) {
+      resumedRef.current = true;
+      (async () => {
+        await clearPendingCall();
+        const phone = route.params?.pendingPhone || lead.phone;
+        callIdRef.current = route.params?.pendingCallId || `meta_${leadId}_${resume}`;
+        callLeadRef.current = { id: leadId, phone, name: lead.full_name };
+        pendingPhone.current = null;
+        await processEndedCall(phone, resume);
+        navigation.setParams({ resumePendingCall: null, pendingPhone: null, pendingCallId: null });
+      })();
+    }
+  }, [route.params?.resumePendingCall, lead, leadId]);
 
   const submitCall = async () => {
     if (!outcome) { Alert.alert('Required', 'Select a call outcome'); return; }
@@ -162,6 +202,7 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
       setLead(res.lead);
       setShowModal(false); setOutcome(null); setNote(''); setReason(''); setFollowUpDate(''); setFollowUpTime('');
       callLeadRef.current = null; callIdRef.current = null; pendingPhone.current = null;
+      await clearPendingCall();
     } catch (e) {
       Alert.alert('Error', e.response?.data?.detail || 'Failed to save call');
     } finally { setBusy(false); }
@@ -326,7 +367,7 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
             )}
             </ScrollView>
             <View style={[styles.rowBetween, styles.sheetFooter]}>
-              <TouchableOpacity onPress={() => { setShowModal(false); callLeadRef.current = null; callIdRef.current = null; pendingPhone.current = null; }} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => { setShowModal(false); callLeadRef.current = null; callIdRef.current = null; pendingPhone.current = null; clearPendingCall(); }} style={styles.cancelBtn}><Text>Cancel</Text></TouchableOpacity>
               <TouchableOpacity onPress={submitCall} disabled={busy} style={styles.saveBtn} data-testid="meta-call-save">
                 {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveText}>Save</Text>}
               </TouchableOpacity>

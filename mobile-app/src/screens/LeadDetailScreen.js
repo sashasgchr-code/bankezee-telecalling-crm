@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { getLead, updateLead, getLeadCallLogs, createFollowUp, logCallOutcome } from '../services/api';
 import { makePhoneCall, getRecentCallForNumber, normalizePhoneNumber } from '../services/callLogService';
+import { savePendingCall, clearPendingCall } from '../services/pendingCall';
 
 const LeadDetailScreen = ({ route, navigation }) => {
   const { lead: initialLead, user, autoCall } = route.params;
@@ -48,6 +49,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
   // Track if we're waiting for a call to end
   const pendingCallPhone = useRef(null);
   const autoCallTriggered = useRef(false);
+  const resumedRef = useRef(false);
 
   // Status options
   const statuses = [
@@ -114,16 +116,58 @@ const LeadDetailScreen = ({ route, navigation }) => {
     const now = Date.now();
     setCallStartTime(now);
     pendingCallPhone.current = lead.phone;
+    resumedRef.current = false;
     setDetectedCallDuration(null);
     setSelectedOutcome(null);
     setSelectedStatus(null);
     setCallNotes('');
-    
+
+    // Persist the call context so the modal can still be reopened if Android kills the app
+    // process during the call and it cold-starts on the Dashboard when the user returns.
+    await savePendingCall({
+      kind: 'connect',
+      startTime: now,
+      phone: lead.phone,
+      leadId: lead.id,
+      lead,
+    });
+
     // Make the call
     await makePhoneCall(lead.phone);
   };
 
-  // Monitor app state for post-call detection
+  // Shared post-call handler: look up the Android call log and open the outcome modal.
+  // Driven by BOTH the warm AppState path (app stayed alive) and the cold-start resume path
+  // (App.js navigates here with resumePendingCall after the process was killed).
+  const processEndedCall = useCallback(async (phone, startTime) => {
+    if (!phone || !startTime) return;
+    const timeSinceCallStart = Math.round((Date.now() - startTime) / 1000);
+    if (timeSinceCallStart <= 3) return; // instant cancel - not a real call
+
+    setCallStartTime(startTime);
+    setLookingUpCall(true);
+    try {
+      const callResult = await getRecentCallForNumber(phone, startTime, 8000);
+      if (callResult.success && callResult.call) {
+        const actualDuration = callResult.call.duration_seconds;
+        setDetectedCallDuration(actualDuration);
+        if (actualDuration === 0) {
+          setSelectedOutcome('no_answer');
+        } else if (actualDuration > 0) {
+          setSelectedOutcome('connected');
+        }
+      } else {
+        setDetectedCallDuration(null);
+      }
+    } catch (error) {
+      setDetectedCallDuration(null);
+    }
+    setLookingUpCall(false);
+    // ALWAYS show the call outcome modal after returning from a call
+    setShowCallModal(true);
+  }, []);
+
+  // Monitor app state for post-call detection (warm path - app stayed alive during the call)
   useEffect(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription?.remove();
@@ -132,54 +176,32 @@ const LeadDetailScreen = ({ route, navigation }) => {
   const handleAppStateChange = useCallback(async (nextAppState) => {
     // When app comes back to foreground after a call
     if (nextAppState === 'active' && callStartTime && pendingCallPhone.current) {
-      const timeSinceCallStart = Math.round((Date.now() - callStartTime) / 1000);
-      
-      // Only process if call was more than 3 seconds (user actually went to phone app)
-      if (timeSinceCallStart > 3) {
-        setLookingUpCall(true);
-        
-        // Wait a moment then query Android call log for actual duration
-        console.log('Looking up call in Android call log...');
-        
-        try {
-          const callResult = await getRecentCallForNumber(
-            pendingCallPhone.current, 
-            callStartTime,
-            8000 // Wait up to 8 seconds for call log to update
-          );
-          
-          if (callResult.success && callResult.call) {
-            const actualDuration = callResult.call.duration_seconds;
-            console.log(`Found call in log: ${actualDuration} seconds, type: ${callResult.call.type}`);
-            
-            setDetectedCallDuration(actualDuration);
-            
-            // Pre-select outcome based on duration
-            if (actualDuration === 0) {
-              setSelectedOutcome('no_answer');
-            } else if (actualDuration > 0) {
-              setSelectedOutcome('connected');
-            }
-          } else {
-            console.log('Could not find call in Android call log');
-            setDetectedCallDuration(null);
-          }
-        } catch (error) {
-          console.log('Error looking up call log:', error);
-          setDetectedCallDuration(null);
-        }
-        
-        setLookingUpCall(false);
-        
-        // ALWAYS show the call outcome modal after returning from a call
-        setShowCallModal(true);
-      }
-      
-      // Reset tracking state
+      const phone = pendingCallPhone.current;
+      const start = callStartTime;
+      // Reset in-memory tracking and clear the persisted context so the App-level
+      // reconciler cannot double-fire for the same call.
       setCallStartTime(null);
       pendingCallPhone.current = null;
+      await clearPendingCall();
+      await processEndedCall(phone, start);
     }
-  }, [callStartTime]);
+  }, [callStartTime, processEndedCall]);
+
+  // Cold-start resume path: App.js navigates here with resumePendingCall after the OS killed
+  // the app during the call. Restore the call context and open the modal.
+  useEffect(() => {
+    const resume = route.params?.resumePendingCall;
+    if (resume && lead?.phone && !resumedRef.current) {
+      resumedRef.current = true;
+      (async () => {
+        await clearPendingCall();
+        const phone = route.params?.pendingPhone || lead.phone;
+        pendingCallPhone.current = null;
+        await processEndedCall(phone, resume);
+        navigation.setParams({ resumePendingCall: null, pendingPhone: null });
+      })();
+    }
+  }, [route.params?.resumePendingCall, lead?.id]);
 
   const loadLeadDetails = async () => {
     setLoading(true);
@@ -287,6 +309,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
       setSelectedStatus(null);
       setCallNotes('');
       setDetectedCallDuration(null);
+      await clearPendingCall();
       
       // Reload lead details
       loadLeadDetails();
@@ -544,6 +567,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
         onRequestClose={() => {
           if (!lookingUpCall) {
             setShowCallModal(false);
+            clearPendingCall();
           }
         }}
       >
@@ -667,6 +691,7 @@ const LeadDetailScreen = ({ route, navigation }) => {
                       setSelectedStatus(null);
                       setCallNotes('');
                       setDetectedCallDuration(null);
+                      clearPendingCall();
                     }}
                   >
                     <Text style={styles.cancelModalBtnText}>Cancel</Text>

@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
+import React, { useState, useEffect, useRef } from 'react';
+import { NavigationContainer, useNavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
-import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { refreshProfile } from './src/services/api';
+import { getPendingCall } from './src/services/pendingCall';
 
 // Screens
 import LoginScreen from './src/screens/LoginScreen';
@@ -147,8 +148,40 @@ const WebOnlyScreen = ({ onLogout }) => (
 const App = () => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const navigationRef = useNavigationContainerRef();
 
   useEffect(() => { checkAuth(); }, []);
+
+  // COLD-START / RESUME post-call reconciler.
+  // If Android killed the app process during a native call, the in-screen AppState listener
+  // that opens the "Log Call Outcome" modal is gone and the app relaunches on the Dashboard.
+  // Here we read the PERSISTED pending call and navigate to the correct lead screen so the
+  // modal still opens. The delay lets a still-alive (warm) screen handle + clear it first,
+  // preventing a double trigger.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    const tryResume = async () => {
+      const pc = await getPendingCall();
+      if (!pc || cancelled || !navigationRef.isReady()) return;
+      if (pc.kind === 'meta' && pc.leadId) {
+        navigationRef.navigate('MetaLeadDetail', {
+          leadId: pc.leadId, user,
+          resumePendingCall: pc.startTime, pendingPhone: pc.phone, pendingCallId: pc.callId,
+        });
+      } else if (pc.lead) {
+        navigationRef.navigate('LeadDetail', {
+          lead: pc.lead, user,
+          resumePendingCall: pc.startTime, pendingPhone: pc.phone,
+        });
+      }
+    };
+    const initial = setTimeout(tryResume, 1500);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') setTimeout(tryResume, 1500);
+    });
+    return () => { cancelled = true; clearTimeout(initial); sub?.remove(); };
+  }, [user]);
 
   const checkAuth = async () => {
     try {
@@ -196,7 +229,7 @@ const App = () => {
   const mobileRole = user ? getMobileRole(user) : null;
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       {!user ? (
         <AuthNavigator onLogin={handleLogin} />
       ) : mobileRole === 'blocked' ? (

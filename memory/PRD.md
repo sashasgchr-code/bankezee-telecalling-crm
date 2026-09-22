@@ -2053,3 +2053,25 @@ Test numbers: GP Meta lifetime calls 158/connected 157/leads 6/files 4/talk 1475
   preview-new/reassign/protected/skipped, preview-unmatched-gps, confirm-import-btn, preview-back-btn.
 - Tests: `scripts/test_csv_import_dryrun.py` 10/10 PASS (correct counts + zero writes verified);
   real import `scripts/test_csv_import_reassign.py` 8/8 PASS; UI smoke PASS.
+
+## POST-CALL MODAL NOT OPENING FOR 2 USERS — COLD-START FIX (June 2026, mobile)
+
+ROOT CAUSE: the "Log Call Outcome" modal was triggered ONLY by an in-memory AppState listener
+inside LeadDetailScreen/MetaLeadDetailScreen, gated on in-memory `callStartTime` +
+`pendingCallPhone`. On devices with aggressive battery/memory management (the 2 affected users),
+Android KILLS the app process during the native call. On return the app COLD-STARTS on the
+Dashboard tab; the lead screen and its call context are gone, so nothing reopens the modal.
+Not a permissions/role/GP-id/data issue (videos show both users call + auto-sync fine).
+
+FIX (mobile only):
+- NEW `src/services/pendingCall.js` persists the in-flight call context to AsyncStorage
+  (15-min TTL): kind, startTime, phone, leadId, lead/callId.
+- `initiateCall`/`startCall` persist it; warm AppState path clears it before processing.
+- NEW top-level reconciler in `App.js` (navigationRef + AppState + cold-start check, 1.5s debounce
+  to avoid double-firing the warm path): reads the persisted call and navigates to LeadDetail or
+  MetaLeadDetail with `resumePendingCall` so the modal opens even after a cold start.
+- Both screens handle `resumePendingCall`: restore call state (+ Meta callId/callLeadRef binding)
+  and reopen the modal; persisted context cleared on submit/cancel/close.
+- Covers BOTH Connect and Meta calling flows. Version bumped 2.7.5->2.7.6 (versionCode 33->34).
+- Verified: babel parse of all 4 files PASS; pendingCall save/get/clear/TTL logic 4/4 PASS.
+  Device verification pending (requires the affected physical devices) - NEW APK REQUIRED.
