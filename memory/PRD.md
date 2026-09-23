@@ -2075,3 +2075,30 @@ FIX (mobile only):
 - Covers BOTH Connect and Meta calling flows. Version bumped 2.7.5->2.7.6 (versionCode 33->34).
 - Verified: babel parse of all 4 files PASS; pendingCall save/get/clear/TTL logic 4/4 PASS.
   Device verification pending (requires the affected physical devices) - NEW APK REQUIRED.
+
+## PRODUCTION FIX: LARGE CSV IMPORT TIMEOUT (Cloudflare could not parse) — June 2026
+
+ROOT CAUSE: the commit path did ~3 sequential DB awaits PER reassigned row
+(call_logs.update_many + lead_assignment_history.insert_one + leads.update_one). A 2,926-row
+file with 1,286 reassignments = ~3,850 sequential round-trips in ONE synchronous HTTP request,
+exceeding the Cloudflare/origin timeout -> origin closed the connection / empty response ->
+"Cloudflare could not parse" 520. Preview (dry_run) worked because it performs NO writes.
+Worked yesterday because the old import only SKIPPED duplicates (insert-only, fast); the new
+reassignment feature added the per-row writes = the regression.
+
+FIX (backend only, routes/leads.py import_leads): reassignment writes are now ACCUMULATED and
+flushed as BATCHED bulk operations after the decision loop -
+  - leads: pymongo UpdateOne via bulk_write (batches of 1000)
+  - call_logs: UpdateMany via bulk_write (batches of 1000)
+  - lead_assignment_history: insert_many (batches of 1000)
+EXACT business rules unchanged (protect Leads/Files, reassign Data leads, skip no-GP, allow new
+phones). Endpoint still returns JSON (try/except -> HTTPException 400).
+
+PARTIAL IMPORT / RERUN SAFETY: the import is naturally idempotent - dedupe is by phone, so any
+row partially committed by the failed attempt is re-detected on rerun and becomes a no-op skip
+(reassign target == current GP), and previously-inserted new phones now match as Data leads owned
+by that GP -> skipped. Verified: RUN2 creates 0 new, reassigns 0, produces 0 duplicates.
+
+VERIFIED (preview): scripts/test_csv_import_bulk.py 16/16 PASS (60 bulk reassignments + history +
+call-log marking + 5 protected + 10 new inserts, 0.2s; rerun idempotent, no dupes). dry_run
+preview path unchanged. Deployed to production.

@@ -1422,6 +1422,15 @@ async def import_leads(
         # duplicated and never reassigned.
         PROTECTED_STATUSES = {"file", "leads", "converted"}
 
+        # Accumulate WRITES and flush them as batched bulk operations after the decision loop.
+        # A large import (thousands of rows) doing 3 sequential awaits per reassigned row would
+        # exceed the Cloudflare/origin timeout and return an empty/closed response. Bulk writes
+        # keep the whole commit to a handful of round-trips.
+        from pymongo import UpdateOne, UpdateMany
+        lead_bulk_ops = []       # UpdateOne for reassignments
+        calllog_bulk_ops = []    # UpdateMany to mark old GP's call logs as previous-agent history
+        history_docs = []        # lead_assignment_history inserts
+
         # Preload existing (non-archived) records keyed by normalized phone so we can decide,
         # per row, whether to reassign an existing Data lead, protect a Lead/File, or insert new.
         existing_by_phone = {}
@@ -1490,11 +1499,11 @@ async def import_leads(
                     mid = str(m["_id"])
                     # Preserve the old GP's reports: mark their call logs, keep history immutable
                     if old_assignee:
-                        await db.call_logs.update_many(
+                        calllog_bulk_ops.append(UpdateMany(
                             {"lead_id": mid, "user_id": old_assignee},
                             {"$set": {"is_previous_agent_history": True}}
-                        )
-                        await db.lead_assignment_history.insert_one({
+                        ))
+                        history_docs.append({
                             "lead_id": mid,
                             "from_user_id": old_assignee,
                             "to_user_id": new_assigned,
@@ -1507,7 +1516,7 @@ async def import_leads(
                             "reason": "CSV import reassignment"
                         })
                     # Clean slate for the new GP; old GP no longer sees this record
-                    await db.leads.update_one(
+                    lead_bulk_ops.append(UpdateOne(
                         {"_id": m["_id"]},
                         {"$set": {
                             "assigned_to": new_assigned,
@@ -1520,8 +1529,7 @@ async def import_leads(
                             "import_batch_id": batch_id,
                             "updated_at": now
                         }}
-                    )
-                    did_reassign = True
+                    ))
                 if did_reassign:
                     reassigned_count += 1
                 else:
@@ -1586,6 +1594,20 @@ async def import_leads(
         if leads_to_insert:
             result = await db.leads.insert_many(leads_to_insert)
             total_imported = len(result.inserted_ids)
+
+        # Flush accumulated reassignment writes as batched bulk operations (bounded round-trips
+        # so a large import cannot hang the request until the Cloudflare/origin timeout).
+        async def _flush_bulk(coll_name, ops, batch_size=1000):
+            for i in range(0, len(ops), batch_size):
+                await db[coll_name].bulk_write(ops[i:i + batch_size], ordered=False)
+
+        if calllog_bulk_ops:
+            await _flush_bulk("call_logs", calllog_bulk_ops)
+        if history_docs:
+            for i in range(0, len(history_docs), 1000):
+                await db.lead_assignment_history.insert_many(history_docs[i:i + 1000], ordered=False)
+        if lead_bulk_ops:
+            await _flush_bulk("leads", lead_bulk_ops)
         
         # Create import batch record
         batch_doc = {
