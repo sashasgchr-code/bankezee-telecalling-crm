@@ -239,6 +239,8 @@ const MetaLeadDetailScreen = ({ route, navigation }) => {
           <Text style={styles.field}>📧 {lead.email || '—'}</Text>
           <Text style={styles.field}>📍 {lead.city || '—'}</Text>
           <Text style={styles.field}>💼 {lead.employment_status || '—'} · {lead.outstanding_amount || '—'}</Text>
+          {lead.monthly_salary ? <Text style={styles.field}>💰 Salary: {lead.monthly_salary}</Text> : null}
+          {lead.cibil_score ? <Text style={styles.field}>📊 CIBIL: {lead.cibil_score}</Text> : null}
         </View>
 
         <TouchableOpacity style={styles.callBtn} onPress={startCall} data-testid="meta-start-call">

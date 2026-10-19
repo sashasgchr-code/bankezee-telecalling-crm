@@ -2124,3 +2124,11 @@ Verified (preview, against the real live sheet): workbook export returns 2 tabs
 returns 688 importable; full sync ran clean (0 new / 688 updated, idempotent); a simulated REAL
 Loan Merge lead maps all fields correctly (8/8 checks incl. whatsapp_number->phone). No frontend
 change, no APK. NEEDS PUBLISH to take effect in production.
+
+## CIBIL IN META CRM + DEPLOY (June 2026)
+- Web Meta lead detail (frontend/src/pages/meta/LeadDetail.js) now shows a "CIBIL Score" row
+  (lead.cibil_score) when present. Mobile MetaLeadDetailScreen also shows Salary + CIBIL lines
+  (needs a new APK; version bumped 2.7.6->2.7.7 / versionCode 34->35).
+- Deploy dispatched (job 2416aab3) bundling: multi-tab Meta sheets sync, web CIBIL display, and
+  the large-CSV-import bulk-write timeout fix. Mobile CIBIL/cold-start changes require a separate
+  APK build (not part of this web/backend deploy).

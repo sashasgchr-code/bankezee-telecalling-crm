@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
-import { ArrowLeft, Phone, PhoneCall, Mail, MapPin, Briefcase, Wallet, Megaphone, Send, MessageSquare, MessageCircle, Activity, UserCog, FolderOpen, Plus, Trash2, Save, Clock, Upload, Download, FileText } from "lucide-react";
+import { ArrowLeft, Phone, PhoneCall, Mail, MapPin, Briefcase, Wallet, Megaphone, Send, MessageSquare, MessageCircle, Activity, UserCog, FolderOpen, Plus, Trash2, Save, Clock, Upload, Download, FileText, Gauge } from "lucide-react";
 
 const InfoRow = ({ icon: Icon, label, value }) => (
   <div className="flex items-start gap-3 py-2">
@@ -335,6 +335,7 @@ export default function MetaLeadDetail() {
               <InfoRow icon={Briefcase} label="Employment" value={lead.employment_status} />
               <InfoRow icon={Wallet} label="Monthly Salary" value={lead.monthly_salary} />
               <InfoRow icon={Wallet} label="Outstanding Amount" value={lead.outstanding_amount} />
+              {lead.cibil_score ? <InfoRow icon={Gauge} label="CIBIL Score" value={lead.cibil_score} /> : null}
               <InfoRow icon={Megaphone} label="Campaign" value={lead.campaign_name} />
             </div>
           </div>
