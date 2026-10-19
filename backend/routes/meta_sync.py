@@ -11,6 +11,7 @@ Meta module - Google Sheet CSV sync + email notifications (ported from META-APP)
 - NO background scheduler is started here (production sync cutover stays pending).
 """
 import os, io, csv, uuid, asyncio, hmac, time, logging
+import pandas as pd
 from datetime import datetime, timezone
 from html import escape
 from typing import List, Optional
@@ -27,6 +28,8 @@ router = APIRouter(prefix="/api/meta", tags=["Meta Sync"])
 
 SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1Ugq8BpctyY0ZdqxCknR1OdWGvvUW9Xa1FKBzs_Gyy_4")
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
+# Full-workbook export: pulls EVERY tab (including any sheet/tab added in the future) in one request.
+WORKBOOK_XLSX_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
 WEBHOOK_CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "BankEzee CRM")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
@@ -138,24 +141,79 @@ def _pretty(val: str) -> str:
     return (val or "").replace("_", " ").strip()
 
 
+# Different Meta lead forms (tabs) use different column headers for the same concept.
+# These alias lists let us pull every tab — current and future — into the one lead schema.
+_PHONE_KEYS = ["phone_number", "whatsapp_number", "phone", "mobile", "mobile_number", "contact_number"]
+_EMP_KEYS = ["please_select_your_current_employment_status", "are_you", "employment_status"]
+_SALARY_KEYS = ["what_is_your_current_monthly_take-home_salary?", "what's_your_net_monthly_salary?",
+                "whats_your_net_monthly_salary?", "monthly_salary"]
+_OUTSTANDING_KEYS = ["what_is_the_total_outstanding_amount_of_your_loans_and_credit_card_bills?",
+                     "what's_your_total_loan_outstanding?", "whats_your_total_loan_outstanding?", "outstanding_amount"]
+_CIBIL_KEYS = ["what's_your_cibil_score?", "whats_your_cibil_score?", "cibil_score", "credit_score"]
+
+
+def _first_present(row: dict, keys: list) -> str:
+    for k in keys:
+        v = row.get(k, "")
+        if v is not None and str(v).strip() and str(v).strip().lower() not in ("nan", "none", "null"):
+            return str(v).strip()
+    return ""
+
+
+def _normalize_row(raw: dict, tab_name: str) -> dict:
+    """Map one raw sheet row (any tab's header layout) into the canonical Meta lead schema."""
+    row = {(k or "").strip().lower(): ("" if v is None else str(v).strip()) for k, v in raw.items()}
+    return {
+        "id": row.get("id", "").strip(),
+        "created_time": row.get("created_time", ""),
+        "full_name": (row.get("full_name") or "").strip(),
+        "phone_number": _first_present(row, _PHONE_KEYS),
+        "email": (row.get("email") or "").strip(),
+        "city": (row.get("city") or "").strip(),
+        "please_select_your_current_employment_status": _first_present(row, _EMP_KEYS),
+        "what_is_your_current_monthly_take-home_salary?": _first_present(row, _SALARY_KEYS),
+        "what_is_the_total_outstanding_amount_of_your_loans_and_credit_card_bills?": _first_present(row, _OUTSTANDING_KEYS),
+        "campaign_name": (row.get("campaign_name") or "").strip(),
+        "form_name": (row.get("form_name") or "").strip() or tab_name,
+        "platform": (row.get("platform") or "").strip(),
+        "is_organic": row.get("is_organic", ""),
+        "cibil_score": _first_present(row, _CIBIL_KEYS),
+        "source_tab": tab_name,
+    }
+
+
 async def fetch_sheet_rows() -> List[dict]:
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as hc:
-        resp = await hc.get(SHEET_CSV_URL)
+    """Pull leads from EVERY tab of the workbook (current + any future tab) via the xlsx export."""
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as hc:
+        resp = await hc.get(WORKBOOK_XLSX_URL)
         resp.raise_for_status()
-        text = resp.text
-    reader = csv.DictReader(io.StringIO(text))
+        content = resp.content
+    try:
+        sheets = pd.read_excel(io.BytesIO(content), sheet_name=None, dtype=str)
+    except Exception as e:
+        logger.error(f"Meta sheet sync: could not parse workbook xlsx ({e}); falling back to first tab CSV")
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as hc:
+            resp = await hc.get(SHEET_CSV_URL)
+            resp.raise_for_status()
+            sheets = {"Sheet1": pd.read_csv(io.StringIO(resp.text), dtype=str)}
+
     rows = []
-    for r in reader:
-        if not r.get("id"):
+    for tab_name, df in sheets.items():
+        if df is None or df.empty:
             continue
-        if (r.get("is_organic", "").strip().lower() == "true"):
-            continue
-        name = (r.get("full_name") or "")
-        if "test lead" in name.lower() or "<test" in name.lower():
-            continue
-        if (r.get("email") or "").strip().lower() == "test@meta.com":
-            continue
-        rows.append(r)
+        df = df.where(pd.notnull(df), "")
+        for raw in df.to_dict(orient="records"):
+            r = _normalize_row(raw, tab_name)
+            if not r["id"]:
+                continue
+            if r.get("is_organic", "").strip().lower() == "true":
+                continue
+            name = r.get("full_name", "")
+            if "test lead" in name.lower() or "<test" in name.lower():
+                continue
+            if r.get("email", "").strip().lower() == "test@meta.com":
+                continue
+            rows.append(r)
     return rows
 
 
@@ -181,6 +239,8 @@ async def sync_leads_from_sheet() -> dict:
             "campaign_name": (r.get("campaign_name") or "").strip(),
             "form_name": (r.get("form_name") or "").strip(),
             "platform": (r.get("platform") or "").strip(),
+            "cibil_score": (r.get("cibil_score") or "").strip(),
+            "source_tab": (r.get("source_tab") or "").strip(),
             "sheet_status": sheet_status,
         }
         if existing:

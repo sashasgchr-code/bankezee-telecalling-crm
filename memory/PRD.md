@@ -2102,3 +2102,25 @@ by that GP -> skipped. Verified: RUN2 creates 0 new, reassigns 0, produces 0 dup
 VERIFIED (preview): scripts/test_csv_import_bulk.py 16/16 PASS (60 bulk reassignments + history +
 call-log marking + 5 protected + 10 new inserts, 0.2s; rerun idempotent, no dupes). dry_run
 preview path unchanged. Deployed to production.
+
+## META SHEETS SYNC: PULL FROM ALL TABS (current + future) — June 2026
+
+Request: Meta CRM lead sync must also import from the newly added tab "Loan Merge 17102026-2"
+and ANY tab added to the Google Sheet in future.
+
+Change (backend only, routes/meta_sync.py):
+- fetch_sheet_rows() now downloads the FULL workbook via export?format=xlsx and iterates EVERY
+  sheet/tab (pd.read_excel sheet_name=None), instead of only the first tab (gid=0 CSV). New tabs
+  are picked up automatically with no further code change. CSV-first-tab kept as a fallback.
+- Added tolerant column aliasing (_normalize_row): phone <- phone_number|whatsapp_number|...,
+  employment <- please_select...|are_you, salary <- ...take-home...|whats_your_net_monthly_salary,
+  outstanding <- ...credit_card_bills|whats_your_total_loan_outstanding, cibil <- whats_your_cibil_score.
+  Captures new fields cibil_score + source_tab on each meta lead. Dedup still on sheet_id (id col);
+  same test-lead/is_organic filters. Auto-sync loop + cron + manual sync all use this, so all tabs
+  are covered everywhere.
+
+Verified (preview, against the real live sheet): workbook export returns 2 tabs
+["Lead Form | EMI |05" (689), "Loan Merge 17102026-2" (1 test row, filtered)]; fetch_sheet_rows
+returns 688 importable; full sync ran clean (0 new / 688 updated, idempotent); a simulated REAL
+Loan Merge lead maps all fields correctly (8/8 checks incl. whatsapp_number->phone). No frontend
+change, no APK. NEEDS PUBLISH to take effect in production.
