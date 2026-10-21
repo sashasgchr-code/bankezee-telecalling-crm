@@ -114,6 +114,22 @@ class MetaUserMgmtInput(BaseModel):
     meta_user_id: Optional[str] = None
 
 
+class MetaLeadCreateInput(BaseModel):
+    full_name: str
+    phone: str
+    email: Optional[str] = ""
+    city: Optional[str] = ""
+    employment_status: Optional[str] = ""
+    monthly_salary: Optional[str] = ""
+    outstanding_amount: Optional[str] = ""
+    cibil_score: Optional[str] = ""
+    campaign_name: Optional[str] = ""
+    form_name: Optional[str] = ""
+    platform: Optional[str] = ""
+    status: Optional[str] = "NEW"
+    partner_id: Optional[str] = None
+
+
 class MetaCallLogInput(BaseModel):
     call_id: str
     phone: Optional[str] = None
@@ -348,6 +364,67 @@ async def meta_bulk_delete(inp: MetaBulkInput, user: dict = Depends(require_meta
     res = await db.meta_leads.update_many({"lead_id": {"$in": inp.lead_ids}},
                                           {"$set": {"deleted": True, "deleted_at": _now_iso()}})
     return {"deleted": res.modified_count}
+
+
+@router.post("/leads")
+async def meta_create_lead(inp: MetaLeadCreateInput, user: dict = Depends(require_meta_access)):
+    """Admin/Ops: manually add a Meta lead that did NOT come from the Google Sheet."""
+    role, _ = _ctx(user)
+    if role not in STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Only Admin/Ops can add Meta leads")
+    name = (inp.full_name or "").strip()
+    phone = (inp.phone or "").strip()
+    if not name or not phone:
+        raise HTTPException(status_code=400, detail="Name and phone are required")
+    status = (inp.status or "NEW").strip().upper()
+    if status not in CRM_STATUSES:
+        status = "NEW"
+    # Optional assignment to an approved growth partner
+    partner_id = None
+    partner_name = None
+    assigned_at = None
+    assigned_by = None
+    if inp.partner_id:
+        partner = await db.meta_users.find_one({"user_id": inp.partner_id})
+        if not partner:
+            raise HTTPException(status_code=404, detail="Partner not found")
+        if partner.get("role") != "growth_partner" or not partner.get("approved"):
+            raise HTTPException(status_code=400, detail="Leads can only be assigned to an approved growth partner")
+        partner_id = inp.partner_id
+        partner_name = partner.get("name")
+        assigned_at = _now_iso()
+        assigned_by = user.get("name")
+    now = _now_iso()
+    doc = {
+        "sheet_id": None,
+        "source": "manual",
+        "source_tab": "Manual Entry",
+        "created_time": now,
+        "full_name": name,
+        "phone": phone,
+        "email": (inp.email or "").strip(),
+        "city": (inp.city or "").strip(),
+        "employment_status": (inp.employment_status or "").strip(),
+        "monthly_salary": (inp.monthly_salary or "").strip(),
+        "outstanding_amount": (inp.outstanding_amount or "").strip(),
+        "cibil_score": (inp.cibil_score or "").strip(),
+        "campaign_name": (inp.campaign_name or "").strip(),
+        "form_name": (inp.form_name or "").strip() or "Manual Entry",
+        "platform": (inp.platform or "").strip(),
+        "sheet_status": status,
+        "lead_id": f"lead_{uuid.uuid4().hex[:12]}",
+        "status": status,
+        "assigned_partner_id": partner_id,
+        "assigned_partner_name": partner_name,
+        "assigned_at": assigned_at,
+        "assigned_by": assigned_by,
+        "notes": [],
+        "activities": [{"type": "created", "detail": f"Lead added manually by {user.get('name', 'Admin')}", "at": now}],
+        "created_at": now,
+        "updated_at": now,
+    }
+    await db.meta_leads.insert_one(doc)
+    return serialize_doc(doc)
 
 
 @router.get("/leads/{lead_id}")

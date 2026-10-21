@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, STATUSES, fmtDate, fmtShort, BRAND, BRAND_DARK } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
-import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
 
 const metaLoanType = (lead) => (lead?.file?.loan_type || lead?.loan_type || "loan requirement");
 
@@ -33,6 +33,23 @@ export default function MetaLeads() {
   const [bulkPartner, setBulkPartner] = useState("");
   const [callLead, setCallLead] = useState(null);
   const callLeadRef = useRef(null);
+
+  // Manual "Add Lead" (staff only) — for leads that did not come from the Google Sheet.
+  const EMPTY_FORM = { full_name: "", phone: "", email: "", city: "", employment_status: "", monthly_salary: "", outstanding_amount: "", cibil_score: "", campaign_name: "", form_name: "", platform: "", status: "NEW", partner_id: "" };
+  const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+  const setF = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const submitAdd = async () => {
+    if (!form.full_name.trim() || !form.phone.trim()) { toast.error("Name and phone are required"); return; }
+    setSaving(true);
+    try {
+      await api.post("/meta/leads", { ...form, partner_id: form.partner_id || null });
+      toast.success("Lead added to Meta CRM");
+      setShowAdd(false); setForm(EMPTY_FORM); setStatus("ALL"); setPage(1); load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to add lead"); }
+    finally { setSaving(false); }
+  };
 
   // Bind a call explicitly to the lead that initiated it (guards against stale-customer saves).
   const openCall = (lead) => { callLeadRef.current = lead; setCallLead(lead); };
@@ -129,14 +146,74 @@ export default function MetaLeads() {
     <div data-testid="meta-leads">
       <header className="h-16 border-b border-slate-200 bg-white px-4 md:px-8 flex items-center justify-between sticky top-0 z-30">
         <h1 className="text-xl font-bold" style={{ color: BRAND_DARK }}>Leads</h1>
-        <button data-testid="meta-leads-sync-btn" onClick={sync} disabled={syncing}
-          className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 rounded-md px-4 py-2 text-sm shadow-sm font-medium transition-colors disabled:opacity-70">
-          <RefreshCw size={16} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing..." : "Sync Now"}
-        </button>
+        <div className="flex items-center gap-2">
+          {isStaff && (
+            <button data-testid="meta-add-lead-btn" onClick={() => { setForm(EMPTY_FORM); setShowAdd(true); }}
+              className="flex items-center gap-2 rounded-md px-4 py-2 text-sm shadow-sm font-medium text-white transition-colors" style={{ background: BRAND }}>
+              <Plus size={16} /> Add Lead
+            </button>
+          )}
+          <button data-testid="meta-leads-sync-btn" onClick={sync} disabled={syncing}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 rounded-md px-4 py-2 text-sm shadow-sm font-medium transition-colors disabled:opacity-70">
+            <RefreshCw size={16} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing..." : "Sync Now"}
+          </button>
+        </div>
       </header>
 
       <div className="p-4 md:p-8">
         {callLead && <MetaCallModal phone={callLead.phone} onClose={closeCall} onSubmit={logCallFor} />}
+        {showAdd && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" data-testid="meta-add-lead-modal" onClick={() => !saving && setShowAdd(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white">
+                <h2 className="text-lg font-bold" style={{ color: BRAND_DARK }}>Add Lead Manually</h2>
+                <button data-testid="meta-add-lead-close" onClick={() => !saving && setShowAdd(false)} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              </div>
+              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  { k: "full_name", label: "Full Name *", ph: "e.g. Ramesh Kumar" },
+                  { k: "phone", label: "Phone *", ph: "e.g. +91 98765 43210" },
+                  { k: "email", label: "Email", ph: "name@example.com" },
+                  { k: "city", label: "City", ph: "e.g. Hyderabad" },
+                  { k: "employment_status", label: "Employment Status", ph: "e.g. Salaried" },
+                  { k: "monthly_salary", label: "Monthly Salary", ph: "e.g. 50000 to 75000" },
+                  { k: "outstanding_amount", label: "Outstanding Amount", ph: "e.g. 5 to 10 lakh" },
+                  { k: "cibil_score", label: "CIBIL Score", ph: "e.g. 750+" },
+                  { k: "campaign_name", label: "Campaign Name", ph: "Optional" },
+                  { k: "form_name", label: "Form / Source", ph: "Optional" },
+                ].map(({ k, label, ph }) => (
+                  <div key={k} className={k === "full_name" || k === "phone" ? "" : ""}>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{label}</label>
+                    <input data-testid={`meta-add-field-${k}`} value={form[k]} onChange={(e) => setF(k, e.target.value)} placeholder={ph}
+                      className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm outline-none focus:border-slate-400" />
+                  </div>
+                ))}
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Status</label>
+                  <select data-testid="meta-add-field-status" value={form.status} onChange={(e) => setF("status", e.target.value)}
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
+                    {STATUSES.filter((s) => s !== "ALL").map((s) => <option key={s} value={s}>{STATUS_LABEL(s)}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">Assign Growth Partner</label>
+                  <select data-testid="meta-add-field-partner" value={form.partner_id} onChange={(e) => setF("partner_id", e.target.value)}
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
+                    <option value="">Unassigned</option>
+                    {partners.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 sticky bottom-0 bg-white">
+                <button data-testid="meta-add-lead-cancel" onClick={() => !saving && setShowAdd(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">Cancel</button>
+                <button data-testid="meta-add-lead-submit" onClick={submitAdd} disabled={saving}
+                  className="px-5 py-2 rounded-md text-sm font-medium text-white transition-colors disabled:opacity-70" style={{ background: BRAND }}>
+                  {saving ? "Adding..." : "Add Lead"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3 mb-5">
           <div className="relative flex-1 min-w-[220px]">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />

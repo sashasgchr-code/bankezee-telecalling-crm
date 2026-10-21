@@ -2132,3 +2132,17 @@ change, no APK. NEEDS PUBLISH to take effect in production.
 - Deploy dispatched (job 2416aab3) bundling: multi-tab Meta sheets sync, web CIBIL display, and
   the large-CSV-import bulk-write timeout fix. Mobile CIBIL/cold-start changes require a separate
   APK build (not part of this web/backend deploy).
+
+## META CRM: MANUAL "ADD LEAD" (admin/ops) — June 2026
+- New endpoint POST /api/meta/leads (STAFF_ROLES admin/ops only) creates a Meta lead that did NOT
+  come from the Google Sheet. All fields: full_name*, phone*, email, city, employment_status,
+  monthly_salary, outstanding_amount, cibil_score, campaign_name, form_name, platform, status
+  (default NEW, validated vs CRM_STATUSES), optional partner_id (must be approved growth_partner).
+  Doc marked source="manual", source_tab="Manual Entry", sheet_id=None (so the Sheet sync never
+  touches it). Generates lead_id, activity log, created/updated timestamps. Returns 400 if
+  name/phone missing, 404 if partner invalid, 403 for non-staff.
+- Frontend (pages/meta/Leads.js): staff-only "Add Lead" button in the Leads header opens a modal
+  with all fields incl. CIBIL + status + GP assignment. testids: meta-add-lead-btn,
+  meta-add-lead-modal, meta-add-field-<k>, meta-add-lead-submit/cancel/close.
+- Verified: create+detail+list-search pass; 400/404/validation pass; UI modal renders all fields
+  (screenshot). Backend + web only (no mobile/APK). Needs publish for production.
