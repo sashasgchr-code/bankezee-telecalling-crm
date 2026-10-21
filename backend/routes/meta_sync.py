@@ -30,6 +30,12 @@ SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "1Ugq8BpctyY0ZdqxCknR1OdWGvvUW9Xa1F
 SHEET_CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
 # Full-workbook export: pulls EVERY tab (including any sheet/tab added in the future) in one request.
 WORKBOOK_XLSX_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=xlsx"
+# Secondary source: the website lead-capture sheet. Campaign is forced to "Direct Website Lead".
+# Dedup rule: if a phone exists in BOTH this sheet and the Meta (loan consolidation) sheet, the
+# Meta sheet wins and the website row is skipped (no duplicate meta_leads doc).
+WEBSITE_SHEET_ID = os.environ.get("GOOGLE_WEBSITE_SHEET_ID", "1lptkIozGQ4eP16bQ7eVdhUSusiiQmLrpSFdNPA4qjBQ")
+WEBSITE_WORKBOOK_XLSX_URL = f"https://docs.google.com/spreadsheets/d/{WEBSITE_SHEET_ID}/export?format=xlsx"
+WEBSITE_CAMPAIGN = "Direct Website Lead"
 WEBHOOK_CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "")
 EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "BankEzee CRM")
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "")
@@ -137,6 +143,15 @@ def _clean_phone(raw: str) -> str:
     return (raw or "").replace("p:", "").strip()
 
 
+def _norm10(raw: str) -> str:
+    """Last 10 digits of a phone — used for cross-sheet dedup."""
+    import re
+    d = re.sub(r"\D", "", _clean_phone(raw))
+    if len(d) > 10 and d.startswith("91"):
+        d = d[2:]
+    return d[-10:] if len(d) >= 10 else d
+
+
 def _pretty(val: str) -> str:
     return (val or "").replace("_", " ").strip()
 
@@ -217,8 +232,78 @@ async def fetch_sheet_rows() -> List[dict]:
     return rows
 
 
+async def fetch_website_rows() -> List[dict]:
+    """Pull leads from the website capture sheet, mapped into the canonical lead schema.
+    Campaign is forced to 'Direct Website Lead'. Rows are de-duplicated by phone within the sheet."""
+    try:
+        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as hc:
+            resp = await hc.get(WEBSITE_WORKBOOK_XLSX_URL)
+            resp.raise_for_status()
+            content = resp.content
+        sheets = pd.read_excel(io.BytesIO(content), sheet_name=None, dtype=str)
+    except Exception as e:
+        logger.error(f"Meta website sync: could not fetch/parse website sheet ({e})")
+        return []
+
+    rows = []
+    seen_phones = set()
+    for tab_name, df in sheets.items():
+        if df is None or df.empty:
+            continue
+        df = df.where(pd.notnull(df), "")
+        for raw in df.to_dict(orient="records"):
+            row = {(k or "").strip().lower(): ("" if v is None else str(v).strip()) for k, v in raw.items()}
+            phone = row.get("phone", "")
+            norm = _norm10(phone)
+            if len(norm) < 10:
+                continue  # need a valid phone
+            if norm in seen_phones:
+                continue  # dedupe within the website sheet
+            seen_phones.add(norm)
+            lead_id = row.get("lead id", "") or row.get("lead_id", "")
+            sid = f"web:{lead_id}" if lead_id else f"web:{norm}"
+            rows.append({
+                "id": sid,
+                "created_time": row.get("received at", "") or row.get("received_at", ""),
+                "full_name": (row.get("name") or "").strip() or "Website Lead",
+                "phone_number": phone,
+                "email": (row.get("email") or "").strip(),
+                "city": (row.get("city") or "").strip(),
+                "please_select_your_current_employment_status": (row.get("employment") or "").strip(),
+                "what_is_your_current_monthly_take-home_salary?": (row.get("monthly income") or "").strip(),
+                "what_is_the_total_outstanding_amount_of_your_loans_and_credit_card_bills?": "",
+                "campaign_name": WEBSITE_CAMPAIGN,
+                "form_name": (row.get("loan type") or "").strip() or WEBSITE_CAMPAIGN,
+                "platform": "website",
+                "cibil_score": "",
+                "source_tab": "Website",
+                "lead_status": "CREATED",
+            })
+    return rows
+
+
 async def sync_leads_from_sheet() -> dict:
-    rows = await fetch_sheet_rows()
+    # Source A: Meta loan-consolidation workbook (all tabs). Source B: website capture sheet.
+    meta_rows = await fetch_sheet_rows()
+    website_rows = await fetch_website_rows()
+
+    # DEDUP: Meta sheet wins. Any website lead whose phone already appears in the Meta sheet is
+    # dropped so we never create a duplicate meta_leads doc.
+    meta_phones = {_norm10(r.get("phone_number", "")) for r in meta_rows if _norm10(r.get("phone_number", ""))}
+    website_kept = [r for r in website_rows if _norm10(r.get("phone_number", "")) not in meta_phones]
+    website_skipped_phones = [p for p in (_norm10(r.get("phone_number", "")) for r in website_rows) if p in meta_phones]
+
+    # If an UNTOUCHED website-sourced lead already exists for a phone that is now in the Meta sheet,
+    # remove it so the Meta copy is the single source of truth (never deletes worked/assigned leads).
+    if website_skipped_phones:
+        await db.meta_leads.delete_many({
+            "source_tab": "Website",
+            "phone_norm": {"$in": list(set(website_skipped_phones))},
+            "assigned_partner_id": None,
+            "status": "NEW",
+        })
+
+    rows = meta_rows + website_kept
     imported, updated = 0, 0
     for r in rows:
         sheet_id = (r.get("id") or "").strip()
@@ -231,6 +316,7 @@ async def sync_leads_from_sheet() -> dict:
             "created_time": r.get("created_time", ""),
             "full_name": (r.get("full_name") or "").strip(),
             "phone": _clean_phone(r.get("phone_number", "")),
+            "phone_norm": _norm10(r.get("phone_number", "")),
             "email": (r.get("email") or "").strip(),
             "city": (r.get("city") or "").strip(),
             "employment_status": _pretty(r.get("please_select_your_current_employment_status", "")),
@@ -247,13 +333,14 @@ async def sync_leads_from_sheet() -> dict:
             await db.meta_leads.update_one({"sheet_id": sheet_id}, {"$set": {**base, "updated_at": now_iso()}})
             updated += 1
         else:
+            src_label = "Website" if base["source_tab"] == "Website" else "Google Sheet"
             doc = {
                 **base,
                 "lead_id": f"lead_{uuid.uuid4().hex[:12]}",
                 "status": SHEET_STATUS_MAP.get(sheet_status, "NEW"),
                 "assigned_partner_id": None, "assigned_partner_name": None,
                 "notes": [],
-                "activities": [{"type": "imported", "detail": "Lead imported from Google Sheet", "at": now_iso()}],
+                "activities": [{"type": "imported", "detail": f"Lead imported from {src_label}", "at": now_iso()}],
                 "created_at": now_iso(), "updated_at": now_iso(),
             }
             await db.meta_leads.insert_one(doc)
@@ -261,7 +348,7 @@ async def sync_leads_from_sheet() -> dict:
     await db.meta_meta.update_one({"key": "last_sync"},
                                   {"$set": {"key": "last_sync", "at": now_iso(), "imported": imported, "updated": updated}},
                                   upsert=True)
-    logger.info(f"Meta sheet sync: {imported} new, {updated} updated")
+    logger.info(f"Meta sheet sync: {imported} new, {updated} updated (meta={len(meta_rows)}, website_kept={len(website_kept)})")
     if imported > 0:
         asyncio.create_task(notify_staff_new_leads(imported))
     return {"imported": imported, "updated": updated, "total_rows": len(rows)}

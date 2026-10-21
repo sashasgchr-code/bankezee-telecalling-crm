@@ -2157,3 +2157,19 @@ change, no APK. NEEDS PUBLISH to take effect in production.
   meta-edit-field-<k>, meta-edit-lead-submit/cancel/close.
 - Verified: create->edit->verify (name/city/cibil/salary updated, activity logged), empty-name 400,
   UI modal pre-filled (screenshot). Backend + web only. Needs publish for production.
+
+## META CRM: SECOND SOURCE — WEBSITE LEADS SHEET (June 2026)
+- Added website capture sheet as a 2nd auto-sync source (GOOGLE_WEBSITE_SHEET_ID default
+  1lptkIozGQ4eP16bQ7eVdhUSusiiQmLrpSFdNPA4qjBQ). routes/meta_sync.py:
+  - fetch_website_rows(): reads the sheet (cols Name/Phone/Monthly Income/Employment/City/Loan Type/
+    Lead ID), maps to canonical schema, forces campaign_name="Direct Website Lead", source_tab=
+    "Website", platform=website, sheet_id="web:<LeadID>" (or web:<phone10>). Dedupes within sheet by phone.
+  - sync_leads_from_sheet() now merges Meta workbook + website rows. DEDUP: Meta sheet WINS — any
+    website lead whose phone (last-10) matches a Meta-sheet phone is dropped (no duplicate doc), and
+    an existing UNTOUCHED website doc (unassigned + status NEW) for that phone is removed. Added
+    phone_norm to every synced doc for reliable cross-source matching. Auto-sync loop + cron + manual
+    sync all cover both sources.
+- Verified (preview, live sheets): 708 meta + 67 unique website phones; 28 overlap SKIPPED; 39 website
+  kept; all website docs campaign="Direct Website Lead"; 0 phones shared between website & meta docs;
+  sync idempotent (RUN2 0 new / 747 updated). Backend only; website leads show in Meta CRM list with
+  their campaign (no frontend change). Needs publish for production.
