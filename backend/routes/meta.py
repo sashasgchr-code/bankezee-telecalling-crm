@@ -114,6 +114,20 @@ class MetaUserMgmtInput(BaseModel):
     meta_user_id: Optional[str] = None
 
 
+class MetaLeadEditInput(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    city: Optional[str] = None
+    employment_status: Optional[str] = None
+    monthly_salary: Optional[str] = None
+    outstanding_amount: Optional[str] = None
+    cibil_score: Optional[str] = None
+    campaign_name: Optional[str] = None
+    form_name: Optional[str] = None
+    platform: Optional[str] = None
+
+
 class MetaLeadCreateInput(BaseModel):
     full_name: str
     phone: str
@@ -439,6 +453,40 @@ async def meta_lead_detail(lead_id: str, user: dict = Depends(require_meta_acces
         if not allowed:
             raise HTTPException(status_code=403, detail="Not authorized for this Meta lead")
     return serialize_doc(lead)
+
+
+@router.patch("/leads/{lead_id}/info")
+async def meta_edit_lead_info(lead_id: str, inp: MetaLeadEditInput, user: dict = Depends(require_meta_access)):
+    """Admin/Ops: edit a Meta lead's info fields (name, phone, salary, CIBIL, etc.)."""
+    role, _ = _ctx(user)
+    if role not in STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Only Admin/Ops can edit lead info")
+    lead = await _get_lead_or_404(lead_id)
+    editable = ["full_name", "phone", "email", "city", "employment_status", "monthly_salary",
+                "outstanding_amount", "cibil_score", "campaign_name", "form_name", "platform"]
+    updates = {}
+    changed = []
+    for f in editable:
+        val = getattr(inp, f)
+        if val is None:
+            continue
+        val = val.strip()
+        if val != (lead.get(f) or ""):
+            updates[f] = val
+            changed.append(f.replace("_", " "))
+    if "full_name" in updates and not updates["full_name"]:
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+    if "phone" in updates and not updates["phone"]:
+        raise HTTPException(status_code=400, detail="Phone cannot be empty")
+    if not updates:
+        return serialize_doc(lead)
+    updates["updated_at"] = _now_iso()
+    activity = {"type": "edit",
+                "detail": f"Lead info edited ({', '.join(changed)}) by {user.get('name', 'Admin')}",
+                "at": _now_iso()}
+    await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": updates, "$push": {"activities": activity}})
+    updated = await db.meta_leads.find_one({"lead_id": lead_id})
+    return serialize_doc(updated)
 
 
 @router.patch("/leads/{lead_id}/status")

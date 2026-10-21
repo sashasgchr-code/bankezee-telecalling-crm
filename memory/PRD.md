@@ -2146,3 +2146,14 @@ change, no APK. NEEDS PUBLISH to take effect in production.
   meta-add-lead-modal, meta-add-field-<k>, meta-add-lead-submit/cancel/close.
 - Verified: create+detail+list-search pass; 400/404/validation pass; UI modal renders all fields
   (screenshot). Backend + web only (no mobile/APK). Needs publish for production.
+
+## META CRM: ADMIN EDIT LEAD INFO — June 2026
+- New endpoint PATCH /api/meta/leads/{lead_id}/info (admin/ops only) edits lead info fields:
+  full_name, phone, email, city, employment_status, monthly_salary, outstanding_amount,
+  cibil_score, campaign_name, form_name, platform. Only changed fields are written; logs an
+  "edit" activity listing the changed fields. 400 if name/phone blanked, 403 non-staff.
+- Frontend (pages/meta/LeadDetail.js): admin/ops-only "Edit" button on the Lead Information card
+  opens a modal pre-filled with current values. testids: meta-edit-lead-btn, meta-edit-lead-modal,
+  meta-edit-field-<k>, meta-edit-lead-submit/cancel/close.
+- Verified: create->edit->verify (name/city/cibil/salary updated, activity logged), empty-name 400,
+  UI modal pre-filled (screenshot). Backend + web only. Needs publish for production.

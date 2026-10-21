@@ -283,6 +283,9 @@ export default function MetaLeadDetail() {
   const [note, setNote] = useState("");
   const [callOpen, setCallOpen] = useState(false);
   const [fileModal, setFileModal] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const isStaffLike = ["admin", "ops", "processor"].includes(meta.role);
 
   const load = async () => {
@@ -300,6 +303,27 @@ export default function MetaLeadDetail() {
   const logCall = async (payload) => { const { data } = await api.post(`/meta/leads/${leadId}/calls`, payload); setLead(data); toast.success("Call logged"); };
   const saveFile = async (fdata) => { const { data } = await api.patch(`/meta/leads/${leadId}/file`, { data: fdata }); setLead(data); toast.success("File details saved"); };
   const updateProcessingStatus = async (status) => { const { data } = await api.patch(`/meta/leads/${leadId}/processing-status`, { status }); setLead(data); toast.success("Processing status updated"); };
+
+  const EDIT_FIELDS = [
+    { k: "full_name", label: "Full Name *" }, { k: "phone", label: "Phone *" },
+    { k: "email", label: "Email" }, { k: "city", label: "City" },
+    { k: "employment_status", label: "Employment Status" }, { k: "monthly_salary", label: "Monthly Salary" },
+    { k: "outstanding_amount", label: "Outstanding Amount" }, { k: "cibil_score", label: "CIBIL Score" },
+    { k: "campaign_name", label: "Campaign Name" }, { k: "form_name", label: "Form / Source" },
+  ];
+  const openEdit = () => {
+    setEditForm(EDIT_FIELDS.reduce((o, { k }) => ({ ...o, [k]: lead[k] || "" }), {}));
+    setEditOpen(true);
+  };
+  const saveEdit = async () => {
+    if (!editForm.full_name.trim() || !editForm.phone.trim()) { toast.error("Name and phone are required"); return; }
+    setSavingEdit(true);
+    try {
+      const { data } = await api.patch(`/meta/leads/${leadId}/info`, editForm);
+      setLead(data); setEditOpen(false); toast.success("Lead info updated");
+    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to update lead"); }
+    finally { setSavingEdit(false); }
+  };
 
   if (!lead) return <div className="p-8"><div className="h-8 w-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: BRAND, borderTopColor: "transparent" }} /></div>;
 
@@ -324,7 +348,14 @@ export default function MetaLeadDetail() {
       <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white border border-slate-200 rounded-md p-5 shadow-sm">
-            <h3 className="text-sm font-semibold mb-2" style={{ color: BRAND_DARK }}>Lead Information</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold" style={{ color: BRAND_DARK }}>Lead Information</h3>
+              {(meta.role === "admin" || meta.role === "ops") && (
+                <button data-testid="meta-edit-lead-btn" onClick={openEdit} className="text-xs font-medium flex items-center gap-1 hover:underline" style={{ color: BRAND }}>
+                  <Save size={12} /> Edit
+                </button>
+              )}
+            </div>
             <div className="divide-y divide-slate-50">
               <div className="flex items-start gap-3 py-2">
                 <Phone size={16} className="text-slate-400 mt-0.5 shrink-0" />
@@ -419,6 +450,32 @@ export default function MetaLeadDetail() {
 
       {callOpen && <MetaCallModal phone={lead.phone} onClose={() => setCallOpen(false)} onSubmit={logCall} />}
       {fileModal && <FileStatusModal onClose={() => setFileModal(false)} onConfirm={async (docs) => { await changeStatus("FILE", docs); setFileModal(false); }} />}
+      {editOpen && editForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" data-testid="meta-edit-lead-modal" onClick={() => !savingEdit && setEditOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 sticky top-0 bg-white">
+              <h2 className="text-lg font-bold" style={{ color: BRAND_DARK }}>Edit Lead Info</h2>
+              <button data-testid="meta-edit-lead-close" onClick={() => !savingEdit && setEditOpen(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {EDIT_FIELDS.map(({ k, label }) => (
+                <div key={k}>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">{label}</label>
+                  <input data-testid={`meta-edit-field-${k}`} value={editForm[k]} onChange={(e) => setEditForm((p) => ({ ...p, [k]: e.target.value }))}
+                    className="w-full border border-slate-300 rounded-md px-3 py-2 text-sm outline-none focus:border-slate-400" />
+                </div>
+              ))}
+            </div>
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 sticky bottom-0 bg-white">
+              <button data-testid="meta-edit-lead-cancel" onClick={() => !savingEdit && setEditOpen(false)} className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">Cancel</button>
+              <button data-testid="meta-edit-lead-submit" onClick={saveEdit} disabled={savingEdit}
+                className="px-5 py-2 rounded-md text-sm font-medium text-white transition-colors disabled:opacity-70" style={{ background: BRAND }}>
+                {savingEdit ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
