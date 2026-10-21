@@ -298,6 +298,7 @@ async def meta_leads(
     sort_dir: str = "desc",
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    source: Optional[str] = None,
 ):
     role, uid = _ctx(user)
     query = dict(NOT_DELETED)
@@ -307,6 +308,14 @@ async def meta_leads(
         query["assigned_partner_id"] = uid
     if status and status != "ALL":
         query["status"] = status
+    if source and source.upper() != "ALL":
+        s = source.upper()
+        if s == "WEBSITE":
+            query["source_tab"] = "Website"
+        elif s == "MANUAL":
+            query["source_tab"] = "Manual Entry"
+        elif s == "META":
+            query["source_tab"] = {"$nin": ["Website", "Manual Entry"]}
     if partner and partner != "ALL" and role in STAFF_ROLES:
         query["assigned_partner_id"] = None if partner == "UNASSIGNED" else partner
     if from_date or to_date:

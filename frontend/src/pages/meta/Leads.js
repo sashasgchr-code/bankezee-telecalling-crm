@@ -26,6 +26,7 @@ export default function MetaLeads() {
   const [leads, setLeads] = useState([]);
   const [partners, setPartners] = useState([]);
   const [status, setStatus] = useState("ALL");
+  const [sourceFilter, setSourceFilter] = useState("ALL");
   const [q, setQ] = useState("");
   const [partnerFilter, setPartnerFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
@@ -67,7 +68,7 @@ export default function MetaLeads() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { status, partner: partnerFilter, page, page_size: 25, sort_by: sortBy, sort_dir: sortDir };
+      const params = { status, partner: partnerFilter, source: sourceFilter, page, page_size: 25, sort_by: sortBy, sort_dir: sortDir };
       if (q) params.q = q;
       if (fromDate) params.from_date = fromDate;
       if (toDate) params.to_date = toDate;
@@ -76,11 +77,11 @@ export default function MetaLeads() {
       setTotal(data.total);
       setPages(data.pages);
     } finally { setLoading(false); }
-  }, [status, q, partnerFilter, page, sortBy, sortDir, fromDate, toDate]);
+  }, [status, q, partnerFilter, sourceFilter, page, sortBy, sortDir, fromDate, toDate]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [status, q, partnerFilter, sortBy, sortDir, fromDate, toDate]);
-  useEffect(() => { setSelected(new Set()); }, [page, status, q, partnerFilter, sortBy, sortDir, fromDate, toDate]);
+  useEffect(() => { setPage(1); }, [status, q, partnerFilter, sourceFilter, sortBy, sortDir, fromDate, toDate]);
+  useEffect(() => { setSelected(new Set()); }, [page, status, q, partnerFilter, sourceFilter, sortBy, sortDir, fromDate, toDate]);
   useEffect(() => { if (isStaff) api.get("/meta/partners").then(({ data }) => setPartners(data)).catch(() => {}); }, [isStaff]);
 
   const localYMD = (d) => { const off = d.getTimezoneOffset() * 60000; return new Date(d - off).toISOString().slice(0, 10); };
@@ -246,6 +247,13 @@ export default function MetaLeads() {
               {partners.map((p) => <option key={p.user_id} value={p.user_id}>{p.name}</option>)}
             </select>
           )}
+          <div className="flex items-center gap-1.5" data-testid="meta-source-filter">
+            {[{ k: "ALL", label: "All Sources" }, { k: "META", label: "Meta" }, { k: "WEBSITE", label: "Website" }].map(({ k, label }) => (
+              <button key={k} data-testid={`meta-source-filter-${k}`} onClick={() => setSourceFilter(k)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-colors ${sourceFilter === k ? "text-white" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+                style={sourceFilter === k ? { background: BRAND, borderColor: BRAND } : {}}>{label}</button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 mb-5" data-testid="meta-date-filter-bar">

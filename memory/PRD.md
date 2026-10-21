@@ -2188,3 +2188,13 @@ change, no APK. NEEDS PUBLISH to take effect in production.
 - Verified (preview, live sheets + real-timeline simulation): badges render (Meta/Website); dedup
   5/5 PASS (untouched->converted single doc; worked->preserved single doc; no duplicates either way).
   Backend + web only. Needs publish for production.
+
+## META CRM: SOURCE FILTER (June 2026)
+- GET /api/meta/leads now accepts source=ALL|META|WEBSITE|MANUAL. WEBSITE->source_tab="Website",
+  MANUAL->source_tab="Manual Entry", META->source_tab not in [Website, Manual Entry] (legacy
+  meta leads w/o source_tab included via $nin).
+- Leads list (pages/meta/Leads.js): "All Sources / Meta / Website" filter chips next to the partner
+  filter; wired into load() params + page-reset effects. testids: meta-source-filter,
+  meta-source-filter-ALL/META/WEBSITE.
+- Verified: API totals ALL=747, META=707, WEBSITE=40 (707+40=747), MANUAL=0; WEBSITE filter returns
+  only website leads; UI chips filter correctly (screenshot). Backend + web only. Needs publish.
