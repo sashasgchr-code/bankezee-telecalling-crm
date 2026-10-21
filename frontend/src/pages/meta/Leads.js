@@ -9,6 +9,15 @@ import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown
 
 const metaLoanType = (lead) => (lead?.file?.loan_type || lead?.loan_type || "loan requirement");
 
+const SourceBadge = ({ lead }) => {
+  const st = lead?.source_tab || "";
+  let label, cls;
+  if (st === "Website" || lead?.platform === "website") { label = "Website"; cls = "bg-sky-50 text-sky-700 border-sky-200"; }
+  else if (lead?.source === "manual" || st === "Manual Entry") { label = "Manual"; cls = "bg-amber-50 text-amber-700 border-amber-200"; }
+  else { label = "Meta"; cls = "bg-indigo-50 text-indigo-700 border-indigo-200"; }
+  return <span data-testid="meta-source-badge" className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${cls}`}>{label}</span>;
+};
+
 
 export default function MetaLeads() {
   const meta = useMetaUser();
@@ -294,7 +303,7 @@ export default function MetaLeads() {
                       </td>
                     )}
                     <td className="py-2.5 px-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(lead.created_time || lead.created_at)}</td>
-                    <td className="py-2.5 px-3"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p></td>
+                    <td className="py-2.5 px-3"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><SourceBadge lead={lead} /></div><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p></td>
                     <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <a data-testid={`meta-call-link-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center shrink-0" title="Call"><Phone size={14} /></a>
@@ -336,7 +345,7 @@ export default function MetaLeads() {
                 className="p-4 border-b-4 border-slate-200 last:border-b-0 hover:bg-slate-50/60 cursor-pointer">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-base font-bold text-slate-900 truncate">{lead.full_name || "—"}</p>
+                    <div className="flex items-center gap-2"><p className="text-base font-bold text-slate-900 truncate">{lead.full_name || "—"}</p><SourceBadge lead={lead} /></div>
                     {lead.campaign_name && <p className="text-xs text-slate-400 truncate">{lead.campaign_name}</p>}
                   </div>
                   <StatusPill status={lead.status} />

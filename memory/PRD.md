@@ -2173,3 +2173,18 @@ change, no APK. NEEDS PUBLISH to take effect in production.
   kept; all website docs campaign="Direct Website Lead"; 0 phones shared between website & meta docs;
   sync idempotent (RUN2 0 new / 747 updated). Backend only; website leads show in Meta CRM list with
   their campaign (no frontend change). Needs publish for production.
+
+## META CRM: SOURCE BADGE + REFINED SOURCE DEDUP (June 2026)
+- Leads list (pages/meta/Leads.js): new SourceBadge shows "Website" (sky) / "Meta" (indigo) / "Manual"
+  (amber) next to each lead name on both desktop table and mobile card. Derived from source_tab/
+  platform/source (already returned by the leads API). testid: meta-source-badge.
+- Refined cross-source dedup in sync_leads_from_sheet (routes/meta_sync.py) for phones appearing in
+  BOTH website sheet and Meta sheet:
+  - UNTOUCHED website lead (unassigned + status NEW + no call_logs) -> deleted so the Meta copy
+    takes over ("change it to meta").
+  - WORKED/ASSIGNED website lead -> preserved, and the incoming Meta row for that phone is SKIPPED
+    (when no Meta doc exists yet) so no duplicate is created.
+  - Meta-exists-then-website still: website row dropped, Meta only (unchanged).
+- Verified (preview, live sheets + real-timeline simulation): badges render (Meta/Website); dedup
+  5/5 PASS (untouched->converted single doc; worked->preserved single doc; no duplicates either way).
+  Backend + web only. Needs publish for production.

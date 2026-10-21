@@ -291,16 +291,26 @@ async def sync_leads_from_sheet() -> dict:
     # dropped so we never create a duplicate meta_leads doc.
     meta_phones = {_norm10(r.get("phone_number", "")) for r in meta_rows if _norm10(r.get("phone_number", ""))}
     website_kept = [r for r in website_rows if _norm10(r.get("phone_number", "")) not in meta_phones]
-    website_skipped_phones = [p for p in (_norm10(r.get("phone_number", "")) for r in website_rows) if p in meta_phones]
+    website_skipped_phones = list({p for p in (_norm10(r.get("phone_number", "")) for r in website_rows) if p in meta_phones})
 
-    # If an UNTOUCHED website-sourced lead already exists for a phone that is now in the Meta sheet,
-    # remove it so the Meta copy is the single source of truth (never deletes worked/assigned leads).
+    # Resolve overlaps for website leads already in the DB whose phone now appears in the Meta sheet:
+    #   - UNTOUCHED (unassigned + status NEW + no calls): delete it so the Meta copy takes over ("change it to meta").
+    #   - WORKED/ASSIGNED: keep that website lead and SKIP the incoming Meta row for that phone (never duplicate).
+    worked_website_phones = set()
     if website_skipped_phones:
+        async for d in db.meta_leads.find(
+            {"source_tab": "Website", "phone_norm": {"$in": website_skipped_phones}},
+            {"phone_norm": 1, "assigned_partner_id": 1, "status": 1, "call_logs": 1}
+        ):
+            worked = bool(d.get("assigned_partner_id")) or (d.get("status") not in (None, "NEW")) or bool(d.get("call_logs"))
+            if worked:
+                worked_website_phones.add(d.get("phone_norm"))
         await db.meta_leads.delete_many({
             "source_tab": "Website",
-            "phone_norm": {"$in": list(set(website_skipped_phones))},
+            "phone_norm": {"$in": website_skipped_phones},
             "assigned_partner_id": None,
             "status": "NEW",
+            "$or": [{"call_logs": {"$exists": False}}, {"call_logs": {"$size": 0}}],
         })
 
     rows = meta_rows + website_kept
@@ -309,6 +319,12 @@ async def sync_leads_from_sheet() -> dict:
         sheet_id = (r.get("id") or "").strip()
         if not sheet_id:
             continue
+        # Don't create a Meta duplicate of a website lead that has already been worked/assigned.
+        is_website_row = (r.get("source_tab") == "Website")
+        if not is_website_row and _norm10(r.get("phone_number", "")) in worked_website_phones:
+            existing_meta = await db.meta_leads.find_one({"sheet_id": sheet_id}, {"_id": 1})
+            if not existing_meta:
+                continue
         existing = await db.meta_leads.find_one({"sheet_id": sheet_id}, {"_id": 1})
         sheet_status = (r.get("lead_status") or "CREATED").strip().upper()
         base = {
