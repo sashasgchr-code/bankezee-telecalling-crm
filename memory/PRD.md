@@ -2198,3 +2198,18 @@ change, no APK. NEEDS PUBLISH to take effect in production.
   meta-source-filter-ALL/META/WEBSITE.
 - Verified: API totals ALL=747, META=707, WEBSITE=40 (707+40=747), MANUAL=0; WEBSITE filter returns
   only website leads; UI chips filter correctly (screenshot). Backend + web only. Needs publish.
+
+## META CRM BUGFIX: newly-granted GPs not in assign dropdown (June 2026)
+- ROOT CAUSE: PATCH /meta/admin/users/{id} only set meta_access/meta_role/meta_email/meta_user_id on
+  the Connect users doc. The assign-GP dropdown reads the separate meta_users collection
+  (role=growth_partner, approved=True), keyed by meta_user_id. A brand-new GP granted meta access
+  with NO pre-existing Meta mapping got no meta_users record and no meta_user_id -> never appeared,
+  and could not be scoped (_ctx uid = meta_user_id).
+- FIX (routes/meta.py meta_set_user_access): on grant with role in {growth_partner, processor, ops,
+  admin}, auto-generate meta_user_id if missing and upsert an approved meta_users doc
+  (name/email/phone/role). On revoke, set that meta_users doc approved=False (drops from dropdown).
+- NEW POST /meta/admin/repair-meta-users (admin): backfills meta_users for all Connect users already
+  granted meta access but missing a record/meta_user_id. Idempotent. Use this to fix the two existing
+  GPs (bankezee@gmail.com, saikirancherry198@gmail.com) after deploy.
+- Verified (preview): grant->GP appears in /meta/partners with approved meta_users doc + meta_user_id;
+  repair backfills a pre-broken GP into the dropdown. Backend only. Needs publish.

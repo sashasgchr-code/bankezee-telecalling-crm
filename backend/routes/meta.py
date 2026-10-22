@@ -1302,6 +1302,42 @@ async def meta_user_management(current_user: dict = Depends(require_admin)):
     }
 
 
+@router.post("/admin/repair-meta-users")
+async def meta_repair_users(current_user: dict = Depends(require_admin)):
+    """Backfill meta_users for Connect users who were granted Meta access (growth_partner/processor/
+    ops/admin) but never got a meta_users record or a meta_user_id — so they show in dropdowns and
+    can be assigned leads. Idempotent."""
+    PROVISION_ROLES = {"growth_partner", "processor", "ops", "admin"}
+    repaired = []
+    cursor = db.users.find({"meta_access": True, "meta_role": {"$in": list(PROVISION_ROLES)}})
+    async for u in cursor:
+        role = (u.get("meta_role") or "").strip().lower()
+        if role not in PROVISION_ROLES:
+            continue
+        muid = (u.get("meta_user_id") or "").strip()
+        existing = await db.meta_users.find_one({"user_id": muid}) if muid else None
+        if muid and existing and existing.get("approved") and not existing.get("deleted"):
+            continue  # already usable
+        if not muid:
+            muid = f"user_{uuid.uuid4().hex[:12]}"
+            await db.users.update_one({"_id": u["_id"]}, {"$set": {"meta_user_id": muid}})
+        await db.meta_users.update_one(
+            {"user_id": muid},
+            {"$set": {
+                "user_id": muid,
+                "name": u.get("name") or u.get("meta_email") or u.get("email"),
+                "email": u.get("meta_email") or u.get("email"),
+                "phone": u.get("phone", ""),
+                "role": role,
+                "approved": True,
+                "deleted": False,
+            }, "$setOnInsert": {"created_at": _now_iso()}},
+            upsert=True,
+        )
+        repaired.append({"email": u.get("email"), "name": u.get("name"), "role": role, "user_id": muid})
+    return {"repaired_count": len(repaired), "repaired": repaired}
+
+
 @router.patch("/admin/users/{connect_user_id}")
 async def meta_set_user_access(connect_user_id: str, inp: MetaUserMgmtInput, current_user: dict = Depends(require_admin)):
     oid = object_id_or_none(connect_user_id)
@@ -1318,6 +1354,33 @@ async def meta_set_user_access(connect_user_id: str, inp: MetaUserMgmtInput, cur
     await db.users.update_one({"_id": target["_id"]}, {"$set": {
         "meta_access": bool(inp.meta_access), "meta_role": inp.meta_role,
         "meta_email": inp.meta_email, "meta_user_id": inp.meta_user_id}})
+
+    # Auto-provision the isolated meta_users record so a granted GP/Processor/Ops is immediately
+    # usable (assignment dropdown reads meta_users where approved=True; lead scoping keys off
+    # meta_user_id). Without this a newly-granted growth partner never appears in the dropdown.
+    PROVISION_ROLES = {"growth_partner", "processor", "ops", "admin"}
+    if inp.meta_access and (inp.meta_role in PROVISION_ROLES):
+        muid = (inp.meta_user_id or "").strip()
+        if not muid:
+            muid = f"user_{uuid.uuid4().hex[:12]}"
+            await db.users.update_one({"_id": target["_id"]}, {"$set": {"meta_user_id": muid}})
+        await db.meta_users.update_one(
+            {"user_id": muid},
+            {"$set": {
+                "user_id": muid,
+                "name": target.get("name") or inp.meta_email or target.get("email"),
+                "email": inp.meta_email or target.get("email"),
+                "phone": target.get("phone", ""),
+                "role": inp.meta_role,
+                "approved": True,
+                "deleted": False,
+            }, "$setOnInsert": {"created_at": _now_iso()}},
+            upsert=True,
+        )
+    elif not inp.meta_access and (inp.meta_user_id or "").strip():
+        # Access revoked: drop them out of the assignment dropdown (keep the record for history).
+        await db.meta_users.update_one({"user_id": inp.meta_user_id.strip()}, {"$set": {"approved": False}})
+
     updated = await db.users.find_one({"_id": target["_id"]},
                                       {"name": 1, "email": 1, "role": 1, "meta_access": 1,
                                        "meta_role": 1, "meta_email": 1, "meta_user_id": 1})
