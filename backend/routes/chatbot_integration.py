@@ -377,23 +377,28 @@ async def prefill_file_from_qualification(lead_id: str):
         existing_file = dict(lead.get("file") or {})
 
         loans = q.get("loans") or []
-        def _loan_summary(l):
-            parts = [str(p) for p in [l.get("lender"), l.get("loan_type")] if p]
-            head = " ".join(parts) or "Loan"
-            emi = l.get("monthly_emi")
-            out = l.get("outstanding_balance")
-            extra = []
-            if emi not in (None, ""):
-                extra.append(f"EMI ₹{emi}")
-            if out not in (None, ""):
-                extra.append(f"O/S ₹{out}")
-            return f"{head} ({', '.join(extra)})" if extra else head
 
+        def _loan_summary(l):
+            """Compact one-line description for the EXISTING 'Existing Loan N' text field.
+            Carries every per-loan attribute the chatbot supplies (the File model has no
+            structured per-loan fields, so all detail lives on this single line + raw profile)."""
+            head = " · ".join([str(p) for p in [l.get("lender"), l.get("loan_type")] if p]) or "Loan"
+            bits = []
+            if l.get("original_amount") not in (None, ""): bits.append(f"Orig ₹{l.get('original_amount')}")
+            if l.get("outstanding_balance") not in (None, ""): bits.append(f"O/S ₹{l.get('outstanding_balance')}")
+            if l.get("interest_rate") not in (None, ""): bits.append(f"ROI {l.get('interest_rate')}%")
+            if l.get("monthly_emi") not in (None, ""): bits.append(f"EMI ₹{l.get('monthly_emi')}")
+            if l.get("original_tenure") not in (None, ""): bits.append(f"Tenure {l.get('original_tenure')}mo")
+            if l.get("emis_paid") not in (None, ""): bits.append(f"Paid {l.get('emis_paid')}")
+            if l.get("sanction_date") not in (None, ""): bits.append(f"Sanctioned {l.get('sanction_date')}")
+            return f"{head} | {' | '.join(bits)}" if bits else head
+
+        # Map ONLY to existing compatible File fields. The aggregate 'Monthly EMI Obligations'
+        # (file.monthly_emi) is intentionally NOT prefilled — preserve its existing business logic.
         defaults = {
             "company_name": q.get("company_name"),
             "net_salary": q.get("net_monthly_salary"),
             "cibil": q.get("cibil_score"),
-            "monthly_emi": q.get("total_monthly_obligations"),
         }
         for i, l in enumerate(loans[:3]):
             defaults[f"existing_loan_{i + 1}"] = _loan_summary(l)
@@ -402,16 +407,23 @@ async def prefill_file_from_qualification(lead_id: str):
         for k, v in defaults.items():
             if v in (None, "", []):
                 continue
-            if existing_file.get(k) in (None, "", []):
+            if existing_file.get(k) in (None, "", []):  # never overwrite agent-entered values
                 changed[k] = v
-        if not changed:
+
+        # City maps to the existing lead-level field (no File field exists for it).
+        lead_set = {}
+        if q.get("city") and lead.get("city") in (None, "", []):
+            lead_set["city"] = q.get("city")
+
+        if not changed and not lead_set:
             return
-        merged = {**existing_file, **changed}
-        await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": {
-            "file": merged, "updated_at": _now_iso(),
-        }, "$push": {"activities": {
+        set_doc = {"updated_at": _now_iso(), **lead_set}
+        if changed:
+            set_doc["file"] = {**existing_file, **changed}
+        detail_fields = list(changed.keys()) + list(lead_set.keys())
+        await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": set_doc, "$push": {"activities": {
             "type": "chatbot",
-            "detail": f"File auto-prefilled from chatbot qualification ({', '.join(changed.keys())}) — please review",
+            "detail": f"File auto-prefilled from chatbot qualification ({', '.join(detail_fields)}) — please review",
             "at": _now_iso(),
         }}})
     except Exception as e:

@@ -2263,3 +2263,17 @@ lead status / commission / File data (agent-owned).
   card + all 6 buttons render. NOT deployed (prod deploy gated on user approval).
 - ACTION REQUIRED on chatbot side: point the chatbot's webhook destination to the PROD webhook URL above
   and sign with the shared CRM key (HMAC-SHA256, header X-Bankezee-Signature).
+
+## CHATBOT PREFILL REFINEMENT — File page preserved exactly (June 2026)
+- File page UI (FileCard in LeadDetail.js) UNCHANGED. Verified via git diff 874e91e..HEAD: only 2 additive
+  lines in LeadDetail.js (import + render ChatbotQualificationCard ABOVE FileCard). No edits to FileCard.
+- prefill_file_from_qualification now maps ONLY to existing compatible fields:
+  file.company_name, file.net_salary, file.cibil (fill-when-empty, never overwrite agent values);
+  existing_loan_1/2/3 = enriched one-line summaries (lender·type | Orig | O/S | ROI | EMI | Tenure | Paid |
+  Sanctioned) using the EXISTING three text fields — no new loan-card design, no new File fields/sections;
+  lead.city filled (existing lead-level field) when empty.
+- file.monthly_emi (Monthly EMI Obligations) is NO LONGER prefilled — existing business logic preserved,
+  never overwritten by chatbot total. Per-loan EMI is carried inside the existing_loan_N text lines.
+- Qualification profile stays linked (meta_chatbot_qualifications, never deleted on conversion). Idempotent.
+- Verified preview: 3-loan manual conversion -> all compatible fields populated in original File layout,
+  agent company + monthly_emi preserved, city prefilled, no duplicate/new fields, re-run idempotent.
