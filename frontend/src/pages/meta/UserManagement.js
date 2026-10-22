@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../../services/api";
 import { toast } from "sonner";
 import { BRAND, BRAND_DARK } from "./metaCommon";
-import { ShieldCheck, Eye, EyeOff, KeyRound, Check, X, Loader2, Clock } from "lucide-react";
+import { ShieldCheck, Eye, EyeOff, KeyRound, Check, X, Loader2, Clock, RefreshCw } from "lucide-react";
 
 const ROLE_STYLES = {
   admin: "bg-blue-50 text-blue-700 border-blue-200",
@@ -21,6 +21,18 @@ export default function MetaUserManagement() {
   const [busyId, setBusyId] = useState(null);
   const [showDeleted, setShowDeleted] = useState(false);
   const [processors, setProcessors] = useState([]);
+  const [syncing, setSyncing] = useState(false);
+
+  const syncMetaUsers = async () => {
+    setSyncing(true);
+    try {
+      const { data } = await api.post("/meta/admin/repair-meta-users");
+      const n = data?.repaired_count || 0;
+      toast.success(n > 0 ? `Synced ${n} user(s) — they can now be assigned leads` : "All Meta users already in sync");
+      load();
+    } catch (e) { toast.error(e?.response?.data?.detail || "Sync failed"); }
+    finally { setSyncing(false); }
+  };
 
   useEffect(() => { api.get("/meta/processors").then(({ data }) => setProcessors(data)).catch(() => {}); }, []);
 
@@ -73,6 +85,10 @@ export default function MetaUserManagement() {
           <input type="checkbox" data-testid="meta-show-deleted-toggle" checked={showDeleted} onChange={(e) => setShowDeleted(e.target.checked)} />
           Show deleted
         </label>
+        <button data-testid="meta-sync-users-btn" onClick={syncMetaUsers} disabled={syncing}
+          className="inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-xs font-medium text-white transition-colors disabled:opacity-70" style={{ background: BRAND }}>
+          <RefreshCw size={14} className={syncing ? "animate-spin" : ""} /> {syncing ? "Syncing..." : "Sync Meta Users"}
+        </button>
       </header>
 
       <div className="p-4 md:p-8">

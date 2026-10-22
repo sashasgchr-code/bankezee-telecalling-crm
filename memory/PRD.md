@@ -2213,3 +2213,9 @@ change, no APK. NEEDS PUBLISH to take effect in production.
   GPs (bankezee@gmail.com, saikirancherry198@gmail.com) after deploy.
 - Verified (preview): grant->GP appears in /meta/partners with approved meta_users doc + meta_user_id;
   repair backfills a pre-broken GP into the dropdown. Backend only. Needs publish.
+
+## META CRM: one-click "Sync Meta Users" button (June 2026)
+- UserManagement.js: added "Sync Meta Users" button (header) calling POST /meta/admin/repair-meta-users
+  -> backfills meta_users for Connect users granted meta access but missing a record/meta_user_id,
+  so existing stuck GPs (e.g. bankezee@gmail.com, saikirancherry198@gmail.com) appear in the assign
+  dropdown. testid meta-sync-users-btn. Verified: endpoint reachable (200), button renders. Needs publish.
