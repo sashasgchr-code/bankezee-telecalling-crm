@@ -361,6 +361,12 @@ async def sync_leads_from_sheet() -> dict:
             }
             await db.meta_leads.insert_one(doc)
             imported += 1
+            # Fire-and-forget WhatsApp auto-send for new Meta lead-form leads (idempotent, never blocks sync).
+            try:
+                from routes.whatsapp import maybe_autosend
+                asyncio.create_task(maybe_autosend(doc))
+            except Exception as _wa_e:
+                logger.warning(f"WhatsApp autosend dispatch failed: {_wa_e}")
     await db.meta_meta.update_one({"key": "last_sync"},
                                   {"$set": {"key": "last_sync", "at": now_iso(), "imported": imported, "updated": updated}},
                                   upsert=True)

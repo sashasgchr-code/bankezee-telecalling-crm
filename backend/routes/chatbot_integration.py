@@ -214,6 +214,39 @@ async def _get_profile(crm_lead_ref: str) -> Optional[dict]:
     return await db.meta_chatbot_qualifications.find_one({"crm_lead_ref": crm_lead_ref})
 
 
+async def ensure_chatbot_link(lead: dict, *, renew: bool = False) -> Optional[str]:
+    """Reusable (auth-free) link acquisition for internal automation (e.g. WhatsApp auto-send).
+    Reuses a previously stored secure_link unless renew=True. Saves the link immediately because
+    the chatbot API only returns it on first issuance for a lead."""
+    lead_id = lead.get("lead_id")
+    prof = await _get_profile(lead_id)
+    if prof and prof.get("secure_link") and not renew:
+        return prof.get("secure_link")
+    payload = {
+        "crm_lead_ref": lead_id,
+        "name": lead.get("full_name") or "",
+        "phone": lead.get("phone") or lead.get("phone_norm") or "",
+        "whatsapp_consent": True,
+        "renew": bool(renew),
+    }
+    resp = await _chatbot_request("POST", "/api/crm/chatbot/links", json_body=payload)
+    data = resp.json() if resp.content else {}
+    secure_link = data.get("secure_link")
+    now = _now_iso()
+    update = {"crm_lead_ref": lead_id, "updated_at": now}
+    if secure_link:
+        update["secure_link"] = secure_link
+        update["link_created_at"] = now
+    elif prof and prof.get("secure_link"):
+        secure_link = prof.get("secure_link")  # API returned null -> reuse stored
+    await db.meta_chatbot_qualifications.update_one(
+        {"crm_lead_ref": lead_id},
+        {"$set": update, "$setOnInsert": {"created_at": now}},
+        upsert=True,
+    )
+    return secure_link
+
+
 # --------------------------- access guard ---------------------------
 async def _lead_guard(lead_id: str, user: dict):
     lead = await _get_lead_or_404(lead_id)

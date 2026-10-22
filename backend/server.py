@@ -37,6 +37,7 @@ from routes.admin_maintenance import router as admin_maintenance_router  # TEMPO
 from routes.config import router as config_router  # Canonical shared catalogs (loan types)
 from routes.tl import router as tl_router  # Team-Leader second-level calling + reporting
 from routes.chatbot_integration import router as chatbot_router, webhook_router as chatbot_webhook_router  # Loan-qualification chatbot bridge
+from routes.whatsapp import router as whatsapp_router, webhook_router as whatsapp_webhook_router  # Meta WhatsApp Cloud API
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -85,6 +86,8 @@ app.include_router(config_router)  # Canonical shared catalogs (loan types)
 app.include_router(tl_router)  # Team-Leader second-level layer
 app.include_router(chatbot_router)  # Loan-qualification chatbot: authenticated proxy (/api/meta/.../chatbot)
 app.include_router(chatbot_webhook_router)  # Loan-qualification chatbot: HMAC-verified webhook receiver
+app.include_router(whatsapp_router)  # Meta WhatsApp: resend/status (/api/meta/.../whatsapp)
+app.include_router(whatsapp_webhook_router)  # Meta WhatsApp: delivery-status webhook (X-Hub-Signature-256)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production

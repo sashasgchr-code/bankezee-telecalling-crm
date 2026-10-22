@@ -2277,3 +2277,36 @@ lead status / commission / File data (agent-owned).
 - Qualification profile stays linked (meta_chatbot_qualifications, never deleted on conversion). Idempotent.
 - Verified preview: 3-loan manual conversion -> all compatible fields populated in original File layout,
   agent company + monthly_emi preserved, city prefilled, no duplicate/new fields, re-run idempotent.
+
+## META WHATSAPP CLOUD API — auto-send chatbot link to new leads (June 2026)
+Direct official Meta Graph API (v21.0), NOT a BSP. routes/whatsapp.py + hook in meta_sync.py.
+- CONFIG (.env, non-secret, same both envs): META_WHATSAPP_PHONE_NUMBER_ID=1340506589151659,
+  META_WHATSAPP_WABA_ID=1093195190222643, META_GRAPH_VERSION=v21.0,
+  WHATSAPP_TEMPLATE_NAME=loan_application_response, WHATSAPP_TEMPLATE_LANG=en,
+  WHATSAPP_AUTOSEND_ENABLED=true, WHATSAPP_LINK_TTL_DAYS=30, WHATSAPP_DEFAULT_COUNTRY_CODE=91.
+- SECRETS: META_WHATSAPP_ACCESS_TOKEN (set, 203c), META_WHATSAPP_APP_SECRET (set, 32c),
+  META_WHATSAPP_VERIFY_TOKEN (NOT SET — needed only to register the status webhook in Meta).
+- OPT-IN RULE (user decision): Meta lead-form leads only (source_tab != "Website"); form submission = opt-in.
+  Website-source leads are NEVER auto-messaged (manual Send still allowed per lead). Rollout: automatic.
+- FLOW on brand-new lead insert (meta_sync line ~363, fires only on genuine insert = idempotent):
+  maybe_autosend -> skip if website / already has wamid / bad phone -> ensure_chatbot_link (reuse stored
+  secure_link or POST bankezee.com/api/crm/chatbot/links, save immediately) -> extract_token (only the part
+  AFTER /loan-review/, never full URL) -> Graph send template (body named param customer_name + URL button
+  index 0 token) -> store lead.whatsapp {wamid, status, sent_at, link_expires_at=+30d, token, to}.
+  Idempotency also guarded by lead.whatsapp.wamid + unique meta_whatsapp_log.wamid.
+- RETRY: 3 tries w/ backoff on 429/5xx/network only; redacted error logging (no token/headers).
+- WEBHOOK (delivery statuses): GET /api/integrations/whatsapp/webhook (hub verify w/ VERIFY_TOKEN),
+  POST verifies X-Hub-Signature-256 HMAC-SHA256(App Secret, raw body); maps wamid -> sent/delivered/read/
+  failed onto lead.whatsapp + meta_whatsapp_log. VERIFIED end-to-end (sent/delivered/read/failed+error).
+  PROD webhook URL: https://connect.bankezee.com/api/integrations/whatsapp/webhook
+- RENEW/RESEND: POST /api/meta/leads/{id}/whatsapp/resend (admin/ops/assigned GP) force-renews link & resends
+  (for expired 30-day links or failed sends). GET /api/meta/leads/{id}/whatsapp returns status (token hidden).
+- FRONTEND: ChatbotQualificationCard.js shows a WhatsApp status strip (status + sent time + link expiry) and
+  a Resend/Renew (or Send) button. File page UI untouched.
+- VERIFIED preview: token extraction, phone->E164 (91+10), website-skip, idempotency, signed webhook statuses,
+  UI render. Graph call reaches Meta correctly.
+- BLOCKER for live send: template loan_application_response is PENDING on Meta (status via GET
+  /{WABA}/message_templates). Meta returns #132001 until APPROVED. Code matches the real template exactly
+  (lang en, named body param customer_name, URL button www.bankezee.com/loan-review/{{1}}). Once APPROVED,
+  auto-send works with no code change. Template button domain is www.bankezee.com (308-redirects fine).
+- NOT DEPLOYED (awaiting user approval + template approval).

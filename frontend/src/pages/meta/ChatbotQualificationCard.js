@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import api from "../../services/api";
 import { toast } from "sonner";
 import { BRAND, BRAND_DARK } from "./metaCommon";
-import { Bot, Copy, RefreshCw, Eye, EyeOff, Link2, HelpCircle, PencilLine, Gauge, Loader2 } from "lucide-react";
+import { Bot, Copy, RefreshCw, Eye, EyeOff, Link2, HelpCircle, PencilLine, Gauge, Loader2, MessageCircle } from "lucide-react";
 
 const Stat = ({ label, value, accent }) => (
   <div>
@@ -43,14 +43,23 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
   const [expanded, setExpanded] = useState(false);
   const [consent, setConsent] = useState(false);
   const [modal, setModal] = useState(null);
+  const [wa, setWa] = useState(null);
   const leadId = lead.lead_id;
 
   const load = async () => {
     setLoading(true);
     try { const { data } = await api.get(`/meta/leads/${leadId}/chatbot`); setProf(data); }
     catch (e) { setProf({ exists: false }); } finally { setLoading(false); }
+    try { const { data } = await api.get(`/meta/leads/${leadId}/whatsapp`); setWa(data); } catch (e) { /* noop */ }
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [leadId]);
+
+  const resendWhatsapp = async () => {
+    setBusy("whatsapp");
+    try { await api.post(`/meta/leads/${leadId}/whatsapp/resend`); toast.success("WhatsApp message sent"); load(); }
+    catch (e) { toast.error(e?.response?.data?.detail?.message || e?.response?.data?.detail || "WhatsApp send failed"); }
+    finally { setBusy(""); }
+  };
 
   const copyLink = async (renew = false) => {
     if (renew && !window.confirm("Issue a NEW secure link? The previous link will stop working.")) return;
@@ -145,6 +154,25 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
               </>
             )}
           </div>
+
+          {wa?.configured && (
+            <div className="flex items-center justify-between gap-2 mb-4 rounded-md border border-green-200 bg-green-50/50 px-3 py-2 flex-wrap" data-testid="whatsapp-status-strip">
+              <div className="flex items-center gap-2 text-xs text-slate-600 flex-wrap">
+                <MessageCircle size={14} className="text-green-600" />
+                <span className="font-medium">WhatsApp:</span>
+                {wa.whatsapp?.status ? <span className="capitalize" data-testid="whatsapp-status">{String(wa.whatsapp.status).replace(/_/g, " ")}</span> : <span className="text-slate-400">not sent</span>}
+                {wa.whatsapp?.sent_at && <span className="text-slate-400">· {new Date(wa.whatsapp.sent_at).toLocaleString()}</span>}
+                {wa.whatsapp?.link_expires_at && <span className="text-slate-400">· link expires {new Date(wa.whatsapp.link_expires_at).toLocaleDateString()}</span>}
+              </div>
+              {canEdit && (
+                <button data-testid="whatsapp-resend-btn" onClick={resendWhatsapp} disabled={busy === "whatsapp"}
+                  className="inline-flex items-center gap-1.5 border border-green-300 text-green-700 hover:bg-green-100 rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-60">
+                  {busy === "whatsapp" ? <Loader2 size={12} className="animate-spin" /> : <MessageCircle size={12} />}
+                  {wa.whatsapp?.wamid ? "Resend / Renew" : "Send WhatsApp"}
+                </button>
+              )}
+            </div>
+          )}
 
           {!hasLink && (
             <label className="flex items-center gap-2 text-xs text-slate-500 mb-4 cursor-pointer">
