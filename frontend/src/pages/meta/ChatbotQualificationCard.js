@@ -61,6 +61,13 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
     finally { setBusy(""); }
   };
 
+  const errText = (e, fallback) => {
+    const d = e?.response?.data?.detail;
+    if (typeof d === "string") return d;
+    if (d) return JSON.stringify(d);
+    return e?.message || fallback;
+  };
+
   const copyLink = async (renew = false) => {
     if (renew && !window.confirm("Issue a NEW secure link? The previous link will stop working.")) return;
     setBusy(renew ? "renew" : "copy");
@@ -68,17 +75,23 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
       const { data } = await api.post(`/meta/leads/${leadId}/chatbot/link`, { renew, whatsapp_consent: consent });
       const link = data?.secure_link;
       if (!link) { toast.error("No link returned — try Renew Link"); return; }
-      try { await navigator.clipboard.writeText(link); toast.success(renew ? "New link created & copied" : "Chatbot link copied"); }
-      catch { window.prompt("Copy the chatbot link:", link); }
-      load();
-    } catch (e) { toast.error(e?.response?.data?.detail || "Failed to get link"); }
+      let copied = false;
+      try {
+        if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(link); copied = true; }
+      } catch (_) { copied = false; }
+      toast.success(copied
+        ? (renew ? "New link created & copied" : "Chatbot link copied")
+        : (renew ? "New link created" : "Chatbot link ready"),
+        { description: copied ? undefined : "Use the View/Copy buttons below the title to copy it." });
+      await load();
+    } catch (e) { toast.error(errText(e, "Failed to get link")); }
     finally { setBusy(""); }
   };
 
   const refresh = async () => {
     setBusy("refresh");
     try { const { data } = await api.post(`/meta/leads/${leadId}/chatbot/refresh`); setProf(data); toast.success("Qualification refreshed"); }
-    catch (e) { toast.error(e?.response?.data?.detail || "Refresh failed"); }
+    catch (e) { toast.error(errText(e, "Refresh failed")); }
     finally { setBusy(""); }
   };
 

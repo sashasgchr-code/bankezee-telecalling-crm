@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Toaster } from "./components/ui/sonner";
 import useAuthStore from "./store/authStore";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -148,6 +149,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <Toaster position="top-right" richColors closeButton />
       <Routes>
         {/* Public Routes */}
         <Route path="/login" element={

@@ -2334,3 +2334,18 @@ website chatbot's question sequence/branching; that must come from the website p
   KPIs + stage filter pills + table (customer, source, whatsapp, stage, progress, last activity, Open).
 - VERIFIED preview: endpoints return correct stage/dates/counts; both pages render; File page untouched.
 - Part 2 (chatbot question sequence) NOT inspectable from CRM — needs website-project info (see report).
+
+## BUGFIX: "Copy Chatbot Link" did nothing (June 2026)
+ROOT CAUSE: sonner <Toaster/> was NEVER mounted anywhere in the app. All 28 files calling toast.*
+produced ZERO visible feedback app-wide -> the button generated/saved/copied the link correctly but
+showed no success toast, and any error was silently swallowed (matching "silently doing nothing").
+Diagnostic results: backend POST /meta/leads/{id}/chatbot/link = 200 in 0.36s; CRM lead id mapping
+correct; X-CRM-Key auth OK; chatbot ACCEPTS manually-created leads; link WAS saved; preview reaches
+live bankezee.com (returns www.bankezee.com/loan-review/<token>). No JS errors (only pre-existing
+hydration warnings from other components).
+FIX: mounted <Toaster position="top-right" richColors closeButton/> once at App root (App.js). Hardened
+ChatbotQualificationCard copyLink: robust errText() (stringifies object details), clipboard guarded with
+graceful fallback (toast + selectable link row with View/Copy when clipboard blocked), awaits load().
+First click generates+saves+displays (created/expiry dates)+copies; subsequent clicks reuse stored link.
+VERIFIED preview: toast renders, link row shows full link + dates, View/Copy present. Side benefit:
+toasts now work across the ENTIRE app (status updates, notes, WhatsApp, errors). NOT deployed.
