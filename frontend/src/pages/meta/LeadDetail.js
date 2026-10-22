@@ -4,6 +4,7 @@ import api from "../../services/api";
 import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
+import ChatbotQualificationCard from "./ChatbotQualificationCard";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
 import { ArrowLeft, Phone, PhoneCall, Mail, MapPin, Briefcase, Wallet, Megaphone, Send, MessageSquare, MessageCircle, Activity, UserCog, FolderOpen, Plus, Trash2, Save, Clock, Upload, Download, FileText, Gauge } from "lucide-react";
 
@@ -415,6 +416,7 @@ export default function MetaLeadDetail() {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
+          {canSeeDocs && <ChatbotQualificationCard lead={lead} canEdit={canEditInfo} />}
           {lead.status === "FILE" && <FileCard key={lead.updated_at} lead={lead} onSave={saveFile} canEditInfo={canEditInfo} canEditBanks={canEditBanks} canStatus={canEditBanks} onUpdateStatus={updateProcessingStatus} />}
           {lead.status === "FILE" && canSeeDocs && <DocumentsCard lead={lead} reload={load} />}
 

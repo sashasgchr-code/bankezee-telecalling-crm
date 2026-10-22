@@ -2219,3 +2219,47 @@ change, no APK. NEEDS PUBLISH to take effect in production.
   -> backfills meta_users for Connect users granted meta access but missing a record/meta_user_id,
   so existing stuck GPs (e.g. bankezee@gmail.com, saikirancherry198@gmail.com) appear in the assign
   dropdown. testid meta-sync-users-btn. Verified: endpoint reachable (200), button renders. Needs publish.
+
+## LOAN-QUALIFICATION CHATBOT INTEGRATION (June 2026)
+External chatbot (separate Emergent project) collects loan qualification BEFORE File conversion.
+Connect is a thin secure bridge — never rebuilds chatbot, never auto-converts leads, never touches
+lead status / commission / File data (agent-owned).
+
+- CONFIG (backend env, server-side only): BANKEZEE_CHATBOT_BASE_URL, BANKEZEE_CHATBOT_CRM_KEY
+  (shared secret == chatbot CRM_API_KEY). Optional: CHATBOT_RECONCILE_ENABLED (default true),
+  CHATBOT_RECONCILE_INTERVAL_SECONDS (default 600). Preview values set & working (key 43 chars).
+  PRODUCTION: set live slots -> BASE_URL=https://www.bankezee.com, CRM_KEY=prod chatbot key.
+- STORAGE: new collection meta_chatbot_qualifications, keyed crm_lead_ref == meta_leads.lead_id.
+  Stores secure_link (never auto-renewed), qualification (normalized), raw_session, loans
+  (dedup by loan_id), documents, callback_requests, last_synced_at, last_sync_error, last_event.
+- BACKEND routes/chatbot_integration.py:
+  * POST /api/meta/leads/{id}/chatbot/link   create or (renew=true) renew; reuses stored link if API returns null
+  * GET  /api/meta/leads/{id}/chatbot        stored profile (raw_session stripped)
+  * POST /api/meta/leads/{id}/chatbot/refresh manual reconcile (pulls live session)
+  * GET  /api/meta/leads/{id}/chatbot/documents/{doc_id} authenticated doc proxy (no public URL)
+  * POST /api/meta/leads/{id}/chatbot/actions request_missing_info / advisory_note (relays + lead timeline/notes)
+  All proxy routes require_meta_access + _can_action_lead (admin/ops/assigned GP/assigned processor).
+- WEBHOOK (HMAC-SHA256 over RAW body, header X-Bankezee-Signature, constant-time compare, key=CRM_KEY):
+  POST /api/integrations/bankezee-chatbot/webhook
+  events: progress_updated, loan_saved, loan_deleted, document_uploaded, callback_requested,
+  completed, link_renewal_requested. Validates signature -> event -> crm_lead_ref maps to real lead.
+  Idempotent upsert. callback_requested -> email assigned GP via existing meta_sync notify path.
+  PROD webhook URL: https://connect.bankezee.com/api/integrations/bankezee-chatbot/webhook
+- RECONCILE loop (webhooks have no retries): every 600s refresh incomplete+linked profiles (cap 200),
+  reconcile GET /api/crm/chatbot/tasks?status=open -> notify GP on new callback tasks.
+- FILE PREFILL: meta.py FILE-conversion paths (status + call-log) call prefill_file_from_qualification
+  -> fills ONLY empty File fields (company_name, net_salary, cibil, monthly_emi=total obligations,
+  existing_loan_1..3 summaries). NEVER overwrites agent-entered values. Keeps qualification linked.
+- FRONTEND: pages/meta/ChatbotQualificationCard.js rendered in LeadDetail.js (canSeeDocs). Progress bar,
+  summary grid (salary/company/city/cibil+bureau/total obligations/EMI-to-salary/payslip/credit report/
+  loan count), expandable loan details (original amt, sanction date, outstanding, rate, EMI, tenure,
+  EMIs paid), callback requests. Buttons: Copy Chatbot Link, Renew Link, View Qualification, Refresh,
+  Request Missing Info, Advisory Notes + WhatsApp-consent checkbox (actual consent, defaults false).
+- SCHEMA MAPPING is tolerant (alias lists) + stores raw_session; confirm against a REAL completed
+  session once a customer finishes (Refresh pulls live) and tweak _normalize_session if field names differ.
+- TESTED preview (scripts/test_chatbot_integration.py): 18/18 pass (link create/reuse, signed webhook,
+  bad-sig 401, field mapping, computed total obligations+ratio, payslip detect, idempotency, loan_deleted,
+  callback, unknown-lead 404, unsupported-event 400, refresh) + prefill preserves agent data. Frontend
+  card + all 6 buttons render. NOT deployed (prod deploy gated on user approval).
+- ACTION REQUIRED on chatbot side: point the chatbot's webhook destination to the PROD webhook URL above
+  and sign with the shared CRM key (HMAC-SHA256, header X-Bankezee-Signature).

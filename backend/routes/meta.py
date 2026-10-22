@@ -518,6 +518,11 @@ async def meta_update_status(lead_id: str, inp: MetaStatusInput, user: dict = De
     is_new_file = inp.status == "FILE" and lead.get("status") != "FILE"
     if is_new_file:
         await _auto_assign_processor(lead_id, {**lead, **set_status})
+        try:
+            from routes.chatbot_integration import prefill_file_from_qualification
+            await prefill_file_from_qualification(lead_id)
+        except Exception:
+            pass
     updated = await db.meta_leads.find_one({"lead_id": lead_id})
     if is_new_file:
         _fire_file_notifications(updated, user.get("name"))
@@ -609,6 +614,11 @@ async def meta_log_call(lead_id: str, inp: MetaCallInput, user: dict = Depends(r
     is_new_file = inp.disposition == "FILE" and lead.get("status") != "FILE"
     if is_new_file:
         await _auto_assign_processor(lead_id, {**lead, **set_fields})
+        try:
+            from routes.chatbot_integration import prefill_file_from_qualification
+            await prefill_file_from_qualification(lead_id)
+        except Exception:
+            pass
     updated = await db.meta_leads.find_one({"lead_id": lead_id})
     if is_new_file:
         _fire_file_notifications(updated, user.get("name"))

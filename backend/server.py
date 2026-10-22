@@ -36,6 +36,7 @@ from routes.meta_sync import router as meta_sync_router  # Meta Google Sheet syn
 from routes.admin_maintenance import router as admin_maintenance_router  # TEMPORARY - remove after prod repair
 from routes.config import router as config_router  # Canonical shared catalogs (loan types)
 from routes.tl import router as tl_router  # Team-Leader second-level calling + reporting
+from routes.chatbot_integration import router as chatbot_router, webhook_router as chatbot_webhook_router  # Loan-qualification chatbot bridge
 
 app = FastAPI(title="BANKEZEE Connect API")
 
@@ -82,6 +83,8 @@ async def health_probe():
 app.include_router(admin_maintenance_router)  # TEMPORARY - remove after prod repair
 app.include_router(config_router)  # Canonical shared catalogs (loan types)
 app.include_router(tl_router)  # Team-Leader second-level layer
+app.include_router(chatbot_router)  # Loan-qualification chatbot: authenticated proxy (/api/meta/.../chatbot)
+app.include_router(chatbot_webhook_router)  # Loan-qualification chatbot: HMAC-verified webhook receiver
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production
@@ -121,6 +124,12 @@ async def schedule_startup_tasks():
         start_auto_sync()
     except Exception as e:
         print(f"Meta auto-sync not started: {e}")
+    # Start the loan-qualification chatbot reconciliation loop (webhooks have no retries).
+    try:
+        from routes.chatbot_integration import start_chatbot_reconcile
+        start_chatbot_reconcile()
+    except Exception as e:
+        print(f"Chatbot reconcile not started: {e}")
 
 
 async def setup_admin_accounts():
