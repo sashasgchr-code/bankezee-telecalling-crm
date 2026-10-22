@@ -21,7 +21,7 @@ import hmac
 import hashlib
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import httpx
@@ -45,6 +45,7 @@ CRM_KEY = os.environ.get("BANKEZEE_CHATBOT_CRM_KEY") or ""
 
 RECONCILE_ENABLED = os.environ.get("CHATBOT_RECONCILE_ENABLED", "true").strip().lower() == "true"
 RECONCILE_INTERVAL = int(os.environ.get("CHATBOT_RECONCILE_INTERVAL_SECONDS", "600"))
+LINK_TTL_DAYS = int(os.environ.get("WHATSAPP_LINK_TTL_DAYS", "30"))
 
 SUPPORTED_EVENTS = {
     "progress_updated", "loan_saved", "loan_deleted", "document_uploaded",
@@ -124,23 +125,33 @@ def _normalize_document(raw: dict) -> dict:
 
 
 def _normalize_session(session: dict) -> dict:
-    """Best-effort mapping of the chatbot session object to CRM display fields.
-    The full raw session is also stored for safety / future refinement."""
-    loans_raw = _pick(session, "loans", "existing_loans", "obligations", default=[]) or []
-    docs_raw = _pick(session, "documents", "docs", "uploads", default=[]) or []
+    """Map the real Bankezee chatbot session object to CRM display fields.
+    Real schema keys: chatbot_status, questions_completed/total, current_step, last_activity,
+    created_at, customer{}, answers{}, existing_loans[], summary{}, documents[], callback{},
+    whatsapp{message,...}, submitted_at. The full raw session is also stored for safety.
+    Keeps prefill-compatible output keys (net_monthly_salary, company_name, city, cibil_score,
+    loans[], total_monthly_obligations, emi_to_salary_ratio)."""
+    answers = session.get("answers") if isinstance(session.get("answers"), dict) else {}
+    customer = session.get("customer") if isinstance(session.get("customer"), dict) else {}
+    summary = session.get("summary") if isinstance(session.get("summary"), dict) else {}
+    src = {**session, **customer, **answers}  # search answers + customer too
+
+    loans_raw = session.get("existing_loans") or _pick(session, "loans", "obligations", default=[]) or []
+    docs_raw = session.get("documents") or []
     loans = [_normalize_loan(l) for l in loans_raw if isinstance(l, dict)]
     docs = [_normalize_document(x) for x in docs_raw if isinstance(x, dict)]
 
-    total_oblig = _pick(session, "total_monthly_obligations", "total_obligations", "total_emi", "total_monthly_emi")
+    total_oblig = _pick(summary, "total_monthly_obligations", "total_monthly_emi") \
+        or _pick(src, "total_monthly_obligations", "total_obligations", "total_emi")
     if total_oblig in (None, "") and loans:
         try:
-            total_oblig = sum(float(l.get("monthly_emi") or 0) for l in loans)
+            total_oblig = sum(float(l.get("monthly_emi") or 0) for l in loans) or None
         except Exception:
             total_oblig = None
 
-    net_salary = _pick(session, "net_monthly_salary", "net_salary", "take_home_salary",
-                       "monthly_take_home", "monthly_salary", "salary")
-    ratio = _pick(session, "emi_to_salary_ratio", "foir", "emi_ratio", "obligation_ratio")
+    net_salary = _pick(src, "net_monthly_salary", "net_salary", "take_home_salary",
+                       "monthly_take_home", "monthly_salary", "salary", "income")
+    ratio = _pick(summary, "emi_to_salary_ratio_pct") or _pick(src, "emi_to_salary_ratio", "foir", "emi_ratio")
     if ratio in (None, "") and net_salary and total_oblig:
         try:
             ns = float(net_salary)
@@ -156,32 +167,47 @@ def _normalize_session(session: dict) -> dict:
                 return dct.get("status") or "uploaded"
         return None
 
-    payslip = _pick(session, "payslip_status", "payslip_uploaded", default=None)
-    if payslip is None:
-        payslip = _doc_status("payslip", "salary", "pay slip")
-    credit = _pick(session, "credit_report_status", "credit_report_uploaded", "cibil_report_status", default=None)
-    if credit is None:
-        credit = _doc_status("credit", "cibil", "bureau")
+    payslip = _pick(src, "payslip_status", "payslip_uploaded") or _doc_status("payslip", "salary", "pay slip")
+    credit = _pick(src, "credit_report_status", "credit_report_uploaded", "cibil_report_status") \
+        or _doc_status("credit", "cibil", "bureau")
+
+    qc = _pick(session, "questions_completed", "questions_answered", "answered_count", default=0) or 0
+    qt = _pick(session, "questions_total", "total_questions", default=0) or 0
+    try:
+        progress = round(float(qc) / float(qt) * 100) if qt else 0
+    except Exception:
+        progress = 0
+
+    status = _pick(session, "chatbot_status", "status", "state", default="not_started")
+    completed = str(status).lower() in ("completed", "complete", "done") or bool(session.get("submitted_at"))
+
+    cb = session.get("callback") if isinstance(session.get("callback"), dict) else {}
+    callback_requested = bool(cb.get("requested")) or bool(_pick(session, "callback_requested", default=False))
 
     return {
-        "chatbot_status": _pick(session, "status", "chatbot_status", "state", default="in_progress"),
-        "progress": _pick(session, "progress", "completion", "progress_percent",
-                          "completion_percentage", "percent_complete", default=0),
-        "completed": bool(_pick(session, "completed", "is_completed", default=False))
-                     or str(_pick(session, "status", "state", default="")).lower() in ("completed", "complete", "done"),
+        "chatbot_status": status,
+        "progress": progress,
+        "completed": completed,
+        "questions_completed": qc,
+        "questions_total": qt,
+        "current_step": session.get("current_step"),
+        "last_activity": session.get("last_activity"),
+        "session_created_at": session.get("created_at"),
         "net_monthly_salary": net_salary,
-        "company_name": _pick(session, "company_name", "company", "employer", "employer_name"),
-        "city": _pick(session, "city", "location"),
-        "cibil_score": _pick(session, "cibil_score", "cibil", "credit_score"),
-        "cibil_bureau": _pick(session, "cibil_bureau", "bureau", "credit_bureau"),
+        "company_name": _pick(src, "company_name", "company", "employer", "employer_name"),
+        "city": _pick(src, "city", "location"),
+        "cibil_score": _pick(src, "cibil_score", "cibil", "credit_score"),
+        "cibil_bureau": _pick(src, "cibil_bureau", "bureau", "credit_bureau"),
         "total_monthly_obligations": total_oblig,
         "emi_to_salary_ratio": ratio,
         "payslip_status": payslip,
         "credit_report_status": credit,
         "loans": loans,
         "documents": docs,
-        "callback_requests": _pick(session, "callback_requests", "callbacks", "callback", default=[]) or [],
-        "whatsapp_consent": _pick(session, "whatsapp_consent", "consent", default=None),
+        "answers": answers,
+        "summary": summary,
+        "callback_requested": callback_requested,
+        "callback_requests": [cb] if callback_requested else [],
     }
 
 
@@ -212,6 +238,44 @@ async def _upsert_qualification(crm_lead_ref: str, session: dict, *, event: Opti
 
 async def _get_profile(crm_lead_ref: str) -> Optional[dict]:
     return await db.meta_chatbot_qualifications.find_one({"crm_lead_ref": crm_lead_ref})
+
+
+def _recover_link(prof: dict) -> Optional[str]:
+    """Return the stored secure_link, or recover it from the raw session's whatsapp.message."""
+    if prof.get("secure_link"):
+        return prof["secure_link"]
+    raw = prof.get("raw_session") or {}
+    import re as _re
+    for blob in [(raw.get("whatsapp") or {}).get("message", ""), str(raw.get("secure_link") or "")]:
+        m = _re.search(r"https?://\S*/loan-review/[^\s)]+", blob or "")
+        if m:
+            return m.group(0).rstrip(".,")
+    return None
+
+
+def _compute_stage(prof: dict) -> dict:
+    """Derive funnel fields: stage (Not Started|In Progress|Completed|Expired), link dates."""
+    q = prof.get("qualification") or {}
+    created = prof.get("link_created_at") or q.get("session_created_at")
+    expires = None
+    if created:
+        try:
+            expires = (datetime.fromisoformat(created) + timedelta(days=LINK_TTL_DAYS)).isoformat()
+        except Exception:
+            expires = None
+    is_expired = False
+    if expires:
+        try:
+            is_expired = datetime.fromisoformat(expires) < datetime.now(timezone.utc)
+        except Exception:
+            is_expired = False
+    if q.get("completed"):
+        stage = "Completed"
+    elif (q.get("questions_completed") or 0) > 0 or str(q.get("chatbot_status") or "").lower() == "in_progress":
+        stage = "Expired" if is_expired else "In Progress"
+    else:
+        stage = "Expired" if (is_expired and prof.get("secure_link")) else "Not Started"
+    return {"stage": stage, "link_created_at": created, "link_expires_at": expires, "link_expired": is_expired}
 
 
 async def ensure_chatbot_link(lead: dict, *, renew: bool = False) -> Optional[str]:
@@ -327,7 +391,83 @@ async def get_qualification(lead_id: str, user: dict = Depends(require_meta_acce
     out = serialize_doc(prof)
     out["exists"] = True
     out.pop("raw_session", None)  # keep response lean; raw stays server-side
+    out["secure_link"] = _recover_link(prof)
+    out.update(_compute_stage(prof))
     return out
+
+
+@router.get("/chatbot/report")
+async def chatbot_funnel_report(stage: Optional[str] = None, user: dict = Depends(require_meta_access)):
+    """Funnel report: which leads received WhatsApp, opened the chatbot, started answering,
+    completed qualification or abandoned. Staff see all; GP/processor see only their own."""
+    role, uid = _ctx(user)
+    is_staff = role in STAFF_ROLES
+
+    profs = {p["crm_lead_ref"]: p async for p in db.meta_chatbot_qualifications.find({})}
+    wa_ids = {d["lead_id"] async for d in db.meta_leads.find(
+        {"whatsapp.wamid": {"$exists": True}}, {"lead_id": 1})}
+    lead_ids = list(set(profs.keys()) | wa_ids)
+
+    rows, counts = [], {"total": 0, "wa_sent": 0, "link_created": 0, "opened": 0,
+                        "in_progress": 0, "completed": 0, "expired": 0, "abandoned": 0}
+    for lid in lead_ids:
+        lead = await db.meta_leads.find_one({"lead_id": lid})
+        if not lead:
+            continue
+        if not is_staff and uid not in (lead.get("assigned_partner_id"), lead.get("assigned_processor_id")):
+            continue
+        prof = profs.get(lid) or {}
+        q = prof.get("qualification") or {}
+        wa = lead.get("whatsapp") or {}
+        st = _compute_stage(prof) if prof else {"stage": "Not Started", "link_expires_at": None, "link_expired": False}
+        qc = q.get("questions_completed") or 0
+
+        # abandoned = started but not completed and no activity for >48h
+        abandoned = False
+        if st["stage"] == "In Progress" and q.get("last_activity"):
+            try:
+                abandoned = (datetime.now(timezone.utc) - datetime.fromisoformat(q["last_activity"])) > timedelta(hours=48)
+            except Exception:
+                abandoned = False
+
+        row = {
+            "lead_id": lid,
+            "name": lead.get("full_name"),
+            "phone": lead.get("phone"),
+            "source": "Website" if (lead.get("source_tab") or "").lower() == "website" else "Meta",
+            "lead_status": lead.get("status"),
+            "whatsapp_sent": bool(wa.get("wamid")),
+            "whatsapp_status": wa.get("status"),
+            "whatsapp_sent_at": wa.get("sent_at"),
+            "link_created": bool(prof.get("secure_link") or _recover_link(prof) if prof else False),
+            "stage": st["stage"],
+            "questions_completed": qc,
+            "questions_total": q.get("questions_total") or 0,
+            "last_activity": q.get("last_activity"),
+            "link_expires_at": st.get("link_expires_at"),
+            "abandoned": abandoned,
+        }
+        if stage and row["stage"] != stage:
+            continue
+        rows.append(row)
+        counts["total"] += 1
+        if row["whatsapp_sent"]:
+            counts["wa_sent"] += 1
+        if row["link_created"]:
+            counts["link_created"] += 1
+        if qc > 0:
+            counts["opened"] += 1
+        if row["stage"] == "In Progress":
+            counts["in_progress"] += 1
+        if row["stage"] == "Completed":
+            counts["completed"] += 1
+        if row["stage"] == "Expired":
+            counts["expired"] += 1
+        if abandoned:
+            counts["abandoned"] += 1
+
+    rows.sort(key=lambda r: r.get("last_activity") or r.get("whatsapp_sent_at") or "", reverse=True)
+    return {"counts": counts, "rows": rows}
 
 
 @router.post("/leads/{lead_id}/chatbot/refresh")
@@ -348,6 +488,8 @@ async def refresh_qualification(lead_id: str, user: dict = Depends(require_meta_
     out = serialize_doc(prof)
     out["exists"] = True
     out.pop("raw_session", None)
+    out["secure_link"] = _recover_link(prof)
+    out.update(_compute_stage(prof))
     return out
 
 

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { useMetaUser, BRAND, BRAND_DARK } from "./metaCommon";
-import { LayoutDashboard, Users2, UserCircle2, LogOut, Landmark, ShieldCheck, FolderOpen, PhoneCall, BarChart3, Menu, ArrowLeft } from "lucide-react";
+import { LayoutDashboard, Users2, UserCircle2, LogOut, Landmark, ShieldCheck, FolderOpen, PhoneCall, BarChart3, Menu, ArrowLeft, Bot } from "lucide-react";
 
 export default function MetaLayout() {
   const { logout, user } = useAuthStore();
@@ -18,6 +18,7 @@ export default function MetaLayout() {
     { to: "/meta/files", label: "Files", icon: FolderOpen, testid: "meta-nav-files" },
     { to: "/meta/file-reports", label: "File Reports", icon: BarChart3, testid: "meta-nav-file-reports" },
     { to: "/meta/call-logs", label: "Call Logs", icon: PhoneCall, testid: "meta-nav-call-logs" },
+    { to: "/meta/chatbot-report", label: "Chatbot Funnel", icon: Bot, testid: "meta-nav-chatbot-report" },
     ...(meta.isAdmin ? [
       { to: "/meta/partners", label: "Growth Partners", icon: UserCircle2, testid: "meta-nav-partners" },
       { to: "/meta/users", label: "User Management", icon: ShieldCheck, testid: "meta-nav-users" },

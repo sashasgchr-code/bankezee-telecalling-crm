@@ -2310,3 +2310,27 @@ Direct official Meta Graph API (v21.0), NOT a BSP. routes/whatsapp.py + hook in 
   (lang en, named body param customer_name, URL button www.bankezee.com/loan-review/{{1}}). Once APPROVED,
   auto-send works with no code change. Template button domain is www.bankezee.com (308-redirects fine).
 - NOT DEPLOYED (awaiting user approval + template approval).
+
+## CHATBOT JOURNEY VISIBILITY + FUNNEL REPORT (June 2026)
+Inspected real chatbot session schema via GET /api/crm/chatbot/sessions/{ref}. Real keys:
+chatbot_status, questions_completed/questions_total, current_step, last_activity, created_at,
+customer{name,phone}, answers{}, existing_loans[], summary{total_monthly_obligations,
+emi_to_salary_ratio_pct,...}, documents[], callback{requested}, whatsapp{message(contains link),status},
+submitted_at. No schema/questions endpoint exists on the chatbot API (404) -> CRM cannot read the
+website chatbot's question sequence/branching; that must come from the website project.
+- _normalize_session rewritten to the real schema (keeps prefill-compatible output keys). Searches
+  answers{}+customer{} for salary/company/city/cibil. Computes progress = qc/qt*100.
+- get_qualification + refresh now return: stage (Not Started|In Progress|Completed|Expired),
+  link_created_at, link_expires_at (link_created_at + 30d), link_expired, secure_link (recovered from
+  raw_session.whatsapp.message if not stored), questions_completed/total, current_step, last_activity,
+  answers{}, summary{}. _recover_link + _compute_stage helpers.
+- NEW GET /api/meta/chatbot/report -> funnel {counts:{total,wa_sent,link_created,opened,in_progress,
+  completed,expired,abandoned}, rows:[...]}. Staff (admin/ops) see all; GP/processor see only assigned.
+  Abandoned = In Progress + last_activity >48h stale. Optional ?stage= filter.
+- FRONTEND ChatbotQualificationCard: stage badge, "X of Y answered", last-active, secure-link row with
+  View (opens link) + Copy + created/expires dates, WhatsApp strip now shows wamid (last 10) + status,
+  expandable "All Answers Received" (answers key->value) + existing loans + callbacks.
+- NEW page pages/meta/ChatbotReport.js at /meta/chatbot-report + nav "Chatbot Funnel" (Bot icon).
+  KPIs + stage filter pills + table (customer, source, whatsapp, stage, progress, last activity, Open).
+- VERIFIED preview: endpoints return correct stage/dates/counts; both pages render; File page untouched.
+- Part 2 (chatbot question sequence) NOT inspectable from CRM — needs website-project info (see report).

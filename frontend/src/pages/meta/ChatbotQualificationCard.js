@@ -92,20 +92,51 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
   const hasLink = !!prof?.secure_link;
   const progress = Number(q.progress || 0);
   const ratio = q.emi_to_salary_ratio;
+  const stage = prof?.stage || "Not Started";
+  const stageColor = {
+    "Completed": "bg-emerald-100 text-emerald-700",
+    "In Progress": "bg-amber-100 text-amber-700",
+    "Expired": "bg-red-100 text-red-700",
+    "Not Started": "bg-slate-100 text-slate-500",
+  }[stage] || "bg-slate-100 text-slate-500";
+  const answers = q.answers && typeof q.answers === "object" ? Object.entries(q.answers) : [];
+  const fmtDate = (d) => (d ? new Date(d).toLocaleDateString() : "—");
 
   return (
     <div className="bg-white border border-blue-200 rounded-md p-5 shadow-sm" data-testid="chatbot-qualification-card">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: BRAND_DARK }}>
           <Bot size={16} style={{ color: BRAND }} /> Customer Loan Qualification
+          {prof?.exists && <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${stageColor}`} data-testid="chatbot-stage-badge">{stage}</span>}
         </h3>
         {prof?.exists && (
           <span className="text-xs text-slate-400">
-            {q.chatbot_status ? String(q.chatbot_status).replace(/_/g, " ") : "—"}
-            {prof.last_synced_at ? ` · synced ${new Date(prof.last_synced_at).toLocaleString()}` : ""}
+            {q.questions_total ? `${q.questions_completed || 0} of ${q.questions_total} answered` : ""}
+            {q.last_activity ? ` · last active ${new Date(q.last_activity).toLocaleString()}` : ""}
           </span>
         )}
       </div>
+
+      {/* secure link row with View + Copy + dates */}
+      {prof?.secure_link && (
+        <div className="flex items-center justify-between gap-2 mb-4 rounded-md border border-slate-200 bg-slate-50/60 px-3 py-2 flex-wrap" data-testid="chatbot-link-row">
+          <div className="flex items-center gap-2 text-xs text-slate-500 min-w-0">
+            <Link2 size={13} className="shrink-0" style={{ color: BRAND }} />
+            <span className="truncate max-w-[280px]" title={prof.secure_link} data-testid="chatbot-secure-link">{prof.secure_link}</span>
+            <span className="text-slate-400 shrink-0">· created {fmtDate(prof.link_created_at)} · expires {fmtDate(prof.link_expires_at)}</span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <a data-testid="chatbot-view-link-btn" href={prof.secure_link} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 border border-slate-200 text-slate-600 hover:bg-white rounded-md px-2.5 py-1 text-xs font-medium">
+              <Eye size={12} /> View
+            </a>
+            <button data-testid="chatbot-copy-inline-btn" onClick={() => { navigator.clipboard?.writeText(prof.secure_link).then(() => toast.success("Link copied")).catch(() => window.prompt("Copy:", prof.secure_link)); }}
+              className="inline-flex items-center gap-1 border border-slate-200 text-slate-600 hover:bg-white rounded-md px-2.5 py-1 text-xs font-medium">
+              <Copy size={12} /> Copy
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-slate-400">Loading qualification…</p>
@@ -161,6 +192,7 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
                 <MessageCircle size={14} className="text-green-600" />
                 <span className="font-medium">WhatsApp:</span>
                 {wa.whatsapp?.status ? <span className="capitalize" data-testid="whatsapp-status">{String(wa.whatsapp.status).replace(/_/g, " ")}</span> : <span className="text-slate-400">not sent</span>}
+                {wa.whatsapp?.wamid && <span className="text-slate-400" data-testid="whatsapp-wamid" title={wa.whatsapp.wamid}>· ID {String(wa.whatsapp.wamid).slice(-10)}</span>}
                 {wa.whatsapp?.sent_at && <span className="text-slate-400">· {new Date(wa.whatsapp.sent_at).toLocaleString()}</span>}
                 {wa.whatsapp?.link_expires_at && <span className="text-slate-400">· link expires {new Date(wa.whatsapp.link_expires_at).toLocaleDateString()}</span>}
               </div>
@@ -222,6 +254,19 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
                       {(q.callback_requests || []).map((c, i) => (
                         <p key={i} className="text-sm text-slate-700">{typeof c === "string" ? c : (c.requested_at || c.at || JSON.stringify(c))}</p>
                       ))}
+                    </div>
+                  )}
+                  {answers.length > 0 && (
+                    <div data-testid="chatbot-answers">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">All Answers Received</p>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-1">
+                        {answers.map(([k, v]) => (
+                          <div key={k} className="flex justify-between gap-3 text-sm border-b border-slate-50 py-0.5">
+                            <span className="text-slate-500 capitalize">{String(k).replace(/_/g, " ")}</span>
+                            <span className="text-slate-800 text-right break-words">{v === null || v === "" ? "—" : (typeof v === "object" ? JSON.stringify(v) : String(v))}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
