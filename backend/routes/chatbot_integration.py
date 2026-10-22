@@ -81,12 +81,18 @@ async def _chatbot_request(method: str, path: str, *, json_body=None, params=Non
     _require_configured()
     url = f"{BASE_URL}{path}"
     headers = {"X-CRM-Key": CRM_KEY, "Accept": "application/json"}
+    # Fail fast: return a clean JSON error well before any gateway/Cloudflare timeout,
+    # so a slow/unreachable chatbot never surfaces as an "invalid/incomplete origin response".
+    timeout = httpx.Timeout(15.0, connect=8.0)
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as hc:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as hc:
             resp = await hc.request(method, url, headers=headers, json=json_body, params=params)
+    except httpx.TimeoutException:
+        logger.error(f"Chatbot request {method} {path} timed out")
+        raise HTTPException(status_code=504, detail="Chatbot service did not respond in time. Please try again.")
     except httpx.HTTPError as e:
-        logger.error(f"Chatbot request {method} {path} failed: {e}")
-        raise HTTPException(status_code=502, detail="Chatbot service unreachable")
+        logger.error(f"Chatbot request {method} {path} failed: {type(e).__name__}")
+        raise HTTPException(status_code=502, detail="Could not reach the chatbot service. Please try again shortly.")
     if resp.status_code == 401:
         raise HTTPException(status_code=502, detail="Chatbot rejected the CRM key (check BANKEZEE_CHATBOT_CRM_KEY)")
     if resp.status_code == 404:
@@ -341,10 +347,11 @@ async def create_or_renew_link(lead_id: str, inp: ChatbotLinkInput, user: dict =
     lead, role, _ = await _lead_guard(lead_id, user)
     existing = await _get_profile(lead_id)
 
-    # Reuse a previously stored link unless an explicit renew is requested.
-    if existing and existing.get("secure_link") and not inp.renew:
-        return {"secure_link": existing.get("secure_link"), "reused": True,
-                "crm_lead_ref": lead_id}
+    # Reuse any recoverable link (stored, or recovered from a prior session) unless explicit renew.
+    if existing and not inp.renew:
+        recovered = _recover_link(existing)
+        if recovered:
+            return {"secure_link": recovered, "reused": True, "crm_lead_ref": lead_id}
 
     payload = {
         "crm_lead_ref": lead_id,
@@ -353,9 +360,25 @@ async def create_or_renew_link(lead_id: str, inp: ChatbotLinkInput, user: dict =
         "whatsapp_consent": bool(inp.whatsapp_consent),
         "renew": bool(inp.renew),
     }
-    resp = await _chatbot_request("POST", "/api/crm/chatbot/links", json_body=payload)
-    data = resp.json() if resp.content else {}
-    secure_link = data.get("secure_link")
+    try:
+        resp = await _chatbot_request("POST", "/api/crm/chatbot/links", json_body=payload)
+        data = resp.json() if resp.content else {}
+        secure_link = data.get("secure_link")
+    except HTTPException as e:
+        # Create failed (timeout/unreachable). Attempt READ-ONLY recovery of an already-issued
+        # link from an existing session — never renew/invalidate on failure.
+        if not inp.renew:
+            try:
+                s = await _chatbot_request("GET", f"/api/crm/chatbot/sessions/{lead_id}")
+                session = s.json() if s.content else {}
+                session = session.get("session", session) if isinstance(session, dict) else {}
+                prof2 = await _upsert_qualification(lead_id, session, event="link_recovery")
+                recovered = _recover_link(prof2)
+                if recovered:
+                    return {"secure_link": recovered, "reused": True, "recovered": True, "crm_lead_ref": lead_id}
+            except HTTPException:
+                pass
+        raise e
     now = _now_iso()
 
     update = {"crm_lead_ref": lead_id, "updated_at": now,
@@ -363,9 +386,9 @@ async def create_or_renew_link(lead_id: str, inp: ChatbotLinkInput, user: dict =
     if secure_link:
         update["secure_link"] = secure_link
         update["link_created_at"] = now
-    elif existing and existing.get("secure_link"):
-        # API returned null because an existing link is still valid — reuse stored link.
-        secure_link = existing.get("secure_link")
+    elif existing and _recover_link(existing):
+        # API returned null because an existing link is still valid — reuse stored/recovered link.
+        secure_link = _recover_link(existing)
     await db.meta_chatbot_qualifications.update_one(
         {"crm_lead_ref": lead_id},
         {"$set": update, "$setOnInsert": {"created_at": now}},

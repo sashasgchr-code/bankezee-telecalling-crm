@@ -2349,3 +2349,22 @@ graceful fallback (toast + selectable link row with View/Copy when clipboard blo
 First click generates+saves+displays (created/expiry dates)+copies; subsequent clicks reuse stored link.
 VERIFIED preview: toast renders, link row shows full link + dates, View/Copy present. Side benefit:
 toasts now work across the ENTIRE app (status updates, notes, WhatsApp, errors). NOT deployed.
+
+## PROD INCIDENT: Copy Chatbot Link -> Cloudflare origin error (June 2026)
+Symptom (connect.bankezee.com, lead_eba7b5e531b6): POST /api/meta/leads/{id}/chatbot/link returns
+Cloudflare "origin returned invalid/incomplete response" = gateway timeout/crash, NOT a clean app error.
+PREVIEW: identical endpoint = 200 in ~0.36s -> code + chatbot API healthy; issue is production-specific.
+Strong clue production runs an OLDER card: user says "View Qualification" shows raw "No chatbot session"
+error, but latest card's View Qualification only expands locally (no request).
+ACTION: dispatched deployer RCA (job 2416aab3) to confirm which build is live + whether prod live-slot
+env vars are set (BANKEZEE_CHATBOT_BASE_URL expected https://bankezee.com, CRM_KEY, META_* ) + whether
+prod pod can reach bankezee.com (egress/TLS) + backend logs for the failing request. RCA pending.
+PREVIEW HARDENING (tested, NOT deployed):
+- _chatbot_request now httpx.Timeout(15s, connect=8s) -> returns clean 504/502 JSON before any gateway
+  timeout, so a slow/unreachable chatbot never becomes a Cloudflare invalid-response. Timeout vs
+  unreachable distinguished; errors logged without secrets.
+- create_or_renew_link: reuse via _recover_link (also recovers link from raw_session.whatsapp.message);
+  on create failure attempts READ-ONLY session recovery of an already-issued link (never renews/invalidates).
+- Combined with the earlier <Toaster/> mount fix, all errors now surface clearly to the user.
+LIKELY ROOT CAUSE (pending RCA): prod BANKEZEE_CHATBOT_BASE_URL live slot unset (user skipped it earlier)
+and/or prod pod cannot reach bankezee.com, causing the outbound call to hang -> gateway timeout. Confirm via RCA.
