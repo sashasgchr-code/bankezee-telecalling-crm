@@ -100,6 +100,16 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
     toast.success("Recorded");
   };
 
+  const applyToFile = async () => {
+    setBusy("apply");
+    try {
+      const { data } = await api.post(`/meta/leads/${leadId}/chatbot/apply-to-file`);
+      toast.success(`Synced to File — ${data.existing_loans_after} loan(s), EMI ₹${data.monthly_emi_obligations ?? "—"}`,
+        { description: "Empty File fields filled from chatbot. Review in File Details." });
+    } catch (e) { toast.error(errText(e, "Could not sync to File")); }
+    finally { setBusy(""); }
+  };
+
   const q = prof?.qualification || {};
   const loans = q.loans || [];
   const hasLink = !!prof?.secure_link;
@@ -185,6 +195,12 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
               className="inline-flex items-center gap-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-60">
               <RefreshCw size={13} className={busy === "refresh" ? "animate-spin" : ""} /> Refresh
             </button>
+            {canEdit && lead.status === "FILE" && (
+              <button data-testid="chatbot-apply-file-btn" onClick={applyToFile} disabled={busy === "apply"}
+                className="inline-flex items-center gap-1.5 border border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-md px-3 py-1.5 text-xs font-medium disabled:opacity-60">
+                {busy === "apply" ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />} Sync to File
+              </button>
+            )}
             {canEdit && (
               <>
                 <button data-testid="chatbot-request-info-btn" onClick={() => setModal("request_missing_info")}

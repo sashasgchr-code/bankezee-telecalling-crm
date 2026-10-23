@@ -560,10 +560,98 @@ async def record_action(lead_id: str, inp: ChatbotActionInput, user: dict = Depe
     return {"ok": True, "chatbot_relayed": chatbot_ok}
 
 
+@router.post("/leads/{lead_id}/chatbot/apply-to-file")
+async def apply_qualification_to_file(lead_id: str, user: dict = Depends(require_meta_access)):
+    """Controlled repair: pull the latest chatbot session, then prefill EMPTY File fields
+    (structured existing_loans, obligations_emi, foir, cibil_score, employment). Never recreates
+    the File, never overwrites agent-entered values, never deletes/duplicates manual loans.
+    Admin/ops/assigned GP/assigned processor only."""
+    lead, role, uid = await _lead_guard(lead_id, user)
+    # Best-effort refresh so we apply the freshest session (non-fatal if the chatbot is slow).
+    try:
+        resp = await _chatbot_request("GET", f"/api/crm/chatbot/sessions/{lead_id}")
+        session = resp.json() if resp.content else {}
+        session = session.get("session", session) if isinstance(session, dict) else {}
+        await _upsert_qualification(lead_id, session, event="apply_to_file")
+    except HTTPException:
+        pass
+    before = lead.get("file") or {}
+    await prefill_file_from_qualification(lead_id)
+    after_lead = await db.meta_leads.find_one({"lead_id": lead_id})
+    after = after_lead.get("file") or {}
+    return {
+        "ok": True,
+        "existing_loans_before": len(before.get("existing_loans") or []),
+        "existing_loans_after": len(after.get("existing_loans") or []),
+        "monthly_emi_obligations": after.get("monthly_emi"),
+        "foir": after.get("foir"),
+        "cibil": after.get("cibil"),
+    }
+
+
 # =========================== File prefill (manual convert only) ===========================
+_LOAN_TYPE_MAP = [
+    ("personal", "personal_loan"), ("home", "home_loan"), ("car", "car_loan"),
+    ("auto", "car_loan"), ("two whee", "two_wheeler_loan"), ("2 whee", "two_wheeler_loan"),
+    ("educat", "education_loan"), ("business", "business_loan"), ("credit card", "credit_card"),
+    ("card", "credit_card"), ("overdraft", "overdraft"), ("lap", "lap"), ("gold", "gold_loan"),
+]
+_BANK_MAP = [
+    ("hdfc", "hdfc"), ("icici", "icici"), ("sbi", "sbi"), ("axis", "axis"), ("kotak", "kotak"),
+    ("indusind", "indusind"), ("yes", "yes"), ("bajaj", "bajaj"), ("tata", "tata_capital"),
+    ("idfc", "idfc"),
+]
+
+
+def _map_loan_type(raw):
+    s = str(raw or "").strip().lower()
+    for key, val in _LOAN_TYPE_MAP:
+        if key in s:
+            return val
+    return "other" if s else ""
+
+
+def _map_bank(raw):
+    s = str(raw or "").strip()
+    low = s.lower()
+    for key, val in _BANK_MAP:
+        if key in low:
+            return val
+    return s  # keep the real lender name (field allows custom values, e.g. "KreditBee")
+
+
+def _to_structured_loan(l: dict) -> dict:
+    tenure = l.get("original_tenure")
+    try:
+        if l.get("original_tenure") not in (None, "") and l.get("emis_paid") not in (None, ""):
+            tenure = float(l.get("original_tenure")) - float(l.get("emis_paid"))
+    except Exception:
+        tenure = l.get("original_tenure")
+    return {
+        # keys read by ExistingLoansEditor (File Details page)
+        "loan_type": _map_loan_type(l.get("loan_type")),
+        "bank": _map_bank(l.get("lender")),
+        "loan_amount": l.get("original_amount") if l.get("original_amount") not in (None, "") else "",
+        "sanction_date": l.get("sanction_date") or "",
+        "outstanding": l.get("outstanding_balance") if l.get("outstanding_balance") not in (None, "") else "",
+        "roi": l.get("interest_rate") if l.get("interest_rate") not in (None, "") else "",
+        "emi": l.get("monthly_emi") if l.get("monthly_emi") not in (None, "") else "",
+        # keys read by ExistingLoansSection (compatibility)
+        "type": _map_loan_type(l.get("loan_type")),
+        "original_amount": l.get("original_amount") if l.get("original_amount") not in (None, "") else "",
+        "start_date": l.get("sanction_date") or "",
+        "interest_rate": l.get("interest_rate") if l.get("interest_rate") not in (None, "") else "",
+        "tenure_remaining": tenure if tenure not in (None, "") else "",
+        # provenance
+        "source": "chatbot",
+        "loan_id": l.get("loan_id") or "",
+    }
+
+
 async def prefill_file_from_qualification(lead_id: str):
-    """Called by meta.py when a GP MANUALLY converts a lead to FILE. Fills EMPTY File fields
-    from the qualification profile; never overwrites agent-entered (non-empty) values."""
+    """Maps chatbot qualification into the STRUCTURED File fields the File Details page reads
+    (existing_loans[], obligations_emi, foir, cibil_score, employment). Fill-when-empty only:
+    never overwrites agent-entered values, never duplicates/removes manually entered loans."""
     try:
         prof = await _get_profile(lead_id)
         if not prof:
@@ -573,42 +661,48 @@ async def prefill_file_from_qualification(lead_id: str):
         if not lead:
             return
         existing_file = dict(lead.get("file") or {})
-
         loans = q.get("loans") or []
 
-        def _loan_summary(l):
-            """Compact one-line description for the EXISTING 'Existing Loan N' text field.
-            Carries every per-loan attribute the chatbot supplies (the File model has no
-            structured per-loan fields, so all detail lives on this single line + raw profile)."""
-            head = " · ".join([str(p) for p in [l.get("lender"), l.get("loan_type")] if p]) or "Loan"
-            bits = []
-            if l.get("original_amount") not in (None, ""): bits.append(f"Orig ₹{l.get('original_amount')}")
-            if l.get("outstanding_balance") not in (None, ""): bits.append(f"O/S ₹{l.get('outstanding_balance')}")
-            if l.get("interest_rate") not in (None, ""): bits.append(f"ROI {l.get('interest_rate')}%")
-            if l.get("monthly_emi") not in (None, ""): bits.append(f"EMI ₹{l.get('monthly_emi')}")
-            if l.get("original_tenure") not in (None, ""): bits.append(f"Tenure {l.get('original_tenure')}mo")
-            if l.get("emis_paid") not in (None, ""): bits.append(f"Paid {l.get('emis_paid')}")
-            if l.get("sanction_date") not in (None, ""): bits.append(f"Sanctioned {l.get('sanction_date')}")
-            return f"{head} | {' | '.join(bits)}" if bits else head
+        changed = {}
 
-        # Map ONLY to existing compatible File fields. The aggregate 'Monthly EMI Obligations'
-        # (file.monthly_emi) is intentionally NOT prefilled — preserve its existing business logic.
-        defaults = {
+        # 1) Structured existing_loans[] — only if none present (preserve manual entries, no dupes).
+        current_loans = existing_file.get("existing_loans")
+        if (not isinstance(current_loans, list) or len(current_loans) == 0) and loans:
+            changed["existing_loans"] = [_to_structured_loan(l) for l in loans]
+
+        # 2) Aggregate monthly EMI obligations. Canonical key read by the Meta File is `monthly_emi`
+        # (compat maps file.monthly_emi -> monthly_emi_obligations). Fill-when-empty only.
+        total_oblig = q.get("total_monthly_obligations")
+        if total_oblig in (None, "") and loans:
+            try:
+                total_oblig = sum(float(l.get("monthly_emi") or 0) for l in loans) or None
+            except Exception:
+                total_oblig = None
+        if total_oblig not in (None, "") and existing_file.get("monthly_emi") in (None, "", 0, "0"):
+            changed["monthly_emi"] = total_oblig
+
+        # 3) FOIR / EMI-to-salary ratio.
+        if q.get("emi_to_salary_ratio") not in (None, "") and existing_file.get("foir") in (None, "", 0, "0"):
+            changed["foir"] = q.get("emi_to_salary_ratio")
+
+        # 4) Simple scalar fields using the canonical lead.file keys the compat layer reads:
+        # CIBIL -> `cibil`, employment -> `employment_type`, salary -> `net_salary`.
+        scalars = {
+            "cibil": q.get("cibil_score"),
             "company_name": q.get("company_name"),
             "net_salary": q.get("net_monthly_salary"),
-            "cibil": q.get("cibil_score"),
+            "employment_type": _pick(q.get("answers") or {}, "employment_type", "employment_status",
+                                     "employment", "are_you"),
+            "loan_amount_required": _pick(q.get("answers") or {}, "loan_amount_required", "loan_amount",
+                                          "required_loan_amount", "desired_loan_amount"),
         }
-        for i, l in enumerate(loans[:3]):
-            defaults[f"existing_loan_{i + 1}"] = _loan_summary(l)
-
-        changed = {}
-        for k, v in defaults.items():
+        for k, v in scalars.items():
             if v in (None, "", []):
                 continue
-            if existing_file.get(k) in (None, "", []):  # never overwrite agent-entered values
+            if existing_file.get(k) in (None, "", []):
                 changed[k] = v
 
-        # City maps to the existing lead-level field (no File field exists for it).
+        # City maps to the existing lead-level field.
         lead_set = {}
         if q.get("city") and lead.get("city") in (None, "", []):
             lead_set["city"] = q.get("city")
@@ -618,10 +712,13 @@ async def prefill_file_from_qualification(lead_id: str):
         set_doc = {"updated_at": _now_iso(), **lead_set}
         if changed:
             set_doc["file"] = {**existing_file, **changed}
-        detail_fields = list(changed.keys()) + list(lead_set.keys())
+        n_loans = len(changed.get("existing_loans", [])) if "existing_loans" in changed else 0
+        detail = f"File prefilled from chatbot: {len(changed)} field(s)"
+        if n_loans:
+            detail += f", {n_loans} existing loan(s)"
         await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": set_doc, "$push": {"activities": {
             "type": "chatbot",
-            "detail": f"File auto-prefilled from chatbot qualification ({', '.join(detail_fields)}) — please review",
+            "detail": f"{detail} — please review",
             "at": _now_iso(),
         }}})
     except Exception as e:
@@ -690,6 +787,11 @@ async def chatbot_webhook(request: Request):
 
     if event == "callback_requested":
         asyncio.create_task(_notify_gp_callback(lead))
+
+    # If already converted to FILE, flow new loan/qualification data into EMPTY File fields
+    # (fill-only; never overwrites agent-verified values, never deletes manual loans).
+    if lead.get("status") == "FILE" and event in ("loan_saved", "loan_deleted", "completed", "progress_updated"):
+        asyncio.create_task(prefill_file_from_qualification(crm_lead_ref))
 
     return {"ok": True, "event": event, "crm_lead_ref": crm_lead_ref}
 

@@ -2368,3 +2368,28 @@ PREVIEW HARDENING (tested, NOT deployed):
 - Combined with the earlier <Toaster/> mount fix, all errors now surface clearly to the user.
 LIKELY ROOT CAUSE (pending RCA): prod BANKEZEE_CHATBOT_BASE_URL live slot unset (user skipped it earlier)
 and/or prod pod cannot reach bankezee.com, causing the outbound call to hang -> gateway timeout. Confirm via RCA.
+
+## BUGFIX: chatbot existing-loans not transferring to CRM File (Oct 2026)
+PART A ("Confirm it's you" last-4-digits screen): lives in the SEPARATE website chatbot project
+(bankezee.com) NOT this CRM repo — cannot be changed from CRM. Reported to user with guidance + OTP rec.
+PART B ROOT CAUSE: prefill_file_from_qualification wrote WRONG lead.file keys. The Meta File reads via
+routes/meta_compat.py _lead_to_file_details: obligations <- file.monthly_emi (NOT obligations_emi),
+CIBIL <- file.cibil (NOT cibil_score), employment <- file.employment_type, existing_loans <- file.existing_loans,
+foir <- file.foir. The File Details page uses components/file-detail/ExistingLoansEditor.js with per-loan keys
+{bank, loan_type, loan_amount, sanction_date, outstanding, roi, emi}. My old prefill wrote only legacy text
+existing_loan_1/2/3 + cibil + obligations_emi -> File showed Existing Loans 0, Monthly EMI ₹0, legacy notes.
+FIX (prefill_file_from_qualification): now writes STRUCTURED existing_loans[] with ALL key variants
+(loan_type+type, loan_amount+original_amount, sanction_date+start_date, roi+interest_rate, outstanding, emi,
+bank, tenure_remaining, loan_id, source=chatbot); obligations -> file.monthly_emi; FOIR -> file.foir;
+CIBIL -> file.cibil; employment -> file.employment_type; net_salary; company_name; loan_amount_required.
+Fill-when-empty ONLY (never overwrites agent values, never deletes/duplicates manual loans; idempotent).
+Loan type mapped to enum (personal_loan, home_loan, credit_card...); bank mapped to enum or kept custom (KreditBee).
+WEBHOOK: if lead.status==FILE, loan_saved/loan_deleted/completed/progress_updated now re-run prefill (fill-empty)
+so later chatbot updates flow into the File without deleting valid data.
+REPAIR (no recreate): POST /api/meta/leads/{id}/chatbot/apply-to-file (admin/ops/assigned) refreshes session +
+prefills empty File fields. UI "Sync to File" button on ChatbotQualificationCard (shown when lead.status==FILE).
+VERIFIED preview end-to-end (lead_sashafile_demo): 2 loans (KreditBee ₹60k/₹5k, HDFC ₹3L/₹12k), Monthly EMI
+Obligations 17000, Total EMI ₹17,000, Total Outstanding ₹3,60,000, CIBIL 742, Salaried, Net Salary 60000 all
+render on File Details page. Idempotent (no dupes); manual loans preserved. NOT deployed (awaiting approval).
+PRODUCTION REPAIR PLAN: after deploy, open the real Sasha File -> click "Sync to File" (or call apply-to-file)
+to backfill from the stored chatbot session — no File recreation, no overwrite.
