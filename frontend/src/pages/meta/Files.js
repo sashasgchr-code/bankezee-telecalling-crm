@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
-import { PROC_STATUSES, procStatusLabel, inr, maskPhone, BRAND, BRAND_DARK, useMetaUser } from "./metaCommon";
+import { PROC_STATUSES, procStatusLabel, inr, maskPhone, BRAND, BRAND_DARK, useMetaUser, TAT_FILTERS, computeTat, tatDurationLabel } from "./metaCommon";
 import MultiSelectDropdown from "../../components/MultiSelectDropdown";
 import SearchableSelect from "../../components/SearchableSelect";
 import { FolderOpen, FileCheck2, FileClock, Eye, EyeOff, ChevronRight, ChevronLeft, Search, UserCheck, X } from "lucide-react";
@@ -38,9 +38,22 @@ const StatCard = ({ label, value, icon: Icon, accent, testid }) => (
   </div>
 );
 
+function TatBadge({ tat, testid }) {
+  if (!tat || tat.unavailable || tat.ms === null) return null;
+  const compact = `${tat.days}d ${tat.hours}h`;
+  if (tat.state === "completed") {
+    return <span data-testid={testid} title={`Final TAT ${compact}`} className="text-[11px] font-medium px-2 py-1 rounded-full border bg-slate-100 text-slate-600 border-slate-200">TAT {compact}</span>;
+  }
+  if (tat.overdue) {
+    return <span data-testid={testid} title={`TAT exceeded ${compact}`} className="text-[11px] font-semibold px-2 py-1 rounded-full border bg-red-50 text-red-700 border-red-200">⚠ {compact}</span>;
+  }
+  return <span data-testid={testid} title={`TAT ${compact}`} className="text-[11px] font-medium px-2 py-1 rounded-full border bg-blue-50 text-blue-700 border-blue-200">TAT {compact}</span>;
+}
+
 function FileRow({ f, onOpen }) {
   const [reveal, setReveal] = useState(false);
   const dt = f.file_created_at || f.created_at;
+  const tat = computeTat(f);
   const file = f.file || {};
   const banksArr = (file.banks || []);
   const bank = file.disbursed_bank || file.approved_bank || file.login_bank || file.bank || file.lender
@@ -66,6 +79,7 @@ function FileRow({ f, onOpen }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <span data-testid={`meta-proc-status-${f.lead_id}`} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLOR(f.processing_status || "New")}`}>{procStatusLabel(f.processing_status || "New")}</span>
+          <TatBadge tat={tat} testid={`meta-tat-badge-${f.lead_id}`} />
           <ChevronRight size={16} className="text-slate-300 hidden sm:block" />
         </div>
       </div>
@@ -101,6 +115,7 @@ export default function MetaFiles() {
   const [q, setQ] = useState(() => sp("q"));
   const [statusFilter, setStatusFilter] = useState(() => sp("status", "ALL")); // processing_status
   const [followupFilter, setFollowupFilter] = useState(() => sp("fu"));
+  const [tatFilter, setTatFilter] = useState(() => sp("tat"));
   const [processor, setProcessor] = useState(() => sp("proc"));
   const [growthPartner, setGrowthPartner] = useState(() => sp("gp"));
   const [loanType, setLoanType] = useState(() => sp("loan"));
@@ -143,6 +158,7 @@ export default function MetaFiles() {
     if (q) params.q = q;
     if (statusFilter && statusFilter !== "ALL") params.processing_status = statusFilter;
     if (followupFilter) params.followup = followupFilter;
+    if (tatFilter) params.tat = tatFilter;
     if (loanType) params.loan_type = loanType;
     if (bank) params.bank = bank;
     if (docs) params.docs = docs;
@@ -162,11 +178,11 @@ export default function MetaFiles() {
       setPage(data.page || 1);
     }).catch(() => { setFiles([]); setTotal(0); setPages(1); }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment, isStaff, meta.user_id, pageSize, followupFilter]);
+  }, [q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment, isStaff, meta.user_id, pageSize, followupFilter, tatFilter]);
 
   // Reset to page 1 when any filter changes. Signature compare keeps the restored page on
   // first load and survives React StrictMode's dev double-invoke.
-  const filterSig = JSON.stringify([q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment, followupFilter]);
+  const filterSig = JSON.stringify([q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment, followupFilter, tatFilter]);
   const prevSig = useRef(null);
   useEffect(() => {
     if (prevSig.current === null || prevSig.current === filterSig) {
@@ -186,6 +202,7 @@ export default function MetaFiles() {
     if (q) p.q = q;
     if (statusFilter && statusFilter !== "ALL") p.status = statusFilter;
     if (followupFilter) p.fu = followupFilter;
+    if (tatFilter) p.tat = tatFilter;
     if (processor) p.proc = processor;
     if (growthPartner) p.gp = growthPartner;
     if (loanType) p.loan = loanType;
@@ -200,7 +217,7 @@ export default function MetaFiles() {
     if (pageSize !== 25) p.size = String(pageSize);
     setSearchParams(p, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, statusFilter, processor, growthPartner, loanType, bank, docs, assignment, source, fileFrom, fileTo, myOnly, page, pageSize, followupFilter]);
+  }, [q, statusFilter, processor, growthPartner, loanType, bank, docs, assignment, source, fileFrom, fileTo, myOnly, page, pageSize, followupFilter, tatFilter]);
 
   const goToPage = (p) => { const np = Math.min(Math.max(1, p), pages); setPage(np); fetchFiles(np, pageSize); };
   const changeSize = (s) => { setPageSize(s); setPage(1); fetchFiles(1, s); };
@@ -208,12 +225,12 @@ export default function MetaFiles() {
   const activeCount =
     [q, loanType, bank, docs, source, fileFrom, fileTo].filter(Boolean).length +
     (isStaff ? [processor, growthPartner, assignment].filter(Boolean).length : 0) +
-    (statusFilter && statusFilter !== "ALL" ? 1 : 0) + (myOnly ? 1 : 0) + (followupFilter ? 1 : 0);
+    (statusFilter && statusFilter !== "ALL" ? 1 : 0) + (myOnly ? 1 : 0) + (followupFilter ? 1 : 0) + (tatFilter ? 1 : 0);
 
   const clearAll = () => {
     setQ(""); setStatusFilter("ALL"); setProcessor(""); setGrowthPartner(""); setLoanType("");
     setBank(""); setDocs(""); setAssignment(""); setSource(""); setFileFrom(""); setFileTo("");
-    setMyOnly(false); setFollowupFilter("");
+    setMyOnly(false); setFollowupFilter(""); setTatFilter("");
   };
 
   const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -245,6 +262,9 @@ export default function MetaFiles() {
           </select>
           <select data-testid="meta-files-followup-filter" value={followupFilter} onChange={(e) => setFollowupFilter(e.target.value)} className="w-full sm:w-auto border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
             {FOLLOWUP_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <select data-testid="meta-files-tat-filter" value={tatFilter || "ALL"} onChange={(e) => setTatFilter(e.target.value === "ALL" ? "" : e.target.value)} className="w-full sm:w-auto border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
+            {TAT_FILTERS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
           </select>
           {canFilterMine && (
             <button

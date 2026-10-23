@@ -11,7 +11,7 @@ import { toast } from 'sonner';
 import GroupedLoansSection from '../../components/file-detail/GroupedLoansSection';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
-import { isFollowupStatus, procStatusLabel, followupDays, followupUrgency, followupDaysLabel, URGENCY_META } from '../meta/metaCommon';
+import { isFollowupStatus, procStatusLabel, followupDays, followupUrgency, followupDaysLabel, URGENCY_META, computeTat, tatDurationLabel } from '../meta/metaCommon';
 import { useLoanTypes } from '../../constants/loanTypes';
 
 // Legacy CRM rows store the decision flags as 'yes'/'no'; some Connect rows stored booleans.
@@ -98,6 +98,24 @@ const EMPTY_BANK = {
   // Commission
   commission_percentage: '',
   commission_amount: ''
+};
+
+const MetaTatIndicator = ({ fileData }) => {
+  if (!fileData) return null;
+  const t = computeTat(fileData);
+  if (!t || t.unavailable) {
+    if (t && t.state === 'completed') return <span className="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-500" data-testid="meta-tat-indicator">Final TAT Unavailable</span>;
+    return null;
+  }
+  if (t.ms === null) return null;
+  const dur = tatDurationLabel(t.days, t.hours);
+  if (t.state === 'completed') {
+    return <span className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-700" data-testid="meta-tat-indicator">Final TAT: {dur}{t.finalStatus ? ` – ${t.finalStatus}` : ''}</span>;
+  }
+  if (t.overdue) {
+    return <span className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700" data-testid="meta-tat-indicator">⚠ TAT EXCEEDED: {dur}</span>;
+  }
+  return <span className="ml-2 px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700" data-testid="meta-tat-indicator">TAT: {dur}</span>;
 };
 
 const FollowupPanel = ({ fu, history, canEdit, editing, setEditing, desc, setDesc, date, setDate, remarks, setRemarks, onSave }) => {
@@ -1052,6 +1070,7 @@ const FileDetailsPage = ({
                       View Only
                     </span>
                   )}
+                  {isMeta && <MetaTatIndicator fileData={fileData} />}
                 </h2>
                 <div className="flex items-center gap-4">
                   <select

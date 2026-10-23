@@ -2393,3 +2393,46 @@ Obligations 17000, Total EMI ₹17,000, Total Outstanding ₹3,60,000, CIBIL 742
 render on File Details page. Idempotent (no dupes); manual loans preserved. NOT deployed (awaiting approval).
 PRODUCTION REPAIR PLAN: after deploy, open the real Sasha File -> click "Sync to File" (or call apply-to-file)
 to backfill from the stored chatbot session — no File recreation, no overwrite.
+
+================================================================================
+## TAT TRACKING & 4-DAY ALERTS (Meta CRM) — IMPLEMENTED 2026-10-23
+================================================================================
+GOAL: End-to-end TAT per Meta file. Start = file creation timestamp. End = first
+time file reaches a FINAL status. Flag ongoing files >96h as "TAT EXCEEDED - 4 DAYS".
+Completed files leave active alerts immediately. Reopen resumes TAT from ORIGINAL creation.
+
+FINAL_STATUSES (meta.py): Disbursed, Not Disbursed, Declined, Not Eligible, Not Login.
+TAT_LIMIT_HOURS = 96.
+
+BACKEND (routes/meta.py):
+- Helpers near top: _lead_created_dt(lead), compute_tat(lead, now=None) -> dict
+  {state: ongoing|completed|unavailable, overdue, final, ms, days, hours, label,
+   created_at, final_at, final_status, unavailable}. Uses NAIVE-UTC everywhere
+  (reuses the pre-existing naive _parse_dt at ~line 1343; do NOT reintroduce an
+  aware _parse_dt — caused "offset-naive vs offset-aware" subtraction crash).
+- build_processing_status_update(...): on transition INTO a final status, stamps
+  tat_final_at / tat_final_status / tat_final_ms + logs activity "File completed
+  (X) — End-to-End TAT recorded". On reopen to non-final, pushes prior final record
+  into tat_history[], clears tat_final_*, logs "File reopened to X — TAT tracking
+  resumed from original creation". Historical files w/o tat_final_* => "Final TAT Unavailable".
+- GET /api/meta/leads?tat=  filter values: within | exceeded | completed_within |
+  completed_beyond (combines with all existing filters + pagination, server-side).
+- GET /api/meta/tat/alerts -> {count, limit_hours, items[...] } ongoing files >96h,
+  sorted highest TAT first. Reuses _lead_scope (role scoping inherited).
+- routes/meta_compat.py build_connect_file: exposes `tat` object on file-detail payload.
+
+FRONTEND:
+- metaCommon.js: TAT_FILTERS, computeTat(file), tatDurationLabel(ms) helpers.
+- pages/meta/MetaTatAlerts.js (NEW): <TatAlertWidget/> red compact table on dashboard,
+  auto-refresh, "View all" -> /meta/files?tat=exceeded, row View -> /meta/files/:id.
+- pages/meta/Dashboard.js: renders "Files Exceeding 4-Day TAT" section (TatAlertWidget).
+- pages/meta/Files.js: TAT filter dropdown (data-testid meta-files-tat-filter) with
+  URL persistence (?tat=), compact red/blue/green TAT badge per row (meta-tat-badge-*).
+- pages/files/FileDetailsPage.js: Meta-only <MetaTatIndicator/> next to "Update Status"
+  heading (data-testid meta-tat-indicator).
+
+VERIFIED 2026-10-23 (admin): alerts count=12 sorted desc; filters within/exceeded/
+completed_beyond correct; Disbursed stamps final TAT + drops from alerts; reopen to
+Underwriting clears final + resumes from creation + tat_history retained; legacy
+completed files => unavailable. Frontend: dashboard red table, Files filter+badges+URL
+state, file-detail indicator all render. NOT deployed.

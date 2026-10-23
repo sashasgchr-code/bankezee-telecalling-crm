@@ -92,6 +92,59 @@ def _followup_urgency(days):
     return "later"
 
 
+# ---------------------------- End-to-End TAT ----------------------------
+# A file is "completed" once it first reaches one of these five final statuses.
+FINAL_STATUSES = {"Disbursed", "Not Disbursed", "Declined", "Not Eligible", "Not Login"}
+TAT_LIMIT_HOURS = 96  # 4 calendar days
+
+
+def _ist_now():
+    return datetime.now(_IST_TZ)
+
+
+def _lead_created_dt(lead):
+    return _parse_dt(lead.get("file_created_at") or lead.get("created_at") or lead.get("created_time"))
+
+
+def _ms_breakdown(ms):
+    total_hours = ms / 3600000.0
+    return {"ms": int(ms), "days": int(total_hours // 24), "hours": int(total_hours % 24)}
+
+
+def compute_tat(lead, now=None):
+    """Dynamic End-to-End TAT for a file. Start = original creation timestamp; End = first final
+    status timestamp (tat_final_at) if completed, else now. Overdue when > 96h and still ongoing.
+    All datetimes are naive-UTC (matching _parse_dt) to keep arithmetic consistent."""
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    created = _lead_created_dt(lead)
+    status = lead.get("processing_status") or "New"
+    final_at = _parse_dt(lead.get("tat_final_at"))
+    is_final = bool(final_at) or status in FINAL_STATUSES
+    res = {
+        "created_at": lead.get("file_created_at") or lead.get("created_at"),
+        "final_status": lead.get("tat_final_status") or (status if status in FINAL_STATUSES else None),
+        "state": "completed" if is_final else "ongoing",
+        "ms": None, "days": None, "hours": None, "overdue": False,
+        "available": created is not None, "unavailable": False,
+    }
+    if not created:
+        res["unavailable"] = is_final
+        return res
+    limit_ms = TAT_LIMIT_HOURS * 3600 * 1000
+    if is_final:
+        if final_at:
+            ms = max(0, (final_at - created).total_seconds() * 1000)
+            res.update(_ms_breakdown(ms))
+            res["overdue"] = False  # completed files never raise an active alert
+        else:
+            res["unavailable"] = True  # legacy final file with no recorded completion timestamp
+        return res
+    ms = max(0, (now - created).total_seconds() * 1000)
+    res.update(_ms_breakdown(ms))
+    res["overdue"] = ms > limit_ms
+    return res
+
+
 def build_processing_status_update(lead, status, desc, fdate, remarks, user_name):
     """Validate a processing-status change (incl. Query/Hold follow-up) and return a mongo update doc.
     Raises HTTPException on invalid input. Manages the active followup + followup_history."""
@@ -123,6 +176,32 @@ def build_processing_status_update(lead, status, desc, fdate, remarks, user_name
             history.append({**prev, "active": False, "resolved_at": now, "resolved_to": status})
             set_fields["followup_history"] = history
             set_fields["followup"] = {**prev, "active": False, "resolved_at": now}
+
+    # --- End-to-End TAT: stamp first final completion / resume on reopen ---
+    final_at_existing = lead.get("tat_final_at")
+    if status in FINAL_STATUSES:
+        if not final_at_existing:
+            set_fields["tat_final_at"] = now
+            set_fields["tat_final_status"] = status
+            created = _lead_created_dt(lead)
+            if created:
+                fdt = _parse_dt(now)
+                set_fields["tat_final_ms"] = int(max(0, (fdt - created).total_seconds() * 1000))
+            acts.append({"type": "tat", "detail": f"File completed ('{status}') — End-to-End TAT recorded by {user_name}", "at": now})
+    elif final_at_existing:
+        # reopened into an ongoing status: archive the prior final record, resume tracking
+        tat_hist = list(lead.get("tat_history") or [])
+        tat_hist.append({
+            "final_status": lead.get("tat_final_status"), "final_at": final_at_existing,
+            "final_ms": lead.get("tat_final_ms"), "reopened_at": now,
+            "reopened_to": status, "reopened_by": user_name,
+        })
+        set_fields["tat_history"] = tat_hist
+        set_fields["tat_final_at"] = None
+        set_fields["tat_final_status"] = None
+        set_fields["tat_final_ms"] = None
+        acts.append({"type": "tat", "detail": f"File reopened to '{status}' — TAT tracking resumed from original creation by {user_name}", "at": now})
+
     return {"$set": set_fields, "$push": {"activities": {"$each": acts}}}
 
 
@@ -390,6 +469,7 @@ async def meta_leads(
     file_from: Optional[str] = None,
     file_to: Optional[str] = None,
     followup: Optional[str] = None,
+    tat: Optional[str] = None,
 ):
     role, uid = _ctx(user)
     query = dict(NOT_DELETED)
@@ -468,6 +548,31 @@ async def meta_leads(
                 {"followup.followup_date": {"$in": [None, ""]}},
                 {"followup.followup_date": {"$exists": False}},
             ]})
+    if tat and tat != "ALL":
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=TAT_LIMIT_HOURS)).isoformat()
+        limit_ms = TAT_LIMIT_HOURS * 3600 * 1000
+        ongoing = [
+            {"processing_status": {"$nin": list(FINAL_STATUSES)}},
+            {"$or": [{"tat_final_at": {"$in": [None]}}, {"tat_final_at": {"$exists": False}}]},
+        ]
+        created_before = {"$or": [
+            {"file_created_at": {"$lt": cutoff}},
+            {"$and": [{"file_created_at": {"$in": [None]}}, {"created_at": {"$lt": cutoff}}]},
+        ]}
+        created_after = {"$or": [
+            {"file_created_at": {"$gte": cutoff}},
+            {"$and": [{"file_created_at": {"$in": [None]}}, {"created_at": {"$gte": cutoff}}]},
+        ]}
+        if tat == "exceeded":
+            and_list.extend(ongoing)
+            and_list.append(created_before)
+        elif tat == "within":
+            and_list.extend(ongoing)
+            and_list.append(created_after)
+        elif tat == "completed_within":
+            and_list.append({"tat_final_ms": {"$exists": True, "$ne": None, "$lte": limit_ms}})
+        elif tat == "completed_beyond":
+            and_list.append({"tat_final_ms": {"$exists": True, "$ne": None, "$gt": limit_ms}})
     if from_date or to_date:
         # Meta Leads date filtering is by ASSIGNMENT date (assigned_at, set when a lead is
         # assigned to a GP/user) — NOT created_time / imported / sheet-row date. Unassigned
@@ -939,6 +1044,38 @@ async def meta_followups(user: dict = Depends(require_meta_access)):
     reminders = [i for i in items if i["days"] is not None and i["days"] <= 3]
     counts["reminders"] = len(reminders)
     return {"items": items, "reminders": reminders, "counts": counts}
+
+
+@router.get("/tat/alerts")
+async def meta_tat_alerts(user: dict = Depends(require_meta_access)):
+    """Role-scoped list of ONGOING files whose End-to-End TAT already exceeds 96h (4 days).
+    Computed dynamically from the original creation timestamp; completed files are excluded."""
+    role, uid = _ctx(user)
+    match = {"status": "FILE", "processing_status": {"$nin": list(FINAL_STATUSES)}, **NOT_DELETED}
+    if role == "processor":
+        match["assigned_processor_id"] = uid
+    elif role not in STAFF_ROLES:
+        match["assigned_partner_id"] = uid
+    docs = await db.meta_leads.find(match).to_list(5000)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    items = []
+    for d in docs:
+        if d.get("tat_final_at"):
+            continue
+        tat = compute_tat(d, now)
+        if tat["state"] == "ongoing" and tat["overdue"]:
+            items.append({
+                "lead_id": d.get("lead_id"),
+                "full_name": d.get("full_name") or "",
+                "phone": d.get("phone") or "",
+                "file_created_at": tat["created_at"],
+                "processing_status": d.get("processing_status") or "New",
+                "assigned_processor_name": d.get("assigned_processor_name") or "",
+                "assigned_partner_name": d.get("assigned_partner_name") or "",
+                "tat_days": tat["days"], "tat_hours": tat["hours"], "tat_ms": tat["ms"],
+            })
+    items.sort(key=lambda x: x["tat_ms"] or 0, reverse=True)
+    return {"items": items, "count": len(items), "limit_hours": TAT_LIMIT_HOURS}
 
 
 # =========================== documents (Object Storage) ===========================

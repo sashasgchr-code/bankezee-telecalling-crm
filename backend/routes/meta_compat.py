@@ -23,7 +23,7 @@ from utils import meta_storage
 from routes.meta import (
     _get_lead_or_404, _ctx, _now_iso, STAFF_ROLES,
     PROCESSING_STATUSES, ALLOWED_DOC_TYPES, MAX_DOC_BYTES,
-    build_processing_status_update,
+    build_processing_status_update, compute_tat,
 )
 from routes.files_crm import calculate_star_rating
 
@@ -286,6 +286,8 @@ def build_connect_file(lead: dict) -> dict:
         "assigned_processor_name": lead.get("assigned_processor_name"),
         "followup": lead.get("followup"),
         "followup_history": lead.get("followup_history") or [],
+        "tat": compute_tat(lead),
+        "file_created_at": lead.get("file_created_at") or lead.get("created_at"),
     }
     # Star rating (formula or admin override), same engine as Connect
     star_source = {"file_details": file_details, "eligibilities": eligibilities,
