@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query,
 from utils.database import db
 from utils.auth import require_meta_access
 from routes.chatbot_integration import ensure_chatbot_link
-from routes.meta import _ctx, _can_action_lead, _get_lead_or_404
+from routes.meta import _ctx, _can_action_lead, _get_lead_or_404, STAFF_ROLES
 
 logger = logging.getLogger("whatsapp")
 
@@ -51,6 +51,10 @@ LINK_TTL_DAYS = int(os.environ.get("WHATSAPP_LINK_TTL_DAYS", "30"))
 DEFAULT_CC = os.environ.get("WHATSAPP_DEFAULT_COUNTRY_CODE", "91")
 
 GRAPH_URL = f"https://graph.facebook.com/{GRAPH_VERSION}/{PHONE_NUMBER_ID}/messages"
+
+# Statuses that mean the automatic trigger attempted but did NOT get a wamid — safe to retry.
+# Anything with a wamid (accepted/sent/delivered/read) is a success and is never retried.
+RETRYABLE_STATUSES = {"failed", "link_failed", "no_token", "invalid_phone"}
 
 
 def _now():
@@ -252,6 +256,48 @@ async def get_whatsapp_status(lead_id: str, user: dict = Depends(require_meta_ac
     wa = lead.get("whatsapp") or {}
     wa.pop("token", None)  # token stays server-side
     return {"configured": _send_configured(), "autosend": AUTOSEND_ENABLED, "whatsapp": wa}
+
+
+# --------------------------- bulk retry of failed sends (staff) ---------------------------
+@router.post("/whatsapp/retry-failed")
+async def retry_failed_whatsapp(
+    confirm: bool = Query(False, description="Must be true to actually send; otherwise returns the match count only"),
+    limit: int = Query(50, ge=1, le=500, description="Max leads to process in one run"),
+    user: dict = Depends(require_meta_access),
+):
+    """Re-attempt the WhatsApp template ONLY for leads whose last attempt failed and which have
+    no wamid yet. Leads that were already accepted/sent/delivered/read (have a wamid) are never
+    touched, so this can never double-send. Staff (admin/ops) only; gated behind confirm=true."""
+    role, _ = _ctx(user)
+    if role not in STAFF_ROLES:
+        raise HTTPException(status_code=403, detail="Admin/Ops only")
+    if not _send_configured():
+        raise HTTPException(status_code=503, detail="WhatsApp not configured (missing access token / phone id)")
+
+    query = {
+        "whatsapp.status": {"$in": list(RETRYABLE_STATUSES)},
+        "whatsapp.wamid": {"$exists": False},
+        "source_tab": {"$ne": "Website"},
+    }
+    total = await db.meta_leads.count_documents(query)
+    if not confirm:
+        return {"ok": True, "dry_run": True, "matched": total,
+                "retryable_statuses": sorted(RETRYABLE_STATUSES),
+                "action_required": "Re-call with confirm=true to retry (processes up to `limit` leads per run)."}
+
+    leads = await db.meta_leads.find(query).sort("updated_at", 1).limit(limit).to_list(limit)
+    summary = {"sent": 0, "failed": 0, "skipped": 0}
+    for lead in leads:
+        res = await send_whatsapp_for_lead(lead, trigger=f"retry:{role}")
+        if res.get("ok") and res.get("wamid"):
+            summary["sent"] += 1
+        elif res.get("skipped"):
+            summary["skipped"] += 1
+        else:
+            summary["failed"] += 1
+        await asyncio.sleep(0.3)  # gentle pacing so a large retry never bursts the Graph API
+    return {"ok": True, "matched": total, "processed": len(leads), **summary,
+            "remaining": max(total - len(leads), 0)}
 
 
 # --------------------------- webhook (status callbacks) ---------------------------

@@ -10,7 +10,7 @@ Meta module - Google Sheet CSV sync + email notifications (ported from META-APP)
 - Routes are under /api/meta/*; cron/webhook keep WEBHOOK_CRON_SECRET protection.
 - NO background scheduler is started here (production sync cutover stays pending).
 """
-import os, io, csv, uuid, asyncio, hmac, time, logging
+import os, io, csv, uuid, asyncio, hmac, time, logging, re
 import pandas as pd
 from datetime import datetime, timezone
 from html import escape
@@ -145,11 +145,20 @@ def _clean_phone(raw: str) -> str:
 
 def _norm10(raw: str) -> str:
     """Last 10 digits of a phone — used for cross-sheet dedup."""
-    import re
     d = re.sub(r"\D", "", _clean_phone(raw))
     if len(d) > 10 and d.startswith("91"):
         d = d[2:]
     return d[-10:] if len(d) >= 10 else d
+
+
+def _canonical_phone(raw: str) -> str:
+    """Canonical stored phone: a bare 10-digit Indian mobile (^[6-9]\\d{9}$) when the input
+    resolves to one, else the lightly-cleaned original. Ensures every downstream consumer
+    (chatbot link, WhatsApp recipient) gets a clean, pattern-valid number."""
+    n = _norm10(raw)
+    if re.fullmatch(r"[6-9]\d{9}", n):
+        return n
+    return _clean_phone(raw)
 
 
 def _pretty(val: str) -> str:
@@ -331,7 +340,7 @@ async def sync_leads_from_sheet() -> dict:
             "sheet_id": sheet_id,
             "created_time": r.get("created_time", ""),
             "full_name": (r.get("full_name") or "").strip(),
-            "phone": _clean_phone(r.get("phone_number", "")),
+            "phone": _canonical_phone(r.get("phone_number", "")),
             "phone_norm": _norm10(r.get("phone_number", "")),
             "email": (r.get("email") or "").strip(),
             "city": (r.get("city") or "").strip(),

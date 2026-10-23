@@ -1,3 +1,14 @@
+## 2026-10-23 — Phone normalization at import + bulk retry for failed WhatsApp sends
+
+Follow-up to the WhatsApp auto-trigger fix.
+
+1. **Normalize phone at import** (`routes/meta_sync.py`): new `_canonical_phone()` stores a bare 10-digit Indian mobile (`^[6-9]\d{9}$`) in `meta_leads.phone` whenever the raw input resolves to one (`+91…`, `p:…`, `91 …`, `0…` all collapse to 10 digits), else keeps the lightly-cleaned original. Applied to both insert and the per-sync `$set`, so existing leads' `phone` is progressively normalized on the next sync. `phone_norm` unchanged. Prevents the class of downstream 422s (chatbot) that caused the silent trigger failure. `import re` hoisted to module top (removed redundant inner import in `_norm10`).
+
+2. **Bulk retry of failed sends** (`routes/whatsapp.py`): `POST /api/meta/whatsapp/retry-failed` (admin/ops only). Re-attempts ONLY leads whose last status is retryable (`failed`/`link_failed`/`no_token`/`invalid_phone`) AND have no `wamid` — so a successful send (any wamid) is never touched → zero double-send risk. Gated behind `confirm=true` (dry-run returns the match count); `limit` (1–500) per run with 0.3s pacing; returns `{matched, processed, sent, failed, skipped, remaining}`. Added `RETRYABLE_STATUSES`; imported `STAFF_ROLES`.
+
+**Verified:** `_canonical_phone` cases correct; retry dry-run matched a seeded failed lead, confirm-run sent (Graph stubbed, nothing live), recorded `accepted`+wamid, processor blocked 403, successful leads excluded; HTTP dry-run returns clean JSON; backend reloaded with no errors. Files: `backend/routes/meta_sync.py`, `backend/routes/whatsapp.py`.
+
+
 ## 2026-10-23 — FIX: WhatsApp auto-trigger silently skipped leads stored with a country code (+91)
 
 **Symptom:** New Meta leads imported from Google Sheet were not initiating the WhatsApp chatbot template. Some older leads *did* attempt (and failed on the pending template approval), but most recent leads showed "no attempt at all".
