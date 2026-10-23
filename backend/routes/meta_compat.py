@@ -23,6 +23,7 @@ from utils import meta_storage
 from routes.meta import (
     _get_lead_or_404, _ctx, _now_iso, STAFF_ROLES,
     PROCESSING_STATUSES, ALLOWED_DOC_TYPES, MAX_DOC_BYTES,
+    build_processing_status_update,
 )
 from routes.files_crm import calculate_star_rating
 
@@ -283,6 +284,8 @@ def build_connect_file(lead: dict) -> dict:
         "assigned_partner_name": lead.get("assigned_partner_name"),
         "assigned_processor_id": lead.get("assigned_processor_id"),
         "assigned_processor_name": lead.get("assigned_processor_name"),
+        "followup": lead.get("followup"),
+        "followup_history": lead.get("followup_history") or [],
     }
     # Star rating (formula or admin override), same engine as Connect
     star_source = {"file_details": file_details, "eligibilities": eligibilities,
@@ -360,10 +363,38 @@ async def compat_update_status(lead_id: str, payload: dict, user: dict = Depends
     if not can_bank:
         raise HTTPException(status_code=403, detail="Not authorized to update status")
     status = payload.get("file_status")
-    if status not in PROCESSING_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid processing status")
-    await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": {"processing_status": status, "updated_at": _now_iso()},
-        "$push": {"activities": {"type": "processing", "detail": f"Processing status set to '{status}' by {user.get('name')}", "at": _now_iso()}}})
+    fu = payload.get("followup") or {}
+    update = build_processing_status_update(
+        lead, status, fu.get("description"), fu.get("followup_date"),
+        fu.get("remarks"), user.get("name"))
+    await db.meta_leads.update_one({"lead_id": lead_id}, update)
+    return build_connect_file(await _get_lead_or_404(lead_id))
+
+
+@router.patch("/{lead_id}/followup")
+async def compat_update_followup(lead_id: str, payload: dict, user: dict = Depends(require_meta_access)):
+    """Edit the active Query/Hold follow-up (reason/date/remarks) without a status change."""
+    lead = await _get_lead_or_404(lead_id)
+    _, can_bank, _ = _perm(user, lead)
+    if not can_bank:
+        raise HTTPException(status_code=403, detail="Not authorized to update follow-up")
+    prev = lead.get("followup")
+    if not prev or not prev.get("active"):
+        raise HTTPException(status_code=400, detail="No active follow-up on this file")
+    desc = (payload.get("description") or "").strip()
+    fdate = (payload.get("followup_date") or "").strip()[:10]
+    if not desc or not fdate:
+        raise HTTPException(status_code=400, detail="Follow-up reason and date are required")
+    now = _now_iso()
+    history = list(lead.get("followup_history") or [])
+    history.append({**prev, "active": False, "closed_at": now})
+    new_fu = {**prev, "description": desc, "followup_date": fdate,
+              "remarks": (payload.get("remarks") or "").strip(), "active": True,
+              "updated_by": user.get("name"), "updated_at": now}
+    await db.meta_leads.update_one({"lead_id": lead_id}, {
+        "$set": {"followup": new_fu, "followup_history": history, "updated_at": now},
+        "$push": {"activities": {"type": "followup", "detail": f"{prev.get('kind')} follow-up updated (due {fdate}) by {user.get('name')}", "at": now}},
+    })
     return build_connect_file(await _get_lead_or_404(lead_id))
 
 

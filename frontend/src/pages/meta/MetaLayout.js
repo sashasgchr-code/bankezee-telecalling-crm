@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { useMetaUser, BRAND, BRAND_DARK } from "./metaCommon";
+import { FollowupBell } from "./MetaFollowups";
 import { LayoutDashboard, Users2, UserCircle2, LogOut, Landmark, ShieldCheck, FolderOpen, PhoneCall, BarChart3, Menu, ArrowLeft, Bot } from "lucide-react";
 
 export default function MetaLayout() {
@@ -96,6 +97,7 @@ export default function MetaLayout() {
       </aside>
 
       <main className="md:ml-64 pt-14 md:pt-0 min-h-screen">
+        {meta.meta_access && <FollowupBell />}
         <Outlet />
       </main>
     </div>

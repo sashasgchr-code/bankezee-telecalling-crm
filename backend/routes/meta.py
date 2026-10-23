@@ -20,7 +20,7 @@ import asyncio
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Response, Header
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pydantic import BaseModel
 
 from utils.database import db
@@ -37,10 +37,15 @@ META_ROLES = ["admin", "ops", "processor", "growth_partner"]
 PROCESSING_STATUSES = [
     "New", "Contacted", "Documents Collected", "Documents Pending", "Sent for Eligibility",
     "Sent for Login", "Login Done", "Sent for Approval", "Underwriting", "FI (Field Investigation)",
-    "FI Negative", "FI Reinitiated", "Query/Hold", "Customer Not Interested - Need Help from MIT & Manager",
+    "FI Negative", "FI Reinitiated", "Query", "Hold", "Customer Not Interested - Need Help from MIT & Manager",
     "Customer Not Supporting - Need Help from MIT & Manager", "Approved", "Disbursed", "Not Eligible",
     "Not Login", "Declined", "Not Disbursed",
 ]
+# Legacy combined status — kept for DISPLAY and backward-accept only; never offered in the dropdown.
+LEGACY_PROCESSING_STATUSES = {"Query/Hold"}
+# Statuses that require a mandatory follow-up (description + follow-up date).
+FOLLOWUP_STATUSES = {"Query", "Hold"}
+ALL_PROCESSING_STATUSES = set(PROCESSING_STATUSES) | LEGACY_PROCESSING_STATUSES
 ALLOWED_DOC_TYPES = {"application/pdf", "image/png", "image/jpeg", "image/jpg"}
 MAX_DOC_BYTES = 10 * 1024 * 1024
 NOT_DELETED = {"deleted": {"$ne": True}}
@@ -53,6 +58,73 @@ def _now_iso():
 def _ctx(user: dict):
     """(meta_role, meta_user_id) — the caller's Meta identity from their Connect account."""
     return (user.get("meta_role_normalized") or (user.get("meta_role") or "").strip().lower()), user.get("meta_user_id")
+
+
+_IST_TZ = timezone(timedelta(hours=5, minutes=30))
+
+
+def _ist_today():
+    return datetime.now(_IST_TZ).date()
+
+
+def _followup_days(followup_date):
+    """Signed days until follow-up (IST). Negative = overdue. None if missing/unparseable."""
+    if not followup_date:
+        return None
+    try:
+        fd = datetime.fromisoformat(str(followup_date)[:10]).date()
+    except Exception:
+        return None
+    return (fd - _ist_today()).days
+
+
+def _followup_urgency(days):
+    if days is None:
+        return "none"
+    if days < 0:
+        return "overdue"
+    if days == 0:
+        return "due_today"
+    if days == 1:
+        return "due_tomorrow"
+    if days <= 3:
+        return "upcoming"
+    return "later"
+
+
+def build_processing_status_update(lead, status, desc, fdate, remarks, user_name):
+    """Validate a processing-status change (incl. Query/Hold follow-up) and return a mongo update doc.
+    Raises HTTPException on invalid input. Manages the active followup + followup_history."""
+    if status not in ALL_PROCESSING_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid processing status")
+    now = _now_iso()
+    set_fields = {"processing_status": status, "updated_at": now}
+    acts = [{"type": "processing", "detail": f"Processing status set to '{status}' by {user_name}", "at": now}]
+    prev = lead.get("followup")
+    history = list(lead.get("followup_history") or [])
+
+    if status in FOLLOWUP_STATUSES:
+        desc = (desc or "").strip()
+        fdate = (fdate or "").strip()[:10]
+        if not desc or not fdate:
+            label = "Query Description" if status == "Query" else "Hold Reason"
+            raise HTTPException(status_code=400, detail=f"{label} and Follow-up Date are required for {status}")
+        if prev and prev.get("active"):
+            history.append({**prev, "active": False, "closed_at": now})
+        set_fields["followup"] = {
+            "kind": status, "description": desc, "followup_date": fdate,
+            "remarks": (remarks or "").strip(), "active": True,
+            "updated_by": user_name, "updated_at": now, "created_at": now,
+        }
+        set_fields["followup_history"] = history
+        acts.append({"type": "followup", "detail": f"{status} follow-up set for {fdate} by {user_name}", "at": now})
+    else:
+        if prev and prev.get("active"):
+            history.append({**prev, "active": False, "resolved_at": now, "resolved_to": status})
+            set_fields["followup_history"] = history
+            set_fields["followup"] = {**prev, "active": False, "resolved_at": now}
+    return {"$set": set_fields, "$push": {"activities": {"$each": acts}}}
+
 
 
 # --------------------------- input models ---------------------------
@@ -89,6 +161,15 @@ class MetaProcessorInput(BaseModel):
 
 class MetaProcStatusInput(BaseModel):
     status: str
+    followup_description: Optional[str] = None
+    followup_date: Optional[str] = None
+    followup_remarks: Optional[str] = None
+
+
+class MetaFollowupInput(BaseModel):
+    followup_description: str
+    followup_date: str
+    followup_remarks: Optional[str] = None
 
 
 class MetaBulkInput(BaseModel):
@@ -308,6 +389,7 @@ async def meta_leads(
     assignment: Optional[str] = None,
     file_from: Optional[str] = None,
     file_to: Optional[str] = None,
+    followup: Optional[str] = None,
 ):
     role, uid = _ctx(user)
     query = dict(NOT_DELETED)
@@ -364,6 +446,28 @@ async def meta_leads(
             rng["$lte"] = f"{file_to}T23:59:59.999999+00:00"
         if rng:
             and_list.append({"$or": [{"file_created_at": rng}, {"created_at": rng}]})
+    if followup and followup != "ALL":
+        today = _ist_today()
+        today_s = today.isoformat()
+        tom_s = (today + timedelta(days=1)).isoformat()
+        plus3_s = (today + timedelta(days=3)).isoformat()
+        if followup == "overdue":
+            query["followup.active"] = True
+            query["followup.followup_date"] = {"$lt": today_s}
+        elif followup == "due_today":
+            query["followup.active"] = True
+            query["followup.followup_date"] = today_s
+        elif followup == "upcoming":
+            query["followup.active"] = True
+            query["followup.followup_date"] = {"$gte": tom_s, "$lte": plus3_s}
+        elif followup == "none":
+            and_list.append({"processing_status": {"$in": ["Query", "Hold", "Query/Hold"]}})
+            and_list.append({"$or": [
+                {"followup": None}, {"followup": {"$exists": False}},
+                {"followup.active": {"$ne": True}},
+                {"followup.followup_date": {"$in": [None, ""]}},
+                {"followup.followup_date": {"$exists": False}},
+            ]})
     if from_date or to_date:
         # Meta Leads date filtering is by ASSIGNMENT date (assigned_at, set when a lead is
         # assigned to a GP/user) — NOT created_time / imported / sheet-row date. Unassigned
@@ -754,15 +858,87 @@ async def meta_assign_processor(lead_id: str, inp: MetaProcessorInput, user: dic
 
 @router.patch("/leads/{lead_id}/processing-status")
 async def meta_update_processing_status(lead_id: str, inp: MetaProcStatusInput, user: dict = Depends(require_meta_access)):
-    role, _ = _ctx(user)
-    if role not in ("admin", "processor"):
+    role, uid = _ctx(user)
+    lead = await _get_lead_or_404(lead_id)
+    assigned_proc = role == "processor" and lead.get("assigned_processor_id") == uid
+    if role not in ("admin", "ops") and not assigned_proc:
         raise HTTPException(status_code=403, detail="Not authorized")
-    if inp.status not in PROCESSING_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid processing status")
-    await _get_lead_or_404(lead_id)
-    await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": {"processing_status": inp.status, "updated_at": _now_iso()},
-        "$push": {"activities": {"type": "processing", "detail": f"Processing status set to '{inp.status}' by {user.get('name')}", "at": _now_iso()}}})
+    update = build_processing_status_update(lead, inp.status, inp.followup_description,
+                                            inp.followup_date, inp.followup_remarks, user.get("name"))
+    await db.meta_leads.update_one({"lead_id": lead_id}, update)
     return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+
+
+@router.patch("/leads/{lead_id}/followup")
+async def meta_update_followup(lead_id: str, inp: MetaFollowupInput, user: dict = Depends(require_meta_access)):
+    """Edit the active Query/Hold follow-up (reason, date, remarks) without changing status.
+    Admin, Ops and the assigned Processor only. Snapshots the previous values to history."""
+    role, uid = _ctx(user)
+    lead = await _get_lead_or_404(lead_id)
+    assigned_proc = role == "processor" and lead.get("assigned_processor_id") == uid
+    if role not in ("admin", "ops") and not assigned_proc:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    prev = lead.get("followup")
+    if not prev or not prev.get("active"):
+        raise HTTPException(status_code=400, detail="No active follow-up on this file")
+    desc = (inp.followup_description or "").strip()
+    fdate = (inp.followup_date or "").strip()[:10]
+    if not desc or not fdate:
+        raise HTTPException(status_code=400, detail="Follow-up reason and date are required")
+    now = _now_iso()
+    history = list(lead.get("followup_history") or [])
+    history.append({**prev, "active": False, "closed_at": now})
+    new_fu = {**prev, "description": desc, "followup_date": fdate,
+              "remarks": (inp.followup_remarks or "").strip(), "active": True,
+              "updated_by": user.get("name"), "updated_at": now}
+    await db.meta_leads.update_one({"lead_id": lead_id}, {
+        "$set": {"followup": new_fu, "followup_history": history, "updated_at": now},
+        "$push": {"activities": {"type": "followup", "detail": f"{prev.get('kind')} follow-up updated (due {fdate}) by {user.get('name')}", "at": now}},
+    })
+    return serialize_doc(await db.meta_leads.find_one({"lead_id": lead_id}))
+
+
+@router.get("/followups")
+async def meta_followups(user: dict = Depends(require_meta_access)):
+    """Role-scoped active Query/Hold follow-ups with IST urgency + counts.
+    Used by the dashboard widget and the header notification bell."""
+    role, uid = _ctx(user)
+    match = {"status": "FILE", "followup.active": True, **NOT_DELETED}
+    if role == "processor":
+        match["assigned_processor_id"] = uid
+    elif role not in STAFF_ROLES:
+        match["assigned_partner_id"] = uid
+    docs = await db.meta_leads.find(match).to_list(2000)
+    items = []
+    for d in docs:
+        fu = d.get("followup") or {}
+        days = _followup_days(fu.get("followup_date"))
+        items.append({
+            "lead_id": d.get("lead_id"),
+            "full_name": d.get("full_name") or "",
+            "phone": d.get("phone") or "",
+            "kind": fu.get("kind"),
+            "description": fu.get("description") or "",
+            "followup_date": fu.get("followup_date"),
+            "remarks": fu.get("remarks") or "",
+            "assigned_processor_name": d.get("assigned_processor_name") or "",
+            "assigned_partner_name": d.get("assigned_partner_name") or "",
+            "updated_by": fu.get("updated_by") or "",
+            "updated_at": fu.get("updated_at"),
+            "days": days,
+            "urgency": _followup_urgency(days),
+        })
+    items.sort(key=lambda x: (x["days"] is None, x["days"] if x["days"] is not None else 0))
+    counts = {
+        "total_active": len(items),
+        "overdue": sum(1 for i in items if i["urgency"] == "overdue"),
+        "due_today": sum(1 for i in items if i["urgency"] == "due_today"),
+        "upcoming": sum(1 for i in items if i["urgency"] in ("due_tomorrow", "upcoming")),
+    }
+    # Reminders = anything needing attention within 3 days (overdue, today, next 3 days).
+    reminders = [i for i in items if i["days"] is not None and i["days"] <= 3]
+    counts["reminders"] = len(reminders)
+    return {"items": items, "reminders": reminders, "counts": counts}
 
 
 # =========================== documents (Object Storage) ===========================

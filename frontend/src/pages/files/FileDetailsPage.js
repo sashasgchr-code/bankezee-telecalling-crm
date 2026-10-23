@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import GroupedLoansSection from '../../components/file-detail/GroupedLoansSection';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
+import { isFollowupStatus, procStatusLabel, followupDays, followupUrgency, followupDaysLabel, URGENCY_META } from '../meta/metaCommon';
 import { useLoanTypes } from '../../constants/loanTypes';
 
 // Legacy CRM rows store the decision flags as 'yes'/'no'; some Connect rows stored booleans.
@@ -99,6 +100,68 @@ const EMPTY_BANK = {
   commission_amount: ''
 };
 
+const FollowupPanel = ({ fu, history, canEdit, editing, setEditing, desc, setDesc, date, setDate, remarks, setRemarks, onSave }) => {
+  const days = followupDays(fu.followup_date);
+  const urg = followupUrgency(days);
+  const meta = URGENCY_META[urg] || URGENCY_META.none;
+  const past = (history || []).filter((h) => h && !h.active);
+  const fmt = (v) => (v ? new Date(v).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
+  const fmtd = (v) => (v ? new Date(String(v).slice(0, 10) + 'T00:00:00+05:30').toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' }) : '—');
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 p-6" data-testid="meta-followup-panel">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Active {fu.kind} Follow-up</h2>
+        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border ${meta.cls}`} data-testid="meta-followup-urgency">
+          <span className="h-2 w-2 rounded-full" style={{ background: meta.dot }} />{meta.label}
+        </span>
+      </div>
+      {!editing ? (
+        <div className="space-y-3 text-sm">
+          <div><p className="text-xs uppercase tracking-wide text-gray-400">{fu.kind === 'Query' ? 'Query Description' : 'Hold Reason'}</p><p className="text-gray-800" data-testid="meta-followup-panel-desc">{fu.description || '—'}</p></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><p className="text-xs uppercase tracking-wide text-gray-400">Follow-up Date</p><p className="text-gray-800 font-medium" data-testid="meta-followup-panel-date">{fmtd(fu.followup_date)}</p></div>
+            <div><p className="text-xs uppercase tracking-wide text-gray-400">Reminder</p><p className="font-medium" style={{ color: meta.dot }} data-testid="meta-followup-panel-days">{followupDaysLabel(days)}</p></div>
+          </div>
+          {fu.remarks && <div><p className="text-xs uppercase tracking-wide text-gray-400">Remarks</p><p className="text-gray-700">{fu.remarks}</p></div>}
+          <p className="text-xs text-gray-400">Last updated by {fu.updated_by || '—'} · {fmt(fu.updated_at)}</p>
+          {canEdit && (
+            <button onClick={() => setEditing(true)} data-testid="meta-followup-edit-btn" className="mt-1 px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 font-medium">Edit / Reschedule</button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2} data-testid="meta-followup-edit-desc" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} data-testid="meta-followup-edit-date" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+            <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} placeholder="Remarks" data-testid="meta-followup-edit-remarks" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onSave} data-testid="meta-followup-save-btn" className="px-4 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">Save</button>
+            <button onClick={() => setEditing(false)} className="px-4 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+          </div>
+        </div>
+      )}
+      {past.length > 0 && (
+        <div className="mt-5 pt-4 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">History ({past.length})</p>
+          <div className="space-y-2 max-h-56 overflow-auto" data-testid="meta-followup-history">
+            {past.slice().reverse().map((h, i) => (
+              <div key={i} className="text-xs border border-gray-100 rounded-lg p-2.5 bg-gray-50/60">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-gray-700">{h.kind} · {fmtd(h.followup_date)}</span>
+                  <span className="text-gray-400">{h.resolved_to ? `→ ${h.resolved_to}` : 'updated'}</span>
+                </div>
+                {h.description && <p className="text-gray-600 mt-1">{h.description}</p>}
+                <p className="text-gray-400 mt-1">by {h.updated_by || '—'} · {fmt(h.resolved_at || h.closed_at || h.updated_at)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const FileDetailsPage = ({
   apiBase = '/files',
   idOverride = null,
@@ -139,6 +202,11 @@ const FileDetailsPage = ({
   
   // Status update
   const [newStatus, setNewStatus] = useState('new');
+  // Meta Query/Hold follow-up
+  const [fuDesc, setFuDesc] = useState('');
+  const [fuDate, setFuDate] = useState('');
+  const [fuRemarks, setFuRemarks] = useState('');
+  const [editingFu, setEditingFu] = useState(false);
   
   // Documents
   const [documents, setDocuments] = useState([]);
@@ -196,6 +264,11 @@ const FileDetailsPage = ({
       
       setFileData(data);
       setNewStatus(data.file_status || 'new');
+      if (data.followup && data.followup.active) {
+        setFuDesc(data.followup.description || '');
+        setFuDate((data.followup.followup_date || '').slice(0, 10));
+        setFuRemarks(data.followup.remarks || '');
+      }
       
       // Initialize details
       const fd = data.file_details || {};
@@ -354,11 +427,36 @@ const FileDetailsPage = ({
 
   const handleStatusUpdate = async () => {
     try {
-      await api.put(`${apiBase}/${fileId}/file-status`, { file_status: newStatus });
+      const payload = { file_status: newStatus };
+      if (isMeta && isFollowupStatus(newStatus)) {
+        if (!fuDesc.trim() || !fuDate) {
+          toast.error(`${newStatus === 'Query' ? 'Query description' : 'Hold reason'} and follow-up date are required`);
+          return;
+        }
+        payload.followup = { description: fuDesc.trim(), followup_date: fuDate, remarks: fuRemarks.trim() };
+      }
+      await api.put(`${apiBase}/${fileId}/file-status`, payload);
       toast.success('Status updated');
+      if (isMeta) window.dispatchEvent(new Event('meta-followup-changed'));
       fetchFileData();
     } catch (error) {
-      toast.error('Failed to update status');
+      toast.error(error?.response?.data?.detail || 'Failed to update status');
+    }
+  };
+
+  const handleFollowupSave = async () => {
+    if (!fuDesc.trim() || !fuDate) {
+      toast.error('Follow-up reason and date are required');
+      return;
+    }
+    try {
+      await api.patch(`${apiBase}/${fileId}/followup`, { description: fuDesc.trim(), followup_date: fuDate, remarks: fuRemarks.trim() });
+      toast.success('Follow-up updated');
+      setEditingFu(false);
+      window.dispatchEvent(new Event('meta-followup-changed'));
+      fetchFileData();
+    } catch (error) {
+      toast.error(error?.response?.data?.detail || 'Failed to update follow-up');
     }
   };
 
@@ -980,7 +1078,65 @@ const FileDetailsPage = ({
                     </button>
                   )}
                 </div>
+
+                {isMeta && isFollowupStatus(newStatus) && canEditBankInfo && (
+                  <div className="mt-4 p-4 rounded-lg border border-amber-200 bg-amber-50/60 space-y-3" data-testid="meta-followup-form">
+                    <p className="text-sm font-semibold text-amber-800">
+                      {newStatus === 'Query' ? 'Query Details' : 'Hold Details'} <span className="text-red-500">*</span>
+                    </p>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        {newStatus === 'Query' ? 'Query Description' : 'Hold Reason'} <span className="text-red-500">*</span>
+                      </label>
+                      <textarea
+                        value={fuDesc}
+                        onChange={(e) => setFuDesc(e.target.value)}
+                        data-testid="meta-followup-desc"
+                        rows={2}
+                        placeholder={newStatus === 'Query' ? 'What is the query / pending clarification?' : 'Why is the file on hold?'}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Follow-up Date <span className="text-red-500">*</span></label>
+                        <input
+                          type="date"
+                          value={fuDate}
+                          onChange={(e) => setFuDate(e.target.value)}
+                          data-testid="meta-followup-date"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Remarks (optional)</label>
+                        <input
+                          type="text"
+                          value={fuRemarks}
+                          onChange={(e) => setFuRemarks(e.target.value)}
+                          data-testid="meta-followup-remarks"
+                          placeholder="Any note for the team"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {isMeta && fileData?.followup?.active && (
+                <FollowupPanel
+                  fu={fileData.followup}
+                  history={fileData.followup_history}
+                  canEdit={canEditBankInfo}
+                  editing={editingFu}
+                  setEditing={setEditingFu}
+                  desc={fuDesc} setDesc={setFuDesc}
+                  date={fuDate} setDate={setFuDate}
+                  remarks={fuRemarks} setRemarks={setFuRemarks}
+                  onSave={handleFollowupSave}
+                />
+              )}
           </div>
 
           {/* Right Column - Documents & Activity */}

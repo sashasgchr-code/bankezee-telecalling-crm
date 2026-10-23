@@ -1,14 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import api from "../../services/api";
-import { PROC_STATUSES, inr, maskPhone, BRAND, BRAND_DARK, useMetaUser } from "./metaCommon";
+import { PROC_STATUSES, procStatusLabel, inr, maskPhone, BRAND, BRAND_DARK, useMetaUser } from "./metaCommon";
 import MultiSelectDropdown from "../../components/MultiSelectDropdown";
 import SearchableSelect from "../../components/SearchableSelect";
 import { FolderOpen, FileCheck2, FileClock, Eye, EyeOff, ChevronRight, ChevronLeft, Search, UserCheck, X } from "lucide-react";
 
 const GREEN = new Set(["Approved", "Disbursed", "Login Done", "Documents Collected"]);
 const RED = new Set(["Declined", "Not Eligible", "Not Login", "Not Disbursed", "FI Negative"]);
-const AMBER = new Set(["Query/Hold", "Documents Pending", "FI Reinitiated", "Underwriting", "Customer Not Interested - Need Help from MIT & Manager", "Customer Not Supporting - Need Help from MIT & Manager"]);
+const AMBER = new Set(["Query", "Hold", "Query/Hold", "Documents Pending", "FI Reinitiated", "Underwriting", "Customer Not Interested - Need Help from MIT & Manager", "Customer Not Supporting - Need Help from MIT & Manager"]);
 const BLUE = new Set(["Sent for Eligibility", "Sent for Login", "Sent for Approval", "Contacted", "FI (Field Investigation)"]);
 const STATUS_COLOR = (s) => GREEN.has(s) ? "bg-emerald-50 text-emerald-700 border-emerald-200"
   : RED.has(s) ? "bg-red-50 text-red-700 border-red-200"
@@ -20,6 +20,13 @@ const PAGE_SIZES = [25, 50, 100];
 const DOC_OPTS = [{ value: "", label: "All Docs" }, { value: "received", label: "Docs Received" }, { value: "pending", label: "Docs Pending" }];
 const ASSIGN_OPTS = [{ value: "", label: "All Assignment" }, { value: "assigned", label: "Assigned" }, { value: "unassigned", label: "Unassigned" }];
 const SOURCE_OPTS = [{ value: "", label: "All Sources" }, { value: "META", label: "Meta" }, { value: "WEBSITE", label: "Website" }, { value: "MANUAL", label: "Manual Entry" }];
+const FOLLOWUP_OPTS = [
+  { value: "", label: "All Follow-ups" },
+  { value: "upcoming", label: "Upcoming (next 3 days)" },
+  { value: "due_today", label: "Due Today" },
+  { value: "overdue", label: "Overdue" },
+  { value: "none", label: "No Follow-up Date" },
+];
 
 const StatCard = ({ label, value, icon: Icon, accent, testid }) => (
   <div className="bg-white border border-slate-200 rounded-md p-5 shadow-sm" data-testid={testid}>
@@ -58,7 +65,7 @@ function FileRow({ f, onOpen }) {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span data-testid={`meta-proc-status-${f.lead_id}`} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLOR(f.processing_status || "New")}`}>{f.processing_status || "New"}</span>
+          <span data-testid={`meta-proc-status-${f.lead_id}`} className={`text-xs font-medium px-2.5 py-1 rounded-full border ${STATUS_COLOR(f.processing_status || "New")}`}>{procStatusLabel(f.processing_status || "New")}</span>
           <ChevronRight size={16} className="text-slate-300 hidden sm:block" />
         </div>
       </div>
@@ -93,6 +100,7 @@ export default function MetaFiles() {
 
   const [q, setQ] = useState(() => sp("q"));
   const [statusFilter, setStatusFilter] = useState(() => sp("status", "ALL")); // processing_status
+  const [followupFilter, setFollowupFilter] = useState(() => sp("fu"));
   const [processor, setProcessor] = useState(() => sp("proc"));
   const [growthPartner, setGrowthPartner] = useState(() => sp("gp"));
   const [loanType, setLoanType] = useState(() => sp("loan"));
@@ -134,6 +142,7 @@ export default function MetaFiles() {
     const params = { status: "FILE", page: p, page_size: size, sort_by: "file_created_at", sort_dir: "desc" };
     if (q) params.q = q;
     if (statusFilter && statusFilter !== "ALL") params.processing_status = statusFilter;
+    if (followupFilter) params.followup = followupFilter;
     if (loanType) params.loan_type = loanType;
     if (bank) params.bank = bank;
     if (docs) params.docs = docs;
@@ -153,11 +162,11 @@ export default function MetaFiles() {
       setPage(data.page || 1);
     }).catch(() => { setFiles([]); setTotal(0); setPages(1); }).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment, isStaff, meta.user_id, pageSize]);
+  }, [q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment, isStaff, meta.user_id, pageSize, followupFilter]);
 
   // Reset to page 1 when any filter changes. Signature compare keeps the restored page on
   // first load and survives React StrictMode's dev double-invoke.
-  const filterSig = JSON.stringify([q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment]);
+  const filterSig = JSON.stringify([q, statusFilter, loanType, bank, docs, source, fileFrom, fileTo, myOnly, processor, growthPartner, assignment, followupFilter]);
   const prevSig = useRef(null);
   useEffect(() => {
     if (prevSig.current === null || prevSig.current === filterSig) {
@@ -176,6 +185,7 @@ export default function MetaFiles() {
     const p = {};
     if (q) p.q = q;
     if (statusFilter && statusFilter !== "ALL") p.status = statusFilter;
+    if (followupFilter) p.fu = followupFilter;
     if (processor) p.proc = processor;
     if (growthPartner) p.gp = growthPartner;
     if (loanType) p.loan = loanType;
@@ -190,7 +200,7 @@ export default function MetaFiles() {
     if (pageSize !== 25) p.size = String(pageSize);
     setSearchParams(p, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, statusFilter, processor, growthPartner, loanType, bank, docs, assignment, source, fileFrom, fileTo, myOnly, page, pageSize]);
+  }, [q, statusFilter, processor, growthPartner, loanType, bank, docs, assignment, source, fileFrom, fileTo, myOnly, page, pageSize, followupFilter]);
 
   const goToPage = (p) => { const np = Math.min(Math.max(1, p), pages); setPage(np); fetchFiles(np, pageSize); };
   const changeSize = (s) => { setPageSize(s); setPage(1); fetchFiles(1, s); };
@@ -198,12 +208,12 @@ export default function MetaFiles() {
   const activeCount =
     [q, loanType, bank, docs, source, fileFrom, fileTo].filter(Boolean).length +
     (isStaff ? [processor, growthPartner, assignment].filter(Boolean).length : 0) +
-    (statusFilter && statusFilter !== "ALL" ? 1 : 0) + (myOnly ? 1 : 0);
+    (statusFilter && statusFilter !== "ALL" ? 1 : 0) + (myOnly ? 1 : 0) + (followupFilter ? 1 : 0);
 
   const clearAll = () => {
     setQ(""); setStatusFilter("ALL"); setProcessor(""); setGrowthPartner(""); setLoanType("");
     setBank(""); setDocs(""); setAssignment(""); setSource(""); setFileFrom(""); setFileTo("");
-    setMyOnly(false);
+    setMyOnly(false); setFollowupFilter("");
   };
 
   const rangeFrom = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -231,6 +241,10 @@ export default function MetaFiles() {
           <select data-testid="meta-files-status-filter" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="w-full sm:w-auto border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
             <option value="ALL">All Statuses</option>
             {PROC_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+            <option value="Query/Hold">{procStatusLabel("Query/Hold")}</option>
+          </select>
+          <select data-testid="meta-files-followup-filter" value={followupFilter} onChange={(e) => setFollowupFilter(e.target.value)} className="w-full sm:w-auto border border-slate-300 rounded-md px-3 py-2 text-sm bg-white outline-none">
+            {FOLLOWUP_OPTS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           {canFilterMine && (
             <button
