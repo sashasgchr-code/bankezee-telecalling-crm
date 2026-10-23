@@ -17,6 +17,7 @@ Config (server-side env only — never exposed to the browser):
   BANKEZEE_CHATBOT_CRM_KEY    shared secret, must equal the chatbot's CRM_API_KEY
 """
 import os
+import re
 import hmac
 import hashlib
 import asyncio
@@ -335,6 +336,19 @@ def _compute_stage(prof: dict) -> dict:
     return {"stage": stage, "link_created_at": created, "link_expires_at": expires, "link_expired": is_expired}
 
 
+def _chatbot_phone(lead: dict) -> str:
+    """The chatbot API requires a bare 10-digit Indian mobile (^[6-9]\\d{9}$).
+    Leads are stored in varied formats (e.g. '+919902320773'), so normalize to the
+    last 10 digits (stripping a leading country code) before calling it."""
+    pn = (lead.get("phone_norm") or "").strip()
+    if pn:
+        return pn
+    digits = re.sub(r"\D", "", lead.get("phone") or "")
+    if len(digits) > 10 and digits.startswith("91"):
+        digits = digits[2:]
+    return digits[-10:] if len(digits) >= 10 else digits
+
+
 async def ensure_chatbot_link(lead: dict, *, renew: bool = False) -> Optional[str]:
     """Reusable (auth-free) link acquisition for internal automation (e.g. WhatsApp auto-send).
     Reuses a previously stored secure_link unless renew=True. Saves the link immediately because
@@ -346,7 +360,7 @@ async def ensure_chatbot_link(lead: dict, *, renew: bool = False) -> Optional[st
     payload = {
         "crm_lead_ref": lead_id,
         "name": lead.get("full_name") or "",
-        "phone": lead.get("phone") or lead.get("phone_norm") or "",
+        "phone": _chatbot_phone(lead),
         "whatsapp_consent": True,
         "renew": bool(renew),
     }
@@ -407,7 +421,7 @@ async def create_or_renew_link(lead_id: str, inp: ChatbotLinkInput, user: dict =
     payload = {
         "crm_lead_ref": lead_id,
         "name": lead.get("full_name") or "",
-        "phone": lead.get("phone") or "",
+        "phone": _chatbot_phone(lead),
         "whatsapp_consent": bool(inp.whatsapp_consent),
         "renew": bool(inp.renew),
     }

@@ -164,9 +164,16 @@ async def send_whatsapp_for_lead(lead: dict, *, force_renew: bool = False, trigg
     try:
         secure_link = await ensure_chatbot_link(lead, renew=force_renew)
     except HTTPException as e:
+        await _mark(lead_id, {"whatsapp.status": "link_failed",
+                              "whatsapp.last_error": {"message": str(e.detail)[:300]},
+                              "whatsapp.trigger": trigger, "whatsapp.updated_at": _iso()},
+                    activity="WhatsApp not sent: chatbot link error")
         return {"ok": False, "error": {"message": f"link error: {e.detail}"}}
     token = extract_token(secure_link)
     if not token:
+        await _mark(lead_id, {"whatsapp.status": "no_token",
+                              "whatsapp.trigger": trigger, "whatsapp.updated_at": _iso()},
+                    activity="WhatsApp not sent: no link token")
         return {"ok": False, "skipped": "no_token"}
 
     res = await _graph_send_template(recipient, lead.get("full_name") or "Customer", token)

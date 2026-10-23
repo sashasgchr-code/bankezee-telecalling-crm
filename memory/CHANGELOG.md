@@ -1,3 +1,20 @@
+## 2026-10-23 — FIX: WhatsApp auto-trigger silently skipped leads stored with a country code (+91)
+
+**Symptom:** New Meta leads imported from Google Sheet were not initiating the WhatsApp chatbot template. Some older leads *did* attempt (and failed on the pending template approval), but most recent leads showed "no attempt at all".
+
+**Root cause (not env/credentials/template):** `ensure_chatbot_link()` (routes/chatbot_integration.py) posts the lead phone to the external chatbot `/api/crm/chatbot/links`, which validates `phone` against `^[6-9]\d{9}$` (bare 10-digit). It was sending the raw stored `lead.phone`, which for 698/733 Meta leads is `+91XXXXXXXXXX`. The chatbot returned **422** → `ensure_chatbot_link` raised `HTTPException(502)` → `send_whatsapp_for_lead` caught it and `return`ed **without writing any `whatsapp` field** → totally silent (no DB record, empty `meta_whatsapp_log`). The ~35 leads stored as bare 10-digit passed the pattern and did attempt (hence the "yesterday worked" vs "today didn't" — it was phone *format*, not date).
+
+**Fix (minimal):**
+1. Added `_chatbot_phone(lead)` helper → normalizes to bare 10-digit (prefers stored `phone_norm`, else strips non-digits + leading `91`). Used in both link-mint payloads (`ensure_chatbot_link` + manual `/chatbot/link`). `phone_norm` passes the pattern for 729/733 leads.
+2. `send_whatsapp_for_lead` (routes/whatsapp.py): the two previously-silent `return` paths (chatbot link error, no token) now `_mark` the lead with a visible status (`link_failed` / `no_token`) + activity, so a trigger failure is recorded, never invisible.
+
+**Idempotency preserved:** autosend still fires only on brand-new sheet insert; re-syncs hit the update branch (no re-dispatch); a lead with a `wamid` is skipped unless an authorized manual resend (`force_renew`). Failed attempts (no wamid) are NOT auto-retried by sync — only by the authorized `/leads/{id}/whatsapp/resend` endpoint. No duplicate sends.
+
+**Verified (non-destructive, no live sends):** traced the real pipeline on a `+91` lead with the Graph send stubbed — chatbot link now mints, token extracts, pipeline reaches the Graph send step, and the outcome is recorded as `whatsapp.status`. Test state cleaned up. Did NOT mass-send to the 698 existing real customers (template still pending Meta approval; those will send correctly once approved, or per-lead via authorized resend).
+
+Files touched: `backend/routes/chatbot_integration.py`, `backend/routes/whatsapp.py`.
+
+
 ## 2026-06 — Advanced filtering/pagination iteration-65 fixes (Admin Leads + Meta Files)
 
 Addressed all issues from `/app/test_reports/iteration_65.json`:
