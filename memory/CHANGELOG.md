@@ -1,3 +1,16 @@
+## 2026-06 — Advanced filtering/pagination iteration-65 fixes (Admin Leads + Meta Files)
+
+Addressed all issues from `/app/test_reports/iteration_65.json`:
+1. **SECURITY (HIGH)** — `/api/leads/filter-options`, `/api/leads/export`, `/api/leads/stats`, `/api/leads/select-all-ids` were using `get_current_user` → HR could enumerate/export all leads despite 403 on `/api/leads`. Switched all to `require_not_hr`. Verified via curl: HR now 403 on all four; admin still 200.
+2. **Meta loan_type (HIGH)** — DB had `'Personal loan '` (trailing space) + case variants; exact-equality match returned 0. Now matches case-insensitively with optional surrounding whitespace (`^\s*{re.escape(v)}\s*$`, `$options:'i'`). `/meta/files/filter-options` now dedupes loan_types and banks case-insensitively. Verified: `loan_type=Personal loan` → 2.
+3. **Meta bank regex** — `bank` value now `re.escape`-d before `$regex` (no more 500 on special chars). Verified: `bank=ICICI (test` → 200.
+4. **Meta SORT_FIELDS** — added `file_created_at` so Files sort by file-conversion date works.
+5. **Meta Files frontend** (`pages/meta/Files.js`): URL `size` normalized to allowed {25,50,100}; `activeCount` no longer counts staff-only params (processor/GP/assignment) for non-staff; "My Files" toggle hidden for processors (`canFilterMine = isStaff`); `myOnly` only set for staff; FileRow bank falls back to `file.banks[].bank_name`; Docs column shows "Pending" when `docs_received` missing (matches Docs=Pending filter).
+6. **test_credentials.md** — annotated GP (yarragondaanusha@gmail.com) password drift: both MetaGP123! and 9063023292 return 401; use `backend/tests/mint_token.py` until reset.
+
+Backend verified via curl. Frontend compiles clean (1 warning). Files touched: `backend/routes/leads.py`, `backend/routes/meta.py`, `frontend/src/pages/meta/Files.js`, `memory/test_credentials.md`.
+
+
 ## 2026-09-12 — Meta Today filter + Meta status-filter responsive + Hourly Today's Call Activity (BACKEND + WEB + MOBILE code; NOT deployed, NO APK build)
 
 1. **Meta Leads 'Today' filter used wrong date basis** — `meta.py` `meta_leads()` filtered `created_time` (sheet/import creation). Now filters canonical **`assigned_at`** (set at assignment, `_now_iso()`), so Today/Yesterday/Week/Month/Custom = leads whose assignment happened in range; unassigned (`assigned_at=None`) excluded. Verified via curl: Today UI==DB==2 (incl. a 40-day-old lead assigned today); 7D/30D use assignment date. No ownership/date/assignment mutation.

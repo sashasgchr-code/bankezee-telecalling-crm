@@ -731,7 +731,7 @@ async def get_leads_stats(
     previous_gp: Optional[str] = None,
     last_assigned_from: Optional[str] = None,
     last_assigned_to: Optional[str] = None,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_not_hr)
 ):
     """
     Get lead statistics for dashboard.
@@ -857,7 +857,7 @@ async def get_leads_stats(
 
 
 @router.get("/leads/filter-options")
-async def get_leads_filter_options(current_user: dict = Depends(get_current_user)):
+async def get_leads_filter_options(current_user: dict = Depends(require_not_hr)):
     """Distinct City / Employment values the caller is allowed to see (role-scoped).
     Options are computed from the same base query the list uses (excludes archived/invalid),
     so a user can never discover values from records outside their visibility."""
@@ -1993,7 +1993,7 @@ async def auto_distribute_leads(data: AutoDistribute, current_user: dict = Depen
 @router.post("/leads/select-all-ids")
 async def get_all_filtered_lead_ids(
     filters: BulkOperationByFilter,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_not_hr)
 ):
     """
     Get all lead IDs matching the current filters.
@@ -2318,7 +2318,7 @@ async def get_import_batch(
 @router.post("/leads/export")
 async def export_leads(
     filters: BulkOperationByFilter,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_not_hr)
 ):
     """
     Export leads matching filters to Excel file.

@@ -12,6 +12,7 @@ Isolated Meta module for BankEzee Connect (/api/meta/*).
   GridFS binaries remain a pending backfill: legacy docs return 409 on download.
 """
 import io
+import re
 import uuid
 import csv
 import zipfile
@@ -283,7 +284,7 @@ async def meta_lead_stats(user: dict = Depends(require_meta_access),
 
 
 # =========================== leads ===========================
-SORT_FIELDS = {"created_time", "full_name", "city", "status"}
+SORT_FIELDS = {"created_time", "full_name", "city", "status", "file_created_at"}
 
 
 @router.get("/leads")
@@ -339,9 +340,9 @@ async def meta_leads(
         else:
             query["processing_status"] = processing_status
     if loan_type and loan_type != "ALL":
-        query["file.loan_type"] = loan_type
+        query["file.loan_type"] = {"$regex": f"^\\s*{re.escape(loan_type.strip())}\\s*$", "$options": "i"}
     if bank and bank != "ALL":
-        rx = {"$regex": bank, "$options": "i"}
+        rx = {"$regex": re.escape(bank.strip()), "$options": "i"}
         and_list.append({"$or": [
             {"file.disbursed_bank": rx}, {"file.approved_bank": rx}, {"file.login_bank": rx},
             {"file.bank": rx}, {"file.lender": rx}, {"file.banks.bank_name": rx},
@@ -868,14 +869,20 @@ async def meta_files_filter_options(user: dict = Depends(require_meta_access)):
         match["assigned_processor_id"] = uid
     elif role not in STAFF_ROLES:
         match["assigned_partner_id"] = uid
-    loan_types = await db.meta_leads.distinct("file.loan_type", match)
-    banks = set()
+    raw_loan_types = await db.meta_leads.distinct("file.loan_type", match)
+    banks = {}
     for fld in ["file.disbursed_bank", "file.approved_bank", "file.login_bank", "file.bank", "file.lender", "file.banks.bank_name"]:
         for v in await db.meta_leads.distinct(fld, match):
             if v and str(v).strip():
-                banks.add(str(v).strip())
-    loan_types = sorted([str(x).strip() for x in loan_types if x and str(x).strip()], key=lambda s: s.lower())
-    return {"loan_types": loan_types, "banks": sorted(banks, key=lambda s: s.lower())}
+                s = str(v).strip()
+                banks.setdefault(s.lower(), s)
+    lt = {}
+    for x in raw_loan_types:
+        if x and str(x).strip():
+            s = str(x).strip()
+            lt.setdefault(s.lower(), s)
+    loan_types = sorted(lt.values(), key=lambda s: s.lower())
+    return {"loan_types": loan_types, "banks": sorted(banks.values(), key=lambda s: s.lower())}
 
 
 def _compute_report(items):

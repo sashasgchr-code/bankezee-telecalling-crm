@@ -35,7 +35,9 @@ function FileRow({ f, onOpen }) {
   const [reveal, setReveal] = useState(false);
   const dt = f.file_created_at || f.created_at;
   const file = f.file || {};
-  const bank = file.disbursed_bank || file.approved_bank || file.login_bank || file.bank || file.lender;
+  const banksArr = (file.banks || []);
+  const bank = file.disbursed_bank || file.approved_bank || file.login_bank || file.bank || file.lender
+    || (banksArr.find((b) => b && b.bank_name) || {}).bank_name;
   const processor = f.assigned_processor_name || f.processor_name;
   const docsReceived = file.docs_received ?? f.docs_received;
   const Meta = ({ label, value, className = "text-slate-700" }) => (
@@ -67,7 +69,7 @@ function FileRow({ f, onOpen }) {
         <Meta label="Processor" value={processor} />
         <Meta label="Bank / Lender" value={bank} />
         <Meta label="Created" value={dt ? new Date(dt).toLocaleDateString() : null} />
-        <Meta label="Docs" value={docsReceived == null ? null : (docsReceived ? "Received" : "Pending")} className={docsReceived ? "text-emerald-600" : "text-amber-600"} />
+        <Meta label="Docs" value={docsReceived ? "Received" : "Pending"} className={docsReceived ? "text-emerald-600" : "text-amber-600"} />
         <Meta label="Assignment" value={f.assigned_partner_id ? "Assigned" : "Unassigned"} className={f.assigned_partner_id ? "text-emerald-600" : "text-slate-400"} />
       </div>
     </div>
@@ -78,7 +80,7 @@ export default function MetaFiles() {
   const navigate = useNavigate();
   const meta = useMetaUser();
   const isStaff = ["admin", "ops"].includes(meta.role);
-  const canFilterMine = ["processor", "admin", "ops"].includes(meta.role);
+  const canFilterMine = isStaff;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const sp = (k, d = "") => searchParams.get(k) ?? d;
@@ -100,9 +102,12 @@ export default function MetaFiles() {
   const [source, setSource] = useState(() => sp("source"));
   const [fileFrom, setFileFrom] = useState(() => sp("from"));
   const [fileTo, setFileTo] = useState(() => sp("to"));
-  const [myOnly, setMyOnly] = useState(() => sp("mine", meta.role === "processor" ? "1" : "") === "1");
+  const [myOnly, setMyOnly] = useState(() => isStaff && sp("mine") === "1");
   const [page, setPage] = useState(() => parseInt(sp("page", "1"), 10) || 1);
-  const [pageSize, setPageSize] = useState(() => parseInt(sp("size", "25"), 10) || 25);
+  const [pageSize, setPageSize] = useState(() => {
+    const s = parseInt(sp("size", "25"), 10);
+    return PAGE_SIZES.includes(s) ? s : 25;
+  });
   const [pageInput, setPageInput] = useState("");
 
   // Option lists
@@ -191,7 +196,8 @@ export default function MetaFiles() {
   const changeSize = (s) => { setPageSize(s); setPage(1); fetchFiles(1, s); };
 
   const activeCount =
-    [q, loanType, bank, docs, source, fileFrom, fileTo, processor, growthPartner, assignment].filter(Boolean).length +
+    [q, loanType, bank, docs, source, fileFrom, fileTo].filter(Boolean).length +
+    (isStaff ? [processor, growthPartner, assignment].filter(Boolean).length : 0) +
     (statusFilter && statusFilter !== "ALL" ? 1 : 0) + (myOnly ? 1 : 0);
 
   const clearAll = () => {
