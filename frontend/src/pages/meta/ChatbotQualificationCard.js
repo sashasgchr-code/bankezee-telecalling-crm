@@ -100,6 +100,17 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
     toast.success("Recorded");
   };
 
+  const viewDoc = async (docId) => {
+    if (!docId) return;
+    setBusy(`doc-${docId}`);
+    try {
+      const res = await api.get(`/meta/leads/${leadId}/chatbot/documents/${docId}`, { responseType: "blob" });
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank");
+    } catch (e) { toast.error(errText(e, "Could not open document")); }
+    finally { setBusy(""); }
+  };
+
   const applyToFile = async () => {
     setBusy("apply");
     try {
@@ -112,6 +123,11 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
 
   const q = prof?.qualification || {};
   const loans = q.loans || [];
+  const groups = q.loan_groups || [];
+  const inr = (v) => (v != null && v !== "" ? `₹${Number(v).toLocaleString("en-IN")}` : "—");
+  const docOf = (...kw) => (q.documents || []).find((d) => kw.some((k) => String(d.type || d.name || "").toLowerCase().includes(k)));
+  const payslipDoc = docOf("payslip", "salary", "pay slip");
+  const creditDoc = docOf("credit", "cibil", "bureau");
   const hasLink = !!prof?.secure_link;
   const progress = Number(q.progress || 0);
   const ratio = q.emi_to_salary_ratio;
@@ -248,21 +264,79 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
             <>
               {/* summary grid */}
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
-                <Stat label="Net Monthly Salary" value={q.net_monthly_salary != null ? `₹${q.net_monthly_salary}` : "—"} accent />
-                <Stat label="Company" value={q.company_name} />
+                <Stat label="Net Monthly Salary" value={q.net_monthly_salary != null ? inr(q.net_monthly_salary) : "Pending payslip review"} accent />
+                <Stat label="Company" value={q.company_name || "Pending payslip review"} />
                 <Stat label="City" value={q.city} />
-                <Stat label="CIBIL" value={q.cibil_score ? `${q.cibil_score}${q.cibil_bureau ? ` (${q.cibil_bureau})` : ""}` : "—"} />
-                <Stat label="Total Obligations" value={q.total_monthly_obligations != null ? `₹${q.total_monthly_obligations}` : "—"} />
-                <Stat label="EMI-to-Salary" value={ratio != null && ratio !== "" ? `${ratio}%` : "—"} accent />
-                <Stat label="Payslip" value={q.payslip_status || "Pending"} />
-                <Stat label="Credit Report" value={q.credit_report_status || "Pending"} />
-                <Stat label="Existing Loans" value={loans.length} />
+                <Stat label="CIBIL" value={q.cibil_score ? `${q.cibil_score}${q.cibil_bureau ? ` (${q.cibil_bureau})` : ""}` : "Pending credit report review"} />
+                <Stat label="Total Loans" value={q.total_loans != null ? q.total_loans : (groups.length || loans.length || 0)} />
+                <Stat label="Total Outstanding" value={inr(q.total_outstanding)} />
+                <Stat label="Total Monthly EMI" value={inr(q.total_monthly_emi != null ? q.total_monthly_emi : q.total_monthly_obligations)} accent />
+                <Stat label="EMI-to-Salary" value={q.net_monthly_salary && ratio != null && ratio !== "" ? `${ratio}%` : "—"} accent />
+                <Stat label="Payslip" value={q.payslip_status || "Will Share Later"} />
+              </div>
+
+              {/* documents with secure view */}
+              <div className="flex flex-wrap items-center gap-2 mb-3" data-testid="chatbot-documents-row">
+                <span className="text-[11px] text-slate-400 uppercase tracking-wider">Documents:</span>
+                <span className="inline-flex items-center gap-1.5 text-xs border border-slate-200 rounded-md px-2.5 py-1 text-slate-600">
+                  Latest Payslip: <span className="font-medium">{payslipDoc ? "Uploaded" : (q.payslip_status || "Will Share Later")}</span>
+                  {payslipDoc && (
+                    <button data-testid="chatbot-view-payslip-btn" onClick={() => viewDoc(payslipDoc.doc_id)} disabled={busy === `doc-${payslipDoc.doc_id}`}
+                      className="ml-1 inline-flex items-center gap-1 text-emerald-700 hover:underline disabled:opacity-60">
+                      <Eye size={12} /> View
+                    </button>
+                  )}
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-xs border border-slate-200 rounded-md px-2.5 py-1 text-slate-600">
+                  CIBIL Report: <span className="font-medium">{creditDoc ? "Uploaded" : (q.credit_report_status || "Will Share Later")}</span>
+                  {creditDoc && (
+                    <button data-testid="chatbot-view-credit-btn" onClick={() => viewDoc(creditDoc.doc_id)} disabled={busy === `doc-${creditDoc.doc_id}`}
+                      className="ml-1 inline-flex items-center gap-1 text-emerald-700 hover:underline disabled:opacity-60">
+                      <Eye size={12} /> View
+                    </button>
+                  )}
+                </span>
               </div>
 
               {expanded && (
                 <div className="mt-3 pt-3 border-t border-slate-100 space-y-3" data-testid="chatbot-qual-details">
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Gauge size={12} /> Existing Loans & Obligations</p>
-                  {loans.length === 0 && <p className="text-sm text-slate-400">No loans reported.</p>}
+                  {groups.length > 0 && (
+                    <div className="overflow-x-auto rounded-md border border-slate-100 mb-2" data-testid="chatbot-loan-groups">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-400">
+                            <th className="text-left font-medium px-2 py-1.5">Loan Type</th>
+                            <th className="text-right font-medium px-2 py-1.5">Count</th>
+                            <th className="text-right font-medium px-2 py-1.5">Outstanding</th>
+                            <th className="text-right font-medium px-2 py-1.5">Monthly EMI</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groups.map((g, i) => (
+                            <tr key={i} className="border-t border-slate-100" data-testid={`chatbot-loan-group-${i}`}>
+                              <td className="px-2 py-1.5 text-slate-700">{g.label || g.loan_type}</td>
+                              <td className="px-2 py-1.5 text-right">{g.count}</td>
+                              <td className="px-2 py-1.5 text-right">{inr(g.total_outstanding)}</td>
+                              <td className="px-2 py-1.5 text-right">{inr(g.total_emi)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t-2 border-slate-200 bg-slate-50 font-semibold text-slate-800">
+                            <td className="px-2 py-1.5">TOTAL</td>
+                            <td className="px-2 py-1.5 text-right">{q.total_loans ?? groups.reduce((s, g) => s + Number(g.count || 0), 0)}</td>
+                            <td className="px-2 py-1.5 text-right">{inr(q.total_outstanding)}</td>
+                            <td className="px-2 py-1.5 text-right">{inr(q.total_monthly_emi)}</td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                  {q.loans_pending_credit_report && groups.length === 0 && (
+                    <p className="text-sm text-amber-600" data-testid="chatbot-loans-pending">To be verified from credit report</p>
+                  )}
+                  {loans.length === 0 && !q.loans_pending_credit_report && groups.length === 0 && <p className="text-sm text-slate-400">No loans reported.</p>}
                   {loans.map((l, i) => (
                     <div key={l.loan_id || i} className="border border-slate-100 rounded-md p-3 bg-slate-50/50" data-testid={`chatbot-loan-${i}`}>
                       <p className="text-sm font-medium text-slate-800 mb-1">{[l.lender, l.loan_type].filter(Boolean).join(" · ") || `Loan #${i + 1}`}</p>

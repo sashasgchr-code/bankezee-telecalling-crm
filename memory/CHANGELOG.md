@@ -384,3 +384,41 @@ FILES CHANGED:
 - backend/utils/hierarchy.py: PARENT_FIELDS += ("team_lead_id","team_lead").
 VERIFIED (preview): Rama canonical id 7db92ece-2b63-4846-9db0-5b003078c9c9; scope = 9 members (1 TL + 7 GP-role). Hourly HTTP 200 (was empty-scope); manager-team-stats total_team=9, gp_performance=9, gp_call_stats=9 (all GPs incl zero-activity). Admin hourly 200 (no regression). Rama team has 0 call/lead/file rows on preview, so hourly shows 0 rows legitimately (empty-scope bug fixed). Pinky TL scoping uses /tl canonicalization (prior turn); on preview her leads are all FILE (excluded) so list=0 — production non-file leads resolve under her.
 NOT deployed. Mobile/app.json untouched.
+
+## 2026-06 — Grouped Loan Categories + Document Sync (CRM side, sections 11-14)
+SCOPE NOTE: Customer-facing chatbot flow changes (sections 1-10: City-first, Payslip/CIBIL
+branching, grouped loan entry UI, review page, Save&Resume) belong to the SEPARATE bankezee.com
+chatbot repo which is NOT in this codebase — not implemented here. CRM made forward-compatible.
+
+BACKEND (routes/chatbot_integration.py):
+- _normalize_loan: now reads count/number_of_loans and total_outstanding/total_emi (grouped shape),
+  backward-compatible with individual loans.
+- _build_loan_groups(): aggregates loans by loan_type -> {loan_type,label,count,total_outstanding,total_emi}.
+- _normalize_session: adds loan_groups, total_loans, total_outstanding, total_monthly_emi,
+  loans_pending_credit_report. total_monthly_obligations now = total monthly EMI (never outstanding).
+  City/company guard: employer name no longer leaks into City (fixes "Neosales under City").
+- _to_structured_loan: carries count/number_of_loans.
+- prefill_file_from_qualification: fills file.loan_groups (when empty), sets loans_pending_credit_report,
+  and attaches chatbot payslip/CIBIL docs to lead.documents (category "Latest Payslip" / "CIBIL / Credit
+  Report", source=chatbot, dedup by chatbot_doc_id). Fill-when-empty, idempotent, preserves individual loans.
+
+BACKEND (routes/meta_compat.py):
+- _lead_to_file_details exposes loan_groups + loans_pending_credit_report; _file_details_to_meta persists them.
+- _to_connect_documents prefers explicit category label.
+- compat_download_document proxies chatbot-sourced docs (source=chatbot) via chatbot_integration._chatbot_request.
+
+FRONTEND:
+- NEW components/file-detail/GroupedLoansSection.js: read-mode grouped table (Loan Type, Count, Total
+  Outstanding, Monthly EMI + TOTAL row) derived from loan_groups or individual loans; edit-mode grouped
+  editor (add/remove/edit, Indian number format); "To be verified from credit report" when pending;
+  collapsible "Detailed loan records — preserved" (individual records never deleted).
+- FileDetailsPage.js: replaced ExistingLoansEditor with GroupedLoansSection; loads/saves loan_groups +
+  loans_pending_credit_report via editedDetails.
+- ChatbotQualificationCard.js: City fixed, "Total Obligations" -> "Total Monthly EMI", added Total Loans /
+  Total Outstanding stats, pending-payslip/credit wording, grouped loan table in expanded view, and secure
+  "View" buttons for payslip/CIBIL docs (authenticated proxy -> blob).
+
+VERIFIED: unit tests (scripts/test_grouped_loans.py — grouped+individual+city-guard+pending+structured all pass);
+e2e API contract (admin token) loan_groups surfaces, individual preserved, docs categorized, CRM edit round-trips
+without wiping individual records; UI screenshot confirms grouped table + TOTAL + preserved records + categorized
+docs render on Meta File Details. NOT deployed.

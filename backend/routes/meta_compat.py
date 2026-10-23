@@ -185,6 +185,8 @@ def _lead_to_file_details(lead: dict) -> dict:
         "existing_loan_2": f.get("existing_loan_2", ""),
         "existing_loan_3": f.get("existing_loan_3", ""),
         "existing_loans": f.get("existing_loans") if isinstance(f.get("existing_loans"), list) else [],
+        "loan_groups": f.get("loan_groups") if isinstance(f.get("loan_groups"), list) else [],
+        "loans_pending_credit_report": bool(f.get("loans_pending_credit_report")),
         "type_of_loan": f.get("loan_type", ""),
         "cibil_score": f.get("cibil", ""),
         "loan_amount_required": f.get("loan_amount", ""),
@@ -215,6 +217,8 @@ def _file_details_to_meta(additional: dict, lead: dict) -> dict:
         "existing_loan_2": "existing_loan_2",
         "existing_loan_3": "existing_loan_3",
         "existing_loans": "existing_loans",
+        "loan_groups": "loan_groups",
+        "loans_pending_credit_report": "loans_pending_credit_report",
         "type_of_loan": "loan_type",
         "cibil_score": "cibil",
         "loan_amount_required": "loan_amount",
@@ -236,7 +240,7 @@ def _to_connect_documents(lead: dict) -> list:
             "id": d.get("doc_id"),
             "name": d.get("filename") or "Document",
             "filename": d.get("filename"),
-            "category": d.get("content_type", "general"),
+            "category": d.get("category") or d.get("content_type", "general"),
             "size": d.get("size"),
             "uploaded_at": d.get("at"),
             "storage_key": d.get("storage_key"),
@@ -430,6 +434,13 @@ async def compat_download_document(lead_id: str, doc_id: str, user: dict = Depen
     doc = next((d for d in (lead.get("documents") or []) if d.get("doc_id") == doc_id), None)
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
+    # Chatbot-sourced documents (payslip / credit report) are proxied securely from the chatbot.
+    if doc.get("source") == "chatbot" and doc.get("chatbot_doc_id"):
+        from routes.chatbot_integration import _chatbot_request
+        resp = await _chatbot_request("GET", f"/api/crm/chatbot/sessions/{lead_id}/documents/{doc.get('chatbot_doc_id')}")
+        ctype = resp.headers.get("content-type", doc.get("content_type") or "application/pdf")
+        return Response(content=resp.content, media_type=ctype,
+                        headers={"Content-Disposition": f'attachment; filename="{doc.get("filename") or doc_id}"'})
     if not doc.get("storage_key"):
         legacy = await _read_legacy_binary(doc_id)
         if legacy:

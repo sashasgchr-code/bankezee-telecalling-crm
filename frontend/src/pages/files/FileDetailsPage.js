@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
-import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
+import GroupedLoansSection from '../../components/file-detail/GroupedLoansSection';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 import { useLoanTypes } from '../../constants/loanTypes';
@@ -214,6 +214,8 @@ const FileDetailsPage = ({
         existing_loan_2: fd.existing_loan_2 || '',
         existing_loan_3: fd.existing_loan_3 || '',
         existing_loans: Array.isArray(fd.existing_loans) ? fd.existing_loans : [],
+        loan_groups: Array.isArray(fd.loan_groups) ? fd.loan_groups : [],
+        loans_pending_credit_report: !!fd.loans_pending_credit_report,
         type_of_loan: fd.type_of_loan || data.requirement || '',
         cibil_score: fd.cibil_score || '',
         loan_amount_required: fd.loan_amount_required || '',
@@ -683,11 +685,12 @@ const FileDetailsPage = ({
                     )}
                   </div>
                 </div>
-                <ExistingLoansEditor
-                  loans={editedDetails.existing_loans}
-                  legacyLoans={[fd.existing_loan_1, fd.existing_loan_2, fd.existing_loan_3]}
+                <GroupedLoansSection
+                  groups={editedDetails.loan_groups}
+                  existingLoans={editedDetails.existing_loans}
+                  pendingCreditReport={editedDetails.loans_pending_credit_report}
                   isEditing={isEditingDetails}
-                  onChange={(loans) => setEditedDetails({...editedDetails, existing_loans: loans})}
+                  onChange={(groups) => setEditedDetails({...editedDetails, loan_groups: groups})}
                 />
               </div>
 

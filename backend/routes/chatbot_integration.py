@@ -111,9 +111,10 @@ def _normalize_loan(raw: dict) -> dict:
         "loan_type": _pick(raw, "loan_type", "type", "product"),
         "original_amount": _pick(raw, "original_amount", "loan_amount", "sanctioned_amount", "amount"),
         "sanction_date": _pick(raw, "sanction_date", "disbursed_date", "start_date"),
-        "outstanding_balance": _pick(raw, "outstanding_balance", "outstanding", "balance", "outstanding_amount"),
+        "outstanding_balance": _pick(raw, "outstanding_balance", "outstanding", "balance", "outstanding_amount", "total_outstanding"),
         "interest_rate": _pick(raw, "interest_rate", "roi", "rate"),
-        "monthly_emi": _pick(raw, "monthly_emi", "emi", "emi_amount"),
+        "monthly_emi": _pick(raw, "monthly_emi", "emi", "emi_amount", "total_emi", "monthly_payment"),
+        "count": _pick(raw, "number_of_loans", "count", "loan_count", "num_loans", "no_of_loans", default=1) or 1,
         "original_tenure": _pick(raw, "original_tenure", "tenure", "tenure_months"),
         "emis_paid": _pick(raw, "emis_paid", "paid_emis", "emis_paid_count", "no_of_emis_paid"),
         "raw": raw,
@@ -128,6 +129,39 @@ def _normalize_document(raw: dict) -> dict:
         "status": _pick(raw, "status", "state", default="uploaded"),
         "uploaded_at": _pick(raw, "uploaded_at", "created_at", "at"),
     }
+
+
+_GROUP_TYPE_LABELS = {
+    "personal_loan": "Personal Loan", "home_loan": "Home Loan", "car_loan": "Car Loan",
+    "two_wheeler_loan": "Two-Wheeler Loan", "business_loan": "Business Loan",
+    "lap": "Loan Against Property", "education_loan": "Education Loan", "gold_loan": "Gold Loan",
+    "credit_card": "Credit Card Outstanding", "consumer_durable_loan": "Consumer Durable Loan",
+    "overdraft": "Overdraft", "other": "Other",
+}
+
+
+def _num_val(v):
+    try:
+        return float(v) if v not in (None, "") else 0.0
+    except Exception:
+        return 0.0
+
+
+def _build_loan_groups(loans: list) -> list:
+    """Aggregate individual or already-grouped loans into per-loan-type groups:
+    (loan_type, label, count, total_outstanding, total_emi)."""
+    groups = {}
+    for l in loans:
+        ctype = _map_loan_type(l.get("loan_type")) or "other"
+        label = _GROUP_TYPE_LABELS.get(ctype) or (str(l.get("loan_type")).title() if l.get("loan_type") else "Other")
+        g = groups.setdefault(ctype, {"loan_type": ctype, "label": label, "count": 0,
+                                      "total_outstanding": 0.0, "total_emi": 0.0})
+        g["count"] += int(l.get("count") or 1)
+        g["total_outstanding"] += _num_val(l.get("outstanding_balance"))
+        g["total_emi"] += _num_val(l.get("monthly_emi"))
+    return [{"loan_type": g["loan_type"], "label": g["label"], "count": g["count"],
+             "total_outstanding": round(g["total_outstanding"]), "total_emi": round(g["total_emi"])}
+            for g in groups.values()]
 
 
 def _normalize_session(session: dict) -> dict:
@@ -146,14 +180,17 @@ def _normalize_session(session: dict) -> dict:
     docs_raw = session.get("documents") or []
     loans = [_normalize_loan(l) for l in loans_raw if isinstance(l, dict)]
     docs = [_normalize_document(x) for x in docs_raw if isinstance(x, dict)]
+    loan_groups = _build_loan_groups(loans)
+    total_loans = sum(int(g.get("count") or 0) for g in loan_groups)
+    total_outstanding = sum(float(g.get("total_outstanding") or 0) for g in loan_groups)
+    total_monthly_emi = sum(float(g.get("total_emi") or 0) for g in loan_groups)
 
-    total_oblig = _pick(summary, "total_monthly_obligations", "total_monthly_emi") \
-        or _pick(src, "total_monthly_obligations", "total_obligations", "total_emi")
-    if total_oblig in (None, "") and loans:
-        try:
-            total_oblig = sum(float(l.get("monthly_emi") or 0) for l in loans) or None
-        except Exception:
-            total_oblig = None
+    # Total monthly obligations = total monthly EMI (never the outstanding balance).
+    if loan_groups:
+        total_oblig = total_monthly_emi or None
+    else:
+        total_oblig = _pick(summary, "total_monthly_emi", "total_monthly_obligations") \
+            or _pick(src, "total_monthly_emi", "total_emi")
 
     net_salary = _pick(src, "net_monthly_salary", "net_salary", "take_home_salary",
                        "monthly_take_home", "monthly_salary", "salary", "income")
@@ -176,6 +213,15 @@ def _normalize_session(session: dict) -> dict:
     payslip = _pick(src, "payslip_status", "payslip_uploaded") or _doc_status("payslip", "salary", "pay slip")
     credit = _pick(src, "credit_report_status", "credit_report_uploaded", "cibil_report_status") \
         or _doc_status("credit", "cibil", "bureau")
+
+    # Company vs City — never let the employer name leak into the City field.
+    company = _pick(src, "company_name", "company", "employer", "employer_name")
+    city = _pick(src, "city", "current_city", "home_city", "location")
+    if city and company and str(city).strip().lower() == str(company).strip().lower():
+        city = None
+    cibil_val = _pick(src, "cibil_score", "cibil", "credit_score")
+    credit_uploaded = bool(_doc_status("credit", "cibil", "bureau")) or ("upload" in str(credit or "").lower())
+    loans_pending_cr = bool(credit_uploaded and not loans and not cibil_val)
 
     qc = _pick(session, "questions_completed", "questions_answered", "answered_count", default=0) or 0
     qt = _pick(session, "questions_total", "total_questions", default=0) or 0
@@ -200,11 +246,16 @@ def _normalize_session(session: dict) -> dict:
         "last_activity": session.get("last_activity"),
         "session_created_at": session.get("created_at"),
         "net_monthly_salary": net_salary,
-        "company_name": _pick(src, "company_name", "company", "employer", "employer_name"),
-        "city": _pick(src, "city", "location"),
-        "cibil_score": _pick(src, "cibil_score", "cibil", "credit_score"),
+        "company_name": company,
+        "city": city,
+        "cibil_score": cibil_val,
         "cibil_bureau": _pick(src, "cibil_bureau", "bureau", "credit_bureau"),
         "total_monthly_obligations": total_oblig,
+        "total_loans": total_loans,
+        "total_outstanding": round(total_outstanding) if total_outstanding else None,
+        "total_monthly_emi": round(total_monthly_emi) if total_monthly_emi else None,
+        "loan_groups": loan_groups,
+        "loans_pending_credit_report": loans_pending_cr,
         "emi_to_salary_ratio": ratio,
         "payslip_status": payslip,
         "credit_report_status": credit,
@@ -583,6 +634,7 @@ async def apply_qualification_to_file(lead_id: str, user: dict = Depends(require
         "ok": True,
         "existing_loans_before": len(before.get("existing_loans") or []),
         "existing_loans_after": len(after.get("existing_loans") or []),
+        "loan_groups": after.get("loan_groups") or [],
         "monthly_emi_obligations": after.get("monthly_emi"),
         "foir": after.get("foir"),
         "cibil": after.get("cibil"),
@@ -636,6 +688,8 @@ def _to_structured_loan(l: dict) -> dict:
         "outstanding": l.get("outstanding_balance") if l.get("outstanding_balance") not in (None, "") else "",
         "roi": l.get("interest_rate") if l.get("interest_rate") not in (None, "") else "",
         "emi": l.get("monthly_emi") if l.get("monthly_emi") not in (None, "") else "",
+        "count": l.get("count") or 1,
+        "number_of_loans": l.get("count") or 1,
         # keys read by ExistingLoansSection (compatibility)
         "type": _map_loan_type(l.get("loan_type")),
         "original_amount": l.get("original_amount") if l.get("original_amount") not in (None, "") else "",
@@ -702,12 +756,40 @@ async def prefill_file_from_qualification(lead_id: str):
             if existing_file.get(k) in (None, "", []):
                 changed[k] = v
 
+        # Grouped loan view (loan_type, count, total_outstanding, total_emi) — fill when empty.
+        if not existing_file.get("loan_groups") and q.get("loan_groups"):
+            changed["loan_groups"] = q.get("loan_groups")
+        if q.get("loans_pending_credit_report") and not loans:
+            changed["loans_pending_credit_report"] = True
+
+        # Attach chatbot payslip / credit report to the File documents (no dupes by chatbot id).
+        existing_docs = lead.get("documents") or []
+        have_cb = {d.get("chatbot_doc_id") for d in existing_docs if d.get("chatbot_doc_id")}
+        new_docs = []
+        for d in (q.get("documents") or []):
+            did = d.get("doc_id")
+            t = (d.get("type") or d.get("name") or "").lower()
+            if not did or did in have_cb:
+                continue
+            if any(k in t for k in ("credit", "cibil", "bureau")):
+                category = "CIBIL / Credit Report"
+            elif any(k in t for k in ("payslip", "salary", "pay slip")):
+                category = "Latest Payslip"
+            else:
+                continue
+            new_docs.append({
+                "doc_id": f"cb_{did}", "chatbot_doc_id": did,
+                "filename": d.get("name") or f"{category}.pdf",
+                "content_type": "application/pdf", "category": category,
+                "source": "chatbot", "at": d.get("uploaded_at") or _now_iso(),
+            })
+
         # City maps to the existing lead-level field.
         lead_set = {}
         if q.get("city") and lead.get("city") in (None, "", []):
             lead_set["city"] = q.get("city")
 
-        if not changed and not lead_set:
+        if not changed and not lead_set and not new_docs:
             return
         set_doc = {"updated_at": _now_iso(), **lead_set}
         if changed:
@@ -716,11 +798,12 @@ async def prefill_file_from_qualification(lead_id: str):
         detail = f"File prefilled from chatbot: {len(changed)} field(s)"
         if n_loans:
             detail += f", {n_loans} existing loan(s)"
-        await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": set_doc, "$push": {"activities": {
-            "type": "chatbot",
-            "detail": f"{detail} — please review",
-            "at": _now_iso(),
-        }}})
+        if new_docs:
+            detail += f", {len(new_docs)} document(s)"
+        push = {"activities": {"type": "chatbot", "detail": f"{detail} — please review", "at": _now_iso()}}
+        if new_docs:
+            push["documents"] = {"$each": new_docs}
+        await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": set_doc, "$push": push})
     except Exception as e:
         logger.warning(f"File prefill from qualification failed for {lead_id}: {e}")
 
