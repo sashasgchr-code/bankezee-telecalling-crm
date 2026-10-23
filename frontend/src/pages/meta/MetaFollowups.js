@@ -26,6 +26,33 @@ export const useFollowups = (poll = true) => {
   return { ...data, reload: load };
 };
 
+// Overdue TAT nudges — files past the 4-day line, scoped to the current user
+// (a processor sees only their assigned files). Polls every 2 min + refreshes on status change.
+export const useTatAlerts = (poll = true) => {
+  const [data, setData] = useState({ items: [], count: 0, limit_hours: 96 });
+  const load = async () => {
+    try {
+      const { data } = await api.get("/meta/tat/alerts");
+      setData(data || { items: [], count: 0, limit_hours: 96 });
+    } catch { /* non-fatal */ }
+  };
+  useEffect(() => {
+    load();
+    const onChange = () => load();
+    window.addEventListener("meta-followup-changed", onChange);
+    window.addEventListener("meta-status-changed", onChange);
+    let id;
+    if (poll) id = setInterval(load, 120000);
+    return () => {
+      window.removeEventListener("meta-followup-changed", onChange);
+      window.removeEventListener("meta-status-changed", onChange);
+      if (id) clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return { ...data, reload: load };
+};
+
 const Badge = ({ urgency }) => {
   const m = URGENCY_META[urgency] || URGENCY_META.none;
   return (
@@ -39,6 +66,7 @@ const Badge = ({ urgency }) => {
 export const FollowupBell = () => {
   const navigate = useNavigate();
   const { reminders, counts } = useFollowups();
+  const { items: tatItems, count: tatCount } = useTatAlerts();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -46,7 +74,8 @@ export const FollowupBell = () => {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
-  const count = counts.reminders || 0;
+  const fuCount = counts.reminders || 0;
+  const count = fuCount + (tatCount || 0);
   return (
     <div className="fixed top-2 right-3 md:top-3 md:right-5 z-[60]" ref={ref}>
       <button
@@ -63,12 +92,41 @@ export const FollowupBell = () => {
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-80 max-h-[70vh] overflow-auto bg-white border border-slate-200 rounded-xl shadow-xl" data-testid="meta-followup-bell-panel">
+          {/* Overdue TAT nudges */}
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-red-50/60">
+            <span className="text-sm font-semibold flex items-center gap-1.5 text-red-700">
+              <AlertTriangle size={14} /> TAT Overdue (4+ days)
+            </span>
+            <span data-testid="meta-tat-bell-count" className="text-xs font-semibold text-red-600">{tatCount || 0}</span>
+          </div>
+          {(!tatItems || tatItems.length === 0) ? (
+            <p className="px-4 py-4 text-center text-xs text-slate-400">No files past the 4-day TAT line.</p>
+          ) : (
+            tatItems.map((r) => (
+              <button
+                key={`tat-${r.lead_id}`}
+                data-testid={`meta-tat-bell-item-${r.lead_id}`}
+                onClick={() => { setOpen(false); navigate(`/meta/files/${r.lead_id}`); }}
+                className="w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-red-50/50 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-slate-800 truncate">{r.full_name || "—"}</span>
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-red-100 text-red-700 border-red-200 whitespace-nowrap">
+                    <AlertTriangle size={10} /> {r.tat_days}d {r.tat_hours}h
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">{r.processing_status || "—"}{r.assigned_processor_name ? ` · ${r.assigned_processor_name}` : ""}</p>
+              </button>
+            ))
+          )}
+
+          {/* Follow-up reminders */}
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
             <span className="text-sm font-semibold" style={{ color: BRAND_DARK }}>Follow-up Reminders</span>
-            <span className="text-xs text-slate-400">{count}</span>
+            <span className="text-xs text-slate-400">{fuCount}</span>
           </div>
           {reminders.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-slate-400">No follow-ups due in the next 3 days.</p>
+            <p className="px-4 py-4 text-center text-xs text-slate-400">No follow-ups due in the next 3 days.</p>
           ) : (
             reminders.map((r) => (
               <button

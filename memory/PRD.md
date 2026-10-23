@@ -2436,3 +2436,18 @@ completed_beyond correct; Disbursed stamps final TAT + drops from alerts; reopen
 Underwriting clears final + resumes from creation + tat_history retained; legacy
 completed files => unavailable. Frontend: dashboard red table, Files filter+badges+URL
 state, file-detail indicator all render. NOT deployed.
+
+## OVERDUE TAT NUDGES (in-app bell) — IMPLEMENTED 2026-10-23
+User choices: In-app notification (bell) only, no email. "Daily until the file leaves overdue".
+DESIGN: dynamic (no scheduler, no notification store) — reuses the existing Meta header bell
+(FollowupBell in pages/meta/MetaFollowups.js) + the role-scoped GET /api/meta/tat/alerts endpoint.
+Because it's computed live (polls every 2 min + refreshes on 'meta-followup-changed'/'meta-status-changed'),
+an overdue file keeps nudging every day until it is completed/reopened out of overdue — satisfying "daily".
+- useTatAlerts() hook added in MetaFollowups.js.
+- FollowupBell now shows a red "TAT Overdue (4+ days)" section ABOVE Follow-up Reminders;
+  bell badge count = follow-ups + TAT overdue. Items: name, red "Nd Nh" badge, status·processor,
+  click -> /meta/files/:id. testids: meta-tat-bell-count, meta-tat-bell-item-<leadId>.
+- Scoping: endpoint already filters by assigned_processor_id for processors (assigned_partner_id
+  for GPs; staff see all). So the assigned processor is the one nudged about their files.
+VERIFIED 2026-10-23: admin bell = 12 (all), processor teja@bankezee.com bell = 1 (only his
+assigned Emmadi Thirupathi file). Both sections render. No scheduler/email. Not deployed.
