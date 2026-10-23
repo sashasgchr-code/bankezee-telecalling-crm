@@ -2451,3 +2451,18 @@ an overdue file keeps nudging every day until it is completed/reopened out of ov
   for GPs; staff see all). So the assigned processor is the one nudged about their files.
 VERIFIED 2026-10-23: admin bell = 12 (all), processor teja@bankezee.com bell = 1 (only his
 assigned Emmadi Thirupathi file). Both sections render. No scheduler/email. Not deployed.
+
+## TAT BELL SNOOZE ("Snooze today") — IMPLEMENTED 2026-10-23
+Per-user, per-day acknowledgement so the header bell stays focused. Bell-only; the dashboard
+"Files Exceeding 4-Day TAT" table and Files TAT filters are UNAFFECTED (full oversight kept).
+BACKEND (routes/meta.py):
+- Collection meta_tat_snoozes {user_id, lead_id, date(IST YYYY-MM-DD), at}. Upsert per user+lead.
+- POST /api/meta/tat/snooze/{lead_id} (auth + _can_action_lead) -> snoozes for current IST day.
+- GET /api/meta/tat/alerts?exclude_snoozed=true -> hides this user's snoozed-today leads.
+  Default (no param) returns ALL (dashboard widget uses default; bell uses exclude_snoozed=true).
+  Reappears automatically next IST day, or if file leaves overdue and returns.
+FRONTEND (MetaFollowups.js): useTatAlerts(poll, excludeSnoozed); FollowupBell fetches with
+excludeSnoozed=true and each TAT nudge has a "Snooze today" button (testid meta-tat-snooze-<leadId>)
+that POSTs then reloads. Row is a div (no nested buttons).
+VERIFIED 2026-10-23 (teja processor): snooze -> bell 1->0 + badge gone, dashboard table still shows
+the file; API: exclude_snoozed hides it, default still returns it. Snooze store cleared after test. Not deployed.

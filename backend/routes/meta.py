@@ -1047,20 +1047,29 @@ async def meta_followups(user: dict = Depends(require_meta_access)):
 
 
 @router.get("/tat/alerts")
-async def meta_tat_alerts(user: dict = Depends(require_meta_access)):
+async def meta_tat_alerts(exclude_snoozed: bool = False, user: dict = Depends(require_meta_access)):
     """Role-scoped list of ONGOING files whose End-to-End TAT already exceeds 96h (4 days).
-    Computed dynamically from the original creation timestamp; completed files are excluded."""
+    Computed dynamically from the original creation timestamp; completed files are excluded.
+    When exclude_snoozed=true, files this user snoozed for the current IST day are hidden
+    (used by the header bell to stay focused; the dashboard table shows all)."""
     role, uid = _ctx(user)
     match = {"status": "FILE", "processing_status": {"$nin": list(FINAL_STATUSES)}, **NOT_DELETED}
     if role == "processor":
         match["assigned_processor_id"] = uid
     elif role not in STAFF_ROLES:
         match["assigned_partner_id"] = uid
+    snoozed = set()
+    if exclude_snoozed:
+        today = _ist_now().strftime("%Y-%m-%d")
+        async for s in db.meta_tat_snoozes.find({"user_id": uid, "date": today}):
+            snoozed.add(s.get("lead_id"))
     docs = await db.meta_leads.find(match).to_list(5000)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     items = []
     for d in docs:
         if d.get("tat_final_at"):
+            continue
+        if d.get("lead_id") in snoozed:
             continue
         tat = compute_tat(d, now)
         if tat["state"] == "ongoing" and tat["overdue"]:
@@ -1076,6 +1085,24 @@ async def meta_tat_alerts(user: dict = Depends(require_meta_access)):
             })
     items.sort(key=lambda x: x["tat_ms"] or 0, reverse=True)
     return {"items": items, "count": len(items), "limit_hours": TAT_LIMIT_HOURS}
+
+
+@router.post("/tat/snooze/{lead_id}")
+async def meta_tat_snooze(lead_id: str, user: dict = Depends(require_meta_access)):
+    """Snooze a file's overdue-TAT bell nudge for the rest of the current IST day (per user).
+    Only hides it from the header bell; the dashboard table and TAT filters are unaffected.
+    It reappears automatically the next day (or if the file leaves overdue and returns)."""
+    lead = await _get_lead_or_404(lead_id)
+    role, uid = _ctx(user)
+    if not _can_action_lead(role, uid, lead):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    today = _ist_now().strftime("%Y-%m-%d")
+    await db.meta_tat_snoozes.update_one(
+        {"user_id": uid, "lead_id": lead_id},
+        {"$set": {"user_id": uid, "lead_id": lead_id, "date": today, "at": _now_iso()}},
+        upsert=True,
+    )
+    return {"ok": True, "lead_id": lead_id, "snoozed_until_date": today}
 
 
 # =========================== documents (Object Storage) ===========================

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
-import { Bell, CalendarClock, AlertTriangle, Clock } from "lucide-react";
+import { Bell, BellOff, CalendarClock, AlertTriangle, Clock } from "lucide-react";
 import { BRAND, BRAND_DARK, URGENCY_META, followupDaysLabel } from "./metaCommon";
 
 // Shared source of truth for Query/Hold reminders. Polls every 2 min and refreshes
@@ -28,11 +28,11 @@ export const useFollowups = (poll = true) => {
 
 // Overdue TAT nudges — files past the 4-day line, scoped to the current user
 // (a processor sees only their assigned files). Polls every 2 min + refreshes on status change.
-export const useTatAlerts = (poll = true) => {
+export const useTatAlerts = (poll = true, excludeSnoozed = false) => {
   const [data, setData] = useState({ items: [], count: 0, limit_hours: 96 });
   const load = async () => {
     try {
-      const { data } = await api.get("/meta/tat/alerts");
+      const { data } = await api.get(`/meta/tat/alerts${excludeSnoozed ? "?exclude_snoozed=true" : ""}`);
       setData(data || { items: [], count: 0, limit_hours: 96 });
     } catch { /* non-fatal */ }
   };
@@ -66,9 +66,19 @@ const Badge = ({ urgency }) => {
 export const FollowupBell = () => {
   const navigate = useNavigate();
   const { reminders, counts } = useFollowups();
-  const { items: tatItems, count: tatCount } = useTatAlerts();
+  const { items: tatItems, count: tatCount, reload: reloadTat } = useTatAlerts(true, true);
   const [open, setOpen] = useState(false);
+  const [snoozing, setSnoozing] = useState(null);
   const ref = useRef(null);
+  const snooze = async (e, leadId) => {
+    e.stopPropagation();
+    setSnoozing(leadId);
+    try {
+      await api.post(`/meta/tat/snooze/${leadId}`);
+      await reloadTat();
+    } catch { /* non-fatal */ }
+    setSnoozing(null);
+  };
   useEffect(() => {
     const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
     document.addEventListener("mousedown", onDoc);
@@ -103,11 +113,13 @@ export const FollowupBell = () => {
             <p className="px-4 py-4 text-center text-xs text-slate-400">No files past the 4-day TAT line.</p>
           ) : (
             tatItems.map((r) => (
-              <button
+              <div
                 key={`tat-${r.lead_id}`}
+                role="button"
+                tabIndex={0}
                 data-testid={`meta-tat-bell-item-${r.lead_id}`}
                 onClick={() => { setOpen(false); navigate(`/meta/files/${r.lead_id}`); }}
-                className="w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-red-50/50 transition-colors"
+                className="w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-red-50/50 transition-colors cursor-pointer"
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-medium text-slate-800 truncate">{r.full_name || "—"}</span>
@@ -115,8 +127,19 @@ export const FollowupBell = () => {
                     <AlertTriangle size={10} /> {r.tat_days}d {r.tat_hours}h
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-0.5">{r.processing_status || "—"}{r.assigned_processor_name ? ` · ${r.assigned_processor_name}` : ""}</p>
-              </button>
+                <div className="flex items-center justify-between gap-2 mt-0.5">
+                  <p className="text-xs text-slate-500 truncate">{r.processing_status || "—"}{r.assigned_processor_name ? ` · ${r.assigned_processor_name}` : ""}</p>
+                  <button
+                    data-testid={`meta-tat-snooze-${r.lead_id}`}
+                    onClick={(e) => snooze(e, r.lead_id)}
+                    disabled={snoozing === r.lead_id}
+                    title="Snooze for today"
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-slate-500 border border-slate-200 hover:bg-slate-100 hover:text-slate-700 transition-colors disabled:opacity-50 shrink-0"
+                  >
+                    <BellOff size={11} /> {snoozing === r.lead_id ? "…" : "Snooze today"}
+                  </button>
+                </div>
+              </div>
             ))
           )}
 
