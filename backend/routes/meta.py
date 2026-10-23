@@ -299,6 +299,14 @@ async def meta_leads(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
     source: Optional[str] = None,
+    processor: Optional[str] = None,
+    processing_status: Optional[str] = None,
+    loan_type: Optional[str] = None,
+    bank: Optional[str] = None,
+    docs: Optional[str] = None,
+    assignment: Optional[str] = None,
+    file_from: Optional[str] = None,
+    file_to: Optional[str] = None,
 ):
     role, uid = _ctx(user)
     query = dict(NOT_DELETED)
@@ -318,6 +326,43 @@ async def meta_leads(
             query["source_tab"] = {"$nin": ["Website", "Manual Entry"]}
     if partner and partner != "ALL" and role in STAFF_ROLES:
         query["assigned_partner_id"] = None if partner == "UNASSIGNED" else partner
+    # ---- Files & Conversions advanced filters (AND logic) ----
+    and_list = []
+    if processor and processor != "ALL" and role in STAFF_ROLES:
+        query["assigned_processor_id"] = None if processor == "UNASSIGNED" else processor
+    if processing_status and processing_status != "ALL":
+        if processing_status == "New":
+            and_list.append({"$or": [
+                {"processing_status": "New"}, {"processing_status": None},
+                {"processing_status": ""}, {"processing_status": {"$exists": False}},
+            ]})
+        else:
+            query["processing_status"] = processing_status
+    if loan_type and loan_type != "ALL":
+        query["file.loan_type"] = loan_type
+    if bank and bank != "ALL":
+        rx = {"$regex": bank, "$options": "i"}
+        and_list.append({"$or": [
+            {"file.disbursed_bank": rx}, {"file.approved_bank": rx}, {"file.login_bank": rx},
+            {"file.bank": rx}, {"file.lender": rx}, {"file.banks.bank_name": rx},
+        ]})
+    if docs == "received":
+        query["docs_received"] = True
+    elif docs == "pending":
+        query["docs_received"] = {"$ne": True}
+    if assignment and role in STAFF_ROLES:
+        if assignment == "assigned":
+            query["assigned_partner_id"] = {"$nin": [None, ""]}
+        elif assignment == "unassigned":
+            query["assigned_partner_id"] = None
+    if file_from or file_to:
+        rng = {}
+        if file_from:
+            rng["$gte"] = f"{file_from}T00:00:00"
+        if file_to:
+            rng["$lte"] = f"{file_to}T23:59:59.999999+00:00"
+        if rng:
+            and_list.append({"$or": [{"file_created_at": rng}, {"created_at": rng}]})
     if from_date or to_date:
         # Meta Leads date filtering is by ASSIGNMENT date (assigned_at, set when a lead is
         # assigned to a GP/user) — NOT created_time / imported / sheet-row date. Unassigned
@@ -337,6 +382,8 @@ async def meta_leads(
             {"city": {"$regex": q, "$options": "i"}},
             {"lead_id": {"$regex": q, "$options": "i"}},
         ]
+    if and_list:
+        query.setdefault("$and", []).extend(and_list)
     page = max(1, page)
     page_size = min(max(1, page_size), 200)
     if sort_by not in SORT_FIELDS:
@@ -810,6 +857,25 @@ async def meta_files_stats(user: dict = Depends(require_meta_access)):
     total_files = await db.meta_leads.count_documents(file_match)
     docs_received = await db.meta_leads.count_documents({**file_match, "docs_received": True})
     return {"total_files": total_files, "docs_received": docs_received, "pending_docs": total_files - docs_received}
+
+
+@router.get("/files/filter-options")
+async def meta_files_filter_options(user: dict = Depends(require_meta_access)):
+    """Distinct Loan Type / Bank values across FILE records the caller can see (role-scoped)."""
+    role, uid = _ctx(user)
+    match = {"status": "FILE", **NOT_DELETED}
+    if role == "processor":
+        match["assigned_processor_id"] = uid
+    elif role not in STAFF_ROLES:
+        match["assigned_partner_id"] = uid
+    loan_types = await db.meta_leads.distinct("file.loan_type", match)
+    banks = set()
+    for fld in ["file.disbursed_bank", "file.approved_bank", "file.login_bank", "file.bank", "file.lender", "file.banks.bank_name"]:
+        for v in await db.meta_leads.distinct(fld, match):
+            if v and str(v).strip():
+                banks.add(str(v).strip())
+    loan_types = sorted([str(x).strip() for x in loan_types if x and str(x).strip()], key=lambda s: s.lower())
+    return {"loan_types": loan_types, "banks": sorted(banks, key=lambda s: s.lower())}
 
 
 def _compute_report(items):

@@ -1,37 +1,53 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Filter, Upload, Plus, Users, Trash2, RefreshCw, Loader2, CheckSquare, Square, X, ChevronLeft, ChevronRight, Download, Archive, CheckCircle2 } from 'lucide-react';
 import api from '../../services/api';
 import LeadCard from '../../components/LeadCard';
 import Modal from '../../components/Modal';
 import MultiSelectDropdown from '../../components/MultiSelectDropdown';
+import SearchableSelect from '../../components/SearchableSelect';
 import { StatusColors, StatusLabels } from '../../constants/colors';
 import useAuthStore from '../../store/authStore';
 
+const SALARY_RANGES = [
+  { value: '0-25000', label: 'Below ₹25k' },
+  { value: '25000-50000', label: '₹25k – 50k' },
+  { value: '50000-75000', label: '₹50k – 75k' },
+  { value: '75000-100000', label: '₹75k – 1L' },
+  { value: '100000-', label: '₹1L+' },
+  { value: 'none', label: 'Not Provided' },
+];
+const EMP_LABELS = { salaried: 'Salaried', self_employed: 'Self-Employed' };
+const prettyEmp = (v) => EMP_LABELS[v] || v.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
 const AdminLeads = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sp = (k, d = '') => searchParams.get(k) ?? d;
+  const spArr = (k) => { const v = searchParams.get(k); return v ? v.split(',').filter(Boolean) : []; };
   const [leads, setLeads] = useState([]);
   const { user } = useAuthStore();
   const [telecallers, setTelecallers] = useState([]);
   const [historyAssignees, setHistoryAssignees] = useState([]); // includes inactive - Previously Assigned filter only
+  const [filterOptions, setFilterOptions] = useState({ cities: [], employments: [] });
   const [isLoading, setIsLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState(() => sessionStorage.getItem('admin_leads_status') || '');
-  const [outcomeFilter, setOutcomeFilter] = useState(() => sessionStorage.getItem('admin_leads_outcome') || '');
-  const [assignedFilter, setAssignedFilter] = useState([]); // multi-select: array of GP ids + 'unassigned'
+  const [searchQuery, setSearchQuery] = useState(() => sp('q'));
+  const [statusFilter, setStatusFilter] = useState(() => sp('status'));
+  const [outcomeFilter, setOutcomeFilter] = useState(() => sp('outcome'));
+  const [assignedFilter, setAssignedFilter] = useState(() => spArr('assigned')); // multi-select: GP ids + 'unassigned'
+  const [cities, setCities] = useState(() => spArr('cities'));
+  const [employments, setEmployments] = useState(() => spArr('emp'));
+  const [salaryRanges, setSalaryRanges] = useState(() => spArr('salary'));
   // Internal management filters (Admin/Manager/Ops only)
-  const [companyFilter, setCompanyFilter] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
-  const [uploadedFrom, setUploadedFrom] = useState('');
-  const [uploadedTo, setUploadedTo] = useState('');
-  const [previousGpFilter, setPreviousGpFilter] = useState([]); // multi-select: array of GP ids (incl inactive)
-  const [lastAssignedFrom, setLastAssignedFrom] = useState('');
-  const [lastAssignedTo, setLastAssignedTo] = useState('');
+  const [companyFilter, setCompanyFilter] = useState(() => sp('company'));
+  const [sourceFilter, setSourceFilter] = useState(() => sp('source'));
+  const [uploadedFrom, setUploadedFrom] = useState(() => sp('upfrom'));
+  const [uploadedTo, setUploadedTo] = useState(() => sp('upto'));
+  const [previousGpFilter, setPreviousGpFilter] = useState(() => spArr('pgp')); // multi-select GP ids (incl inactive)
+  const [lastAssignedFrom, setLastAssignedFrom] = useState(() => sp('asgfrom'));
+  const [lastAssignedTo, setLastAssignedTo] = useState(() => sp('asgto'));
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
-  // Persist Connect data filters so returning from a lead detail / re-fetch keeps them selected
-  useEffect(() => { sessionStorage.setItem('admin_leads_status', statusFilter || ''); }, [statusFilter]);
-  useEffect(() => { sessionStorage.setItem('admin_leads_outcome', outcomeFilter || ''); }, [outcomeFilter]);
   
   // Stats from backend (for accurate filter counts)
   const [statusCounts, setStatusCounts] = useState({});
@@ -50,10 +66,10 @@ const AdminLeads = () => {
   ];
   
   // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(() => parseInt(sp('page', '1'), 10) || 1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(() => parseInt(sp('size', '25'), 10) || 25);
   const [pageInput, setPageInput] = useState('');
   
   // Modals
@@ -93,6 +109,9 @@ const AdminLeads = () => {
       if (previousGpFilter.length) params.previous_gp = previousGpFilter.join(',');
       if (lastAssignedFrom) params.last_assigned_from = lastAssignedFrom;
       if (lastAssignedTo) params.last_assigned_to = lastAssignedTo;
+      if (cities.length) params.cities = cities.join(',');
+      if (employments.length) params.employments = employments.join(',');
+      if (salaryRanges.length) params.salary_ranges = salaryRanges.join(',');
 
       const response = await api.get('/leads/stats', { params });
       setStatusCounts(response.data.by_status || {});
@@ -125,6 +144,9 @@ const AdminLeads = () => {
       if (previousGpFilter.length) params.previous_gp = previousGpFilter.join(',');
       if (lastAssignedFrom) params.last_assigned_from = lastAssignedFrom;
       if (lastAssignedTo) params.last_assigned_to = lastAssignedTo;
+      if (cities.length) params.cities = cities.join(',');
+      if (employments.length) params.employments = employments.join(',');
+      if (salaryRanges.length) params.salary_ranges = salaryRanges.join(',');
       
       const [leadsRes, telecallersRes] = await Promise.all([
         api.get('/leads', { params }),
@@ -147,11 +169,54 @@ const AdminLeads = () => {
     }
   };
 
+  // Re-fetch when filters change. A signature compare (instead of a boolean mount ref) keeps
+  // the restored page on first load AND survives React StrictMode's double-invoke in dev:
+  // only a genuine filter change resets to page 1.
+  const filterSig = JSON.stringify([searchQuery, statusFilter, outcomeFilter, assignedFilter, companyFilter, sourceFilter, uploadedFrom, uploadedTo, previousGpFilter, lastAssignedFrom, lastAssignedTo, cities, employments, salaryRanges]);
+  const prevSig = useRef(null);
   useEffect(() => {
-    setCurrentPage(1); // Reset to page 1 when filters change
-    fetchData(1);
-    fetchStats(); // Also fetch stats when filters change (respects search/assigned filters)
-  }, [searchQuery, statusFilter, outcomeFilter, assignedFilter, companyFilter, sourceFilter, uploadedFrom, uploadedTo, previousGpFilter, lastAssignedFrom, lastAssignedTo]);
+    if (prevSig.current === null || prevSig.current === filterSig) {
+      // First mount (or StrictMode re-run with identical filters): honour the current page.
+      prevSig.current = filterSig;
+      fetchData(currentPage, pageSize);
+      fetchStats();
+      return;
+    }
+    prevSig.current = filterSig;
+    setCurrentPage(1); // Reset to page 1 when filters actually change
+    fetchData(1, pageSize);
+    fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterSig]);
+
+  // Mirror all list state into the URL so refresh / browser Back / returning from a lead
+  // detail restores the exact view. Uses replace so filter tweaks don't spam history.
+  useEffect(() => {
+    const p = {};
+    if (searchQuery) p.q = searchQuery;
+    if (statusFilter) p.status = statusFilter;
+    if (outcomeFilter) p.outcome = outcomeFilter;
+    if (assignedFilter.length) p.assigned = assignedFilter.join(',');
+    if (companyFilter) p.company = companyFilter;
+    if (sourceFilter) p.source = sourceFilter;
+    if (cities.length) p.cities = cities.join(',');
+    if (employments.length) p.emp = employments.join(',');
+    if (salaryRanges.length) p.salary = salaryRanges.join(',');
+    if (uploadedFrom) p.upfrom = uploadedFrom;
+    if (uploadedTo) p.upto = uploadedTo;
+    if (previousGpFilter.length) p.pgp = previousGpFilter.join(',');
+    if (lastAssignedFrom) p.asgfrom = lastAssignedFrom;
+    if (lastAssignedTo) p.asgto = lastAssignedTo;
+    if (currentPage > 1) p.page = String(currentPage);
+    if (pageSize !== 25) p.size = String(pageSize);
+    setSearchParams(p, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery, statusFilter, outcomeFilter, assignedFilter, companyFilter, sourceFilter, cities, employments, salaryRanges, uploadedFrom, uploadedTo, previousGpFilter, lastAssignedFrom, lastAssignedTo, currentPage, pageSize]);
+
+  // Role-scoped distinct City / Employment options for the filter dropdowns.
+  useEffect(() => {
+    api.get('/leads/filter-options').then((r) => setFilterOptions(r.data || { cities: [], employments: [] })).catch(() => {});
+  }, []);
 
   // Previously-Assigned dropdown must include INACTIVE GPs (historical assignees). Fetched
   // once for Admin/Manager/Ops only; never used for the current-assignee dropdown.
@@ -228,6 +293,51 @@ const AdminLeads = () => {
     }
   };
 
+  const activeFilterCount =
+    [statusFilter, outcomeFilter, companyFilter, sourceFilter, uploadedFrom, uploadedTo, lastAssignedFrom, lastAssignedTo, searchQuery].filter(Boolean).length +
+    assignedFilter.length + cities.length + employments.length + salaryRanges.length + previousGpFilter.length;
+
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('');
+    setOutcomeFilter('');
+    setAssignedFilter([]);
+    setCities([]);
+    setEmployments([]);
+    setSalaryRanges([]);
+    setCompanyFilter('');
+    setSourceFilter('');
+    setUploadedFrom('');
+    setUploadedTo('');
+    setPreviousGpFilter([]);
+    setLastAssignedFrom('');
+    setLastAssignedTo('');
+  };
+
+  // Build the full active-filter payload for bulk ops (select-all / export / archive) so they
+  // operate on the complete filtered dataset, not just the visible page.
+  const buildBulkFilters = () => {
+    const filters = {};
+    if (statusFilter) filters.statuses = statusFilter;
+    if (assignedFilter.length) filters.assigned_to = assignedFilter.join(',');
+    if (searchQuery) filters.search = searchQuery;
+    if (outcomeFilter) {
+      if (outcomeFilter === 'never_called') filters.never_called = true;
+      else filters.outcomes = outcomeFilter;
+    }
+    if (companyFilter) filters.company = companyFilter;
+    if (sourceFilter) filters.source = sourceFilter;
+    if (uploadedFrom) filters.created_from = uploadedFrom;
+    if (uploadedTo) filters.created_to = uploadedTo;
+    if (previousGpFilter.length) filters.previous_gp = previousGpFilter.join(',');
+    if (lastAssignedFrom) filters.last_assigned_from = lastAssignedFrom;
+    if (lastAssignedTo) filters.last_assigned_to = lastAssignedTo;
+    if (cities.length) filters.cities = cities.join(',');
+    if (employments.length) filters.employments = employments.join(',');
+    if (salaryRanges.length) filters.salary_ranges = salaryRanges.join(',');
+    return filters;
+  };
+
   // NEW: Select all leads matching current filters (database-level)
   const handleSelectAllFiltered = async () => {
     if (selectAllFiltered) {
@@ -238,17 +348,7 @@ const AdminLeads = () => {
     
     setIsSubmitting(true);
     try {
-      const filters = {};
-      if (statusFilter) filters.statuses = statusFilter;
-      if (assignedFilter.length) filters.assigned_to = assignedFilter.join(',');
-      if (searchQuery) filters.search = searchQuery;
-      if (outcomeFilter) {
-        if (outcomeFilter === 'never_called') {
-          filters.never_called = true;
-        } else {
-          filters.outcomes = outcomeFilter;
-        }
-      }
+      const filters = buildBulkFilters();
       
       const response = await api.post('/leads/select-all-ids', filters);
       setSelectedLeads(response.data.lead_ids);
@@ -264,17 +364,7 @@ const AdminLeads = () => {
   const handleExport = async () => {
     setIsExporting(true);
     try {
-      const filters = {};
-      if (statusFilter) filters.statuses = statusFilter;
-      if (assignedFilter.length) filters.assigned_to = assignedFilter.join(',');
-      if (searchQuery) filters.search = searchQuery;
-      if (outcomeFilter) {
-        if (outcomeFilter === 'never_called') {
-          filters.never_called = true;
-        } else {
-          filters.outcomes = outcomeFilter;
-        }
-      }
+      const filters = buildBulkFilters();
       
       const response = await api.post('/leads/export', filters, {
         responseType: 'blob'
@@ -305,17 +395,7 @@ const AdminLeads = () => {
       try {
         if (selectAllFiltered) {
           // Archive by filter
-          const filters = {};
-          if (statusFilter) filters.statuses = statusFilter;
-          if (assignedFilter.length) filters.assigned_to = assignedFilter.join(',');
-          if (searchQuery) filters.search = searchQuery;
-          if (outcomeFilter) {
-            if (outcomeFilter === 'never_called') {
-              filters.never_called = true;
-            } else {
-              filters.outcomes = outcomeFilter;
-            }
-          }
+          const filters = buildBulkFilters();
           
           await api.post('/leads/archive', { filters, archive: true });
         } else {
@@ -609,6 +689,38 @@ const AdminLeads = () => {
               onChange={setAssignedFilter}
             />
 
+            {/* Advanced lead filters: City (searchable), Employment, Salary Range */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2" data-testid="advanced-filters">
+              <MultiSelectDropdown
+                testId="filter-city"
+                placeholder="City"
+                searchable
+                options={[
+                  { value: 'none', label: 'Not Provided' },
+                  ...filterOptions.cities.map((c) => ({ value: c, label: c })),
+                ]}
+                selected={cities}
+                onChange={setCities}
+              />
+              <MultiSelectDropdown
+                testId="filter-employment"
+                placeholder="Employment"
+                options={[
+                  ...filterOptions.employments.map((e) => ({ value: e, label: prettyEmp(e) })),
+                  { value: 'none', label: 'Not Provided' },
+                ]}
+                selected={employments}
+                onChange={setEmployments}
+              />
+              <MultiSelectDropdown
+                testId="filter-salary"
+                placeholder="Salary Range"
+                options={SALARY_RANGES}
+                selected={salaryRanges}
+                onChange={setSalaryRanges}
+              />
+            </div>
+
             {/* Internal management filters - Admin/Manager/Ops only */}
             {['admin', 'manager', 'ops'].includes(user?.role) && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2" data-testid="mgmt-filters">
@@ -642,6 +754,20 @@ const AdminLeads = () => {
                   <input type="date" value={lastAssignedTo} onChange={(e) => setLastAssignedTo(e.target.value)}
                     className="input-field text-xs" data-testid="filter-lastassigned-to" />
                 </div>
+              </div>
+            )}
+
+            {/* Active filters summary + clear-all */}
+            {activeFilterCount > 0 && (
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100" data-testid="active-filters-bar">
+                <span className="text-xs text-gray-500">{activeFilterCount} filter{activeFilterCount > 1 ? 's' : ''} applied</span>
+                <button
+                  onClick={clearAllFilters}
+                  data-testid="clear-filters-btn"
+                  className="flex items-center gap-1 text-xs font-medium text-red-600 hover:text-red-700"
+                >
+                  <X className="w-3.5 h-3.5" /> Clear Filters
+                </button>
               </div>
             )}
           </div>
@@ -737,10 +863,10 @@ const AdminLeads = () => {
               className="text-sm border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500"
               data-testid="page-size-select"
             >
+              <option value={25}>25</option>
               <option value={50}>50</option>
               <option value={100}>100</option>
               <option value={200}>200</option>
-              <option value={300}>300</option>
             </select>
           </div>
 

@@ -14,9 +14,11 @@ const MultiSelectDropdown = ({
   onChange,
   placeholder = 'Select',
   showSelectAll = true,
+  searchable = false,
   testId = 'multi-select',
 }) => {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const ref = useRef(null);
 
   useEffect(() => {
@@ -31,7 +33,10 @@ const MultiSelectDropdown = ({
   };
 
   const clearAll = (e) => { e.stopPropagation(); onChange([]); };
-  const selectAll = () => onChange(options.map((o) => o.value));
+  const shown = searchable && query
+    ? options.filter((o) => (o.label || '').toLowerCase().includes(query.toLowerCase()))
+    : options;
+  const selectAll = () => onChange(shown.map((o) => o.value));
 
   const count = selected.length;
   const label = count === 0 ? placeholder : `${placeholder} (${count})`;
@@ -58,16 +63,29 @@ const MultiSelectDropdown = ({
           className="absolute z-30 mt-1 w-full max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white shadow-lg py-1"
           data-testid={`${testId}-menu`}
         >
-          {showSelectAll && options.length > 0 && (
+          {searchable && (
+            <div className="px-2 py-1.5 border-b border-gray-100 sticky top-0 bg-white">
+              <input
+                type="text"
+                autoFocus
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search..."
+                className="w-full text-sm border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                data-testid={`${testId}-search`}
+              />
+            </div>
+          )}
+          {showSelectAll && shown.length > 0 && (
             <div className="flex items-center justify-between px-3 py-1.5 border-b border-gray-100 text-xs">
               <button type="button" className="text-primary-600 hover:underline" onClick={selectAll} data-testid={`${testId}-select-all`}>Select All</button>
               <button type="button" className="text-gray-500 hover:underline" onClick={() => onChange([])} data-testid={`${testId}-clear-all`}>Clear</button>
             </div>
           )}
-          {options.length === 0 && (
+          {shown.length === 0 && (
             <div className="px-3 py-2 text-xs text-gray-400">No options</div>
           )}
-          {options.map((opt) => {
+          {shown.map((opt) => {
             const isSel = selected.includes(opt.value);
             return (
               <button

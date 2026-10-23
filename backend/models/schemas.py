@@ -86,6 +86,13 @@ class BulkOperationByFilter(BaseModel):
     archived: Optional[bool] = None
     is_invalid: Optional[bool] = None
     import_batch_id: Optional[str] = None
+    cities: Optional[str] = None  # Comma-separated cities (multi-select)
+    employments: Optional[str] = None  # Comma-separated employment types
+    salary_ranges: Optional[str] = None  # Comma-separated salary buckets
+    company: Optional[str] = None
+    previous_gp: Optional[str] = None  # Comma-separated GP ids (ever-assigned history)
+    last_assigned_from: Optional[str] = None
+    last_assigned_to: Optional[str] = None
 
 class BulkAssignByFilter(BaseModel):
     """Assign leads matching filter to a user"""

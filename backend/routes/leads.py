@@ -115,7 +115,10 @@ def build_leads_query(
     import_batch_id: Optional[str] = None,
     team_view: Optional[bool] = None,
     team_ids: Optional[list] = None,
-    company: Optional[str] = None
+    company: Optional[str] = None,
+    cities: Optional[str] = None,
+    employments: Optional[str] = None,
+    salary_ranges: Optional[str] = None
 ) -> dict:
     """Build MongoDB query from filter parameters - reusable across endpoints"""
     query = {}
@@ -313,6 +316,61 @@ def build_leads_query(
         else:
             query["$or"] = search_conditions
     
+    # City filter (multi-select; 'none' = missing/empty). OR within, AND with rest.
+    if cities:
+        toks = [t.strip() for t in cities.split(",") if t.strip()]
+        if toks and "all" not in toks:
+            real = [t for t in toks if t != "none"]
+            or_c = []
+            if real:
+                or_c.append({"city": {"$in": real}})
+            if "none" in toks:
+                or_c.append({"$or": [{"city": None}, {"city": {"$exists": False}}, {"city": ""}]})
+            if or_c:
+                query.setdefault("$and", []).append({"$or": or_c})
+
+    # Employment filter (multi-select; 'none' = missing/empty)
+    if employments:
+        toks = [t.strip() for t in employments.split(",") if t.strip()]
+        if toks and "all" not in toks:
+            real = [t for t in toks if t != "none"]
+            or_c = []
+            if real:
+                or_c.append({"employment_type": {"$in": real}})
+            if "none" in toks:
+                or_c.append({"$or": [{"employment_type": None}, {"employment_type": {"$exists": False}}, {"employment_type": ""}]})
+            if or_c:
+                query.setdefault("$and", []).append({"$or": or_c})
+
+    # Salary range filter (multi-select). Salary is stored as a string in
+    # additional_data.net_salary, so compare on a numeric conversion. Non-numeric /
+    # missing values convert to null and are naturally excluded from numeric buckets.
+    if salary_ranges:
+        toks = [t.strip() for t in salary_ranges.split(",") if t.strip()]
+        sal_val = {"$convert": {"input": "$additional_data.net_salary", "to": "double", "onError": None, "onNull": None}}
+        or_c = []
+        for t in toks:
+            if t == "none":
+                or_c.append({"$or": [
+                    {"additional_data.net_salary": None},
+                    {"additional_data.net_salary": {"$exists": False}},
+                    {"additional_data.net_salary": ""},
+                ]})
+            elif "-" in t:
+                lo, hi = t.split("-", 1)
+                conds = []
+                try:
+                    if lo:
+                        conds.append({"$gte": [sal_val, float(lo)]})
+                    if hi:
+                        conds.append({"$lt": [sal_val, float(hi)]})
+                except ValueError:
+                    conds = []
+                if conds:
+                    or_c.append({"$expr": {"$and": conds}})
+        if or_c:
+            query.setdefault("$and", []).append({"$or": or_c})
+
     # Clean up empty $and
     if "$and" in query and not query["$and"]:
         del query["$and"]
@@ -369,6 +427,24 @@ async def _mgmt_history_lead_ids(previous_gp=None, assigned_from=None, assigned_
     return list(result)
 
 
+async def _apply_mgmt_scope(query, current_user, previous_gp=None,
+                            last_assigned_from=None, last_assigned_to=None):
+    """Mirror the list/stats management-history handling for the bulk/export endpoints so a
+    filtered select-all / export / archive covers exactly the same records the list shows."""
+    is_mgmt = current_user.get("role", "") in ("admin", "manager", "ops")
+    if not is_mgmt:
+        query.pop("source", None)
+        query.pop("company_name", None)
+    elif previous_gp or last_assigned_from or last_assigned_to:
+        lead_ids = await _mgmt_history_lead_ids(previous_gp, last_assigned_from, last_assigned_to)
+        existing = query.get("id")
+        if isinstance(existing, dict) and "$in" in existing:
+            allowed = set(existing["$in"])
+            lead_ids = [i for i in lead_ids if i in allowed]
+        query["id"] = {"$in": lead_ids or ["__none__"]}
+    return query
+
+
 @router.get("/leads")
 async def list_leads(
     # Pagination
@@ -383,6 +459,9 @@ async def list_leads(
     outcomes: Optional[str] = None,  # Comma-separated for multi-select
     source: Optional[str] = None,
     company: Optional[str] = None,
+    cities: Optional[str] = None,
+    employments: Optional[str] = None,
+    salary_ranges: Optional[str] = None,
     previous_gp: Optional[str] = None,
     last_assigned_from: Optional[str] = None,
     last_assigned_to: Optional[str] = None,
@@ -440,7 +519,10 @@ async def list_leads(
         import_batch_id=import_batch_id,
         team_view=is_team_view,
         team_ids=team_ids,
-        company=company
+        company=company,
+        cities=cities,
+        employments=employments,
+        salary_ranges=salary_ranges
     )
 
     # Internal management filters (Source/Company/Previous-GP/Assigned-Date) are ADMIN/MANAGER/OPS
@@ -643,6 +725,9 @@ async def get_leads_stats(
     is_invalid: Optional[bool] = None,
     source: Optional[str] = None,
     company: Optional[str] = None,
+    cities: Optional[str] = None,
+    employments: Optional[str] = None,
+    salary_ranges: Optional[str] = None,
     previous_gp: Optional[str] = None,
     last_assigned_from: Optional[str] = None,
     last_assigned_to: Optional[str] = None,
@@ -667,7 +752,10 @@ async def get_leads_stats(
         archived=archived,
         is_invalid=is_invalid,
         source=source,
-        company=company
+        company=company,
+        cities=cities,
+        employments=employments,
+        salary_ranges=salary_ranges
     )
 
     # Apply the same Admin/Manager/Ops management history filters as the list endpoint,
@@ -766,6 +854,19 @@ async def get_leads_stats(
         "by_outcome": by_outcome,
         "totals": data.get("totals", [{}])[0] if data.get("totals") else {}
     }
+
+
+@router.get("/leads/filter-options")
+async def get_leads_filter_options(current_user: dict = Depends(get_current_user)):
+    """Distinct City / Employment values the caller is allowed to see (role-scoped).
+    Options are computed from the same base query the list uses (excludes archived/invalid),
+    so a user can never discover values from records outside their visibility."""
+    base = build_leads_query(current_user=current_user, archived=False, is_invalid=False)
+    cities = await db.leads.distinct("city", base)
+    employments = await db.leads.distinct("employment_type", base)
+    cities = sorted([str(c).strip() for c in cities if c and str(c).strip()], key=lambda s: s.lower())
+    employments = sorted([str(e).strip() for e in employments if e and str(e).strip()], key=lambda s: s.lower())
+    return {"cities": cities, "employments": employments}
 
 
 @router.post("/admin/fix-phone-dot-zero")
@@ -1912,8 +2013,14 @@ async def get_all_filtered_lead_ids(
         never_called=filters.never_called,
         archived=filters.archived,
         is_invalid=filters.is_invalid,
-        import_batch_id=filters.import_batch_id
+        import_batch_id=filters.import_batch_id,
+        cities=filters.cities,
+        employments=filters.employments,
+        salary_ranges=filters.salary_ranges,
+        company=filters.company
     )
+    query = await _apply_mgmt_scope(query, current_user, filters.previous_gp,
+                                    filters.last_assigned_from, filters.last_assigned_to)
     
     # Get all IDs (projection to minimize data transfer)
     leads = await db.leads.find(query, {"_id": 1}).to_list(100000)
@@ -1951,8 +2058,14 @@ async def bulk_assign_by_filter(
         never_called=data.filters.never_called,
         archived=data.filters.archived,
         is_invalid=data.filters.is_invalid,
-        import_batch_id=data.filters.import_batch_id
+        import_batch_id=data.filters.import_batch_id,
+        cities=data.filters.cities,
+        employments=data.filters.employments,
+        salary_ranges=data.filters.salary_ranges,
+        company=data.filters.company
     )
+    query = await _apply_mgmt_scope(query, current_user, data.filters.previous_gp,
+                                    data.filters.last_assigned_from, data.filters.last_assigned_to)
     
     result = await db.leads.update_many(
         query,
@@ -2133,8 +2246,14 @@ async def archive_leads(
             never_called=data.filters.never_called,
             archived=not data.archive,  # If archiving, filter non-archived; if unarchiving, filter archived
             is_invalid=data.filters.is_invalid,
-            import_batch_id=data.filters.import_batch_id
+            import_batch_id=data.filters.import_batch_id,
+            cities=data.filters.cities,
+            employments=data.filters.employments,
+            salary_ranges=data.filters.salary_ranges,
+            company=data.filters.company
         )
+        query = await _apply_mgmt_scope(query, current_user, data.filters.previous_gp,
+                                        data.filters.last_assigned_from, data.filters.last_assigned_to)
     else:
         raise HTTPException(status_code=400, detail="Provide lead_ids or filters")
     
@@ -2219,8 +2338,14 @@ async def export_leads(
         never_called=filters.never_called,
         archived=filters.archived,
         is_invalid=filters.is_invalid,
-        import_batch_id=filters.import_batch_id
+        import_batch_id=filters.import_batch_id,
+        cities=filters.cities,
+        employments=filters.employments,
+        salary_ranges=filters.salary_ranges,
+        company=filters.company
     )
+    query = await _apply_mgmt_scope(query, current_user, filters.previous_gp,
+                                    filters.last_assigned_from, filters.last_assigned_to)
     
     # Fetch all matching leads (limit to 50k for safety)
     leads = await db.leads.find(query).sort("created_at", -1).to_list(50000)
@@ -2236,6 +2361,8 @@ async def export_leads(
             "Phone": lead.get("phone", ""),
             "Email": lead.get("email", ""),
             "City": lead.get("city", ""),
+            "Employment": lead.get("employment_type", ""),
+            "Net Salary": (lead.get("additional_data") or {}).get("net_salary", ""),
             "Source": lead.get("source", ""),
             "Status": lead.get("status", ""),
             "Last Call Outcome": lead.get("last_call_outcome", ""),
