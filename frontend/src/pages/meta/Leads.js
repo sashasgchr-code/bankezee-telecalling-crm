@@ -6,6 +6,10 @@ import { useMetaUser, StatusPill, STATUS_LABEL, STATUSES, fmtDate, fmtShort, BRA
 import MetaCallModal from "./MetaCallModal";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
 import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import ColumnFilterMenu, { MenuSortRow } from "../../components/meta/ColumnFilterMenu";
+
+const LEADS_STATE_KEY = "metaLeadsState_v1";
+const COL_STATUSES = ["NEW", "CALL BACK", "NOT ANSWERING", "SWITCHED OFF", "NOT INTERESTED", "NOT QUALIFIED", "LEAD", "FILE"];
 
 const metaLoanType = (lead) => (lead?.file?.loan_type || lead?.loan_type || "loan requirement");
 
@@ -23,26 +27,50 @@ export default function MetaLeads() {
   const meta = useMetaUser();
   const isStaff = meta.isStaff;
   const navigate = useNavigate();
+  const saved = (() => { try { return JSON.parse(sessionStorage.getItem(LEADS_STATE_KEY) || "{}"); } catch { return {}; } })();
   const [leads, setLeads] = useState([]);
   const [partners, setPartners] = useState([]);
-  const [status, setStatus] = useState("ALL");
-  const [sourceFilter, setSourceFilter] = useState("ALL");
-  const [q, setQ] = useState("");
-  const [partnerFilter, setPartnerFilter] = useState("ALL");
+  const [status, setStatus] = useState(saved.status || "ALL");
+  const [sourceFilter, setSourceFilter] = useState(saved.sourceFilter || "ALL");
+  const [q, setQ] = useState(saved.q || "");
+  const [partnerFilter, setPartnerFilter] = useState(saved.partnerFilter || "ALL");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(saved.page || 1);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
-  const [sortBy, setSortBy] = useState("created_time");
-  const [sortDir, setSortDir] = useState("desc");
-  const [datePreset, setDatePreset] = useState("ALL");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [sortBy, setSortBy] = useState(saved.sortBy || "created_time");
+  const [sortDir, setSortDir] = useState(saved.sortDir || "desc");
+  const [datePreset, setDatePreset] = useState(saved.datePreset || "ALL");
+  const [fromDate, setFromDate] = useState(saved.fromDate || "");
+  const [toDate, setToDate] = useState(saved.toDate || "");
   const [selected, setSelected] = useState(new Set());
   const [bulkPartner, setBulkPartner] = useState("");
   const [callLead, setCallLead] = useState(null);
   const callLeadRef = useRef(null);
+
+  // --- Per-column advanced filters (restored from sessionStorage when returning from a lead) ---
+  const [pageSize, setPageSize] = useState(saved.pageSize || 50);
+  const [gotoPage, setGotoPage] = useState("");
+  // Per-column advanced filters
+  const [nameF, setNameF] = useState(saved.nameF || "");
+  const [nameMode, setNameMode] = useState(saved.nameMode || "contains");
+  const [contactF, setContactF] = useState(saved.contactF || "");
+  const [citiesF, setCitiesF] = useState(saved.citiesF || []);
+  const [cityBlank, setCityBlank] = useState(saved.cityBlank || false);
+  const [empF, setEmpF] = useState(saved.empF || []);
+  const [empBlank, setEmpBlank] = useState(saved.empBlank || false);
+  const [salMin, setSalMin] = useState(saved.salMin || "");
+  const [salMax, setSalMax] = useState(saved.salMax || "");
+  const [salBlank, setSalBlank] = useState(saved.salBlank || false);
+  const [outMin, setOutMin] = useState(saved.outMin || "");
+  const [outMax, setOutMax] = useState(saved.outMax || "");
+  const [outBlank, setOutBlank] = useState(saved.outBlank || false);
+  const [statusesF, setStatusesF] = useState(saved.statusesF || []);
+  const [partnersF, setPartnersF] = useState(saved.partnersF || []);
+  const [partnerUnassigned, setPartnerUnassigned] = useState(saved.partnerUnassigned || false);
+  const [optCities, setOptCities] = useState([]);
+  const [optEmployments, setOptEmployments] = useState([]);
 
   // Manual "Add Lead" (staff only) — for leads that did not come from the Google Sheet.
   const EMPTY_FORM = { full_name: "", phone: "", email: "", city: "", employment_status: "", monthly_salary: "", outstanding_amount: "", cibil_score: "", campaign_name: "", form_name: "", platform: "", status: "NEW", partner_id: "" };
@@ -68,21 +96,48 @@ export default function MetaLeads() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { status, partner: partnerFilter, source: sourceFilter, page, page_size: 25, sort_by: sortBy, sort_dir: sortDir };
+      const params = { status, partner: partnerFilter, source: sourceFilter, page, page_size: pageSize, sort_by: sortBy, sort_dir: sortDir };
       if (q) params.q = q;
       if (fromDate) params.from_date = fromDate;
       if (toDate) params.to_date = toDate;
+      if (nameF) { params.name = nameF; params.name_mode = nameMode; }
+      if (contactF) params.contact = contactF;
+      if (citiesF.length) params.cities = citiesF.join(",");
+      if (cityBlank) params.city_blank = true;
+      if (empF.length) params.employments = empF.join(",");
+      if (empBlank) params.emp_blank = true;
+      if (salMin !== "") params.salary_min = salMin;
+      if (salMax !== "") params.salary_max = salMax;
+      if (salBlank) params.salary_blank = true;
+      if (outMin !== "") params.outstanding_min = outMin;
+      if (outMax !== "") params.outstanding_max = outMax;
+      if (outBlank) params.outstanding_blank = true;
+      if (statusesF.length) params.statuses = statusesF.join(",");
+      if (partnersF.length) params.partners = partnersF.join(",");
+      if (partnerUnassigned) params.partner_unassigned = true;
       const { data } = await api.get("/meta/leads", { params });
       setLeads(data.items || data.leads || []);
       setTotal(data.total);
       setPages(data.pages);
     } finally { setLoading(false); }
-  }, [status, q, partnerFilter, sourceFilter, page, sortBy, sortDir, fromDate, toDate]);
+  }, [status, q, partnerFilter, sourceFilter, page, pageSize, sortBy, sortDir, fromDate, toDate,
+      nameF, nameMode, contactF, citiesF, cityBlank, empF, empBlank, salMin, salMax, salBlank,
+      outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { setPage(1); }, [status, q, partnerFilter, sourceFilter, sortBy, sortDir, fromDate, toDate]);
+  // Reset to page 1 whenever any filter/sort changes (but NOT when only the page changes).
+  useEffect(() => { setPage(1); }, [status, q, partnerFilter, sourceFilter, sortBy, sortDir, fromDate, toDate, pageSize,
+      nameF, nameMode, contactF, citiesF, cityBlank, empF, empBlank, salMin, salMax, salBlank, outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned]);
   useEffect(() => { setSelected(new Set()); }, [page, status, q, partnerFilter, sourceFilter, sortBy, sortDir, fromDate, toDate]);
   useEffect(() => { if (isStaff) api.get("/meta/partners").then(({ data }) => setPartners(data)).catch(() => {}); }, [isStaff]);
+  useEffect(() => { api.get("/meta/leads/filter-options").then(({ data }) => { setOptCities(data.cities || []); setOptEmployments(data.employments || []); }).catch(() => {}); }, []);
+  // Persist table state so opening a lead and returning restores filters, sort and page.
+  useEffect(() => {
+    const snap = { status, sourceFilter, q, partnerFilter, page, pageSize, sortBy, sortDir, datePreset, fromDate, toDate,
+      nameF, nameMode, contactF, citiesF, cityBlank, empF, empBlank, salMin, salMax, salBlank, outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned };
+    try { sessionStorage.setItem(LEADS_STATE_KEY, JSON.stringify(snap)); } catch { /* ignore */ }
+  }, [status, sourceFilter, q, partnerFilter, page, pageSize, sortBy, sortDir, datePreset, fromDate, toDate,
+      nameF, nameMode, contactF, citiesF, cityBlank, empF, empBlank, salMin, salMax, salBlank, outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned]);
 
   const localYMD = (d) => { const off = d.getTimezoneOffset() * 60000; return new Date(d - off).toISOString().slice(0, 10); };
   const applyPreset = (preset) => {
@@ -98,7 +153,43 @@ export default function MetaLeads() {
     if (sortBy === field) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else { setSortBy(field); setSortDir("asc"); }
   };
+  const setSort = (field, dir) => { setSortBy(field); setSortDir(dir); };
+  const toggleArr = (arr, setArr, val) => setArr(arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
   const SortIcon = ({ field }) => sortBy !== field ? <ChevronsUpDown size={12} className="text-slate-300" /> : (sortDir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />);
+
+  // Active advanced-filter chips + count (the top-bar status/source/date/partner controls are separate).
+  const activeChips = [];
+  if (nameF) activeChips.push({ k: "name", label: `Name ${nameMode}: "${nameF}"`, clear: () => setNameF("") });
+  if (contactF) activeChips.push({ k: "contact", label: `Contact: ${contactF}`, clear: () => setContactF("") });
+  citiesF.forEach((c) => activeChips.push({ k: `city-${c}`, label: `City: ${c}`, clear: () => setCitiesF(citiesF.filter((x) => x !== c)) }));
+  if (cityBlank) activeChips.push({ k: "city-blank", label: "City: (blank)", clear: () => setCityBlank(false) });
+  empF.forEach((e) => activeChips.push({ k: `emp-${e}`, label: `Employment: ${e}`, clear: () => setEmpF(empF.filter((x) => x !== e)) }));
+  if (empBlank) activeChips.push({ k: "emp-blank", label: "Employment: (blank)", clear: () => setEmpBlank(false) });
+  if (salMin !== "" || salMax !== "") activeChips.push({ k: "sal", label: `Salary: ${salMin || "0"}–${salMax || "∞"}`, clear: () => { setSalMin(""); setSalMax(""); } });
+  if (salBlank) activeChips.push({ k: "sal-blank", label: "Salary: (blank)", clear: () => setSalBlank(false) });
+  if (outMin !== "" || outMax !== "") activeChips.push({ k: "out", label: `Outstanding: ${outMin || "0"}–${outMax || "∞"}`, clear: () => { setOutMin(""); setOutMax(""); } });
+  if (outBlank) activeChips.push({ k: "out-blank", label: "Outstanding: (blank)", clear: () => setOutBlank(false) });
+  statusesF.forEach((s) => activeChips.push({ k: `st-${s}`, label: `Status: ${s}`, clear: () => setStatusesF(statusesF.filter((x) => x !== s)) }));
+  partnersF.forEach((pid) => activeChips.push({ k: `pn-${pid}`, label: `Partner: ${partners.find((p) => p.user_id === pid)?.name || pid}`, clear: () => setPartnersF(partnersF.filter((x) => x !== pid)) }));
+  if (partnerUnassigned) activeChips.push({ k: "pn-unassigned", label: "Partner: Unassigned", clear: () => setPartnerUnassigned(false) });
+  const clearAllColumnFilters = () => {
+    setNameF(""); setNameMode("contains"); setContactF(""); setCitiesF([]); setCityBlank(false);
+    setEmpF([]); setEmpBlank(false); setSalMin(""); setSalMax(""); setSalBlank(false);
+    setOutMin(""); setOutMax(""); setOutBlank(false); setStatusesF([]); setPartnersF([]); setPartnerUnassigned(false);
+  };
+  const applyGoto = () => {
+    const n = parseInt(gotoPage, 10);
+    if (!Number.isNaN(n) && n >= 1 && n <= pages) { setPage(n); setGotoPage(""); }
+    else toast.error(`Enter a page between 1 and ${pages}`);
+  };
+  const pageWindow = (() => {
+    const out = []; const span = 2;
+    const lo = Math.max(1, page - span); const hi = Math.min(pages, page + span);
+    if (lo > 1) { out.push(1); if (lo > 2) out.push("…"); }
+    for (let i = lo; i <= hi; i++) out.push(i);
+    if (hi < pages) { if (hi < pages - 1) out.push("…"); out.push(pages); }
+    return out;
+  })();
   const Field = ({ label, value, className = "text-slate-700" }) => (
     <div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-400">{label}</p><p className={`text-xs font-semibold truncate ${className}`}>{value || "—"}</p></div>
   );
@@ -147,10 +238,127 @@ export default function MetaLeads() {
   };
 
   const headers = [
-    { h: "Date", f: "created_time" }, { h: "Name", f: "full_name" }, { h: "Contact", f: null },
-    { h: "City", f: "city" }, { h: "Employment", f: null }, { h: "Salary", f: null },
-    { h: "Outstanding", f: null }, { h: "Status", f: "status" }, { h: "Partner", f: null },
+    { h: "Date", f: "created_time", key: "date" },
+    { h: "Name", f: "full_name", key: "name" },
+    { h: "Contact", f: null, key: "contact" },
+    { h: "City", f: "city", key: "city" },
+    { h: "Employment", f: "employment_status", key: "employment" },
+    { h: "Salary", f: "monthly_salary_num", key: "salary" },
+    { h: "Outstanding", f: "outstanding_amount_num", key: "outstanding" },
+    { h: "Status", f: "status", key: "status" },
+    { h: "Partner", f: "assigned_partner_name", key: "partner" },
   ];
+  const colActive = {
+    date: !!(fromDate || toDate),
+    name: !!nameF,
+    contact: !!contactF,
+    city: !!(citiesF.length || cityBlank),
+    employment: !!(empF.length || empBlank),
+    salary: salMin !== "" || salMax !== "" || salBlank,
+    outstanding: outMin !== "" || outMax !== "" || outBlank,
+    status: !!statusesF.length,
+    partner: !!(partnersF.length || partnerUnassigned),
+  };
+  const [cityQ, setCityQ] = useState("");
+  const [empQ, setEmpQ] = useState("");
+  const [partnerQ, setPartnerQ] = useState("");
+  const chk = "accent-blue-600 cursor-pointer";
+  const inp = "w-full border border-slate-300 rounded px-2 py-1 text-xs outline-none";
+  const columnBody = (key) => {
+    if (key === "date") return (
+      <div>
+        <MenuSortRow activeDir={sortBy === "created_time" ? sortDir : null} ascLabel="Oldest first" descLabel="Newest first" onAsc={() => setSort("created_time", "asc")} onDesc={() => setSort("created_time", "desc")} />
+        <label className="block text-[11px] text-slate-500 mb-1">Specific date</label>
+        <input type="date" data-testid="meta-colfilter-date-specific" className={inp} value={fromDate && fromDate === toDate ? fromDate : ""} onChange={(e) => { setDatePreset("CUSTOM"); setFromDate(e.target.value); setToDate(e.target.value); }} />
+        <label className="block text-[11px] text-slate-500 mt-2 mb-1">Date range</label>
+        <div className="flex items-center gap-1">
+          <input type="date" data-testid="meta-colfilter-date-from" className={inp} value={fromDate} onChange={(e) => { setDatePreset("CUSTOM"); setFromDate(e.target.value); }} />
+          <span className="text-slate-400 text-xs">–</span>
+          <input type="date" data-testid="meta-colfilter-date-to" className={inp} value={toDate} onChange={(e) => { setDatePreset("CUSTOM"); setToDate(e.target.value); }} />
+        </div>
+      </div>
+    );
+    if (key === "name") return (
+      <div>
+        <MenuSortRow activeDir={sortBy === "full_name" ? sortDir : null} onAsc={() => setSort("full_name", "asc")} onDesc={() => setSort("full_name", "desc")} />
+        <div className="flex gap-1 mb-2">
+          {["contains", "starts", "exact"].map((m) => (
+            <button key={m} type="button" data-testid={`meta-colfilter-name-mode-${m}`} onClick={() => setNameMode(m)} className={`flex-1 px-1 py-1 rounded text-[11px] border capitalize ${nameMode === m ? "bg-blue-50 border-blue-300 text-blue-700" : "border-slate-200 text-slate-600"}`}>{m}</button>
+          ))}
+        </div>
+        <input data-testid="meta-colfilter-name-input" className={inp} placeholder="Search name" value={nameF} onChange={(e) => setNameF(e.target.value)} />
+      </div>
+    );
+    if (key === "contact") return (
+      <div>
+        <label className="block text-[11px] text-slate-500 mb-1">Search mobile (with/without +91)</label>
+        <input data-testid="meta-colfilter-contact-input" className={inp} placeholder="e.g. 98765 or +9198765" value={contactF} onChange={(e) => setContactF(e.target.value)} />
+      </div>
+    );
+    if (key === "city") return (
+      <div>
+        <MenuSortRow activeDir={sortBy === "city" ? sortDir : null} onAsc={() => setSort("city", "asc")} onDesc={() => setSort("city", "desc")} />
+        <input data-testid="meta-colfilter-city-search" className={`${inp} mb-2`} placeholder="Search city" value={cityQ} onChange={(e) => setCityQ(e.target.value)} />
+        <div className="max-h-40 overflow-y-auto space-y-1">
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={cityBlank} onChange={() => setCityBlank(!cityBlank)} data-testid="meta-colfilter-city-blank" /> (blank / missing)</label>
+          {optCities.filter((c) => c.toLowerCase().includes(cityQ.toLowerCase())).slice(0, 200).map((c) => (
+            <label key={c} className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={citiesF.includes(c)} onChange={() => toggleArr(citiesF, setCitiesF, c)} data-testid={`meta-colfilter-city-${c}`} /> {c}</label>
+          ))}
+        </div>
+      </div>
+    );
+    if (key === "employment") return (
+      <div>
+        <input data-testid="meta-colfilter-emp-search" className={`${inp} mb-2`} placeholder="Search employment" value={empQ} onChange={(e) => setEmpQ(e.target.value)} />
+        <div className="max-h-40 overflow-y-auto space-y-1">
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={empBlank} onChange={() => setEmpBlank(!empBlank)} data-testid="meta-colfilter-emp-blank" /> (blank / missing)</label>
+          {optEmployments.filter((e) => e.toLowerCase().includes(empQ.toLowerCase())).map((e) => (
+            <label key={e} className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={empF.includes(e)} onChange={() => toggleArr(empF, setEmpF, e)} data-testid={`meta-colfilter-emp-${e}`} /> {e}</label>
+          ))}
+        </div>
+      </div>
+    );
+    if (key === "salary" || key === "outstanding") {
+      const isSal = key === "salary";
+      const minV = isSal ? salMin : outMin, maxV = isSal ? salMax : outMax, blankV = isSal ? salBlank : outBlank;
+      const setMin = isSal ? setSalMin : setOutMin, setMax = isSal ? setSalMax : setOutMax, setBlank = isSal ? setSalBlank : setOutBlank;
+      const sf = isSal ? "monthly_salary_num" : "outstanding_amount_num";
+      return (
+        <div>
+          <MenuSortRow activeDir={sortBy === sf ? sortDir : null} ascLabel="Low → High" descLabel="High → Low" onAsc={() => setSort(sf, "asc")} onDesc={() => setSort(sf, "desc")} />
+          <div className="flex items-center gap-1 mb-2">
+            <input type="number" data-testid={`meta-colfilter-${key}-min`} className={inp} placeholder="Min" value={minV} onChange={(e) => setMin(e.target.value)} />
+            <span className="text-slate-400 text-xs">–</span>
+            <input type="number" data-testid={`meta-colfilter-${key}-max`} className={inp} placeholder="Max" value={maxV} onChange={(e) => setMax(e.target.value)} />
+          </div>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={blankV} onChange={() => setBlank(!blankV)} data-testid={`meta-colfilter-${key}-blank`} /> (blank / missing)</label>
+        </div>
+      );
+    }
+    if (key === "status") return (
+      <div className="max-h-56 overflow-y-auto space-y-1">
+        {COL_STATUSES.map((s) => (
+          <label key={s} className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={statusesF.includes(s)} onChange={() => toggleArr(statusesF, setStatusesF, s)} data-testid={`meta-colfilter-status-${s}`} /> {s}</label>
+        ))}
+      </div>
+    );
+    if (key === "partner") {
+      if (!isStaff) return <p className="text-xs text-slate-400">Not available</p>;
+      return (
+        <div>
+          <MenuSortRow activeDir={sortBy === "assigned_partner_name" ? sortDir : null} onAsc={() => setSort("assigned_partner_name", "asc")} onDesc={() => setSort("assigned_partner_name", "desc")} />
+          <input data-testid="meta-colfilter-partner-search" className={`${inp} mb-2`} placeholder="Search partner" value={partnerQ} onChange={(e) => setPartnerQ(e.target.value)} />
+          <div className="max-h-40 overflow-y-auto space-y-1">
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={partnerUnassigned} onChange={() => setPartnerUnassigned(!partnerUnassigned)} data-testid="meta-colfilter-partner-unassigned" /> Unassigned</label>
+            {partners.filter((p) => (p.name || "").toLowerCase().includes(partnerQ.toLowerCase())).map((p) => (
+              <label key={p.user_id} className="flex items-center gap-2 text-xs"><input type="checkbox" className={chk} checked={partnersF.includes(p.user_id)} onChange={() => toggleArr(partnersF, setPartnersF, p.user_id)} data-testid={`meta-colfilter-partner-${p.user_id}`} /> {p.name}</label>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div data-testid="meta-leads">
@@ -284,15 +492,30 @@ export default function MetaLeads() {
           </div>
         )}
 
+        {activeChips.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 mb-4" data-testid="meta-active-filters">
+            <span className="text-xs font-semibold text-slate-500" data-testid="meta-active-filter-count">{activeChips.length} column filter{activeChips.length === 1 ? "" : "s"}:</span>
+            {activeChips.map((c) => (
+              <span key={c.k} data-testid={`meta-active-chip-${c.k}`} className="inline-flex items-center gap-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 px-2 py-0.5 text-xs">
+                {c.label}
+                <button type="button" onClick={c.clear} className="hover:text-blue-900"><X size={11} /></button>
+              </span>
+            ))}
+            <button type="button" data-testid="meta-clear-all-filters" onClick={clearAllColumnFilters} className="text-xs font-medium text-red-600 hover:text-red-700 ml-1">Clear All Filters</button>
+          </div>
+        )}
+
         <div className="bg-white border border-slate-200 rounded-md shadow-sm overflow-hidden">
           <div className="overflow-x-auto hidden md:block">
             <table className="w-full border-collapse">
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200">
                   {isStaff && <th className="py-3 px-3 w-10"><input type="checkbox" data-testid="meta-select-all-checkbox" checked={allOnPage} onChange={toggleAll} className="cursor-pointer" /></th>}
-                  {headers.map(({ h, f }) => (
+                  {headers.map(({ h, f, key }) => (
                     <th key={h} className="text-xs font-semibold uppercase tracking-wider text-slate-500 py-3 px-3 text-left">
-                      {f ? <button data-testid={`meta-sort-${f}`} onClick={() => toggleSort(f)} className="inline-flex items-center gap-1">{h} <SortIcon field={f} /></button> : h}
+                      <ColumnFilterMenu label={h} field={f} active={colActive[key]} sortBy={sortBy} sortDir={sortDir} testid={`meta-colfilter-${key}`}>
+                        {columnBody(key)}
+                      </ColumnFilterMenu>
                     </th>
                   ))}
                 </tr>
@@ -386,11 +609,33 @@ export default function MetaLeads() {
             ))}
           </div>
 
-          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 text-sm">
-            <span className="text-slate-500" data-testid="meta-leads-count-label">{total} lead{total === 1 ? "" : "s"}{pages > 1 ? ` · page ${page} of ${pages}` : ""}</span>
-            <div className="flex items-center gap-2">
-              <button data-testid="meta-prev-page-btn" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"><ChevronLeft size={14} /> Prev</button>
-              <button data-testid="meta-next-page-btn" disabled={page >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))} className="flex items-center gap-1 px-3 py-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">Next <ChevronRight size={14} /></button>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-slate-100 text-sm">
+            <div className="flex items-center gap-3">
+              <span className="text-slate-600" data-testid="meta-leads-count-label">
+                {total === 0 ? "No leads" : `Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} of ${total.toLocaleString()} leads`}
+              </span>
+              <label className="flex items-center gap-1 text-xs text-slate-500">
+                Rows:
+                <select data-testid="meta-rows-per-page" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))} className="border border-slate-200 rounded-md px-2 py-1 text-xs bg-white outline-none">
+                  {[25, 50, 100, 200].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button data-testid="meta-prev-page-btn" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"><ChevronLeft size={14} /> Prev</button>
+              {pageWindow.map((p, i) => p === "…" ? (
+                <span key={`e${i}`} className="px-1.5 text-slate-400">…</span>
+              ) : (
+                <button key={p} data-testid={`meta-page-${p}`} onClick={() => setPage(p)}
+                  className={`min-w-[32px] px-2 py-1.5 rounded-md border text-xs ${p === page ? "text-white" : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+                  style={p === page ? { background: BRAND, borderColor: BRAND } : {}}>{p}</button>
+              ))}
+              <button data-testid="meta-next-page-btn" disabled={page >= pages} onClick={() => setPage((p) => Math.min(pages, p + 1))} className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed">Next <ChevronRight size={14} /></button>
+              <div className="flex items-center gap-1 ml-2">
+                <span className="text-xs text-slate-500">Go to</span>
+                <input data-testid="meta-goto-page-input" type="number" min="1" max={pages} value={gotoPage} onChange={(e) => setGotoPage(e.target.value)} onKeyDown={(e) => e.key === "Enter" && applyGoto()} className="w-16 border border-slate-200 rounded-md px-2 py-1 text-xs outline-none" placeholder={String(page)} />
+                <button data-testid="meta-goto-page-btn" onClick={applyGoto} className="px-3 py-1.5 rounded-md text-xs font-medium text-white" style={{ background: BRAND }}>Go</button>
+              </div>
             </div>
           </div>
         </div>

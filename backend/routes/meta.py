@@ -27,6 +27,7 @@ from utils.database import db
 from utils.auth import require_meta_access, require_admin
 from utils.helpers import serialize_doc, serialize_docs, object_id_or_none
 from utils import meta_storage
+from utils.amounts import parse_amount_to_num
 
 router = APIRouter(prefix="/api/meta", tags=["Meta"])
 
@@ -444,7 +445,9 @@ async def meta_lead_stats(user: dict = Depends(require_meta_access),
 
 
 # =========================== leads ===========================
-SORT_FIELDS = {"created_time", "full_name", "city", "status", "file_created_at"}
+SORT_FIELDS = {"created_time", "full_name", "city", "status", "file_created_at",
+               "monthly_salary_num", "outstanding_amount_num", "employment_status",
+               "assigned_partner_name"}
 
 
 @router.get("/leads")
@@ -470,6 +473,22 @@ async def meta_leads(
     file_to: Optional[str] = None,
     followup: Optional[str] = None,
     tat: Optional[str] = None,
+    statuses: Optional[str] = None,
+    name: Optional[str] = None,
+    name_mode: Optional[str] = None,
+    contact: Optional[str] = None,
+    cities: Optional[str] = None,
+    city_blank: Optional[bool] = False,
+    employments: Optional[str] = None,
+    emp_blank: Optional[bool] = False,
+    salary_min: Optional[float] = None,
+    salary_max: Optional[float] = None,
+    salary_blank: Optional[bool] = False,
+    outstanding_min: Optional[float] = None,
+    outstanding_max: Optional[float] = None,
+    outstanding_blank: Optional[bool] = False,
+    partners: Optional[str] = None,
+    partner_unassigned: Optional[bool] = False,
 ):
     role, uid = _ctx(user)
     query = dict(NOT_DELETED)
@@ -592,6 +611,74 @@ async def meta_leads(
             {"city": {"$regex": q, "$options": "i"}},
             {"lead_id": {"$regex": q, "$options": "i"}},
         ]
+    # ---- Per-column advanced filters (Leads table). OR within a column, AND across columns. ----
+    def _csv(v):
+        return [x.strip() for x in (v or "").split(",") if x.strip()]
+
+    if statuses:
+        st_list = [s.upper() for s in _csv(statuses)]
+        if st_list:
+            query["status"] = {"$in": st_list}
+    if name:
+        esc = re.escape(name.strip())
+        mode = (name_mode or "contains").lower()
+        if mode == "exact":
+            pat = f"^{esc}$"
+        elif mode == "starts":
+            pat = f"^{esc}"
+        else:
+            pat = esc
+        and_list.append({"full_name": {"$regex": pat, "$options": "i"}})
+    if contact:
+        digits = re.sub(r"\D", "", contact)
+        if digits.startswith("91") and len(digits) > 10:
+            digits = digits[2:]
+        if digits:
+            and_list.append({"phone": {"$regex": re.escape(digits)}})
+    city_ors = []
+    sel_cities = _csv(cities)
+    if sel_cities:
+        city_ors.extend({"city": {"$regex": f"^\\s*{re.escape(c)}\\s*$", "$options": "i"}} for c in sel_cities)
+    if city_blank:
+        city_ors.append({"$or": [{"city": {"$in": [None, ""]}}, {"city": {"$exists": False}}]})
+    if city_ors:
+        and_list.append({"$or": city_ors})
+    emp_ors = []
+    sel_emps = _csv(employments)
+    if sel_emps:
+        emp_ors.extend({"employment_status": {"$regex": f"^\\s*{re.escape(e)}\\s*$", "$options": "i"}} for e in sel_emps)
+    if emp_blank:
+        emp_ors.append({"$or": [{"employment_status": {"$in": [None, ""]}}, {"employment_status": {"$exists": False}}]})
+    if emp_ors:
+        and_list.append({"$or": emp_ors})
+
+    def _amount_filter(field, lo, hi, blank):
+        ors = []
+        rng = {}
+        if lo is not None:
+            rng["$gte"] = lo
+        if hi is not None:
+            rng["$lte"] = hi
+        if rng:
+            ors.append({field: rng})
+        if blank:
+            ors.append({"$or": [{field: {"$in": [None]}}, {field: {"$exists": False}}]})
+        if ors:
+            and_list.append({"$or": ors})
+
+    _amount_filter("monthly_salary_num", salary_min, salary_max, salary_blank)
+    _amount_filter("outstanding_amount_num", outstanding_min, outstanding_max, outstanding_blank)
+
+    if role in STAFF_ROLES and (partners or partner_unassigned):
+        p_ors = []
+        sel_partners = _csv(partners)
+        if sel_partners:
+            p_ors.append({"assigned_partner_id": {"$in": sel_partners}})
+        if partner_unassigned:
+            p_ors.append({"assigned_partner_id": {"$in": [None, ""]}})
+        if p_ors:
+            and_list.append({"$or": p_ors})
+
     if and_list:
         query.setdefault("$and", []).extend(and_list)
     page = max(1, page)
@@ -605,6 +692,31 @@ async def meta_leads(
     pages = max(1, (total + page_size - 1) // page_size)
     # `leads` retained for the mobile app; `items`/`pages` added for the web parity UI.
     return {"leads": items, "items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
+
+
+@router.get("/leads/filter-options")
+async def meta_leads_filter_options(user: dict = Depends(require_meta_access)):
+    """Distinct cities / employment types for the Leads column-filter dropdowns, scoped to the
+    caller's visible leads (role-aware). Partners come from /meta/partners."""
+    role, uid = _ctx(user)
+    base = dict(NOT_DELETED)
+    if role == "processor":
+        base["assigned_processor_id"] = uid
+    elif role not in STAFF_ROLES:
+        base["assigned_partner_id"] = uid
+    cities = await db.meta_leads.distinct("city", base)
+    employments = await db.meta_leads.distinct("employment_status", base)
+    def _clean(vals):
+        seen = {}
+        for v in vals:
+            s = (str(v).strip() if v is not None else "")
+            if not s:
+                continue
+            key = s.lower()
+            if key not in seen:
+                seen[key] = s
+        return sorted(seen.values(), key=lambda x: x.lower())
+    return {"cities": _clean(cities), "employments": _clean(employments)}
 
 
 @router.post("/leads/bulk-assign")
@@ -687,6 +799,8 @@ async def meta_create_lead(inp: MetaLeadCreateInput, user: dict = Depends(requir
         "employment_status": (inp.employment_status or "").strip(),
         "monthly_salary": (inp.monthly_salary or "").strip(),
         "outstanding_amount": (inp.outstanding_amount or "").strip(),
+        "monthly_salary_num": parse_amount_to_num(inp.monthly_salary),
+        "outstanding_amount_num": parse_amount_to_num(inp.outstanding_amount),
         "cibil_score": (inp.cibil_score or "").strip(),
         "campaign_name": (inp.campaign_name or "").strip(),
         "form_name": (inp.form_name or "").strip() or "Manual Entry",

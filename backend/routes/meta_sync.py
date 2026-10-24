@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, Request
 from utils.database import db
 from utils.auth import require_meta_access
 from utils.email_service import send_email as connect_send_email, _resolve_sender
+from utils.amounts import parse_amount_to_num
 
 logger = logging.getLogger("meta_sync")
 router = APIRouter(prefix="/api/meta", tags=["Meta Sync"])
@@ -347,6 +348,8 @@ async def sync_leads_from_sheet() -> dict:
             "employment_status": _pretty(r.get("please_select_your_current_employment_status", "")),
             "monthly_salary": _pretty(r.get("what_is_your_current_monthly_take-home_salary?", "")),
             "outstanding_amount": _pretty(r.get("what_is_the_total_outstanding_amount_of_your_loans_and_credit_card_bills?", "")),
+            "monthly_salary_num": parse_amount_to_num(_pretty(r.get("what_is_your_current_monthly_take-home_salary?", ""))),
+            "outstanding_amount_num": parse_amount_to_num(_pretty(r.get("what_is_the_total_outstanding_amount_of_your_loans_and_credit_card_bills?", ""))),
             "campaign_name": (r.get("campaign_name") or "").strip(),
             "form_name": (r.get("form_name") or "").strip(),
             "platform": (r.get("platform") or "").strip(),
