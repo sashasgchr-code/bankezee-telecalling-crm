@@ -8,7 +8,8 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { toast } from 'sonner';
-import GroupedLoansSection from '../../components/file-detail/GroupedLoansSection';
+import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
+import ChatbotSubmittedLoans from '../../components/file-detail/ChatbotSubmittedLoans';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 import { isFollowupStatus, procStatusLabel, followupDays, followupUrgency, followupDaysLabel, URGENCY_META, computeTat, tatDurationLabel } from '../meta/metaCommon';
@@ -801,13 +802,17 @@ const FileDetailsPage = ({
                     )}
                   </div>
                 </div>
-                <GroupedLoansSection
-                  groups={editedDetails.loan_groups}
-                  existingLoans={editedDetails.existing_loans}
-                  pendingCreditReport={editedDetails.loans_pending_credit_report}
+                <ExistingLoansEditor
+                  loans={editedDetails.existing_loans}
+                  legacyLoans={[fd.existing_loan_1, fd.existing_loan_2, fd.existing_loan_3]}
                   isEditing={isEditingDetails}
-                  onChange={(groups) => setEditedDetails({...editedDetails, loan_groups: groups})}
+                  onChange={(loans) => setEditedDetails({...editedDetails, existing_loans: loans})}
                 />
+
+                {/* SECTION B — Customer Submitted Loans (Chatbot): read-only, separate from the
+                    manual section above. Only rendered (by the component) when chatbot loan data
+                    exists. Meta files only (chatbot is keyed to the Meta lead). */}
+                {isMeta && <ChatbotSubmittedLoans leadId={fileId} />}
               </div>
 
               {/* Loan Requirements */}
