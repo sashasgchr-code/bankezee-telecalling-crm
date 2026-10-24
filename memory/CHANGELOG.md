@@ -1,3 +1,22 @@
+## 2026-10-24 — Restore original manual "Existing Loans & Obligations" + separate read-only "Customer Submitted Loans — Chatbot"
+
+File Information page (shared `FileDetailsPage.js`, Connect + Meta). A prior chatbot change (commit `efe0617`) had swapped the original manual `ExistingLoansEditor` (editing `existing_loans`) for `GroupedLoansSection` (editing `loan_groups`). User asked to restore the original and keep chatbot loans in a separate, independent section.
+
+**Frontend:**
+- **Section A restored** — reverted to the original `ExistingLoansEditor` editing `file_details.existing_loans` (per-loan: Bank/Lender, Type, Amount, Sanction Date, Outstanding, ROI, EMI + totals). Manually editable (add/edit/delete) by GP/Ops. `loan_groups` kept in `editedDetails` so it's preserved on save (never wiped).
+- **Section B added** — new read-only component `components/file-detail/ChatbotSubmittedLoans.js`: fetches `GET /meta/leads/{leadId}/chatbot`, shows the customer-submitted loans (Lender, Loan Type, Loan Amount, Outstanding, ROI, EMI, Sanction Date, Tenure, EMIs Paid) with Source + Last updated and a totals row. Renders ONLY when chatbot loan data exists; Meta files only (gated `isMeta`). No edit controls, no "Copy to Manual" (per user).
+
+**Backend (requirement #5/#8 — keep sections truly independent):**
+- `chatbot_integration.py prefill_file_from_qualification`: removed the auto-writes of `existing_loans`, loan-derived `monthly_emi` obligations, and `foir` into the file. Chatbot loans therefore NEVER auto-populate the manual section or the eligibility inputs, via any path (webhook line 891 + manual apply-to-file button). Non-loan profile scalars (cibil, salary, employment) and `loan_groups`/documents prefill unchanged. `_upsert_qualification` (webhook + 10-min reconcile) is UNTOUCHED, so Section B keeps auto-populating/updating. Chatbot sync NOT disabled; no records deleted/migrated.
+- Eligibility engine (`bank_policies.summarize_existing_loans`) already read ONLY `file_details.existing_loans` — unchanged.
+
+**Verified:** testing agent 7/7 frontend scenarios PASS (both sections independent, Section B read-only, hidden when no chatbot data, Connect mode shows A only, eligibility follows manual edits). Backend prefill change verified in-process: chatbot loans no longer write existing_loans/monthly_emi/foir; profile scalars + loan_groups still fill; qualification/Section B sync intact. Not deployed (awaiting user approval).
+
+Known minor (legacy data only): loans previously auto-prefilled into `existing_loans` are stored snake_case (`personal_loan`, `hdfc`), so the restored dropdown shows "Select" in edit mode for those old rows. Left the editor as the exact original per user's "restore exactly / don't redesign"; affects only pre-existing prefilled rows (no new ones occur now).
+
+Files: `frontend/src/pages/files/FileDetailsPage.js`, `frontend/src/components/file-detail/ChatbotSubmittedLoans.js` (new), `backend/routes/chatbot_integration.py`.
+
+
 ## 2026-10-23 — Phone normalization at import + bulk retry for failed WhatsApp sends
 
 Follow-up to the WhatsApp auto-trigger fix.

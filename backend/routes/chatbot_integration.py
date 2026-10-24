@@ -733,25 +733,13 @@ async def prefill_file_from_qualification(lead_id: str):
 
         changed = {}
 
-        # 1) Structured existing_loans[] — only if none present (preserve manual entries, no dupes).
-        current_loans = existing_file.get("existing_loans")
-        if (not isinstance(current_loans, list) or len(current_loans) == 0) and loans:
-            changed["existing_loans"] = [_to_structured_loan(l) for l in loans]
-
-        # 2) Aggregate monthly EMI obligations. Canonical key read by the Meta File is `monthly_emi`
-        # (compat maps file.monthly_emi -> monthly_emi_obligations). Fill-when-empty only.
-        total_oblig = q.get("total_monthly_obligations")
-        if total_oblig in (None, "") and loans:
-            try:
-                total_oblig = sum(float(l.get("monthly_emi") or 0) for l in loans) or None
-            except Exception:
-                total_oblig = None
-        if total_oblig not in (None, "") and existing_file.get("monthly_emi") in (None, "", 0, "0"):
-            changed["monthly_emi"] = total_oblig
-
-        # 3) FOIR / EMI-to-salary ratio.
-        if q.get("emi_to_salary_ratio") not in (None, "") and existing_file.get("foir") in (None, "", 0, "0"):
-            changed["foir"] = q.get("emi_to_salary_ratio")
+        # Manual "Existing Loans & Obligations" (file.existing_loans) and its loan-derived
+        # eligibility inputs (monthly_emi obligations, foir) are INTENTIONALLY NOT auto-populated
+        # from the chatbot. Per product requirement, customer-reported chatbot loans live ONLY in
+        # the read-only "Customer Submitted Loans — Chatbot" section (sourced live from the
+        # qualification), and the Check Eligibility calculator uses ONLY manually entered loans.
+        # A GP must enter loans into the manual section themselves. (Chatbot loans still sync to the
+        # qualification + Section B via _upsert_qualification on every webhook/reconcile tick.)
 
         # 4) Simple scalar fields using the canonical lead.file keys the compat layer reads:
         # CIBIL -> `cibil`, employment -> `employment_type`, salary -> `net_salary`.

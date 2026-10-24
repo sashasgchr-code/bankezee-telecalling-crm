@@ -1,0 +1,32 @@
+{
+  "summary": "Frontend-only Playwright testing of the restored manual 'Existing Loans & Obligations' section (A) and the new read-only 'Customer Submitted Loans — Chatbot' section (B) on the File Information page, logged in as admin. ALL 7 requested scenarios PASS. Meta file lead_sashafile_demo: Section A renders ExistingLoansEditor with fields Bank/Lender, Type of Loan, Loan Amount, Sanction Date, Outstanding, ROI and EMI, and the summary 'Existing Loans (2) · Total EMI ₹17,000 · Total Outstanding ₹3,60,000'. Section B renders BELOW A (y=862 vs 622). It has the columns Lender, Loan Type, Loan Amount, Outstanding, ROI, EMI, Sanction Date, Tenure and EMIs Paid, the 'Source: Bankezee Website Chatbot' and 'Last updated: 23/10/2026' text, and the row TOTAL (2) ₹3,60,000 / ₹17,000. It has 0 inputs/buttons/selects, in view and edit mode alike, and no 'Copy to Manual' button. Edit flow: Add Loan → loan 3 (TEST_Axis Bank, Personal Loan, outstanding 100000, EMI 3000) gave totals ₹20,000 / ₹4,60,000. Adding loan 4 (EMI 999) gave ₹20,999. remove-existing-loan-4 brought it back to ₹20,000. Save + reload persisted 3 loans. Chatbot Section B stayed unchanged (₹17,000 / ₹3,60,000, 2 rows), so the sections are independent. Check Eligibility before the edit: EMI ₹17,000, FOIR 28.3%, 20 eligible. After the edit: EMI ₹20,000 (EXISTING LOANS (3)), FOIR 33.3%, 17 eligible, with the TEST loan listed. Eligibility follows the manual section. Test data was then removed: the file is back to 2 loans / ₹17,000 and loan_groups=[] is preserved in the DB. Meta file without chatbot data (lead_55772c498293, Emmadi Thirupathi): Section B is absent and Section A renders ('No existing loans recorded'). Connect file 867d684d… (redirected to /admin/files/…): Section A renders and is editable (Add Loan visible in edit mode), and Section B is absent.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ExistingLoansEditor (Section A) – loans auto-prefilled from chatbot", "issue": "Chatbot-prefilled manual loans store loan_type='personal_loan' (snake_case), which is not one of the LOAN_TYPES options ('Personal Loan'). In edit mode, the Type of Loan select for loans 1-2 shows 'Select' (value ''), even though the data has a value. View mode and eligibility show raw 'personal_loan'. Bank is stored as lowercase 'hdfc', while the chatbot table shows 'HDFC Bank'.", "selector": "[data-testid='existing-loan-1-loan_type']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [
+      {"flow": "Chatbot prefill → manual existing_loans", "issue": "The manual existing_loans on lead_sashafile_demo were auto-seeded from chatbot data. The DB entries carry source:'chatbot' and loan_id L1/L2, and the activity log reads 'File prefilled from chatbot: ... 2 existing loan(s)'. Sections A and B display independently, and saving A does not change B. However, eligibility can still be driven by chatbot data through this automatic copy. The user said there should be no copy-to-manual. Confirm with the user whether the backend auto-prefill of existing_loans should stay.", "affected_selectors": ["[data-testid='existing-loans-editor']"]}
+    ],
+    "design_issues": [
+      {"screen": "File Details", "issues": ["The 'Edit Details'/'Save Details' button and the 'Check Eligibility' button have no data-testid (tests had to use role+name)."]}
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Normalise chatbot-prefilled loan_type to the ExistingLoansEditor option labels (e.g. personal_loan → 'Personal Loan'), or have the select show unknown current values, so edit mode does not show 'Select' for prefilled loans.",
+    "Decide (with the user) whether the backend chatbot→existing_loans auto-prefill should remain, given the requirement that the manual section be independent and that there be no copy-to-manual.",
+    "Add data-testids to the Edit/Save Details button and the Check Eligibility button in FileDetailsPage.js."
+  ],
+  "critical_code_review_comments": [
+    "ChatbotSubmittedLoans swallows fetch errors and renders nothing, which is acceptable for the 'hide when no data' behaviour, but a real API failure is indistinguishable from 'no chatbot data'.",
+    "Last updated falls back from last_synced_at to updated_at to q.last_activity. The date shown was 23/10/2026, which is consistent with the env clock.",
+    "FileDetailsPage.js is ~1385 lines; consider splitting it."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100% of requested scenarios (7/7)"},
+  "seed_data_creation": "Temporarily added a 'TEST_Axis Bank' loan to lead_sashafile_demo manual existing_loans, then removed it. The original 2 loans were restored.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login as admin@bankezee.com / ConnectSasha12!!. Meta file with chatbot data: /meta/files/lead_sashafile_demo (manual loans KreditBee 5000 + hdfc 12000; salary 60000 → FOIR 28.3%). Meta file without chatbot data: lead_55772c498293. The Connect file /files/867d... redirects to /admin/files/... for admin. The Meta eligibility page is /meta/files/{id}/check-eligibility (POST /api/meta/files-compat/{id}/check-eligibility); click run-eligibility-btn if it is shown."
+}
