@@ -214,10 +214,12 @@ async def _mark(lead_id: str, set_doc: dict, activity: Optional[str] = None):
 
 
 async def maybe_autosend(lead: dict):
-    """Fire-and-forget hook for a freshly imported lead. Meta and website leads; never raises."""
+    """Fire-and-forget hook for a freshly imported lead. Meta lead-form leads only; never raises."""
     try:
         if not (AUTOSEND_ENABLED and _send_configured()):
             return
+        if (lead.get("source_tab") or "").strip().lower() == "website":
+            return  # opt-in basis = Meta lead-form submission only
         await send_whatsapp_for_lead(lead, trigger="auto")
     except Exception as e:
         logger.warning(f"WhatsApp autosend error for {lead.get('lead_id')}: {e}")
@@ -277,6 +279,7 @@ async def retry_failed_whatsapp(
     query = {
         "whatsapp.status": {"$in": list(RETRYABLE_STATUSES)},
         "whatsapp.wamid": {"$exists": False},
+        "source_tab": {"$ne": "Website"},
     }
     total = await db.meta_leads.count_documents(query)
     if not confirm:
