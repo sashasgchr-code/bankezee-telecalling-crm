@@ -2466,3 +2466,7 @@ excludeSnoozed=true and each TAT nudge has a "Snooze today" button (testid meta-
 that POSTs then reloads. Row is a div (no nested buttons).
 VERIFIED 2026-10-23 (teja processor): snooze -> bell 1->0 + badge gone, dashboard table still shows
 the file; API: exclude_snoozed hides it, default still returns it. Snooze store cleared after test. Not deployed.
+
+## 2026-06 WhatsApp welcome template switch
+- Auto-send template changed to `welcome_message2` (button-only payload; no body variable). Website leads now also auto-receive it (previously Meta-only). Body var configurable via WHATSAPP_TEMPLATE_BODY_PARAM. Verified with stubbed Graph send (no live message).
+- Pending: Advanced Meta Leads filters & pagination still awaiting full testing-agent pass.

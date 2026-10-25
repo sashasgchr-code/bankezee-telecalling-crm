@@ -5,7 +5,7 @@ On a brand-new Meta lead-form lead arriving via the Google Sheet sync, the CRM:
   1. treats the Meta form submission as WhatsApp opt-in (Meta-sourced leads only),
   2. reuses the existing website chatbot to mint/reuse a customer-specific secure link,
   3. extracts the token after "/loan-review/" and sends the approved template
-     `loan_application_response` (named body var `customer_name` + dynamic URL button token),
+     `welcome_message2` (dynamic URL button token),
   4. stores the Meta message id (wamid), send time, delivery status and 30-day link expiry
      against the CRM lead, with idempotency so re-imports/re-syncs never resend.
 
@@ -44,7 +44,9 @@ APP_SECRET = os.environ.get("META_WHATSAPP_APP_SECRET") or ""
 VERIFY_TOKEN = os.environ.get("META_WHATSAPP_VERIFY_TOKEN") or ""
 PHONE_NUMBER_ID = os.environ.get("META_WHATSAPP_PHONE_NUMBER_ID") or ""
 GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
-TEMPLATE_NAME = os.environ.get("WHATSAPP_TEMPLATE_NAME", "loan_application_response")
+TEMPLATE_NAME = os.environ.get("WHATSAPP_TEMPLATE_NAME", "welcome_message2")
+# Named body variable for templates that have one (e.g. loan_application_response); welcome_message2 has none.
+TEMPLATE_BODY_PARAM = os.environ.get("WHATSAPP_TEMPLATE_BODY_PARAM", "").strip()
 TEMPLATE_LANG = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
 AUTOSEND_ENABLED = os.environ.get("WHATSAPP_AUTOSEND_ENABLED", "true").strip().lower() == "true"
 LINK_TTL_DAYS = int(os.environ.get("WHATSAPP_LINK_TTL_DAYS", "30"))
@@ -105,10 +107,10 @@ async def _graph_send_template(recipient: str, customer_name: str, url_token: st
         "template": {
             "name": TEMPLATE_NAME,
             "language": {"code": TEMPLATE_LANG},
-            "components": [
+            "components": ([
                 {"type": "body", "parameters": [
-                    {"type": "text", "parameter_name": "customer_name", "text": customer_name or "Customer"}
-                ]},
+                    {"type": "text", "parameter_name": TEMPLATE_BODY_PARAM, "text": customer_name or "Customer"}
+                ]}] if TEMPLATE_BODY_PARAM else []) + [
                 {"type": "button", "sub_type": "url", "index": "0", "parameters": [
                     {"type": "text", "text": url_token}
                 ]},
@@ -212,12 +214,10 @@ async def _mark(lead_id: str, set_doc: dict, activity: Optional[str] = None):
 
 
 async def maybe_autosend(lead: dict):
-    """Fire-and-forget hook for a freshly imported lead. Meta lead-form leads only; never raises."""
+    """Fire-and-forget hook for a freshly imported lead. Meta and website leads; never raises."""
     try:
         if not (AUTOSEND_ENABLED and _send_configured()):
             return
-        if (lead.get("source_tab") or "").strip().lower() == "website":
-            return  # opt-in basis = Meta lead-form submission only
         await send_whatsapp_for_lead(lead, trigger="auto")
     except Exception as e:
         logger.warning(f"WhatsApp autosend error for {lead.get('lead_id')}: {e}")
@@ -277,7 +277,6 @@ async def retry_failed_whatsapp(
     query = {
         "whatsapp.status": {"$in": list(RETRYABLE_STATUSES)},
         "whatsapp.wamid": {"$exists": False},
-        "source_tab": {"$ne": "Website"},
     }
     total = await db.meta_leads.count_documents(query)
     if not confirm:
