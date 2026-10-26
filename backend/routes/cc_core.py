@@ -126,16 +126,17 @@ async def sync_customers() -> dict:
         g["names"].append(file_name)
         g["loans"].append(loan)
 
-    async for f in db.leads.find({"status": "file"}, {"_id": 0, "id": 1, "name": 1, "phone": 1, "eligibilities": 1, "file_status": 1,
+    async for f in db.leads.find({"status": "file"}, {"_id": 1, "id": 1, "name": 1, "phone": 1, "eligibilities": 1, "file_status": 1,
                                                        "source_id": 1, "assigned_to": 1, "file_assigned_to": 1, "file_activities": 1,
                                                        "requirement": 1, "additional_data.type_of_loan": 1}):
+        fid = f.get("id") or str(f["_id"])  # some legacy file docs have no `id` field
         rows = [e for e in (f.get("eligibilities") or []) if isinstance(e, dict)
                 and (e.get("approval_status") == "approved" or _yes(e.get("disbursed")))]
         fs = f.get("file_status")
         gp = f.get("source_id") or f.get("assigned_to")
         proc = f.get("file_assigned_to")
         ltype = (f.get("additional_data") or {}).get("type_of_loan") or f.get("requirement") or ""
-        base = {"source": "connect", "file_id": f["id"], "loan_type": str(ltype).replace("_", " ").title(),
+        base = {"source": "connect", "file_id": fid, "loan_type": str(ltype).replace("_", " ").title(),
                 "gp_id": gp, "gp_name": uname(gp), "processor_id": proc, "processor_name": uname(proc)}
         acts = f.get("file_activities")
         if not rows and fs in ("approved", "disbursed"):
@@ -144,7 +145,7 @@ async def sync_customers() -> dict:
             disb = _yes(e.get("disbursed")) or (e.get("_file_level") and fs == "disbursed")
             appr_at = e.get("approved_at") or _status_change_at(acts, "approved")
             disb_at = (e.get("disbursed_at") or e.get("disbursal_date") or _status_change_at(acts, "disbursed")) if disb else None
-            add(f.get("name"), f.get("phone"), {**base, "loan_key": f"connect:{f['id']}:{i}",
+            add(f.get("name"), f.get("phone"), {**base, "loan_key": f"connect:{fid}:{i}",
                 "bank": e.get("disbursed_bank") or e.get("approved_bank") or e.get("bank_name") or "",
                 "status": "Disbursed" if disb else "Approved",
                 "approval_date": _date_only(appr_at), "approval_date_source": "bank row" if e.get("approved_at") else ("status history" if appr_at else None),
