@@ -208,7 +208,7 @@ const TelecallerLayout = () => {
     { path: '/agent', icon: Phone, label: 'Data', exact: true },
     { path: '/agent/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { path: '/agent/files', icon: FileText, label: 'Files' },
-    { path: '/agent/customers-campaigns', icon: HeartHandshake, label: 'My Customers' },
+    { path: '/agent/customers-campaigns', icon: HeartHandshake, label: 'Customers & Campaigns' },
     { path: '/agent/followups', icon: Calendar, label: 'Follow-ups' },
   ];
   

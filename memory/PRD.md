@@ -2472,3 +2472,14 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Pending: Advanced Meta Leads filters & pagination still awaiting full testing-agent pass.
 - UPDATE: Template now `welcome_message3` (MARKETING, PENDING approval at time of change): image header (backend/assets/whatsapp_welcome_header.png uploaded to Meta media, id cached in meta_meta key wa_header_media, refreshed every 25 days), body var customer_name, URL button token. Meta leads only. Quick-reply "Request Expert Call" taps are not captured by CRM.
 - 2026-06 Expert Call Alerts: WhatsApp webhook handles incoming "Request Expert Call" quick-reply (matched by context wamid, fallback phone_norm) -> lead.wants_call {requested_at,status_at_request}. Active while status unchanged. GET /api/meta/call-requests (admin/ops/all processors see all; GP only assigned). UI: bell "Wants a Call" section (processors see name+phone, cannot open unassigned leads), orange badge in Leads table/cards, flag in LeadDetail header.
+
+## 2026-10 Meta Reports page (/meta/reports)
+- New Reports page (backend routes/meta_reports.py GET /api/meta/reports/live, /options, /live/export). TAT is now 4 working days with Sundays excluded, everywhere (compute_tat, Files filter, bell). The overdue table, TAT ageing and processor overdue figures cover ALL open files (the date range is not applied). The Dashboard keeps its "Files Exceeding 4-Day TAT" section (the user asked to keep it there as well).
+
+## 2026-10 Customers & Campaigns (Connect: /admin|/manager|/agent/customers-campaigns)
+- Backend: routes/cc_core.py (customer sync from Connect db.leads + Meta files, eligibility, template parse, mock/live deliver, worker, birthdays, webhook on_status/on_message incl STOP opt-out), routes/customers_campaigns.py (/api/cc/*).
+- Collections: cc_customers, cc_campaigns, cc_messages (unique dedupe_key), cc_templates, cc_audit, GridFS cc_media; settings in app_settings key cc_settings (live_sending default False = MOCK).
+- Cron: .emergent/crons.yml cc-campaign-tick */15 -> POST /api/cc/cron/tick (WEBHOOK_CRON_SECRET).
+- Roles: admin full; ops all customers + edit; manager team + edit; GP own read-only; campaigns = admin + users with cc_campaign_access.
+- Tested: iteration_69 (backend 26/27 then fixed; resume-scheduled bug, page=abc, media access, UI fixes applied). Test data cleaned.
+- Pending for go-live: approved MARKETING templates (festival/birthday), admin test number, consent capture, DOB entry, admin enables live sending.

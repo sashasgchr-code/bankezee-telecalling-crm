@@ -61,7 +61,7 @@ def loan_match(l, f) -> bool:
     if st == "disbursed" and l["status"] != "Disbursed":
         return False
     for k, field in (("gp", "gp_id"), ("processor", "processor_id")):
-        if f.get(k) and l.get(field) != f[k]:
+        if f.get(k) and (l.get(field) or "UNASSIGNED") != f[k]:
             return False
     if f.get("loan_type") and (l.get("loan_type") or "").lower() != f["loan_type"].lower():
         return False
@@ -121,7 +121,7 @@ def kpis(rows) -> dict:
 def missing_by_processor(rows) -> list:
     out = {}
     for r in rows:
-        procs = {(l.get("processor_id") or "", l.get("processor_name") or "Unassigned") for l in r.get("loans") or []} or {("", "Unassigned")}
+        procs = {(l.get("processor_id") or "UNASSIGNED", l.get("processor_name") or "Unassigned") for l in r.get("loans") or []} or {("UNASSIGNED", "Unassigned")}
         for pid, pname in procs:
             o = out.setdefault(pid, {"processor_id": pid, "processor": pname, "customers": 0, "missing": 0})
             o["customers"] += 1
@@ -134,6 +134,13 @@ SORTS = {"name": lambda r: (r.get("name") or "").lower(),
          "approved_amount": lambda r: sum(l.get("approved_amount") or 0 for l in r.get("loans") or []),
          "disbursed_amount": lambda r: sum(l.get("disbursed_amount") or 0 for l in r.get("loans") or []),
          "dob": lambda r: (r.get("dob") or "")[-5:], "last_whatsapp": lambda r: r.get("last_whatsapp_at") or ""}
+
+
+def _int(v, default):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def qfilters(request: Request) -> dict:
@@ -153,7 +160,7 @@ async def list_customers(request: Request, c=Depends(C)):
     rows = await filtered(c, f)
     key = SORTS.get(f.get("sort") or "latest", SORTS["latest"])
     rows.sort(key=key, reverse=(f.get("dir", "desc") == "desc"))
-    page, size = max(1, int(f.get("page", 1))), min(200, max(10, int(f.get("page_size", 25))))
+    page, size = max(1, _int(f.get("page"), 1)), min(200, max(10, _int(f.get("page_size"), 25)))
     k = kpis(rows)
     return {"items": rows[(page - 1) * size: page * size], "total": len(rows), "page": page, "page_size": size, "kpis": k,
             "dob_completion": {"with": k["with_dob"], "total": len(rows), "pct": round(k["with_dob"] * 100 / len(rows), 1) if rows else 0},
@@ -439,6 +446,7 @@ async def upload_media(file: UploadFile = File(...), c=Depends(C)):
 
 @router.get("/media/{ref}")
 async def get_media(ref: str, c=Depends(C)):
+    need(c["can_campaign"] or c["is_admin"])
     try:
         stream = await core.media_bucket.open_download_stream(ObjectId(ref))
     except Exception:
@@ -673,11 +681,16 @@ async def campaign_action(cid: str, action: str, c=Depends(C)):
     if action == "resume":
         s = await core.get_settings()
         need(not s["live_sending"] or c["is_admin"], "Only an admin can resume a live campaign")
-    await CAMP.update_one({"campaign_id": cid}, {"$set": {"status": new, f"{action}d_at": iso(), f"{action}d_by": c["user"].get("name")}})
+    upd = {"status": new, f"{action}d_at": iso(), f"{action}d_by": c["user"].get("name")}
+    if action == "pause":
+        upd["paused_from"] = camp["status"]
+    if action == "resume" and camp.get("paused_from") == "scheduled" and (camp.get("scheduled_at") or "") > iso():
+        upd["status"] = new = "scheduled"
+    await CAMP.update_one({"campaign_id": cid}, {"$set": upd})
     if action == "cancel":
         await MSG.update_many({"campaign_id": cid, "status": "queued"}, {"$set": {"status": "skipped", "error": "campaign cancelled"}})
     await core.audit(f"campaign_{action}", c["user"], campaign_id=cid)
-    if action == "resume":
+    if action == "resume" and new == "running":
         asyncio.create_task(core.run_worker())
     return {"status": new}
 

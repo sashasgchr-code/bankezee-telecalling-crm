@@ -50,7 +50,11 @@ export const btn = (kind = "primary") => ({
   danger: "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-semibold text-white bg-[#DC2626] hover:bg-red-700 disabled:opacity-50 transition-colors",
 }[kind]);
 
-export const errMsg = (e, fb = "Something went wrong") => e?.response?.data?.detail || fb;
+export const errMsg = (e, fb = "Something went wrong") => {
+  const d = e?.response?.data?.detail;
+  if (Array.isArray(d)) return d.map((x) => x?.msg || String(x)).join("; ") || fb;
+  return typeof d === "string" ? d : fb;
+};
 
 // DD-MM-YYYY or DD-MM text -> API value (YYYY-MM-DD | --MM-DD) ; null when invalid
 export const parseDobInput = (v) => {

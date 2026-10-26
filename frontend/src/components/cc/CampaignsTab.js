@@ -78,7 +78,7 @@ export const CampaignsTab = ({ me, historyOnly }) => {
                   <td className="px-3 py-2 font-semibold">{c.name}</td><td className="px-3 py-2">{c.type}</td><td className="px-3 py-2">{c.template || "—"}</td><td className="px-3 py-2">{c.audience_total ?? "—"}</td>
                   <td className="px-3 py-2">{n.queued}</td><td className="px-3 py-2">{n.submitted + n.sent + n.delivered + n.read}{n.mock ? ` (+${n.mock} mock)` : ""}</td>
                   <td className="px-3 py-2">{n.delivered + n.read}</td><td className="px-3 py-2">{n.read}</td><td className="px-3 py-2">{n.failed}</td><td className="px-3 py-2">{n.replied}</td>
-                  <td className="px-3 py-2 whitespace-nowrap text-xs">{fmtDT(c.confirmed_at || c.created_at)}</td><td className="px-3 py-2"><StatusBadge s={c.status} /></td>
+                  <td className="px-3 py-2 whitespace-nowrap text-xs">{fmtDT(c.confirmed_at || c.created_at)}</td><td className="px-3 py-2 whitespace-nowrap"><StatusBadge s={c.status} />{c.mode === "mock" && <span className="ml-1 text-[10px] font-bold text-violet-600" data-testid={`cc-camp-mode-${c.campaign_id}`}>MOCK</span>}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     <button type="button" data-testid={`cc-camp-view-${c.campaign_id}`} onClick={() => setView(c.campaign_id)} className="text-xs font-semibold mr-2" style={{ color: B.blue }}>Details</button>
                     {c.status === "draft" && me.can_campaign && <button type="button" data-testid={`cc-camp-edit-${c.campaign_id}`} onClick={() => setWiz(c)} className="text-xs font-semibold inline-flex items-center gap-1" style={{ color: B.navy }}><Pencil size={12} /> Edit</button>}

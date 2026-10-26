@@ -41,7 +41,7 @@ const ConsentEditor = ({ cust, onSaved }) => {
     catch (e) { toast.error(errMsg(e)); }
   };
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 items-end">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 items-end min-w-0 [&_input]:w-full [&_select]:w-full">
       <Field label="Marketing opt-in">
         <select data-testid="cc-consent-status" value={f.consent_status} onChange={(e) => setF({ ...f, consent_status: e.target.value })} className={inputCls}>
           <option value="unknown">Unknown</option><option value="opted_in">Opted In (verified)</option><option value="opted_out">Opted Out</option>
@@ -65,7 +65,7 @@ export const CustomerDialog = ({ id, me, onClose, onChanged }) => {
   const cons = c?.consent || {};
   return (
     <Dialog open={!!id} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" data-testid="cc-customer-dialog">
+      <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto overflow-x-hidden" data-testid="cc-customer-dialog">
         <DialogHeader><DialogTitle style={{ color: B.navy }}>{c?.name || "Customer"}</DialogTitle></DialogHeader>
         {!c ? <p className="text-sm text-slate-500">Loading…</p> : (
           <div className="space-y-5 text-sm">
@@ -109,7 +109,7 @@ export const CustomerDialog = ({ id, me, onClose, onChanged }) => {
 };
 
 export const LoanTable = ({ loans }) => (
-  <div className="overflow-x-auto border border-slate-200 rounded-lg">
+  <div className="overflow-x-auto max-w-full border border-slate-200 rounded-lg">
     <table className="w-full text-xs" data-testid="cc-loan-table">
       <thead className="bg-slate-50"><tr>{["File", "Loan Type", "Bank/NBFC", "Status", "Approval Date", "Approved Amt", "Disbursement Date", "Disbursed Amt", "Growth Partner", "Processor"].map((h) => <th key={h} className="text-left px-2.5 py-2 text-[10px] uppercase text-slate-500 whitespace-nowrap">{h}</th>)}</tr></thead>
       <tbody>{(loans || []).map((l) => (

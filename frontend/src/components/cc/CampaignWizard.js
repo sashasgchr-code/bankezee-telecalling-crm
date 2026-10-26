@@ -83,7 +83,7 @@ export const MediaPicker = ({ kind, mediaRef, onChange, testid = "cc-media" }) =
   }, [mediaRef, kind]);
   const upload = async (file) => {
     const fd = new FormData(); fd.append("file", file);
-    try { const { data } = await api.post("/cc/media", fd); if (data.kind !== kind) return toast.error(`This template needs a ${kind.toLowerCase()} header`); onChange(data.media_ref); toast.success("Uploaded"); }
+    try { const { data } = await api.post("/cc/media", fd, { headers: { "Content-Type": "multipart/form-data" } }); if (data.kind !== kind) return toast.error(`This template needs a ${kind.toLowerCase()} header`); onChange(data.media_ref); toast.success("Uploaded"); }
     catch (e) { toast.error(errMsg(e)); }
   };
   const accept = { IMAGE: "image/jpeg,image/png", VIDEO: "video/mp4", DOCUMENT: "application/pdf" }[kind];
@@ -121,6 +121,8 @@ const Confirm = ({ cid, me, onDone }) => {
       <div className="rounded-lg border bg-[#e7ffdb] p-3 max-w-sm">
         {img && <img src={img} alt="" className="rounded mb-2" />}
         <p className="whitespace-pre-wrap text-[13px]" data-testid="cc-confirm-preview">{p.message_preview}</p>
+        {p.template.footer && <p className="text-[11px] text-slate-500 mt-1">{p.template.footer}</p>}
+        {(p.template.buttons || []).map((b, i) => <p key={i} className="mt-1 pt-1 border-t border-emerald-200 text-center text-[12px] font-semibold text-sky-700">{b.text}</p>)}
       </div>
       <label className="flex items-center gap-2"><input data-testid="cc-confirm-check" type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} /> I confirm this campaign{p.live_sending ? " will send REAL WhatsApp messages" : ""}.</label>
       <div className="flex gap-2">
@@ -154,8 +156,11 @@ export const CampaignWizard = ({ open, onClose, me, initial }) => {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose(false)}>
       <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto" data-testid="cc-wizard">
-        <DialogHeader><DialogTitle style={{ color: B.navy }}>{cid ? "Edit campaign" : "Create campaign"}</DialogTitle></DialogHeader>
-        <div className="flex flex-wrap gap-1 mb-2">{STEPS.map((s, i) => <span key={s} className={`text-[11px] px-2 py-1 rounded-full ${i === step ? "bg-[#081B3A] text-white" : i < step ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{i + 1}. {s}</span>)}</div>
+        <DialogHeader><DialogTitle style={{ color: B.navy }}>{initial?.campaign_id ? "Edit campaign" : "Create campaign"}</DialogTitle></DialogHeader>
+        <div className="flex flex-wrap gap-1 mb-2">{STEPS.map((s, i) => {
+          const skipped = i === 3 && !needsMedia && step > 2;
+          return <span key={s} className={`text-[11px] px-2 py-1 rounded-full ${i === step ? "bg-[#081B3A] text-white" : skipped ? "bg-slate-50 text-slate-400 line-through" : i < step ? "bg-blue-50 text-blue-700" : "bg-slate-100 text-slate-500"}`}>{i + 1}. {s}{skipped ? " (not needed)" : ""}</span>;
+        })}</div>
         {step === 0 && <div className="grid md:grid-cols-2 gap-3">
           <Field label="Campaign name"><input data-testid="cc-w-name" value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} className={inputCls} /></Field>
           <Field label="Campaign type"><select data-testid="cc-w-type" value={v.type} onChange={(e) => setV({ ...v, type: e.target.value })} className={inputCls}><option value="">Choose…</option>{me.campaign_types.map((t) => <option key={t}>{t}</option>)}</select></Field>

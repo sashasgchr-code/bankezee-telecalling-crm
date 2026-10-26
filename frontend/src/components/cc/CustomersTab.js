@@ -38,7 +38,7 @@ const ImportDialog = ({ open, onClose, onDone }) => {
   const preview = async () => {
     if (!file) return toast.error("Choose a CSV file");
     const fd = new FormData(); fd.append("kind", kind); fd.append("file", file);
-    try { const { data } = await api.post("/cc/import/preview", fd); setPrev(data); } catch (e) { toast.error(errMsg(e)); }
+    try { const { data } = await api.post("/cc/import/preview", fd, { headers: { "Content-Type": "multipart/form-data" } }); setPrev(data); } catch (e) { toast.error(errMsg(e)); }
   };
   const commit = async () => {
     try { const { data } = await api.post("/cc/import/commit", { kind, rows: prev.rows }); toast.success(`${data.updated} customers updated`); setPrev(null); onDone(); onClose(); }
@@ -61,7 +61,7 @@ const ImportDialog = ({ open, onClose, onDone }) => {
             <tbody>{prev.rows.map((r, i) => (
               <tr key={i} className={`border-t ${["invalid", "not_found", "ambiguous"].includes(r.status) ? "bg-red-50" : r.status === "conflict" ? "bg-amber-50" : ""}`}>
                 <td className="px-2 py-1">{r.row}</td><td className="px-2 py-1">{r.name || r.customer_id || r.file_id || "—"}</td>
-                <td className="px-2 py-1">{kind === "dob" ? fmtDob(r.dob) || r.raw : r.consent_status}</td><td className="px-2 py-1">{kind === "dob" ? fmtDob(r.existing) : r.existing}</td>
+                <td className="px-2 py-1">{kind === "dob" ? (r.dob ? fmtDob(r.dob) : r.raw || "—") : r.consent_status || "—"}</td><td className="px-2 py-1">{kind === "dob" ? fmtDob(r.existing) : r.existing}</td>
                 <td className="px-2 py-1">{r.status}{r.message ? ` — ${r.message}` : ""}</td>
                 <td className="px-2 py-1">{r.status === "conflict" && <input data-testid={`cc-import-overwrite-${i}`} type="checkbox" checked={!!r.overwrite} onChange={() => toggle(i)} />}</td>
               </tr>))}</tbody></table></div>

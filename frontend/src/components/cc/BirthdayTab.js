@@ -55,7 +55,7 @@ export const BirthdayTab = ({ me }) => {
     <div className="space-y-4" data-testid="cc-birthday-tab">
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
         <Kpi testid="cc-b-today" label="Birthdays Today" value={c.today} color={B.gold} /><Kpi testid="cc-b-tomorrow" label="Tomorrow" value={c.tomorrow} />
-        <Kpi testid="cc-b-next7" label="Next 7 Days" value={c.next7} /><Kpi testid="cc-b-sent" label="Wishes Sent Today" value={c.sent_today} color={B.blue} />
+        <Kpi testid="cc-b-next7" label="Next 7 Days" value={c.next7} /><Kpi testid="cc-b-sent" label="Wishes Sent Today" value={c.sent_today} color={B.blue} sub={me.live_sending ? "" : "includes mock records"} />
         <Kpi testid="cc-b-delivered" label="Delivered Today" value={c.delivered_today} color={B.emerald} /><Kpi testid="cc-b-failed" label="Failed Today" value={c.failed_today} color={B.red} />
         <Kpi testid="cc-b-missing" label="Missing DOB" value={c.missing_dob} color={B.red} />
       </div>

@@ -1,0 +1,54 @@
+{
+  "summary": "Tested the Customers & Campaigns module end to end with backend pytest (27 tests) and Playwright UI checks. Roles covered: admin, manager, ops and GP. Live sending stayed OFF the whole time and no test number was set; every send was mock. Backend: 26/27 pass. The one failure is page=abc returning 500. A code review also found a HIGH logic bug: pausing a scheduled campaign and then resuming it sends it immediately, before its scheduled time. UI: one CRITICAL crash in the Import CSV preview (white-screen React error). I found the cause and fixed it, then re-tested; the preview now shows the statuses new, conflict, invalid and not_found. Everything else passed: KPIs, filters, Apply/Reset, sort, page size, pagination, CSV export, DOB completion, missing-DOB processor chips, multi-loan expand, DOB and consent validation with the overwrite confirm and audit line, the full campaign wizard (only APPROVED templates selectable, mock banner, preview, confirm ending in a Mock (Not Sent) recipient), Save Draft, Edit draft, schedule later, pause, cancel, history KPIs with details and export, template sync and cards, the birthday tab (non-approved templates disabled), RBAC, and the regression pages /admin, /admin/files and /meta.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/cc/campaigns/{cid}/resume", "issue": "Resuming a paused campaign always sets status 'running' and starts the worker. If the campaign was paused while 'scheduled' for a future time, it is sent IMMEDIATELY and ignores scheduled_at. Reproduced: scheduled +2 days -> pause -> resume -> 'completed' within seconds (mock). With live sending ON this would send real messages early. Fix: on resume, set status back to 'scheduled' when scheduled_at > now (keep paused_from_status).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/cc/customers?page=abc", "issue": "Returns 500 because int() is applied to raw query params (page/page_size). Validate them or use Query(int)."},
+      {"endpoint": "GET /api/cc/media/{ref}", "issue": "Any logged-in user (e.g. a GP) can download any uploaded campaign media. There is no can_campaign/scope check."},
+      {"endpoint": "POST /api/cc/campaigns/{cid}/cancel on paused campaign", "issue": "Works. Note: campaign status 'completed' is shown for mock runs; only the recipient rows say 'Mock (not sent)'. Consider showing the mode on the campaign row or badge."},
+      {"endpoint": "Pre-existing meta_sync -> whatsapp.maybe_autosend", "issue": "Backend log shows live 'WhatsApp send failed: code=132001' (template not found). This comes from the existing Meta welcome auto-send, not from the CC module, which correctly stays mock. FYI only."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ImportDialog / MediaPicker (CustomersTab.js, CampaignWizard.js)", "issue": "FIXED BY TESTER. Clicking Preview crashed the page with 'Objects are not valid as a React child'. Root cause: the api axios instance has a default Content-Type of application/json. With that header, axios 1.x turns FormData into JSON, so the backend returned a 422 with a detail array, and toast(errMsg) rendered that array. Fix: pass headers {'Content-Type':'multipart/form-data'} on /cc/import/preview and /cc/media. errMsg in ccShared.js now also handles array details.", "selector": "[data-testid='cc-import-preview']", "priority": "CRITICAL (fixed)"},
+      {"component": "ImportDialog preview table", "issue": "The Value column is wrong for some rows. not_found rows show a garbled value ('90--1-01-0') because fmtDob() is applied to the raw DD-MM-YYYY text. invalid rows show '—' instead of the raw value, because fmtDob(undefined) returns '—', which is truthy, so `|| r.raw` never runs.", "selector": "[data-testid='cc-import-dialog'] table", "priority": "LOW"},
+      {"component": "CustomerDialog", "issue": "Content overflows the dialog on the right at 1920px. The consent source input and the Processor column of the loan table are clipped.", "selector": "[data-testid='cc-customer-dialog']", "priority": "MEDIUM"},
+      {"component": "CampaignWizard", "issue": "The title changes to 'Edit campaign' during a new create flow once step 5 auto-saves. The Preview & Confirm message bubble leaves out the template's URL button. The step pill '4. Media' looks completed even when it was skipped.", "selector": "[data-testid='cc-wizard']", "priority": "LOW"},
+      {"component": "Missing DOB by processor chips", "issue": "The 'Unassigned' chip has processor_id ''. Clicking it drops the processor filter and lists all missing-DOB customers instead of just the unassigned ones.", "selector": "[data-testid='cc-missing-by-proc'] button", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Customers filters, Consent date, wizard dates/schedule, DOB picker", "issues": ["These use the browser's native date and datetime-local pickers, which show mm/dd/yyyy and don't match the app's DD-MM-YYYY format. Consider the shadcn Calendar/Popover instead."]},
+      {"screen": "Birthday settings form", "issues": ["The VARIABLE {{customer_name}} select is wedged under the Enable checkbox instead of sitting in the row with the other fields. 'Wishes sent today' counts mock records; consider a '(mock)' hint."]},
+      {"screen": "Ops (rama) nav", "issues": ["Ops lands on /agent, and the nav label there reads 'My Customers' even though ops sees all 119 customers."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter69_customers_campaigns.py", "/app/test_reports/pytest/pytest_iter69.xml"],
+  "action_items": [
+    "HIGH: fix resume so a campaign paused while 'scheduled' goes back to 'scheduled' (and respects scheduled_at) instead of running immediately",
+    "Review the tester's fix: multipart headers on /cc/import/preview and /cc/media, and an errMsg that handles array details",
+    "Validate the page/page_size query params (500 on non-numeric values)",
+    "Add a permission check on GET /api/cc/media/{ref}",
+    "Fix the import preview Value column for not_found and invalid rows",
+    "Fix the horizontal overflow in the CustomerDialog",
+    "Optional: replace native date inputs with the shadcn calendar; show the button in the confirm preview; fix the wizard title and the 'Unassigned' chip filter"
+  ],
+  "critical_code_review_comments": [
+    "customers_campaigns.py is 800 lines (over the 700-line guideline). Split it into customers, campaigns, birthdays and settings modules.",
+    "filtered() loads up to 20k customers into Python on every request and calls maybe_sync. Fine for 119 customers, but move filters into Mongo queries as data grows.",
+    "list_campaigns/_counts runs one aggregate plus count_documents per campaign (N+1). Consider a single $group by campaign_id.",
+    "37 of 119 customers have an empty phone because the source leads have no phone. Identical names with no phone stay as separate rows (e.g. Mudavath Sri Krishna Naayak x2). This is correct per the spec, but consider flagging these rows.",
+    "The cron run-id dedupe stores only the last run_id. It is fine for retry dedupe of the most recent run only."
+  ],
+  "updated_files": ["/app/frontend/src/components/cc/CustomersTab.js", "/app/frontend/src/components/cc/CampaignWizard.js", "/app/frontend/src/components/cc/ccShared.js", "/app/backend/tests/test_iter69_customers_campaigns.py"],
+  "success_rate": {"backend": "96% (26/27) + 1 HIGH logic bug from review", "frontend": "~92% (import crash fixed; minor UI issues remain)"},
+  "test_credentials": "From /app/memory/test_credentials.md: admin@bankezee.com/ConnectSasha12!!, teja@bankezee.com/tejasme12 (manager, lands on /manager), rama@bankezee.com/rama@bzc12 (ops, lands on /agent), pinkynagulapally@gmail.com/Pinky@1234 (GP, /agent). All worked.",
+  "seed_data_creation": "Created campaigns named QA Test and TEST_QA* (Campaign, Edited, Sched, Past, Draft UI). All are completed (mock) or cancelled, and all targeted only the TEST customer Domala naveen kumar (cus_632193f49f3d), so it has several mock message records. DOB and consent on cus_c755190fb0ed (Varayogula) were changed and reverted to null/unknown; its audit entries remain. Manager DOB test set and then cleared DOB on one missing-DOB customer. Live sending remained OFF; no test number set.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_iter69_customers_campaigns.py. test_bad_page_param is expected to fail until page validation is added. To retest the resume bug, schedule a campaign for the future, pause it, resume it, and check that status is 'scheduled' rather than 'running' or 'completed'. Import CSV preview now works after the multipart header fix. NEVER enable live sending or set a test number.",
+  "rca of the issue": "Import preview crash: services/api.js creates axios with a default 'Content-Type: application/json'. In axios >=1.x, posting FormData with a JSON content-type turns the form into a JSON body, so FastAPI's Form/File params fail with a 422 whose detail is a list of objects. errMsg() returned that list, and sonner's toast rendered it as a React child, which threw the error. Fix: set the multipart header per request, the same pattern used elsewhere in the app (LeadDetail.js, Leads.js). Resume bug: the transitions map sends 'resume' straight to 'running' and calls run_worker(), which sends every 'running' campaign without checking scheduled_at."
+}
