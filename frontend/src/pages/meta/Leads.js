@@ -2,10 +2,10 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { toast } from "sonner";
-import { useMetaUser, StatusPill, STATUS_LABEL, STATUSES, fmtDate, fmtShort, BRAND, BRAND_DARK } from "./metaCommon";
+import { useMetaUser, StatusPill, STATUS_LABEL, STATUSES, fmtDate, fmtShort, BRAND, BRAND_DARK, wantsCall } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
-import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, X, PhoneCall } from "lucide-react";
 import ColumnFilterMenu, { MenuSortRow } from "../../components/meta/ColumnFilterMenu";
 
 const LEADS_STATE_KEY = "metaLeadsState_v1";
@@ -21,6 +21,10 @@ const SourceBadge = ({ lead }) => {
   else { label = "Meta"; cls = "bg-indigo-50 text-indigo-700 border-indigo-200"; }
   return <span data-testid="meta-source-badge" className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${cls}`}>{label}</span>;
 };
+
+const WantsCallBadge = ({ lead, tid = "meta-wants-call" }) => wantsCall(lead) ? (
+  <span data-testid={`${tid}-${lead.lead_id}`} title="Customer tapped 'Request Expert Call' on WhatsApp" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold border bg-orange-50 text-orange-700 border-orange-200 whitespace-nowrap"><PhoneCall size={10} /> Wants a call</span>
+) : null;
 
 
 export default function MetaLeads() {
@@ -534,7 +538,7 @@ export default function MetaLeads() {
                       </td>
                     )}
                     <td className="py-2.5 px-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(lead.created_time || lead.created_at)}</td>
-                    <td className="py-2.5 px-3"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><SourceBadge lead={lead} /></div><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p></td>
+                    <td className="py-2.5 px-3"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><WantsCallBadge lead={lead} /></div><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p></td>
                     <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <a data-testid={`meta-call-link-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center shrink-0" title="Call"><Phone size={14} /></a>
@@ -576,7 +580,7 @@ export default function MetaLeads() {
                 className="p-4 border-b-4 border-slate-200 last:border-b-0 hover:bg-slate-50/60 cursor-pointer">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2"><p className="text-base font-bold text-slate-900 truncate">{lead.full_name || "—"}</p><SourceBadge lead={lead} /></div>
+                    <div className="flex items-center gap-2"><p className="text-base font-bold text-slate-900 truncate">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><WantsCallBadge lead={lead} tid="meta-card-wants-call" /></div>
                     {lead.campaign_name && <p className="text-xs text-slate-400 truncate">{lead.campaign_name}</p>}
                   </div>
                   <StatusPill status={lead.status} />

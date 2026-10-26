@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
-import { Bell, BellOff, CalendarClock, AlertTriangle, Clock } from "lucide-react";
-import { BRAND, BRAND_DARK, URGENCY_META, followupDaysLabel } from "./metaCommon";
+import { Bell, BellOff, CalendarClock, AlertTriangle, Clock, PhoneCall } from "lucide-react";
+import { BRAND, BRAND_DARK, URGENCY_META, followupDaysLabel, useMetaUser } from "./metaCommon";
 
 // Shared source of truth for Query/Hold reminders. Polls every 2 min and refreshes
 // immediately when a follow-up changes elsewhere (via the 'meta-followup-changed' event).
@@ -53,6 +53,52 @@ export const useTatAlerts = (poll = true, excludeSnoozed = false) => {
   return { ...data, reload: load };
 };
 
+// Leads that tapped "Request Expert Call" on WhatsApp and whose status hasn't changed since.
+export const useCallRequests = (poll = true) => {
+  const [data, setData] = useState({ items: [], count: 0 });
+  const load = async () => {
+    try {
+      const { data } = await api.get("/meta/call-requests");
+      setData(data || { items: [], count: 0 });
+    } catch { /* non-fatal */ }
+  };
+  useEffect(() => {
+    load();
+    window.addEventListener("meta-status-changed", load);
+    const id = poll ? setInterval(load, 60000) : null;
+    return () => { window.removeEventListener("meta-status-changed", load); if (id) clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return data;
+};
+
+const fmtWhen = (iso) => iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+
+const CallRequestsSection = ({ items, canOpen, onOpen }) => (
+  <>
+    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-orange-50/60">
+      <span className="text-sm font-semibold flex items-center gap-1.5 text-orange-700"><PhoneCall size={14} /> Wants a Call</span>
+      <span data-testid="meta-call-request-bell-count" className="text-xs font-semibold text-orange-600">{items.length}</span>
+    </div>
+    {items.length === 0 ? (
+      <p className="px-4 py-4 text-center text-xs text-slate-400">No pending call requests.</p>
+    ) : items.map((r) => (
+      <div key={`call-${r.lead_id}`} role="button" tabIndex={0} data-testid={`meta-call-request-item-${r.lead_id}`}
+        onClick={() => canOpen && onOpen(r.lead_id)}
+        className={`px-4 py-3 border-b border-slate-50 transition-colors ${canOpen ? "hover:bg-orange-50/50 cursor-pointer" : ""}`}>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-slate-800 truncate">{r.full_name || "—"}</span>
+          <span className="text-[10px] text-slate-400 whitespace-nowrap">{fmtWhen(r.requested_at)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-2 mt-0.5">
+          <a data-testid={`meta-call-request-phone-${r.lead_id}`} href={`tel:${r.phone}`} onClick={(e) => e.stopPropagation()} className="text-xs font-medium text-emerald-700 hover:underline">{r.phone || "—"}</a>
+          <span className="text-[10px] text-slate-500 truncate">{r.assigned_partner_name || "Unassigned"}</span>
+        </div>
+      </div>
+    ))}
+  </>
+);
+
 const Badge = ({ urgency }) => {
   const m = URGENCY_META[urgency] || URGENCY_META.none;
   return (
@@ -67,6 +113,8 @@ export const FollowupBell = () => {
   const navigate = useNavigate();
   const { reminders, counts } = useFollowups();
   const { items: tatItems, count: tatCount, reload: reloadTat } = useTatAlerts(true, true);
+  const { items: callItems } = useCallRequests();
+  const { role } = useMetaUser();
   const [open, setOpen] = useState(false);
   const [snoozing, setSnoozing] = useState(null);
   const ref = useRef(null);
@@ -85,7 +133,7 @@ export const FollowupBell = () => {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
   const fuCount = counts.reminders || 0;
-  const count = fuCount + (tatCount || 0);
+  const count = fuCount + (tatCount || 0) + callItems.length;
   return (
     <div className="fixed top-2 right-3 md:top-3 md:right-5 z-[60]" ref={ref}>
       <button
@@ -102,6 +150,7 @@ export const FollowupBell = () => {
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-80 max-h-[70vh] overflow-auto bg-white border border-slate-200 rounded-xl shadow-xl" data-testid="meta-followup-bell-panel">
+          <CallRequestsSection items={callItems} canOpen={role !== "processor"} onOpen={(id) => { setOpen(false); navigate(`/meta/leads/${id}`); }} />
           {/* Overdue TAT nudges */}
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-red-50/60">
             <span className="text-sm font-semibold flex items-center gap-1.5 text-red-700">

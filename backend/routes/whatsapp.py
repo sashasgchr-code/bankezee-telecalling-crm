@@ -32,7 +32,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, Query,
 from utils.database import db
 from utils.auth import require_meta_access
 from routes.chatbot_integration import ensure_chatbot_link
-from routes.meta import _ctx, _can_action_lead, _get_lead_or_404, STAFF_ROLES
+from routes.meta import _ctx, _can_action_lead, _get_lead_or_404, STAFF_ROLES, NOT_DELETED
 
 logger = logging.getLogger("whatsapp")
 
@@ -386,4 +386,58 @@ async def status_webhook(request: Request, x_hub_signature_256: Optional[str] = 
                 await db.meta_leads.update_one({"whatsapp.wamid": wamid}, {"$set": set_doc})
                 await db.meta_whatsapp_log.update_one(
                     {"wamid": wamid}, {"$set": {"status": state, "status_at": _iso()}})
+            for msg in value.get("messages", []):
+                await _handle_call_request(msg)
     return {"ok": True}
+
+
+CALL_REQUEST_TEXT = "request expert call"
+
+
+def _reply_text(msg: dict) -> str:
+    if msg.get("type") == "button":
+        b = msg.get("button") or {}
+        return (b.get("payload") or b.get("text") or "").strip().lower()
+    if msg.get("type") == "interactive":
+        br = (msg.get("interactive") or {}).get("button_reply") or {}
+        return (br.get("title") or br.get("id") or "").strip().lower()
+    return ""
+
+
+async def _handle_call_request(msg: dict):
+    """Customer tapped the 'Request Expert Call' quick reply -> flag the lead (active while status is unchanged)."""
+    if _reply_text(msg) != CALL_REQUEST_TEXT:
+        return
+    ctx_id = (msg.get("context") or {}).get("id")
+    lead = await db.meta_leads.find_one({"whatsapp.wamid": ctx_id, **NOT_DELETED}) if ctx_id else None
+    if not lead:
+        phone10 = _norm_digits(msg.get("from"))[-10:]
+        if phone10:
+            lead = await db.meta_leads.find_one({"phone_norm": phone10, **NOT_DELETED}, sort=[("created_time", -1)])
+    if not lead:
+        logger.info("WhatsApp call request: no matching lead")
+        return
+    wc = lead.get("wants_call") or {}
+    if wc.get("status_at_request") == lead.get("status"):
+        return  # already flagged and still active
+    await db.meta_leads.update_one({"lead_id": lead["lead_id"]}, {
+        "$set": {"wants_call": {"requested_at": _iso(), "status_at_request": lead.get("status"),
+                                "message_id": msg.get("id")}, "updated_at": _iso()},
+        "$push": {"activities": {"type": "whatsapp", "detail": "Customer tapped 'Request Expert Call' on WhatsApp", "at": _iso()}},
+    })
+
+
+@router.get("/call-requests")
+async def call_requests(user: dict = Depends(require_meta_access)):
+    """Leads that asked for a call and whose status has not changed since. Admin/ops/all processors see
+    every request; growth partners only their assigned leads."""
+    role, uid = _ctx(user)
+    match = {"wants_call": {"$exists": True}, "$expr": {"$eq": ["$status", "$wants_call.status_at_request"]}, **NOT_DELETED}
+    if role not in STAFF_ROLES and role != "processor":
+        match["assigned_partner_id"] = uid
+    docs = await db.meta_leads.find(match, {"_id": 0, "lead_id": 1, "full_name": 1, "phone": 1, "status": 1,
+                                            "assigned_partner_name": 1, "wants_call": 1}).sort("wants_call.requested_at", -1).to_list(500)
+    items = [{"lead_id": d["lead_id"], "full_name": d.get("full_name") or "", "phone": d.get("phone") or "",
+              "status": d.get("status"), "assigned_partner_name": d.get("assigned_partner_name") or "",
+              "requested_at": (d.get("wants_call") or {}).get("requested_at")} for d in docs]
+    return {"items": items, "count": len(items)}

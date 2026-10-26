@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { toast } from "sonner";
-import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK } from "./metaCommon";
+import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK, wantsCall } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
 import ChatbotQualificationCard from "./ChatbotQualificationCard";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
@@ -298,6 +298,7 @@ export default function MetaLeadDetail() {
   useEffect(() => { if (isStaffLike) api.get("/meta/processors").then(({ data }) => setProcessors(data)).catch(() => {}); }, [isStaffLike]);
 
   const assignProcessor = async (pid) => { const { data } = await api.patch(`/meta/leads/${leadId}/processor`, { processor_id: pid || null }); setLead(data); toast.success("Processor updated"); };
+  useEffect(() => { if (lead?.status) window.dispatchEvent(new Event("meta-status-changed")); }, [lead?.status]);
   const changeStatus = async (status, docs_received) => { const { data } = await api.patch(`/meta/leads/${leadId}/status`, { status, docs_received }); setLead(data); toast.success(`Status → ${STATUS_LABEL(status)}`); };
   const assign = async (pid) => { const { data } = await api.patch(`/meta/leads/${leadId}/assign`, { partner_id: pid || null }); setLead(data); toast.success("Assignment updated"); };
   const addNote = async () => { if (!note.trim()) return; const { data } = await api.post(`/meta/leads/${leadId}/notes`, { text: note }); setLead(data); setNote(""); toast.success("Note added"); };
@@ -342,6 +343,11 @@ export default function MetaLeadDetail() {
         <button data-testid="meta-back-btn" onClick={() => navigate("/meta/leads")} className="text-slate-500 hover:text-slate-800 transition-colors"><ArrowLeft size={20} /></button>
         <h1 className="text-xl font-bold" style={{ color: BRAND_DARK }}>{lead.full_name || "Lead"}</h1>
         <StatusPill status={lead.status} />
+        {wantsCall(lead) && (
+          <span data-testid="meta-lead-wants-call" title="Clears automatically when the status changes" className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border bg-orange-50 text-orange-700 border-orange-200">
+            <PhoneCall size={12} /> Wants a call · {new Date(lead.wants_call.requested_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+          </span>
+        )}
         <a data-testid="meta-call-btn" href={`tel:${lead.phone}`} onClick={() => setCallOpen(true)} className="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"><Phone size={16} /> Call</a>
         <button data-testid="meta-wa-btn" type="button" onClick={() => openMetaWhatsApp(lead.phone, lead.full_name, lead.file?.loan_type || lead.loan_type || "loan requirement", meta.name)} className="bg-green-500 hover:bg-green-600 text-white rounded-md px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"><MessageCircle size={16} /> WhatsApp</button>
       </header>

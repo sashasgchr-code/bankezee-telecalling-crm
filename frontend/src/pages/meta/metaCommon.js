@@ -163,3 +163,6 @@ export const useMetaUser = () => {
     isAdmin: role === "admin",
   };
 };
+
+// "Wants a call" is active while the lead's status is unchanged since the WhatsApp request.
+export const wantsCall = (lead) => !!lead?.wants_call && lead.status === lead.wants_call.status_at_request;
