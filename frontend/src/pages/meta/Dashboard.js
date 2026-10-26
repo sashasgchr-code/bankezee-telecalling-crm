@@ -3,7 +3,8 @@ import api from "../../services/api";
 import { toast } from "sonner";
 import { useMetaUser, BRAND, BRAND_DARK } from "./metaCommon";
 import { FollowupWidget } from "./MetaFollowups";
-import { RefreshCw, Users2, UserCheck, TrendingUp, Clock } from "lucide-react";
+import { TatAlertWidget } from "./MetaTatAlerts";
+import { RefreshCw, Users2, UserCheck, TrendingUp, Clock, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from "recharts";
 
 const STATUS_COLORS = {
@@ -97,6 +98,13 @@ export default function MetaDashboard() {
 
         <div className="mb-8">
           <FollowupWidget />
+        </div>
+
+        <div className="mb-8" data-testid="meta-tat-section">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-red-700">
+            <AlertTriangle size={16} /> Files Exceeding 4-Day TAT
+          </h3>
+          <TatAlertWidget />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

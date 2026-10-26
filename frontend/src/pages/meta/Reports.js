@@ -157,7 +157,7 @@ export default function MetaReports() {
           <>
             <KpiRows k={data.kpis} go={go} />
             <Pipeline rows={data.pipeline} total={data.total_files} go={go} />
-            {data.gp.length > 0 && <Section testid="reports-gp" title="Growth Partner Performance" icon={Users2}><GpTable rows={data.gp} extraStatuses={extraStatuses} go={go} /></Section>}
+            {data.gp.length > 0 && <Section testid="reports-gp-section" title="Growth Partner Performance" icon={Users2}><GpTable rows={data.gp} extraStatuses={extraStatuses} go={go} /></Section>}
             {data.processors.length > 0 && <Section testid="reports-processors" title="Processor Performance" icon={UserCog}><ProcTable rows={data.processors} go={go} /></Section>}
             <TatSection t={data.tat} go={go} />
             <OverdueTable rows={data.overdue} go={go} onExport={() => exportCsv("overdue")} />

@@ -121,7 +121,7 @@ const Stat = ({ label, value, sub, color = C.navy, icon: Icon = Clock, testid })
 );
 
 export const TatSection = ({ t, go }) => (
-  <Section testid="reports-tat" title="File Processing TAT & SLA Monitoring" icon={Timer} right={<span className="text-[11px] text-slate-500">Working days · Sundays excluded · SLA 4 working days</span>}>
+  <Section testid="reports-tat" title="File Processing TAT & SLA Monitoring" icon={Timer} right={<span className="text-[11px] text-slate-500">Working days · Sundays excluded · SLA 4 working days · open-file figures cover all open files (date range not applied)</span>}>
     <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2 mb-4">
       <Stat testid="tat-avg-open" label="Avg Open TAT" value={days(t.avg_open_days)} sub={`${t.active_files} open files`} />
       <Stat testid="tat-median-open" label="Median Open TAT" value={days(t.median_open_days)} />
@@ -151,6 +151,7 @@ export const OverdueTable = ({ rows, go, onExport }) => (
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 bg-red-50 rounded-t-xl border-b border-red-200">
       <h2 className="text-sm font-bold flex items-center gap-2 text-red-700"><AlertTriangle size={18} /> Files Exceeding 4 Working Days
         <span className="ml-1 text-base px-2.5 py-0.5 rounded-full bg-red-600 text-white font-extrabold tabular-nums" data-testid="overdue-count">{rows.length}</span>
+        <span className="text-[11px] font-medium text-red-600/80">All currently open files · date range not applied</span>
       </h2>
       <button type="button" data-testid="overdue-export" onClick={onExport} className="text-xs font-semibold text-red-700 border border-red-300 rounded-md px-3 py-1.5 hover:bg-red-100 transition-colors">Export CSV</button>
     </div>

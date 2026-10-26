@@ -257,7 +257,7 @@ async def build_report(user, f):
             proc_names = {k: v for k, v in proc_names.items() if k == f["processor"]}
     elif role == "processor":
         proc_names = {uid: user.get("name") or "Me"}
-    for d in files:
+    for d in all_files:
         pid = d.get("assigned_processor_id")
         if pid and pid not in proc_names:
             proc_names[pid] = d.get("assigned_processor_name") or pid
@@ -265,15 +265,17 @@ async def build_report(user, f):
     def proc_extra(r, gf):
         t = [d["_f"]["tat_ms"] for d in gf if d["_f"]["tat_ms"] is not None]
         r["avg_tat_days"] = round(sum(t) / len(t) / DAY_MS, 1) if t else None
-        r["overdue"] = sum(1 for d in gf if d["_f"]["overdue"])
-        r["active"] = sum(1 for d in gf if d["_f"]["active"])
+        cur = [d for d in all_files if (d.get("assigned_processor_id") or "UNASSIGNED") == r["id"]]
+        r["overdue"] = sum(1 for d in cur if d["_f"]["overdue"])
+        r["active"] = sum(1 for d in cur if d["_f"]["active"])
 
     proc_rows = [] if role == "growth_partner" else group_rows("assigned_processor_id", proc_names, proc_extra)
     for r in proc_rows:
         r.pop("leads", None); r.pop("new_leads", None)
 
     # ---- TAT ----
-    active = [d for d in files if d["_f"]["active"] and d["_f"]["tat_ms"] is not None]
+    # Current open files: the date range does not apply (an old file still open today is still overdue today).
+    active = [d for d in all_files if d["_f"]["active"] and d["_f"]["tat_ms"] is not None]
     open_ms = [d["_f"]["tat_ms"] for d in active]
 
     def seg(a, b):
@@ -302,7 +304,7 @@ async def build_report(user, f):
         "created": d.get("file_created_at") or d.get("created_at"), "status": d["_f"]["ps"],
         "tat_ms": d["_f"]["tat_ms"], "tat_days": d["_f"]["tat_days"], "tat_hours": d["_f"]["tat_hours"],
         "overdue_days": round((d["_f"]["tat_ms"] - LIMIT_MS) / DAY_MS, 1),
-    } for d in files if d["_f"]["overdue"]], key=lambda x: x["tat_ms"], reverse=True)
+    } for d in active if d["_f"]["overdue"]], key=lambda x: x["tat_ms"], reverse=True)
 
     # ---- Loan types ----
     lt_names = {}
@@ -324,7 +326,7 @@ async def build_report(user, f):
     # ---- Operational alerts ----
     alerts = {
         "unassigned_leads": kpis["unassigned_leads"], "unassigned_files": kpis["unassigned_files"],
-        "docs_pending_sla": sum(1 for d in files if d["_f"]["active"] and not d.get("docs_received") and d["_f"]["overdue"]),
+        "docs_pending_sla": sum(1 for d in active if not d.get("docs_received") and d["_f"]["overdue"]),
         "on_hold": sum(1 for d in files if d["_f"]["ps"] in HOLD_STATUSES),
         "awaiting_login": sum(1 for d in files if d["_f"]["ps"] == "Sent for Login"),
         "awaiting_approval": sum(1 for d in files if d["_f"]["ps"] in AWAIT_APPROVAL),
