@@ -33,6 +33,7 @@ from utils.database import db
 from utils.auth import require_meta_access
 from routes.chatbot_integration import ensure_chatbot_link
 from routes.meta import _ctx, _can_action_lead, _get_lead_or_404, STAFF_ROLES, NOT_DELETED
+from routes import cc_core  # noqa: E402  (cc_core imports this module lazily via attribute access)
 
 logger = logging.getLogger("whatsapp")
 
@@ -386,8 +387,10 @@ async def status_webhook(request: Request, x_hub_signature_256: Optional[str] = 
                 await db.meta_leads.update_one({"whatsapp.wamid": wamid}, {"$set": set_doc})
                 await db.meta_whatsapp_log.update_one(
                     {"wamid": wamid}, {"$set": {"status": state, "status_at": _iso()}})
+                await cc_core.on_status(st)
             for msg in value.get("messages", []):
                 await _handle_call_request(msg)
+                await cc_core.on_message(msg)
     return {"ok": True}
 
 

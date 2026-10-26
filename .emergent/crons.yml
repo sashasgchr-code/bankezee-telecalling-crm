@@ -1,0 +1,8 @@
+crons:
+  - name: cc-campaign-tick
+    description: "Syncs approved/disbursed customers, sends due WhatsApp campaigns and daily birthday wishes"
+    cron: "*/15 * * * *"
+    endpoint: "{{BASE_URL}}/api/cc/cron/tick"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true

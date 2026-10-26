@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, Users, PhoneCall, Boxes } from 'lucide-react';
+import { LayoutDashboard, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, Users, PhoneCall, Boxes, HeartHandshake } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
@@ -22,6 +22,7 @@ const ManagerLayout = () => {
     { path: '/manager/files', icon: FolderOpen, label: 'Files' },
     { path: '/manager/tracking', icon: ClipboardList, label: 'Track Report' },
     { path: '/manager/reports', icon: BarChart3, label: 'Reports' },
+    { path: '/manager/customers-campaigns', icon: HeartHandshake, label: 'Customers & Campaigns' },
   ];
 
   // More menu items - Reports is now a primary nav item

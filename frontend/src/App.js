@@ -8,6 +8,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import MetaLayout from "./pages/meta/MetaLayout";
 import MetaDashboard from "./pages/meta/Dashboard";
 import MetaReports from "./pages/meta/Reports";
+import CustomersCampaigns from "./pages/CustomersCampaigns";
 import MetaLeads from "./pages/meta/Leads";
 import MetaLeadDetail from "./pages/meta/LeadDetail";
 import MetaFiles from "./pages/meta/Files";
@@ -197,6 +198,7 @@ function App() {
           <Route path="attendance" element={<AdminAttendance />} />
           <Route path="leave" element={<LeaveManagement />} />
           <Route path="settings" element={<AdminSettings />} />
+          <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
 
         {/* Telecaller/Agent Routes */}
@@ -225,6 +227,7 @@ function App() {
           <Route path="team/calls" element={<TeamCalls />} />
           <Route path="team/leads" element={<TeamLeads />} />
           <Route path="reports" element={<AdminReports />} />
+          <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
 
         {/* Manager Routes - Admin-like access without User Management */}
@@ -251,6 +254,7 @@ function App() {
           <Route path="team" element={<ManagerTeam />} />
           <Route path="team/calls" element={<TeamCalls />} />
           <Route path="team/leads" element={<TeamLeads />} />
+          <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
 
         {/* HR Routes - Dashboard & Files are view only, Attendance & Leave same as Admin */}

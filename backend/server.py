@@ -32,6 +32,7 @@ from routes.document_ai import router as document_ai_router
 from routes.meta import router as meta_router  # Isolated Meta module (/api/meta/*)
 from routes.meta_compat import router as meta_compat_router  # Meta File-Detail compat adapter
 from routes.meta_reports import router as meta_reports_router  # Meta unified live reports
+from routes.customers_campaigns import router as cc_router  # Customers & Campaigns
 from routes.meta_admin_migrate import router as meta_migrate_router  # Meta legacy-binary HTTPS migration
 from routes.meta_sync import router as meta_sync_router  # Meta Google Sheet sync + email
 from routes.admin_maintenance import router as admin_maintenance_router  # TEMPORARY - remove after prod repair
@@ -71,6 +72,7 @@ app.include_router(document_ai_router)
 app.include_router(meta_router)  # Isolated Meta module
 app.include_router(meta_compat_router)  # Meta File-Detail compat adapter
 app.include_router(meta_reports_router)  # Meta unified live reports
+app.include_router(cc_router)  # Customers & Campaigns
 app.include_router(meta_migrate_router)  # Meta legacy-binary HTTPS migration
 app.include_router(meta_sync_router)  # Meta sheet sync + email
 
@@ -116,6 +118,8 @@ async def schedule_startup_tasks():
     readiness probe allows, which would keep the new revision from rolling out.
     """
     asyncio.create_task(setup_admin_accounts())
+    from routes.cc_core import ensure_indexes as cc_indexes
+    asyncio.create_task(cc_indexes())
     # One-time idempotent data migration: fix Rama's Connect<->Meta identity mapping.
     try:
         from migrations.rama_mapping import run as _run_rama_migration
