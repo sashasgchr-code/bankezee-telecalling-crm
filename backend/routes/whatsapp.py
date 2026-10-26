@@ -5,7 +5,7 @@ On a brand-new Meta lead-form lead arriving via the Google Sheet sync, the CRM:
   1. treats the Meta form submission as WhatsApp opt-in (Meta-sourced leads only),
   2. reuses the existing website chatbot to mint/reuse a customer-specific secure link,
   3. extracts the token after "/loan-review/" and sends the approved template
-     `welcome_message2` (dynamic URL button token),
+     the configured template (optional image header, named body var, dynamic URL button token),
   4. stores the Meta message id (wamid), send time, delivery status and 30-day link expiry
      against the CRM lead, with idempotency so re-imports/re-syncs never resend.
 
@@ -44,9 +44,12 @@ APP_SECRET = os.environ.get("META_WHATSAPP_APP_SECRET") or ""
 VERIFY_TOKEN = os.environ.get("META_WHATSAPP_VERIFY_TOKEN") or ""
 PHONE_NUMBER_ID = os.environ.get("META_WHATSAPP_PHONE_NUMBER_ID") or ""
 GRAPH_VERSION = os.environ.get("META_GRAPH_VERSION", "v21.0")
-TEMPLATE_NAME = os.environ.get("WHATSAPP_TEMPLATE_NAME", "welcome_message2")
+TEMPLATE_NAME = os.environ.get("WHATSAPP_TEMPLATE_NAME", "welcome_message3")
 # Named body variable for templates that have one (e.g. loan_application_response); welcome_message2 has none.
 TEMPLATE_BODY_PARAM = os.environ.get("WHATSAPP_TEMPLATE_BODY_PARAM", "").strip()
+# Optional image header: local file uploaded once to Meta media and the media id is cached/refreshed.
+HEADER_IMAGE_PATH = os.environ.get("WHATSAPP_TEMPLATE_HEADER_IMAGE", "").strip()
+MEDIA_REFRESH_DAYS = 25
 TEMPLATE_LANG = os.environ.get("WHATSAPP_TEMPLATE_LANG", "en")
 AUTOSEND_ENABLED = os.environ.get("WHATSAPP_AUTOSEND_ENABLED", "true").strip().lower() == "true"
 LINK_TTL_DAYS = int(os.environ.get("WHATSAPP_LINK_TTL_DAYS", "30"))
@@ -97,8 +100,42 @@ def extract_token(secure_link: str) -> Optional[str]:
     return None
 
 
+async def _header_media_id() -> Optional[str]:
+    """Upload the header image to Meta (media ids expire ~30 days) and cache the id in Mongo."""
+    if not HEADER_IMAGE_PATH:
+        return None
+    cached = await db.meta_meta.find_one({"key": "wa_header_media"}) or {}
+    if (cached.get("media_id") and cached.get("path") == HEADER_IMAGE_PATH and cached.get("template") == TEMPLATE_NAME
+            and datetime.fromisoformat(cached["uploaded_at"]) > _now() - timedelta(days=MEDIA_REFRESH_DAYS)):
+        return cached["media_id"]
+    path = HEADER_IMAGE_PATH if os.path.isabs(HEADER_IMAGE_PATH) else os.path.join(os.path.dirname(os.path.dirname(__file__)), HEADER_IMAGE_PATH)
+    with open(path, "rb") as f:
+        content = f.read()
+    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0)) as hc:
+        resp = await hc.post(
+            f"https://graph.facebook.com/{GRAPH_VERSION}/{PHONE_NUMBER_ID}/media",
+            headers={"Authorization": f"Bearer {ACCESS_TOKEN}"},
+            data={"messaging_product": "whatsapp", "type": "image/png"},
+            files={"file": (os.path.basename(path), content, "image/png")},
+        )
+    media_id = (resp.json() or {}).get("id") if resp.status_code == 200 else None
+    if not media_id:
+        logger.warning(f"WhatsApp header image upload failed: http={resp.status_code}")
+        return None
+    await db.meta_meta.update_one({"key": "wa_header_media"}, {"$set": {
+        "key": "wa_header_media", "media_id": media_id, "path": HEADER_IMAGE_PATH,
+        "template": TEMPLATE_NAME, "uploaded_at": _iso()}}, upsert=True)
+    return media_id
+
+
 # --------------------------- Graph send (with bounded retry) ---------------------------
 async def _graph_send_template(recipient: str, customer_name: str, url_token: str) -> dict:
+    header = []
+    if HEADER_IMAGE_PATH:
+        media_id = await _header_media_id()
+        if not media_id:
+            return {"ok": False, "error": {"message": "header image upload failed"}}
+        header = [{"type": "header", "parameters": [{"type": "image", "image": {"id": media_id}}]}]
     payload = {
         "messaging_product": "whatsapp",
         "recipient_type": "individual",
@@ -107,7 +144,7 @@ async def _graph_send_template(recipient: str, customer_name: str, url_token: st
         "template": {
             "name": TEMPLATE_NAME,
             "language": {"code": TEMPLATE_LANG},
-            "components": ([
+            "components": header + ([
                 {"type": "body", "parameters": [
                     {"type": "text", "parameter_name": TEMPLATE_BODY_PARAM, "text": customer_name or "Customer"}
                 ]}] if TEMPLATE_BODY_PARAM else []) + [

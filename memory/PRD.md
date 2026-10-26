@@ -2470,3 +2470,4 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 ## 2026-06 WhatsApp welcome template switch
 - Auto-send template changed to `welcome_message2` (button-only payload; no body variable). Website leads remain excluded (Meta-only, per user). Body var configurable via WHATSAPP_TEMPLATE_BODY_PARAM. Verified with stubbed Graph send (no live message).
 - Pending: Advanced Meta Leads filters & pagination still awaiting full testing-agent pass.
+- UPDATE: Template now `welcome_message3` (MARKETING, PENDING approval at time of change): image header (backend/assets/whatsapp_welcome_header.png uploaded to Meta media, id cached in meta_meta key wa_header_media, refreshed every 25 days), body var customer_name, URL button token. Meta leads only. Quick-reply "Request Expert Call" taps are not captured by CRM.
