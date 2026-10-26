@@ -88,7 +88,18 @@ export const fmtDur = (s) => `${Math.floor((s || 0) / 60)}m ${(s || 0) % 60}s`;
 
 // ---------------------------- End-to-End TAT ----------------------------
 export const TAT_FINAL_STATUSES = ["Disbursed", "Not Disbursed", "Declined", "Not Eligible", "Not Login"];
-export const TAT_LIMIT_MS = 96 * 3600 * 1000; // 4 calendar days
+export const TAT_LIMIT_MS = 96 * 3600 * 1000; // 4 working days (Sundays excluded, IST)
+const IST_OFF = 5.5 * 3600 * 1000;
+// Elapsed ms between two instants, excluding Sundays on the IST calendar (mirrors backend _working_ms).
+export const workingMs = (startMs, endMs) => {
+  let t = startMs + IST_OFF; const stop = endMs + IST_OFF; let total = 0;
+  while (t < stop) {
+    const nxt = Math.min(stop, Math.floor(t / 86400000) * 86400000 + 86400000);
+    if (new Date(t).getUTCDay() !== 0) total += nxt - t;
+    t = nxt;
+  }
+  return total;
+};
 const isFinalStatus = (s) => TAT_FINAL_STATUSES.includes(s);
 const tatBreakdown = (ms) => {
   const h = ms / 3600000;
@@ -117,19 +128,20 @@ export const computeTat = (row) => {
   }
   if (isFinal) {
     if (finalAt) {
-      const ms = Math.max(0, new Date(finalAt).getTime() - created.getTime());
+      const ms = workingMs(created.getTime(), new Date(finalAt).getTime());
       return { state: "completed", overdue: false, unavailable: false, ms, ...tatBreakdown(ms), finalStatus: row?.tat_final_status || status };
     }
     return { state: "completed", overdue: false, unavailable: true, days: null, hours: null, ms: null, finalStatus: status };
   }
-  const ms = Math.max(0, Date.now() - created.getTime());
+  const ms = workingMs(created.getTime(), Date.now());
   return { state: "ongoing", overdue: ms > TAT_LIMIT_MS, unavailable: false, ms, ...tatBreakdown(ms), finalStatus: null };
 };
 
 export const TAT_FILTERS = [
   { v: "ALL", l: "All TAT" },
-  { v: "within", l: "Within TAT (≤4d)" },
-  { v: "exceeded", l: "TAT Exceeded (>4d)" },
+  { v: "ongoing", l: "In Progress (open files)" },
+  { v: "within", l: "Within TAT (≤4 working days)" },
+  { v: "exceeded", l: "TAT Exceeded (>4 working days)" },
   { v: "completed_within", l: "Completed Within TAT" },
   { v: "completed_beyond", l: "Completed Beyond TAT" },
 ];

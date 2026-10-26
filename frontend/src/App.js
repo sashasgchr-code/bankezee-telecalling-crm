@@ -7,6 +7,7 @@ import Register from "./pages/Register";
 import AdminDashboard from "./pages/admin/Dashboard";
 import MetaLayout from "./pages/meta/MetaLayout";
 import MetaDashboard from "./pages/meta/Dashboard";
+import MetaReports from "./pages/meta/Reports";
 import MetaLeads from "./pages/meta/Leads";
 import MetaLeadDetail from "./pages/meta/LeadDetail";
 import MetaFiles from "./pages/meta/Files";
@@ -280,6 +281,7 @@ function App() {
           </MetaProtectedRoute>
         }>
           <Route index element={<MetaDashboard />} />
+          <Route path="reports" element={<MetaReports />} />
           <Route path="leads" element={<MetaLeads />} />
           <Route path="leads/:leadId" element={<MetaLeadDetail />} />
           <Route path="files" element={<MetaFiles />} />

@@ -96,7 +96,41 @@ def _followup_urgency(days):
 # ---------------------------- End-to-End TAT ----------------------------
 # A file is "completed" once it first reaches one of these five final statuses.
 FINAL_STATUSES = {"Disbursed", "Not Disbursed", "Declined", "Not Eligible", "Not Login"}
-TAT_LIMIT_HOURS = 96  # 4 calendar days
+TAT_LIMIT_HOURS = 96  # 4 working days (Sundays excluded, IST)
+
+
+def _working_ms(start, end):
+    """Elapsed ms between two naive-UTC datetimes, excluding Sundays (IST calendar)."""
+    if not start or not end or end <= start:
+        return 0
+    off = timedelta(hours=5, minutes=30)
+    t, stop, total = start + off, end + off, 0.0
+    while t < stop:
+        nxt = min(stop, datetime(t.year, t.month, t.day) + timedelta(days=1))
+        if t.weekday() != 6:
+            total += (nxt - t).total_seconds()
+        t = nxt
+    return total * 1000
+
+
+def _working_cutoff(now, hours):
+    """Naive-UTC instant such that the working (non-Sunday) time from it to `now` equals `hours`."""
+    off = timedelta(hours=5, minutes=30)
+    t, remaining = now + off, hours * 3600.0
+    while remaining > 0:
+        prev = t - timedelta(microseconds=1)
+        day_start = datetime(prev.year, prev.month, prev.day)
+        if prev.weekday() == 6:
+            t = day_start
+            continue
+        avail = (t - day_start).total_seconds()
+        if avail >= remaining:
+            t -= timedelta(seconds=remaining)
+            remaining = 0
+        else:
+            remaining -= avail
+            t = day_start
+    return t - off
 
 
 def _ist_now():
@@ -114,7 +148,7 @@ def _ms_breakdown(ms):
 
 def compute_tat(lead, now=None):
     """Dynamic End-to-End TAT for a file. Start = original creation timestamp; End = first final
-    status timestamp (tat_final_at) if completed, else now. Overdue when > 96h and still ongoing.
+    status timestamp (tat_final_at) if completed, else now. Overdue when > 96 working hours (Sundays excluded) and still ongoing.
     All datetimes are naive-UTC (matching _parse_dt) to keep arithmetic consistent."""
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     created = _lead_created_dt(lead)
@@ -134,13 +168,13 @@ def compute_tat(lead, now=None):
     limit_ms = TAT_LIMIT_HOURS * 3600 * 1000
     if is_final:
         if final_at:
-            ms = max(0, (final_at - created).total_seconds() * 1000)
+            ms = _working_ms(created, final_at)
             res.update(_ms_breakdown(ms))
             res["overdue"] = False  # completed files never raise an active alert
         else:
             res["unavailable"] = True  # legacy final file with no recorded completion timestamp
         return res
-    ms = max(0, (now - created).total_seconds() * 1000)
+    ms = _working_ms(created, now)
     res.update(_ms_breakdown(ms))
     res["overdue"] = ms > limit_ms
     return res
@@ -187,7 +221,7 @@ def build_processing_status_update(lead, status, desc, fdate, remarks, user_name
             created = _lead_created_dt(lead)
             if created:
                 fdt = _parse_dt(now)
-                set_fields["tat_final_ms"] = int(max(0, (fdt - created).total_seconds() * 1000))
+                set_fields["tat_final_ms"] = int(_working_ms(created, fdt))
             acts.append({"type": "tat", "detail": f"File completed ('{status}') — End-to-End TAT recorded by {user_name}", "at": now})
     elif final_at_existing:
         # reopened into an ongoing status: archive the prior final record, resume tracking
@@ -568,7 +602,7 @@ async def meta_leads(
                 {"followup.followup_date": {"$exists": False}},
             ]})
     if tat and tat != "ALL":
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=TAT_LIMIT_HOURS)).isoformat()
+        cutoff = _working_cutoff(datetime.now(timezone.utc).replace(tzinfo=None), TAT_LIMIT_HOURS).isoformat() + "+00:00"
         limit_ms = TAT_LIMIT_HOURS * 3600 * 1000
         ongoing = [
             {"processing_status": {"$nin": list(FINAL_STATUSES)}},
@@ -582,7 +616,9 @@ async def meta_leads(
             {"file_created_at": {"$gte": cutoff}},
             {"$and": [{"file_created_at": {"$in": [None]}}, {"created_at": {"$gte": cutoff}}]},
         ]}
-        if tat == "exceeded":
+        if tat == "ongoing":
+            and_list.extend(ongoing)
+        elif tat == "exceeded":
             and_list.extend(ongoing)
             and_list.append(created_before)
         elif tat == "within":

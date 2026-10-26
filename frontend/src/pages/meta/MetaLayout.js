@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { useMetaUser, BRAND, BRAND_DARK } from "./metaCommon";
 import { FollowupBell } from "./MetaFollowups";
-import { LayoutDashboard, Users2, UserCircle2, LogOut, Landmark, ShieldCheck, FolderOpen, PhoneCall, BarChart3, Menu, ArrowLeft, Bot } from "lucide-react";
+import { LayoutDashboard, Users2, UserCircle2, LogOut, Landmark, ShieldCheck, FolderOpen, PhoneCall, BarChart3, Menu, ArrowLeft, Bot, PieChart } from "lucide-react";
 
 export default function MetaLayout() {
   const { logout, user } = useAuthStore();
@@ -15,6 +15,7 @@ export default function MetaLayout() {
 
   const navItems = [
     { to: "/meta", label: "Dashboard", icon: LayoutDashboard, testid: "meta-nav-dashboard", end: true },
+    { to: "/meta/reports", label: "Reports", icon: PieChart, testid: "meta-nav-reports" },
     { to: "/meta/leads", label: "Leads", icon: Users2, testid: "meta-nav-leads" },
     { to: "/meta/files", label: "Files", icon: FolderOpen, testid: "meta-nav-files" },
     { to: "/meta/file-reports", label: "File Reports", icon: BarChart3, testid: "meta-nav-file-reports" },

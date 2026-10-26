@@ -3,8 +3,7 @@ import api from "../../services/api";
 import { toast } from "sonner";
 import { useMetaUser, BRAND, BRAND_DARK } from "./metaCommon";
 import { FollowupWidget } from "./MetaFollowups";
-import { TatAlertWidget } from "./MetaTatAlerts";
-import { RefreshCw, Users2, UserCheck, TrendingUp, Clock, AlertTriangle } from "lucide-react";
+import { RefreshCw, Users2, UserCheck, TrendingUp, Clock } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from "recharts";
 
 const STATUS_COLORS = {
@@ -94,13 +93,6 @@ export default function MetaDashboard() {
           <MetricCard label="Files" value={stats.by_status?.FILE} icon={TrendingUp} accent="bg-violet-50 text-violet-600" testid="meta-metric-files" />
           <MetricCard label="In Progress" value={stats.files_in_progress ?? 0} icon={UserCheck} accent="bg-amber-50 text-amber-600" testid="meta-metric-inprogress" />
           {meta.isStaff && <MetricCard label="Unassigned" value={stats.unassigned} icon={Users2} accent="bg-slate-100 text-slate-600" testid="meta-metric-unassigned" />}
-        </div>
-
-        <div className="mb-8" data-testid="meta-tat-section">
-          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-red-700">
-            <AlertTriangle size={16} /> Files Exceeding 4-Day TAT
-          </h3>
-          <TatAlertWidget />
         </div>
 
         <div className="mb-8">
