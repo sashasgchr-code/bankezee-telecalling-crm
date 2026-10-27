@@ -188,7 +188,8 @@ async def _graph_send_template(recipient: str, customer_name: str, url_token: st
         # Redacted log — never include token/headers.
         logger.warning(f"WhatsApp send failed: code={err.get('code')} subcode={err.get('error_subcode')} "
                        f"fbtrace={err.get('fbtrace_id')} http={resp.status_code}")
-        return {"ok": False, "error": {k: err.get(k) for k in ("message", "code", "error_subcode", "fbtrace_id")},
+        return {"ok": False, "error": {**{k: err.get(k) for k in ("message", "code", "error_subcode", "fbtrace_id")},
+                                       "details": (err.get("error_data") or {}).get("details")},
                 "http": resp.status_code}
     return {"ok": False, "error": last_err or {"message": "send failed"}}
 
