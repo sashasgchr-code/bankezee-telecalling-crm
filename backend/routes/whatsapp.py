@@ -130,6 +130,11 @@ async def _header_media_id() -> Optional[str]:
 
 
 # --------------------------- Graph send (with bounded retry) ---------------------------
+def clean_param(text) -> str:
+    """Meta rejects template params with newlines/tabs or >4 consecutive spaces (#132018)."""
+    return " ".join(str(text or "").split()).strip()
+
+
 async def _graph_send_template(recipient: str, customer_name: str, url_token: str) -> dict:
     header = []
     if HEADER_IMAGE_PATH:
@@ -147,7 +152,7 @@ async def _graph_send_template(recipient: str, customer_name: str, url_token: st
             "language": {"code": TEMPLATE_LANG},
             "components": header + ([
                 {"type": "body", "parameters": [
-                    {"type": "text", "parameter_name": TEMPLATE_BODY_PARAM, "text": customer_name or "Customer"}
+                    {"type": "text", "parameter_name": TEMPLATE_BODY_PARAM, "text": clean_param(customer_name) or "Customer"}
                 ]}] if TEMPLATE_BODY_PARAM else []) + [
                 {"type": "button", "sub_type": "url", "index": "0", "parameters": [
                     {"type": "text", "text": url_token}

@@ -272,9 +272,10 @@ async def sync_templates() -> dict:
 
 def resolve_var(spec: dict, c: dict) -> str:
     src = (spec or {}).get("source")
+    name = wa.clean_param(c.get("name"))
     if src == "customer_name":
-        return (c.get("name") or "").strip().split(" ")[0].title() if spec.get("first_name") else (c.get("name") or "").strip().title()
-    return str((spec or {}).get("value") or "").strip()
+        return name.split(" ")[0].title() if spec.get("first_name") else name.title()
+    return wa.clean_param((spec or {}).get("value"))
 
 
 def validate_mapping(tpl: dict, var_map: dict, media_ref) -> list:
