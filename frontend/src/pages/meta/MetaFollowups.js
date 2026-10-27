@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
-import { Bell, BellOff, CalendarClock, AlertTriangle, Clock, PhoneCall } from "lucide-react";
+import { Bell, BellOff, CalendarClock, AlertTriangle, Clock, PhoneCall, MessagesSquare } from "lucide-react";
+import { toast } from "sonner";
 import { BRAND, BRAND_DARK, URGENCY_META, followupDaysLabel, useMetaUser } from "./metaCommon";
 
 // Shared source of truth for Query/Hold reminders. Polls every 2 min and refreshes
@@ -74,6 +75,45 @@ export const useCallRequests = (poll = true) => {
 
 const fmtWhen = (iso) => iso ? new Date(iso).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
 
+// WhatsApp customer replies (unread conversations in the user's scope); toasts when a new reply arrives.
+export const useReplyAlerts = () => {
+  const [data, setData] = useState({ items: [], count: 0 });
+  const seen = useRef(null);
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data: d } = await api.get("/inbox/reply-alerts");
+        const sig = Object.fromEntries((d.items || []).map((c) => [c.id, c.last_inbound_at]));
+        if (seen.current) {
+          const fresh = (d.items || []).filter((c) => seen.current[c.id] !== c.last_inbound_at);
+          fresh.slice(0, 3).forEach((c) => toast(`New WhatsApp reply from ${c.customer_name || c.profile_name || c.wa_number}`, { description: c.last_preview }));
+        }
+        seen.current = sig;
+        setData(d);
+      } catch { /* non-fatal */ }
+    };
+    load();
+    const id = setInterval(load, 20000);
+    return () => clearInterval(id);
+  }, []);
+  return data;
+};
+
+const ReplyAlertsSection = ({ items, onOpen }) => (
+  <>
+    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-emerald-50/60">
+      <span className="text-sm font-semibold flex items-center gap-1.5 text-emerald-700"><MessagesSquare size={14} /> WhatsApp replies</span>
+      <span data-testid="meta-reply-bell-count" className="text-xs font-semibold text-emerald-700">{items.length}</span>
+    </div>
+    {items.length === 0 ? <p className="px-4 py-4 text-center text-xs text-slate-400">No unread customer replies.</p> : items.map((c) => (
+      <button key={c.id} data-testid={`meta-reply-bell-item-${c.id}`} onClick={() => onOpen(c.id)} className="w-full text-left px-4 py-3 border-b border-slate-50 hover:bg-emerald-50/50 transition-colors">
+        <p className="text-sm font-medium text-slate-800 flex justify-between gap-2"><span className="truncate">{c.customer_name || c.profile_name || `+${c.wa_number}`}</span><span className="text-[10px] rounded-full bg-emerald-600 text-white px-1.5">{c.unread_count}</span></p>
+        <p className="text-xs text-slate-500 truncate">{c.last_preview}</p>
+      </button>
+    ))}
+  </>
+);
+
 const CallRequestsSection = ({ items, canOpen, onOpen }) => (
   <>
     <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-orange-50/60">
@@ -115,6 +155,7 @@ export const FollowupBell = () => {
   const { items: tatItems, count: tatCount, reload: reloadTat } = useTatAlerts(true, true);
   const { items: callItems } = useCallRequests();
   const { role } = useMetaUser();
+  const { items: replyItems } = useReplyAlerts();
   const [open, setOpen] = useState(false);
   const [snoozing, setSnoozing] = useState(null);
   const ref = useRef(null);
@@ -133,7 +174,7 @@ export const FollowupBell = () => {
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
   const fuCount = counts.reminders || 0;
-  const count = fuCount + (tatCount || 0) + callItems.length;
+  const count = fuCount + (tatCount || 0) + callItems.length + replyItems.length;
   return (
     <div className="fixed top-2 right-3 md:top-3 md:right-5 z-[60]" ref={ref}>
       <button
@@ -150,6 +191,7 @@ export const FollowupBell = () => {
       </button>
       {open && (
         <div className="absolute right-0 mt-2 w-80 max-h-[70vh] overflow-auto bg-white border border-slate-200 rounded-xl shadow-xl" data-testid="meta-followup-bell-panel">
+          <ReplyAlertsSection items={replyItems} onOpen={(id) => { setOpen(false); navigate(`/meta/inbox?c=${id}`); }} />
           <CallRequestsSection items={callItems} canOpen={role !== "processor"} onOpen={(id) => { setOpen(false); navigate(`/meta/leads/${id}`); }} />
           {/* Overdue TAT nudges */}
           <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-red-50/60">

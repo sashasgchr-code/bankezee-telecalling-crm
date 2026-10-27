@@ -5,7 +5,7 @@ import os
 import hmac
 import uuid
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Request, Response
@@ -805,6 +805,9 @@ async def cron_tick(request: Request):
 
     async def job():
         try:
+            last = await core.TPL.find_one({}, {"last_synced": 1}, sort=[("last_synced", -1)])
+            if not last or (last.get("last_synced") or "") < iso(datetime.now(timezone.utc) - timedelta(hours=1)):
+                await core.sync_templates()
             await core.sync_customers()
             await core.run_worker()
         except Exception:

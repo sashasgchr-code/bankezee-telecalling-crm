@@ -106,7 +106,7 @@ async def _header_media_id() -> Optional[str]:
     if not HEADER_IMAGE_PATH:
         return None
     cached = await db.meta_meta.find_one({"key": "wa_header_media"}) or {}
-    if (cached.get("media_id") and cached.get("path") == HEADER_IMAGE_PATH and cached.get("template") == TEMPLATE_NAME
+    if (cached.get("media_id") and cached.get("path") == HEADER_IMAGE_PATH
             and datetime.fromisoformat(cached["uploaded_at"]) > _now() - timedelta(days=MEDIA_REFRESH_DAYS)):
         return cached["media_id"]
     path = HEADER_IMAGE_PATH if os.path.isabs(HEADER_IMAGE_PATH) else os.path.join(os.path.dirname(os.path.dirname(__file__)), HEADER_IMAGE_PATH)
@@ -135,17 +135,26 @@ def clean_param(text) -> str:
     return " ".join(str(text or "").split()).strip()
 
 
-async def welcome_has_image() -> bool:
-    """Skip the image header when the synced Meta template has none (e.g. welcome_message2)."""
-    if not HEADER_IMAGE_PATH:
-        return False
-    tpl = await db.cc_templates.find_one({"name": TEMPLATE_NAME}, {"header_type": 1})
-    return not tpl or tpl.get("header_type") == "IMAGE"
+PREFERRED_WELCOME = "welcome_message2"
+
+
+async def active_template() -> dict:
+    """welcome_message2 is used automatically once Meta approves it; otherwise the configured template."""
+    t = await db.cc_templates.find_one({"name": PREFERRED_WELCOME, "status": "APPROVED"}, {"_id": 0})
+    return t or await db.cc_templates.find_one({"name": TEMPLATE_NAME}, {"_id": 0}) or {"name": TEMPLATE_NAME}
+
+
+async def welcome_has_image(tpl: Optional[dict] = None) -> bool:
+    """Skip the image header when the synced Meta template has none."""
+    tpl = tpl or await active_template()
+    return bool(HEADER_IMAGE_PATH) and tpl.get("header_type") in (None, "IMAGE")
 
 
 async def _graph_send_template(recipient: str, customer_name: str, url_token: str) -> dict:
+    tpl = await active_template()
+    body_param = (tpl.get("body_vars") or [TEMPLATE_BODY_PARAM])[0] if tpl.get("named_params", True) else TEMPLATE_BODY_PARAM
     header = []
-    if await welcome_has_image():
+    if await welcome_has_image(tpl):
         media_id = await _header_media_id()
         if not media_id:
             return {"ok": False, "error": {"message": "header image upload failed"}}
@@ -156,12 +165,12 @@ async def _graph_send_template(recipient: str, customer_name: str, url_token: st
         "to": recipient,
         "type": "template",
         "template": {
-            "name": TEMPLATE_NAME,
-            "language": {"code": TEMPLATE_LANG},
+            "name": tpl["name"],
+            "language": {"code": tpl.get("language") or TEMPLATE_LANG},
             "components": header + ([
                 {"type": "body", "parameters": [
-                    {"type": "text", "parameter_name": TEMPLATE_BODY_PARAM, "text": clean_param(customer_name) or "Customer"}
-                ]}] if TEMPLATE_BODY_PARAM else []) + [
+                    {"type": "text", "parameter_name": body_param, "text": clean_param(customer_name) or "Customer"}
+                ]}] if body_param else []) + [
                 {"type": "button", "sub_type": "url", "index": "0", "parameters": [
                     {"type": "text", "text": url_token}
                 ]},
@@ -235,12 +244,13 @@ async def send_whatsapp_for_lead(lead: dict, *, force_renew: bool = False, trigg
         return {"ok": False, "skipped": "no_token"}
 
     res = await _graph_send_template(recipient, lead.get("full_name") or "Customer", token)
+    res["template"] = (await active_template())["name"]
     now = _now()
     if res.get("ok"):
         expires = now + timedelta(days=LINK_TTL_DAYS)
         wa_doc = {
             "wamid": res["wamid"], "status": res.get("status", "accepted"),
-            "to": recipient, "template": TEMPLATE_NAME, "token": token,
+            "to": recipient, "template": res.get("template") or TEMPLATE_NAME, "token": token,
             "sent_at": _iso(now), "link_expires_at": _iso(expires),
             "trigger": trigger, "updated_at": _iso(now), "last_error": None,
         }
@@ -248,7 +258,7 @@ async def send_whatsapp_for_lead(lead: dict, *, force_renew: bool = False, trigg
         await db.meta_whatsapp_log.update_one(
             {"wamid": res["wamid"]},
             {"$setOnInsert": {"wamid": res["wamid"], "lead_id": lead_id, "to": recipient,
-                              "template": TEMPLATE_NAME, "created_at": _iso(now)}},
+                              "template": res.get("template") or TEMPLATE_NAME, "created_at": _iso(now)}},
             upsert=True,
         )
     else:
@@ -256,7 +266,7 @@ async def send_whatsapp_for_lead(lead: dict, *, force_renew: bool = False, trigg
                               "whatsapp.updated_at": _iso(now)},
                     activity=f"WhatsApp send failed: {(res.get('error') or {}).get('message')}")
     from routes import wa_inbox
-    await wa_inbox.log_welcome(lead, recipient, res, token, trigger)
+    await wa_inbox.log_welcome(lead, recipient, res, token, trigger, tpl_name=res.get("template"))
     return res
 
 

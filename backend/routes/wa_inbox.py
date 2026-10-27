@@ -412,6 +412,17 @@ async def list_conversations(filter: str = "all", q: str = "", processor: str = 
     return {"items": items, "total": total, "page": page, "limit": limit}
 
 
+@router.get("/reply-alerts")
+async def reply_alerts(user: dict = Depends(require_meta_access)):
+    role, uid = _ctx(user)
+    if role not in INBOX_ROLES:
+        return {"items": [], "count": 0}
+    q = {"unread_count": {"$gt": 0}, "status": {"$ne": "resolved"}, **(await _scope(role, uid))}
+    items = await CONV.find(q, {"_id": 0, "id": 1, "lead_id": 1, "customer_name": 1, "profile_name": 1, "wa_number": 1,
+                                "last_preview": 1, "unread_count": 1, "last_inbound_at": 1}).sort("last_inbound_at", -1).limit(30).to_list(30)
+    return {"items": items, "count": await CONV.count_documents(q)}
+
+
 @router.get("/unread-summary")
 async def unread_summary(user: dict = Depends(require_meta_access)):
     role, uid = _ctx(user)
@@ -611,7 +622,7 @@ async def send_template(conv_id: str, payload: str = Form(...), file: Optional[U
             gid = await bucket.upload_from_stream(file.filename or "header", content, metadata={"content_type": mime})
             hdr = {"type": ht.lower(), "ref_kind": "wa_media", "ref": str(gid)}
             media_id = await _upload_meta(content, mime, file.filename or "header") if wa._send_configured() else None
-        elif tpl["name"] == wa.TEMPLATE_NAME and await wa.welcome_has_image():
+        elif tpl["name"] in (wa.TEMPLATE_NAME, wa.PREFERRED_WELCOME) and wa.HEADER_IMAGE_PATH:
             hdr = {"type": "image", "ref_kind": "welcome"}
             media_id = await wa._header_media_id() if wa._send_configured() else None
         else:
