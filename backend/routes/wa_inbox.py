@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/inbox", tags=["WhatsApp Inbox"])
 CONV, MSG, QR, AUDIT = db.wa_conversations, db.wa_messages, db.wa_quick_replies, db.wa_audit
 bucket = AsyncIOMotorGridFSBucket(db, bucket_name="wa_media")
-INBOX_ROLES = {"admin", "ops", "processor"}
+INBOX_ROLES = {"admin", "ops", "processor", "growth_partner"}
 RANK = {"sending": 0, "accepted": 1, "submitted": 1, "sent": 2, "delivered": 3, "read": 4}
 WINDOW = timedelta(hours=24)
 MAX_UPLOAD = 16 * 1024 * 1024
@@ -292,7 +292,7 @@ async def _cache_media(mid: str, media: dict):
 def _role(user):
     role, uid = _ctx(user)
     if role not in INBOX_ROLES:
-        raise HTTPException(status_code=403, detail="WhatsApp Inbox access is limited to Admin, Operations and Processors")
+        raise HTTPException(status_code=403, detail="WhatsApp Inbox access is limited to Admin, Operations, Processors and Growth Partners")
     return role, uid
 
 
@@ -303,6 +303,8 @@ async def _proc_lead_ids(uid):
 async def _scope(role, uid) -> dict:
     if role == "processor":
         return {"$or": [{"assigned_processor_id": uid}, {"lead_id": {"$in": await _proc_lead_ids(uid)}}]}
+    if role == "growth_partner":
+        return {"lead_id": {"$in": await db.meta_leads.distinct("lead_id", {"assigned_partner_id": uid, **NOT_DELETED})}}
     return {}
 
 
@@ -470,6 +472,8 @@ async def _lead_access(lead_id, user):
         raise HTTPException(status_code=404, detail="Lead not found")
     conv = await CONV.find_one({"lead_id": lead_id}, {"_id": 0})
     if role == "processor" and lead.get("assigned_processor_id") != uid and (conv or {}).get("assigned_processor_id") != uid:
+        raise HTTPException(status_code=403, detail="Not authorized for this lead")
+    if role == "growth_partner" and lead.get("assigned_partner_id") != uid:
         raise HTTPException(status_code=403, detail="Not authorized for this lead")
     return lead, conv
 
@@ -700,7 +704,8 @@ async def link_lead(conv_id: str, inp: LinkIn, user: dict = Depends(require_meta
 
 @router.get("/lead-search")
 async def lead_search(q: str, user: dict = Depends(require_meta_access)):
-    _role(user)
+    if _role(user)[0] not in ("admin", "ops"):
+        raise HTTPException(status_code=403, detail="Not authorized")
     rx = {"$regex": re.escape(q.strip()), "$options": "i"}
     return await db.meta_leads.find({**NOT_DELETED, "$or": [{"full_name": rx}, {"phone_norm": rx}]},
                                     {"_id": 0, "lead_id": 1, "full_name": 1, "phone": 1, "status": 1}).limit(10).to_list(10)

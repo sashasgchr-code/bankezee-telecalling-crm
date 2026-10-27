@@ -35,7 +35,7 @@ export default function MetaLeads() {
   const saved = (() => { try { return JSON.parse(sessionStorage.getItem(LEADS_STATE_KEY) || "{}"); } catch { return {}; } })();
   const [leads, setLeads] = useState([]);
   const [unreadMap, setUnreadMap] = useState({});
-  const loadUnread = (rows) => { if (["admin", "ops", "processor"].includes(meta.role) && rows.length) api.post("/inbox/unread-by-leads", { lead_ids: rows.map((l) => l.lead_id) }).then(({ data }) => setUnreadMap(data)).catch(() => {}); };
+  const loadUnread = (rows) => { if (["admin", "ops", "processor", "growth_partner"].includes(meta.role) && rows.length) api.post("/inbox/unread-by-leads", { lead_ids: rows.map((l) => l.lead_id) }).then(({ data }) => setUnreadMap(data)).catch(() => {}); };
   const [partners, setPartners] = useState([]);
   const [status, setStatus] = useState(saved.status || "ALL");
   const [sourceFilter, setSourceFilter] = useState(saved.sourceFilter || "ALL");

@@ -60,7 +60,7 @@ export default function Inbox() {
   const onData = useCallback((d) => setDetail(d), []);
   const pages = Math.max(1, Math.ceil(list.total / 25));
 
-  if (!["admin", "ops", "processor"].includes(meta.role)) return <p className="p-8 text-slate-500" data-testid="inbox-no-access">WhatsApp Inbox is available to Admin, Operations and Processors.</p>;
+  if (!["admin", "ops", "processor", "growth_partner"].includes(meta.role)) return <p className="p-8 text-slate-500" data-testid="inbox-no-access">WhatsApp Inbox is available to Admin, Operations, Processors and Growth Partners.</p>;
 
   return (
     <div className="h-[calc(100vh-56px)] md:h-screen flex bg-slate-50" data-testid="whatsapp-inbox-page">

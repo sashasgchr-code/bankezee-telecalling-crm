@@ -39,7 +39,7 @@ export const ChatSheet = ({ leadId, open, onClose, onChanged }) => (
 // Chat icon (+ unread badge) that opens the shared slide-out. Hidden for roles without inbox access.
 export const ChatButton = ({ leadId, unread = 0, role, variant = "icon", onChanged }) => {
   const [open, setOpen] = useState(false);
-  if (!["admin", "ops", "processor"].includes(role)) return null;
+  if (!["admin", "ops", "processor", "growth_partner"].includes(role)) return null;
   return (
     <>
       {variant === "icon" ? (

@@ -11,7 +11,7 @@ export default function MetaLayout() {
   const meta = useMetaUser();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const inboxRole = ["admin", "ops", "processor"].includes(meta.role);
+  const inboxRole = ["admin", "ops", "processor", "growth_partner"].includes(meta.role);
   const [unread, setUnread] = useState(0);
   useEffect(() => {
     if (!inboxRole) return;
