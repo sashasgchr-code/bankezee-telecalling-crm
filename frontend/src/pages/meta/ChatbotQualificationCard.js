@@ -57,7 +57,7 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
   const resendWhatsapp = async () => {
     setBusy("whatsapp");
     try { await api.post(`/meta/leads/${leadId}/whatsapp/resend`); toast.success("WhatsApp message sent"); load(); }
-    catch (e) { toast.error(e?.response?.data?.detail?.message || e?.response?.data?.detail || "WhatsApp send failed"); }
+    catch (e) { toast.error(e?.response?.data?.detail?.message || e?.response?.data?.detail || "WhatsApp send failed"); load(); }
     finally { setBusy(""); }
   };
 

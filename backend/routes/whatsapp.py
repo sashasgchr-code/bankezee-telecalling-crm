@@ -289,7 +289,11 @@ async def resend_whatsapp(lead_id: str, user: dict = Depends(require_meta_access
             expired = False
     res = await send_whatsapp_for_lead(lead, force_renew=True, trigger=f"manual:{role}")
     if not res.get("ok"):
-        raise HTTPException(status_code=502, detail=(res.get("error") or res.get("skipped") or "send failed"))
+        err = res.get("error") or {}
+        msg = err.get("message") if isinstance(err, dict) else str(err)
+        detail = " — ".join(x for x in (msg or res.get("skipped") or "send failed", (err.get("details") if isinstance(err, dict) else None)) if x)
+        # 422 (not 5xx): Cloudflare replaces origin 5xx bodies with its own page, hiding Meta's reason.
+        raise HTTPException(status_code=422, detail=f"WhatsApp send failed: {detail}")
     return {"ok": True, "wamid": res.get("wamid"), "renewed_link": expired or True}
 
 
