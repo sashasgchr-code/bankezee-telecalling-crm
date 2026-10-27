@@ -135,9 +135,17 @@ def clean_param(text) -> str:
     return " ".join(str(text or "").split()).strip()
 
 
+async def welcome_has_image() -> bool:
+    """Skip the image header when the synced Meta template has none (e.g. welcome_message2)."""
+    if not HEADER_IMAGE_PATH:
+        return False
+    tpl = await db.cc_templates.find_one({"name": TEMPLATE_NAME}, {"header_type": 1})
+    return not tpl or tpl.get("header_type") == "IMAGE"
+
+
 async def _graph_send_template(recipient: str, customer_name: str, url_token: str) -> dict:
     header = []
-    if HEADER_IMAGE_PATH:
+    if await welcome_has_image():
         media_id = await _header_media_id()
         if not media_id:
             return {"ok": False, "error": {"message": "header image upload failed"}}

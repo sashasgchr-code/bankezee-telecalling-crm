@@ -158,7 +158,7 @@ async def log_welcome(lead: dict, recipient: str, res: dict, token: str, trigger
     name = wa.clean_param(lead.get("full_name")) or "Customer"
     values = {v: name for v in (tpl or {}).get("body_vars", [])}
     text, btns = render(tpl, values, {"0": token})
-    hdr = {"type": "image", "ref_kind": "welcome"} if wa.HEADER_IMAGE_PATH and tpl_name == wa.TEMPLATE_NAME else None
+    hdr = {"type": "image", "ref_kind": "welcome"} if (tpl or {}).get("header_type") == "IMAGE" and wa.HEADER_IMAGE_PATH else None
     err = res.get("error")
     await log_outbound(recipient, source="welcome", type_="template", lead=lead, text=text or f"[Template {tpl_name}]",
                        wamid=res.get("wamid"), status=status or ("accepted" if res.get("ok") else "failed"),
@@ -611,7 +611,7 @@ async def send_template(conv_id: str, payload: str = Form(...), file: Optional[U
             gid = await bucket.upload_from_stream(file.filename or "header", content, metadata={"content_type": mime})
             hdr = {"type": ht.lower(), "ref_kind": "wa_media", "ref": str(gid)}
             media_id = await _upload_meta(content, mime, file.filename or "header") if wa._send_configured() else None
-        elif tpl["name"] == wa.TEMPLATE_NAME and wa.HEADER_IMAGE_PATH:
+        elif tpl["name"] == wa.TEMPLATE_NAME and await wa.welcome_has_image():
             hdr = {"type": "image", "ref_kind": "welcome"}
             media_id = await wa._header_media_id() if wa._send_configured() else None
         else:

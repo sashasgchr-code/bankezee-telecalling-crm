@@ -2493,3 +2493,4 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Tested: iteration_70 (backend 25/25, frontend flows pass).
 - Backlog: shadcn date picker in inbox filters; notification bell overlaps the sheet header; welcome_message3 still PENDING at Meta (only loan_application_response is selectable).
 - 2026-10-27: Growth Partners can now use the WhatsApp Inbox and the Chat icon, limited to their own assigned leads. They can read, reply, send templates, add notes and change status. Assigning, quick-reply management and linking unmatched chats stay Admin/Ops only.
+- 2026-10-27: The welcome template is now loan_application_response (set by the user in WHATSAPP_TEMPLATE_NAME). welcome_message2 is still PENDING at Meta, so switch to it once it's approved. whatsapp.welcome_has_image() skips the image header when the synced template has no IMAGE header.
