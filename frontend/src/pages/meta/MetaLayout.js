@@ -1,21 +1,30 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import api from "../../services/api";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import useAuthStore from "../../store/authStore";
 import { useMetaUser, BRAND, BRAND_DARK } from "./metaCommon";
 import { FollowupBell } from "./MetaFollowups";
-import { LayoutDashboard, Users2, UserCircle2, LogOut, Landmark, ShieldCheck, FolderOpen, PhoneCall, BarChart3, Menu, ArrowLeft, Bot, PieChart } from "lucide-react";
+import { LayoutDashboard, Users2, UserCircle2, LogOut, Landmark, ShieldCheck, FolderOpen, PhoneCall, BarChart3, Menu, ArrowLeft, Bot, PieChart, MessagesSquare } from "lucide-react";
 
 export default function MetaLayout() {
   const { logout, user } = useAuthStore();
   const meta = useMetaUser();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const inboxRole = ["admin", "ops", "processor"].includes(meta.role);
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    if (!inboxRole) return;
+    const f = () => api.get("/inbox/unread-summary").then(({ data }) => setUnread(data.conversations || 0)).catch(() => {});
+    f(); const t = setInterval(f, 30000); return () => clearInterval(t);
+  }, [inboxRole]);
 
   const baseRoute = user?.role === "admin" ? "/admin" : user?.role === "manager" ? "/manager" : user?.role === "hr" ? "/hr" : "/agent";
 
   const navItems = [
     { to: "/meta", label: "Dashboard", icon: LayoutDashboard, testid: "meta-nav-dashboard", end: true },
     { to: "/meta/reports", label: "Reports", icon: PieChart, testid: "meta-nav-reports" },
+    ...(inboxRole ? [{ to: "/meta/inbox", label: "WhatsApp Inbox", icon: MessagesSquare, testid: "meta-nav-inbox", badge: unread }] : []),
     { to: "/meta/leads", label: "Leads", icon: Users2, testid: "meta-nav-leads" },
     { to: "/meta/files", label: "Files", icon: FolderOpen, testid: "meta-nav-files" },
     { to: "/meta/file-reports", label: "File Reports", icon: BarChart3, testid: "meta-nav-file-reports" },
@@ -73,6 +82,7 @@ export default function MetaLayout() {
             >
               <item.icon size={20} />
               {item.label}
+              {item.badge > 0 && <span data-testid="meta-nav-inbox-unread" className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-emerald-500 text-white text-[11px] leading-5 text-center">{item.badge}</span>}
             </NavLink>
           ))}
         </nav>

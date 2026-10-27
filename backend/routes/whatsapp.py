@@ -247,6 +247,8 @@ async def send_whatsapp_for_lead(lead: dict, *, force_renew: bool = False, trigg
         await _mark(lead_id, {"whatsapp.status": "failed", "whatsapp.last_error": res.get("error"),
                               "whatsapp.updated_at": _iso(now)},
                     activity=f"WhatsApp send failed: {(res.get('error') or {}).get('message')}")
+    from routes import wa_inbox
+    await wa_inbox.log_welcome(lead, recipient, res, token, trigger)
     return res
 
 
@@ -382,6 +384,7 @@ async def status_webhook(request: Request, x_hub_signature_256: Optional[str] = 
     except Exception:
         raise HTTPException(status_code=400, detail="invalid JSON")
 
+    from routes import wa_inbox
     for entry in event.get("entry", []):
         for change in entry.get("changes", []):
             value = (change or {}).get("value", {})
@@ -398,9 +401,17 @@ async def status_webhook(request: Request, x_hub_signature_256: Optional[str] = 
                 await db.meta_whatsapp_log.update_one(
                     {"wamid": wamid}, {"$set": {"status": state, "status_at": _iso()}})
                 await cc_core.on_status(st)
+                try:
+                    await wa_inbox.on_status(st)
+                except Exception as e:
+                    logger.warning(f"inbox status hook error: {e}")
             for msg in value.get("messages", []):
                 await _handle_call_request(msg)
                 await cc_core.on_message(msg)
+                try:
+                    await wa_inbox.on_inbound(msg, value)
+                except Exception as e:
+                    logger.warning(f"inbox inbound hook error: {e}")
     return {"ok": True}
 
 

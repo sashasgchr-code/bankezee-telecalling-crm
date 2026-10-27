@@ -19,6 +19,7 @@ import MetaCallLogs from "./pages/meta/CallLogs";
 import MetaPartners from "./pages/meta/Partners";
 import MetaUserManagement from "./pages/meta/UserManagement";
 import MetaChatbotReport from "./pages/meta/ChatbotReport";
+import MetaInbox from "./pages/meta/Inbox";
 import AdminLeads from "./pages/admin/Leads";
 import AdminUsers from "./pages/admin/Users";
 import AdminApprovals from "./pages/admin/Approvals";
@@ -294,6 +295,7 @@ function App() {
           <Route path="file-reports" element={<MetaFileReports />} />
           <Route path="call-logs" element={<MetaCallLogs />} />
           <Route path="chatbot-report" element={<MetaChatbotReport />} />
+          <Route path="inbox" element={<MetaInbox />} />
           <Route path="partners" element={<MetaPartners />} />
           <Route path="users" element={<MetaUserManagement />} />
         </Route>

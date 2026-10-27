@@ -91,7 +91,9 @@ app.include_router(tl_router)  # Team-Leader second-level layer
 app.include_router(chatbot_router)  # Loan-qualification chatbot: authenticated proxy (/api/meta/.../chatbot)
 app.include_router(chatbot_webhook_router)  # Loan-qualification chatbot: HMAC-verified webhook receiver
 app.include_router(whatsapp_router)  # Meta WhatsApp: resend/status (/api/meta/.../whatsapp)
-app.include_router(whatsapp_webhook_router)  # Meta WhatsApp: delivery-status webhook (X-Hub-Signature-256)
+app.include_router(whatsapp_webhook_router)  # Meta WhatsApp webhook
+from routes.wa_inbox import router as wa_inbox_router, ensure_indexes as wa_inbox_indexes  # WhatsApp Team Inbox
+app.include_router(wa_inbox_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production
@@ -120,6 +122,7 @@ async def schedule_startup_tasks():
     asyncio.create_task(setup_admin_accounts())
     from routes.cc_core import ensure_indexes as cc_indexes
     asyncio.create_task(cc_indexes())
+    asyncio.create_task(wa_inbox_indexes())
     # One-time idempotent data migration: fix Rama's Connect<->Meta identity mapping.
     try:
         from migrations.rama_mapping import run as _run_rama_migration

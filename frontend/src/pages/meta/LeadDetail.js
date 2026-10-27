@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../services/api";
+import { ChatButton } from "../../components/inbox/ChatSheet";
 import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK, wantsCall } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
@@ -350,6 +351,7 @@ export default function MetaLeadDetail() {
         )}
         <a data-testid="meta-call-btn" href={`tel:${lead.phone}`} onClick={() => setCallOpen(true)} className="ml-auto bg-emerald-600 hover:bg-emerald-700 text-white rounded-md px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"><Phone size={16} /> Call</a>
         <button data-testid="meta-wa-btn" type="button" onClick={() => openMetaWhatsApp(lead.phone, lead.full_name, lead.file?.loan_type || lead.loan_type || "loan requirement", meta.name)} className="bg-green-500 hover:bg-green-600 text-white rounded-md px-4 py-2 text-sm font-medium transition-colors flex items-center gap-2"><MessageCircle size={16} /> WhatsApp</button>
+        <ChatButton leadId={lead.lead_id} role={meta.role} variant="full" />
       </header>
 
       <div className="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-6">

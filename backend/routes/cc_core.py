@@ -376,6 +376,9 @@ async def deliver(msg: dict, settings: dict) -> dict:
         if not media_id:
             return await _finish(msg, "failed", error="media header upload failed")
     res = await graph_send(msg["wa_number"], tpl, build_components(tpl, msg.get("var_map") or {}, c or {}, media_id))
+    if res["ok"] or not (res["transient"] and msg.get("attempts", 0) < 3):
+        from routes import wa_inbox
+        await wa_inbox.log_campaign(msg, tpl, c or {}, res)
     if res["ok"]:
         return await _finish(msg, "submitted", wamid=res["wamid"])
     if res["transient"] and msg.get("attempts", 0) < 3:

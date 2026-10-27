@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, STATUSES, fmtDate, fmtShort, BRAND, BRAND_DARK, wantsCall } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
+import { ChatButton } from "../../components/inbox/ChatSheet";
 import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, X, PhoneCall } from "lucide-react";
 import ColumnFilterMenu, { MenuSortRow } from "../../components/meta/ColumnFilterMenu";
 
@@ -33,6 +34,8 @@ export default function MetaLeads() {
   const navigate = useNavigate();
   const saved = (() => { try { return JSON.parse(sessionStorage.getItem(LEADS_STATE_KEY) || "{}"); } catch { return {}; } })();
   const [leads, setLeads] = useState([]);
+  const [unreadMap, setUnreadMap] = useState({});
+  const loadUnread = (rows) => { if (["admin", "ops", "processor"].includes(meta.role) && rows.length) api.post("/inbox/unread-by-leads", { lead_ids: rows.map((l) => l.lead_id) }).then(({ data }) => setUnreadMap(data)).catch(() => {}); };
   const [partners, setPartners] = useState([]);
   const [status, setStatus] = useState(saved.status || "ALL");
   const [sourceFilter, setSourceFilter] = useState(saved.sourceFilter || "ALL");
@@ -121,6 +124,7 @@ export default function MetaLeads() {
       if (partnerUnassigned) params.partner_unassigned = true;
       const { data } = await api.get("/meta/leads", { params });
       setLeads(data.items || data.leads || []);
+      loadUnread(data.items || data.leads || []);
       setTotal(data.total);
       setPages(data.pages);
     } finally { setLoading(false); }
@@ -543,6 +547,7 @@ export default function MetaLeads() {
                       <div className="flex items-center gap-2">
                         <a data-testid={`meta-call-link-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center shrink-0" title="Call"><Phone size={14} /></a>
                         <button data-testid={`meta-wa-link-${lead.lead_id}`} type="button" onClick={() => openMetaWhatsApp(lead.phone, lead.full_name, metaLoanType(lead), meta.name)} className="h-7 w-7 rounded-full bg-green-50 text-green-600 hover:bg-green-100 flex items-center justify-center shrink-0" title="WhatsApp"><MessageCircle size={14} /></button>
+                        <ChatButton leadId={lead.lead_id} unread={unreadMap[lead.lead_id] || 0} role={meta.role} onChanged={() => loadUnread(leads)} />
                         <div className="min-w-0"><a href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="text-sm hover:underline" style={{ color: BRAND }}>{lead.phone}</a><p className="text-xs text-slate-400 truncate">{lead.email}</p></div>
                       </div>
                     </td>

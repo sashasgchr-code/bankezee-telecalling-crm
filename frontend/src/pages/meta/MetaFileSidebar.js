@@ -3,6 +3,7 @@ import api from "../../services/api";
 import { toast } from "sonner";
 import { UserCog } from "lucide-react";
 import { BRAND_DARK } from "./metaCommon";
+import { ChatButton } from "../../components/inbox/ChatSheet";
 
 // Self-contained Meta assignment card (Growth Partner + Processor) rendered as the
 // File-Detail sidebarExtra. It owns its own data so the shared Connect File-Detail
@@ -34,6 +35,7 @@ export default function MetaFileSidebar({ leadId, meta }) {
       <h2 className="font-semibold mb-3 flex items-center gap-2" style={{ color: BRAND_DARK }}>
         <UserCog size={18} /> Meta Assignment
       </h2>
+      <div className="mb-4"><ChatButton leadId={leadId} role={meta.role} variant="full" /></div>
 
       <label className="text-xs text-gray-500 block mb-1">Growth Partner</label>
       {meta.isAdmin ? (
