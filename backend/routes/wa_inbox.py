@@ -673,6 +673,43 @@ async def bot_control(conv_id: str, action: str, user: dict = Depends(require_me
     return await db.wa_bot_sessions.find_one({"conv_id": conv_id}, {"_id": 0, "status": 1, "step": 1, "paused_reason": 1})
 
 
+FUNNEL = [("welcome_sent", "Welcome sent"), ("started", "Tapped Yes, Continue"), ("employment", "Answered employment type"),
+          ("details", "Finished employment questions"), ("report_q", "Answered credit report question"),
+          ("report_uploaded", "Uploaded credit report"), ("cibil", "Answered CIBIL score"), ("loans", "Answered loan questions"),
+          ("completed", "Completed")]
+
+
+@router.get("/bot-funnel")
+async def bot_funnel(user: dict = Depends(require_meta_access)):
+    role, uid = _role(user)
+    lq = {**NOT_DELETED}
+    if role == "processor":
+        lq["assigned_processor_id"] = uid
+    elif role == "growth_partner":
+        lq["assigned_partner_id"] = uid
+    scoped = role in ("processor", "growth_partner")
+    sq = {"lead_id": {"$in": await db.meta_leads.distinct("lead_id", lq)}} if scoped else {}
+    c = {k: 0 for k, _ in FUNNEL}
+    c["welcome_sent"] = await MSG.count_documents({"source": "welcome", "template.name": wa.PREFERRED_WELCOME, "status": {"$ne": "failed"}, **sq})
+    stopped_at, states = {}, {"paused": 0, "stopped": 0, "abandoned": 0, "active": 0}
+    async for s in db.wa_bot_sessions.find(sq, {"_id": 0, "answers": 1, "status": 1, "step": 1}):
+        a, st = s.get("answers") or {}, s.get("status")
+        c["started"] += 1
+        c["employment"] += "employment_type" in a
+        c["details"] += "credit_report_status" in a or st == "completed"
+        c["report_q"] += a.get("credit_report_status") not in (None, "awaiting_upload", "needs_help")
+        c["report_uploaded"] += a.get("credit_report_status") == "received_pending_review"
+        c["cibil"] += "cibil_score" in a
+        c["loans"] += "number_of_loans" in a
+        c["completed"] += st == "completed"
+        if st != "completed" and s.get("step"):
+            stopped_at[s["step"]] = stopped_at.get(s["step"], 0) + 1
+            if st in states:
+                states[st] += 1
+    drop = sorted(({"step": k, "count": v} for k, v in stopped_at.items()), key=lambda x: -x["count"])
+    return {"steps": [{"key": k, "label": lbl, "count": c[k]} for k, lbl in FUNNEL], "stopped_at": drop, "states": states}
+
+
 @router.get("/leads/{lead_id}/bot-qualification")
 async def bot_qualification(lead_id: str, user: dict = Depends(require_meta_access)):
     await _lead_access(lead_id, user)

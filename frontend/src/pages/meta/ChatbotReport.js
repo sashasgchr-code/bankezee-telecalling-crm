@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { BRAND, BRAND_DARK } from "./metaCommon";
+import WhatsAppFunnel from "./WhatsAppFunnel";
 import { Bot, MessageCircle, Loader2, ExternalLink } from "lucide-react";
 
 const STAGES = ["All", "Not Started", "In Progress", "Completed", "Expired"];
@@ -24,6 +25,7 @@ export default function ChatbotReport() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState("All");
+  const [tab, setTab] = useState("website");
   const nav = useNavigate();
 
   const load = async (s) => {
@@ -46,6 +48,12 @@ export default function ChatbotReport() {
         <Bot size={22} style={{ color: BRAND }} />
         <h1 className="text-xl font-semibold" style={{ color: BRAND_DARK }}>Chatbot Qualification Funnel</h1>
       </div>
+      <div className="flex gap-2 mb-5">
+        {[["website", "Website chatbot"], ["whatsapp", "WhatsApp chatbot"]].map(([k, l]) => (
+          <button key={k} data-testid={`chatbot-report-tab-${k}`} onClick={() => setTab(k)} className={`px-4 py-1.5 rounded-full text-sm border ${tab === k ? "text-white border-transparent" : "border-slate-200 text-slate-600"}`} style={tab === k ? { background: BRAND } : {}}>{l}</button>
+        ))}
+      </div>
+      {tab === "whatsapp" ? <WhatsAppFunnel /> : <>
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
         <KPI label="Total" value={c.total ?? 0} />
@@ -113,6 +121,7 @@ export default function ChatbotReport() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }
