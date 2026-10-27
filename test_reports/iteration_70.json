@@ -1,0 +1,46 @@
+{
+  "summary": "Ran one pass on the WhatsApp Team Inbox. Backend: 25/25 pytest tests pass after one test-data fix (see context). Coverage: signed inbound webhook (bad signature gives 401, duplicate wamid stored once, unread count goes up, status set to waiting_team, button and interactive replies parsed), every list filter plus q/source/pagination, welcome messages rendered with the chatbot token in the button URL, text send inside the 24h window (Meta accepted it; same client_id returns the existing message, no duplicate), 422 when the window has expired, internal notes, status changes and mark-read, assignment (bad processor id gives 404, processor gets 403, assign then unassign), quick replies CRUD (processor gets 403), unread-summary and unread-by-leads, templates endpoint returns only sendable ones (loan_application_response), GP gets 403, unauthenticated is rejected, processor sees only his scope. Frontend: the three-panel inbox, search, tabs, internal note, text send, template dialog with variables and preview, window-expired banner with Send disabled, Chat icon on all 50 Leads rows, slide-out with the empty state and start button, Chat button on Lead Detail and File Detail, OPEN FULL INBOX goes to /meta/inbox?c=... All of these work.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/inbox/conversations/{id}/messages, /attachments, /template", "issue": "The client_id duplicate check looks across all conversations. A client_id that belongs to another conversation returns that other message, which can leak data across conversations. Scope the lookup to conv_id."},
+      {"endpoint": "GET /api/inbox/conversations?q= and /api/inbox/lead-search?q=", "issue": "User input goes into $regex without re.escape. Characters like '(' cause a 500, and it is a ReDoS risk."},
+      {"endpoint": "POST /api/inbox/conversations/{id}/template", "issue": "json.loads(payload) has no guard, so a malformed payload gives a 500 instead of a 422."},
+      {"endpoint": "POST /api/inbox/conversations/{id}/attachments", "issue": "If log_outbound returns None (client_id race or DuplicateKey), _finish_send(None, ...) crashes."},
+      {"endpoint": "GET /api/inbox/messages/{id}/media?part=header", "issue": "h['ref'] raises KeyError, and a missing welcome header file gives a 500. Return 404 instead."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "TemplateDialog", "issue": "There is no loading state: 'No approved templates. Sync templates…' (template-empty) shows until /inbox/templates comes back. The button URL variable is not prefilled, so staff must type the token or the send fails with 'Fill all template fields'. Consider prefilling the lead's chatbot token.", "selector": "[data-testid='template-empty'], [data-testid^='template-btn-']", "priority": "LOW"},
+      {"component": "ChatSheet", "issue": "When there is no conversation (chat-sheet-empty), the OPEN FULL INBOX link is not shown. It only appears once a conversation exists. Confirm this is intended.", "selector": "[data-testid='chat-open-full-inbox-btn']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "ChatSheet and Inbox customer panel", "issues": ["The floating notification bell (top-right, fixed) sits visually on top of the sheet's close X and the 'CUSTOMER DETAILS' header. The close button is still clickable, but it looks cluttered."]},
+      {"screen": "/meta/inbox filters", "issues": ["The date filters use the browser's native date inputs (mm/dd/yyyy), not the shadcn Calendar. The 'to' date input is clipped or overflows the 312px list panel."]},
+      {"screen": "Customer panel / File Detail", "issues": ["Raw form values show as-is ('salaried?', 'more than rs.40,000'). File Detail shows Net Salary 'NaN' (existing issue, outside this scope)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter70_wa_inbox.py", "/app/test_reports/pytest/pytest_iter70.xml"],
+  "action_items": [
+    "Scope the client_id duplicate lookups to conv_id in send_text, send_attachment and send_template",
+    "Apply re.escape to q in list_conversations and lead_search",
+    "Guard json.loads in send_template (return 422) and handle a None return from log_outbound in send_attachment",
+    "Add a loading state in TemplateDialog, and prefill the button token variable for loan_application_response",
+    "Fix test_credentials.md: rama@bankezee.com has meta_role=growth_partner, so she gets 403 on the inbox. The Meta ops account is rama@neosales.org, and its password is not documented. yarragondaanusha@gmail.com / 9063023292 no longer works for UI login.",
+    "Optional: use a shadcn date picker for the inbox date filters, and keep the notification bell clear of the sheet header"
+  ],
+  "critical_code_review_comments": [
+    "wa_inbox.py is 760 lines. Split it into hooks (logging/webhook), access helpers and routes.",
+    "The date_to filter appends 'T23:59:59' and compares strings. That works for ISO timestamps but misses the last second's fractional values. Minor.",
+    "add_note does not update the conversation's last_message_at. This is fine because notes are internal, but the list preview will not show notes."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter70_wa_inbox.py"],
+  "success_rate": {"backend": "100% (25/25)", "frontend": "~95% (all requested flows work; minor UX issues)"},
+  "test_credentials": "admin works. teja@bankezee.com is a Meta processor. rama@bankezee.com is NOT Meta ops (meta_role=growth_partner), so tests mint a token for rama@neosales.org (meta ops). GP yarragondaanusha password fails in the UI, so the token is minted via mint_token.py.",
+  "seed_data_creation": "Added TEST_-prefixed inbound messages (signed webhooks), TEST_ staff text replies (sent to 910000000000 only, Meta accepted them), and TEST_ notes on the Test Tester conversation d8a6c60d042c4d98a5af4dc294bd0bbc. The test quick reply was deleted. Assignment was reverted to unassigned.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_iter70_wa_inbox.py. It uses the signed webhook to open the 24h window for 910000000000 and sends text only to that number. Expired-window conversation for UI: 30f530b1315d4316bdfde170c9624081 (lead_429e6b07d72a, Vijay Namala). A lead with no conversation: lead_55772c498293. GP UI not verified (login password stale); the backend 403 for GP is verified."
+}

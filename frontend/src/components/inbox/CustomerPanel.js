@@ -32,7 +32,7 @@ export const CustomerPanel = ({ data, onLinked }) => {
   const staff = data.role === "admin" || data.role === "ops";
   return (
     <aside className="w-80 shrink-0 border-l bg-white overflow-y-auto p-4 hidden xl:block" data-testid="customer-panel">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Customer details</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3 mt-10">Customer details</h3>
       {!c ? (staff ? <LinkLead convId={data.conversation.id} onLinked={onLinked} /> : <p className="text-sm text-slate-500">Not linked to a CRM lead.</p>) : (
         <>
           <Row k="Name" v={c.full_name} tid="cust-name" /><Row k="Mobile" v={c.phone} tid="cust-phone" /><Row k="Lead ID" v={c.lead_id} tid="cust-lead-id" />

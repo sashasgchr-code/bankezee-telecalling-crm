@@ -2,6 +2,7 @@
 (wa_conversations, one per customer number + business number). Every send path logs here;
 future bot messages should call log_outbound(source="bot")."""
 import os
+import re
 import json
 import time
 import uuid
@@ -386,7 +387,7 @@ async def list_conversations(filter: str = "all", q: str = "", processor: str = 
     if f:
         conds.append(f)
     if q.strip():
-        rx = {"$regex": q.strip().replace("+", ""), "$options": "i"}
+        rx = {"$regex": re.escape(q.strip().replace("+", "")), "$options": "i"}
         conds.append({"$or": [{"customer_name": rx}, {"profile_name": rx}, {"wa_number": rx}]})
     if processor:
         conds.append({"assigned_processor_id": None if processor == "UNASSIGNED" else processor})
@@ -506,14 +507,14 @@ async def send_text(conv_id: str, inp: TextIn, user: dict = Depends(require_meta
         raise HTTPException(status_code=422, detail="Message is empty")
     if not _window_open(conv):
         raise HTTPException(status_code=422, detail="Customer service window expired. Select an approved WhatsApp template to continue.")
-    existing = await MSG.find_one({"client_id": inp.client_id}, {"_id": 0})
+    existing = await MSG.find_one({"client_id": inp.client_id, "conv_id": conv_id}, {"_id": 0})
     if existing:
         return existing
     _rate_check(user)
     m = await log_outbound(conv["wa_number"], source="staff", type_="text", text=inp.text.strip()[:4096], status="sending",
                            sender=_sender(user, role), client_id=inp.client_id)
     if not m:
-        return await MSG.find_one({"client_id": inp.client_id}, {"_id": 0})
+        return await MSG.find_one({"client_id": inp.client_id, "conv_id": conv_id}, {"_id": 0})
     res = await _graph({"to": conv["wa_number"], "type": "text", "text": {"body": m["text"], "preview_url": True}})
     await _audit(user, "send_text", conv_id=conv_id, ok=res.get("ok"))
     return _clean(await _finish_send(m, res))
@@ -525,7 +526,7 @@ async def send_attachment(conv_id: str, client_id: str = Form(...), caption: str
     conv, role, _ = await _conv_or_403(conv_id, user)
     if not _window_open(conv):
         raise HTTPException(status_code=422, detail="Customer service window expired. Select an approved WhatsApp template to continue.")
-    existing = await MSG.find_one({"client_id": client_id}, {"_id": 0})
+    existing = await MSG.find_one({"client_id": client_id, "conv_id": conv_id}, {"_id": 0})
     if existing:
         return existing
     _rate_check(user)
@@ -539,6 +540,8 @@ async def send_attachment(conv_id: str, client_id: str = Form(...), caption: str
     media = {"kind": "gridfs", "gridfs_id": str(gid), "mime": mime, "filename": file.filename, "caption": caption}
     m = await log_outbound(conv["wa_number"], source="staff", type_=kind, text=caption, media=media, status="sending",
                            sender=_sender(user, role), client_id=client_id)
+    if not m:
+        raise HTTPException(status_code=409, detail="Duplicate send")
     mid = await _upload_meta(content, mime, file.filename or "file") if wa._send_configured() else None
     if not mid:
         return _clean(await _finish_send(m, {"ok": False, "error": "media upload to WhatsApp failed"}))
@@ -575,13 +578,16 @@ async def templates(user: dict = Depends(require_meta_access)):
 async def send_template(conv_id: str, payload: str = Form(...), file: Optional[UploadFile] = File(None),
                         user: dict = Depends(require_meta_access)):
     conv, role, _ = await _conv_or_403(conv_id, user)
-    p = json.loads(payload)
+    try:
+        p = json.loads(payload)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid payload")
     tpl = await _tpl(p.get("name"), p.get("language"))
     if not tpl or not tpl.get("sendable"):
         raise HTTPException(status_code=422, detail="Template is not approved")
     if tpl.get("category") == "MARKETING" and await _opted_out(conv["wa_number"]):
         raise HTTPException(status_code=422, detail="Customer has opted out of marketing messages")
-    existing = await MSG.find_one({"client_id": p.get("client_id")}, {"_id": 0}) if p.get("client_id") else None
+    existing = await MSG.find_one({"client_id": p.get("client_id"), "conv_id": conv_id}, {"_id": 0}) if p.get("client_id") else None
     if existing:
         return existing
     values = {k: wa.clean_param(v) for k, v in (p.get("values") or {}).items()}
@@ -695,7 +701,7 @@ async def link_lead(conv_id: str, inp: LinkIn, user: dict = Depends(require_meta
 @router.get("/lead-search")
 async def lead_search(q: str, user: dict = Depends(require_meta_access)):
     _role(user)
-    rx = {"$regex": q.strip(), "$options": "i"}
+    rx = {"$regex": re.escape(q.strip()), "$options": "i"}
     return await db.meta_leads.find({**NOT_DELETED, "$or": [{"full_name": rx}, {"phone_norm": rx}]},
                                     {"_id": 0, "lead_id": 1, "full_name": 1, "phone": 1, "status": 1}).limit(10).to_list(10)
 
@@ -742,10 +748,16 @@ async def message_media(msg_id: str, part: str = Query("media"), user: dict = De
     if part == "header":
         h = m.get("header") or {}
         if h.get("ref_kind") == "welcome":
+            if not wa.HEADER_IMAGE_PATH:
+                raise HTTPException(status_code=404, detail="Header not available")
             path = wa.HEADER_IMAGE_PATH if os.path.isabs(wa.HEADER_IMAGE_PATH) else \
                 os.path.join(os.path.dirname(os.path.dirname(__file__)), wa.HEADER_IMAGE_PATH)
+            if not os.path.exists(path):
+                raise HTTPException(status_code=404, detail="Header not available")
             with open(path, "rb") as f:
                 return Response(f.read(), media_type="image/png")
+        if not h.get("ref"):
+            raise HTTPException(status_code=404, detail="Header not available")
         bk = cc_core.media_bucket if h.get("ref_kind") == "cc_media" else bucket
         s = await bk.open_download_stream(ObjectId(h["ref"]))
         return Response(await s.read(), media_type=(s.metadata or {}).get("content_type") or "image/jpeg")

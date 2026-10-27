@@ -57,7 +57,7 @@ export const ChatThread = ({ convId, onData, onChanged }) => {
         <div ref={endRef} />
       </div>
       <Composer convId={convId} windowOpen={data.window_open} onSent={load} onTemplate={() => setTplOpen(true)} canManageQuick={staff} />
-      <TemplateDialog open={tplOpen} onClose={() => setTplOpen(false)} convId={convId} customerName={c.customer_name} onSent={load} />
+      <TemplateDialog open={tplOpen} onClose={() => setTplOpen(false)} convId={convId} customerName={c.customer_name} defaultBtn={[...messages].reverse().find((m) => m.template?.button_params?.["0"])?.template.button_params["0"]} onSent={load} />
     </div>
   );
 };

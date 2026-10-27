@@ -2483,3 +2483,12 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Roles: admin full; ops all customers + edit; manager team + edit; GP own read-only; campaigns = admin + users with cc_campaign_access.
 - Tested: iteration_69 (backend 26/27 then fixed; resume-scheduled bug, page=abc, media access, UI fixes applied). Test data cleaned.
 - Pending for go-live: approved MARKETING templates (festival/birthday), admin test number, consent capture, DOB entry, admin enables live sending.
+
+## 2026-10-27 — WhatsApp Team Inbox (preview only, not deployed)
+- Backend `routes/wa_inbox.py` (/api/inbox/*): central `wa_messages` + `wa_conversations` (one per customer number + business number), `wa_quick_replies`, `wa_audit`, GridFS `wa_media`.
+- Hooks: welcome sends (whatsapp.send_whatsapp_for_lead -> log_welcome), campaigns/birthdays (cc_core.deliver -> log_campaign), webhook statuses/inbound (on_status/on_inbound, wamid dedupe). Future bot: call log_outbound(source="bot").
+- Startup backfill: latest welcome per lead (meta_leads.whatsapp) + cc_messages with wamid. Older welcome resends and customer replies before activation were never stored, so they're not available.
+- Features: 24h window, text/attachments/templates, notes, assign (admin/ops), status, unread, quick replies, link unmatched, authorized media proxy, rate limit 30/min/user, opt-out blocks marketing templates. Roles admin/ops/processor (processor scoped); GP 403.
+- Frontend: /meta/inbox (pages/meta/Inbox.js), shared components/inbox/*, Chat button on Leads table, Lead Detail, File Detail (MetaFileSidebar).
+- Tested: iteration_70 (backend 25/25, frontend flows pass).
+- Backlog: shadcn date picker in inbox filters; notification bell overlaps the sheet header; welcome_message3 still PENDING at Meta (only loan_application_response is selectable).

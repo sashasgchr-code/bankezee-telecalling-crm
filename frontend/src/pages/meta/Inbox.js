@@ -16,7 +16,7 @@ const Filters = ({ f, setF, procs, partners, templates }) => (
     <select data-testid="inbox-filter-lead-status" className={sel} value={f.lead_status} onChange={(e) => setF({ ...f, lead_status: e.target.value })}><option value="">Any lead/file status</option>{[...LEAD_STATUSES, ...PROC_STATUSES].map((s) => <option key={s} value={s}>{s}</option>)}</select>
     <select data-testid="inbox-filter-source" className={sel} value={f.source} onChange={(e) => setF({ ...f, source: e.target.value })}><option value="">Any source</option>{Object.entries(SOURCE_LABEL).filter(([k]) => k !== "note").map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select>
     <select data-testid="inbox-filter-template" className={sel} value={f.template} onChange={(e) => setF({ ...f, template: e.target.value })}><option value="">Any template</option>{templates.map((t) => <option key={t} value={t}>{t}</option>)}</select>
-    <div className="flex gap-1"><input type="date" data-testid="inbox-filter-from" className={`${sel} w-full`} value={f.date_from} onChange={(e) => setF({ ...f, date_from: e.target.value })} /><input type="date" data-testid="inbox-filter-to" className={`${sel} w-full`} value={f.date_to} onChange={(e) => setF({ ...f, date_to: e.target.value })} /></div>
+    <div className="col-span-2 flex gap-1"><input type="date" data-testid="inbox-filter-from" className={`${sel} w-full`} value={f.date_from} onChange={(e) => setF({ ...f, date_from: e.target.value })} /><input type="date" data-testid="inbox-filter-to" className={`${sel} w-full`} value={f.date_to} onChange={(e) => setF({ ...f, date_to: e.target.value })} /></div>
   </div>
 );
 
