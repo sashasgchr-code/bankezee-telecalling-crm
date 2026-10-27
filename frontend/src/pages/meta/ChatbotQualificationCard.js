@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import api from "../../services/api";
+import { WhatsAppQualification, WhatsAppLoanSummary } from "../../components/inbox/WhatsAppQualification";
 import { toast } from "sonner";
 import { BRAND, BRAND_DARK } from "./metaCommon";
 import { Bot, Copy, RefreshCw, Eye, EyeOff, Link2, HelpCircle, PencilLine, Gauge, Loader2, MessageCircle } from "lucide-react";
@@ -378,6 +379,9 @@ export default function ChatbotQualificationCard({ lead, canEdit }) {
           )}
         </>
       )}
+
+      <WhatsAppQualification leadId={leadId} />
+      <WhatsAppLoanSummary leadId={leadId} />
 
       {modal && (
         <ActionModal

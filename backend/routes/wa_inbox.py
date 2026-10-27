@@ -6,7 +6,6 @@ import re
 import json
 import time
 import uuid
-import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -264,7 +263,12 @@ async def on_inbound(msg: dict, value: dict):
         return
     await _touch(conv, m, inbound=True)
     if media and media.get("id"):
-        asyncio.create_task(_cache_media(m["id"], media))
+        await _cache_media(m["id"], media)
+    try:
+        from routes import wa_bot
+        await wa_bot.handle_inbound({**conv, "lead_id": conv.get("lead_id")}, m, msg)
+    except Exception as e:
+        logger.warning(f"wa_bot error: {e}")
 
 
 async def _download_meta_media(media_id: str):
@@ -345,13 +349,16 @@ async def _opted_out(wa_number) -> bool:
 async def _graph(payload: dict) -> dict:
     if not wa._send_configured():
         return {"ok": False, "error": "WhatsApp not configured"}
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as hc:
-            r = await hc.post(wa.GRAPH_URL, json={"messaging_product": "whatsapp", "recipient_type": "individual", **payload},
-                              headers={"Authorization": f"Bearer {wa.ACCESS_TOKEN}"})
-        data = r.json() if r.content else {}
-    except Exception as e:
-        return {"ok": False, "error": f"network error: {str(e)[:120]}"}
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(20.0)) as hc:
+                r = await hc.post(wa.GRAPH_URL, json={"messaging_product": "whatsapp", "recipient_type": "individual", **payload},
+                                  headers={"Authorization": f"Bearer {wa.ACCESS_TOKEN}"})
+            data = r.json() if r.content else {}
+            break
+        except Exception as e:
+            if attempt:
+                return {"ok": False, "error": f"network error: {str(e)[:120] or type(e).__name__}"}
     if r.status_code == 200 and (data.get("messages") or [{}])[0].get("id"):
         return {"ok": True, "wamid": data["messages"][0]["id"]}
     err = data.get("error") or {}
@@ -465,7 +472,8 @@ async def _customer(conv):
 async def get_conversation(conv_id: str, user: dict = Depends(require_meta_access)):
     conv, role, _ = await _conv_or_403(conv_id, user)
     msgs = await MSG.find({"conv_id": conv_id}, {"_id": 0}).sort("created_at", 1).to_list(2000)
-    return {"conversation": conv, "messages": msgs, "customer": await _customer(conv), "window_open": _window_open(conv),
+    bot = await db.wa_bot_sessions.find_one({"conv_id": conv_id}, {"_id": 0, "status": 1, "step": 1, "paused_reason": 1})
+    return {"conversation": conv, "messages": msgs, "customer": await _customer(conv), "window_open": _window_open(conv), "bot": bot,
             "opted_out": await _opted_out(conv["wa_number"]), "role": role}
 
 
@@ -530,6 +538,8 @@ async def send_text(conv_id: str, inp: TextIn, user: dict = Depends(require_meta
                            sender=_sender(user, role), client_id=inp.client_id)
     if not m:
         return await MSG.find_one({"client_id": inp.client_id, "conv_id": conv_id}, {"_id": 0})
+    from routes import wa_bot
+    await wa_bot.pause_for_staff(conv_id, user.get("name"))
     res = await _graph({"to": conv["wa_number"], "type": "text", "text": {"body": m["text"], "preview_url": True}})
     await _audit(user, "send_text", conv_id=conv_id, ok=res.get("ok"))
     return _clean(await _finish_send(m, res))
@@ -562,6 +572,8 @@ async def send_attachment(conv_id: str, client_id: str = Form(...), caption: str
         return _clean(await _finish_send(m, {"ok": False, "error": "media upload to WhatsApp failed"}))
     body = {"id": mid, **({"caption": caption} if caption and kind in ("image", "video", "document") else {}),
             **({"filename": file.filename} if kind == "document" else {})}
+    from routes import wa_bot
+    await wa_bot.pause_for_staff(conv_id, user.get("name"))
     res = await _graph({"to": conv["wa_number"], "type": kind, kind: body})
     await _audit(user, "send_attachment", conv_id=conv_id, ok=res.get("ok"))
     return _clean(await _finish_send(m, res))
@@ -622,7 +634,7 @@ async def send_template(conv_id: str, payload: str = Form(...), file: Optional[U
             gid = await bucket.upload_from_stream(file.filename or "header", content, metadata={"content_type": mime})
             hdr = {"type": ht.lower(), "ref_kind": "wa_media", "ref": str(gid)}
             media_id = await _upload_meta(content, mime, file.filename or "header") if wa._send_configured() else None
-        elif tpl["name"] in (wa.TEMPLATE_NAME, wa.PREFERRED_WELCOME) and wa.HEADER_IMAGE_PATH:
+        elif (tpl["name"] == wa.TEMPLATE_NAME or tpl["name"] in wa.PREFERRED_WELCOMES) and wa.HEADER_IMAGE_PATH:
             hdr = {"type": "image", "ref_kind": "welcome"}
             media_id = await wa._header_media_id() if wa._send_configured() else None
         else:
@@ -635,10 +647,36 @@ async def send_template(conv_id: str, payload: str = Form(...), file: Optional[U
                            status="sending", sender=_sender(user, role), client_id=p.get("client_id"))
     if ht in ("IMAGE", "VIDEO", "DOCUMENT") and not media_id:
         return _clean(await _finish_send(m, {"ok": False, "error": "header media upload failed"}))
+    from routes import wa_bot
+    await wa_bot.pause_for_staff(conv_id, user.get("name"))
     res = await cc_core.graph_send(conv["wa_number"], tpl, cc_core.build_components(tpl, var_map, {}, media_id)) \
         if wa._send_configured() else {"ok": False, "error": "WhatsApp not configured"}
     await _audit(user, "send_template", conv_id=conv_id, template=tpl["name"], ok=res.get("ok"))
     return _clean(await _finish_send(m, res))
+
+
+@router.post("/conversations/{conv_id}/bot/{action}")
+async def bot_control(conv_id: str, action: str, user: dict = Depends(require_meta_access)):
+    conv, _, _ = await _conv_or_403(conv_id, user)
+    from routes import wa_bot
+    if action == "pause":
+        await wa_bot.pause_for_staff(conv_id, user.get("name"))
+    elif action == "resume":
+        if not _window_open(conv):
+            raise HTTPException(status_code=422, detail="Customer service window expired — the bot can resume only after the customer replies.")
+        res = await wa_bot.resume(conv)
+        if not res.get("ok"):
+            raise HTTPException(status_code=422, detail=res.get("error") or "Resume failed")
+    else:
+        raise HTTPException(status_code=404, detail="Unknown action")
+    await _audit(user, f"bot_{action}", conv_id=conv_id)
+    return await db.wa_bot_sessions.find_one({"conv_id": conv_id}, {"_id": 0, "status": 1, "step": 1, "paused_reason": 1})
+
+
+@router.get("/leads/{lead_id}/bot-qualification")
+async def bot_qualification(lead_id: str, user: dict = Depends(require_meta_access)):
+    await _lead_access(lead_id, user)
+    return {"session": await db.wa_bot_sessions.find_one({"lead_id": lead_id}, {"_id": 0})}
 
 
 # ------------------------------------------------------------------ notes / assignment / status / link

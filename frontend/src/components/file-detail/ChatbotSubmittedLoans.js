@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { MessageSquare } from 'lucide-react';
 import api from '../../services/api';
+import { WhatsAppLoanSummary } from '../inbox/WhatsAppQualification';
 
 // Read-only display of loans the customer submitted through the Bankezee website / WhatsApp
 // qualification chatbot. This is PRELIMINARY customer-reported data kept separate from the
@@ -42,7 +43,7 @@ const ChatbotSubmittedLoans = ({ leadId }) => {
   }, [leadId]);
 
   // Only render when there is chatbot loan data.
-  if (!loans || loans.length === 0) return null;
+  if (!loans || loans.length === 0) return <WhatsAppLoanSummary leadId={leadId} />;
 
   const totalOutstanding = loans.reduce((s, l) => s + (num(l.outstanding_balance) || 0), 0);
   const totalEmi = loans.reduce((s, l) => s + (num(l.monthly_emi) || 0), 0);

@@ -135,13 +135,17 @@ def clean_param(text) -> str:
     return " ".join(str(text or "").split()).strip()
 
 
-PREFERRED_WELCOME = "welcome_message2"
+PREFERRED_WELCOMES = ["bankezee_welcome_qualification_v1", "welcome_message2"]
+PREFERRED_WELCOME = PREFERRED_WELCOMES[0]
 
 
 async def active_template() -> dict:
-    """welcome_message2 is used automatically once Meta approves it; otherwise the configured template."""
-    t = await db.cc_templates.find_one({"name": PREFERRED_WELCOME, "status": "APPROVED"}, {"_id": 0})
-    return t or await db.cc_templates.find_one({"name": TEMPLATE_NAME}, {"_id": 0}) or {"name": TEMPLATE_NAME}
+    """First approved preferred template (WhatsApp-bot welcome, then welcome_message2); else the configured one."""
+    for name in PREFERRED_WELCOMES:
+        t = await db.cc_templates.find_one({"name": name, "status": "APPROVED"}, {"_id": 0})
+        if t:
+            return t
+    return await db.cc_templates.find_one({"name": TEMPLATE_NAME}, {"_id": 0}) or {"name": TEMPLATE_NAME}
 
 
 async def welcome_has_image(tpl: Optional[dict] = None) -> bool:
@@ -170,11 +174,10 @@ async def _graph_send_template(recipient: str, customer_name: str, url_token: st
             "components": header + ([
                 {"type": "body", "parameters": [
                     {"type": "text", "parameter_name": body_param, "text": clean_param(customer_name) or "Customer"}
-                ]}] if body_param else []) + [
-                {"type": "button", "sub_type": "url", "index": "0", "parameters": [
+                ]}] if body_param else []) + ([
+                {"type": "button", "sub_type": "url", "index": str(i), "parameters": [
                     {"type": "text", "text": url_token}
-                ]},
-            ],
+                ]} for i, b in enumerate(tpl.get("buttons") or [{"type": "URL"}]) if b.get("type") == "URL"]),
         },
     }
     headers = {"Authorization": f"Bearer {ACCESS_TOKEN}", "Content-Type": "application/json"}

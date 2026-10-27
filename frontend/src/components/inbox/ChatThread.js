@@ -49,6 +49,13 @@ export const ChatThread = ({ convId, onData, onChanged }) => {
         <select data-testid="chat-status-select" value={c.status} onChange={(e) => act("status", { status: e.target.value })} className="border rounded-md px-2 py-1 text-xs">
           {Object.entries(CONV_STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
+        {data.bot && (
+          <span className="flex items-center gap-1 text-xs" data-testid="chat-bot-status">
+            <span className={`rounded-full px-2 py-0.5 font-medium ${data.bot.status === "active" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-600"}`}>Bot: {data.bot.status}{data.bot.status !== "completed" && data.bot.step ? ` · ${data.bot.step.replace(/_/g, " ")}` : ""}</span>
+            {data.bot.status === "active" && <button data-testid="chat-bot-pause-btn" onClick={() => act("bot/pause")} className="rounded-md border px-2 py-0.5">Take over</button>}
+            {["paused", "abandoned"].includes(data.bot.status) && data.bot.step && <button data-testid="chat-bot-resume-btn" onClick={() => act("bot/resume")} className="rounded-md border px-2 py-0.5">Resume bot</button>}
+          </span>
+        )}
         {c.status !== "resolved" && <button data-testid="chat-resolve-btn" onClick={() => act("status", { status: "resolved" })} className="text-xs rounded-md bg-slate-800 text-white px-2.5 py-1">Mark resolved</button>}
       </div>
       <div className="flex-1 overflow-y-auto bg-[#f4f1ea] px-4 py-4 space-y-3" data-testid="chat-messages">
