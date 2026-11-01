@@ -43,7 +43,7 @@ export const MetaAttribution = ({ lead }) => {
         <Row k="Ad" v={a.ad_name && `${a.ad_name}${changed("ad_name")}`} /><Row k="Form" v={a.form_name} />
         <Row k="Campaign / Ad set / Ad ID" v={`${a.campaign_id || "—"} / ${a.adset_id || "—"} / ${a.ad_id || "—"}`} />
         <Row k="Meta lead ID" v={a.meta_lead_id} /><Row k="Ad account ID" v={a.ad_account_id} /><Row k="Form ID" v={a.form_id} />
-        <Row k="Meta lead created" v={a.meta_created_time} /><Row k="CRM imported" v={a.crm_imported_at && new Date(a.crm_imported_at).toLocaleString("en-IN")} />
+        <Row k="Meta lead created" v={a.meta_created_time && `${new Date(a.meta_created_time).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST`} /><Row k="CRM imported" v={a.crm_imported_at && new Date(a.crm_imported_at).toLocaleString("en-IN")} />
         <Row k="Import source" v={`${a.import_source}${a.backfilled_at ? " · backfilled from sheet by Meta lead ID" : ""}`} />
       </>)}
     </div>

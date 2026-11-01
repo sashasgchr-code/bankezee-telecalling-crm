@@ -55,7 +55,7 @@ export default function MetaDashboard() {
 
   return (
     <div data-testid="meta-dashboard">
-      <header className="h-16 border-b border-slate-200 bg-white px-4 md:px-8 flex items-center justify-between sticky top-0 z-30">
+      <header className="h-16 border-b border-slate-200 bg-white px-4 md:px-8 pr-16 md:pr-20 flex items-center justify-between sticky top-0 z-30">
         <h1 className="text-xl font-bold" style={{ color: BRAND_DARK }}>Dashboard</h1>
         <button data-testid="meta-sync-sheet-btn" onClick={sync} disabled={syncing}
           className="bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 rounded-md px-4 py-2 text-sm shadow-sm font-medium transition-colors disabled:opacity-70">

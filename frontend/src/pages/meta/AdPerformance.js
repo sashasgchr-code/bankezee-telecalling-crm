@@ -23,7 +23,7 @@ const Ranked = ({ title, icon: Icon, items, tone, testid }) => (
   <div className="bg-white border rounded-lg p-3" data-testid={testid}>
     <h3 className={`text-sm font-semibold flex items-center gap-1.5 mb-2 ${tone}`}><Icon size={15} />{title}</h3>
     {items.length === 0 ? <p className="text-xs text-slate-400">Not enough ads meet the minimum sample yet.</p> : items.map((a) => (
-      <div key={a.id} className="py-1.5 border-b last:border-0 text-xs"><p className="font-medium text-slate-800">{a.name}</p><p className="text-slate-500">{a.reason}</p></div>
+      <div key={a.id} className="py-1.5 border-b last:border-0 text-xs"><p className="font-medium text-slate-800">{a.name}</p><p className="text-[10px] text-slate-400">Ad ID {a.id}{a.adset_name ? ` · Ad set: ${a.adset_name}` : ""}</p><p className="text-slate-500">{a.reason}</p></div>
     ))}
   </div>
 );
@@ -63,7 +63,7 @@ export default function AdPerformance() {
         <div className="flex rounded-full border overflow-hidden text-xs" data-testid="ap-view-toggle">
           {[["cohort", "Lead cohort view"], ["activity", "Activity view"]].map(([k, l]) => <button key={k} data-testid={`ap-view-${k}`} onClick={() => set("view")(k)} className={`px-3 py-1.5 ${f.view === k ? "bg-slate-800 text-white" : "text-slate-600"}`}>{l}</button>)}
         </div>
-        <button data-testid="ap-defs-toggle" onClick={() => setDefs(!defs)} className="text-xs text-sky-700 inline-flex items-center gap-1"><Info size={13} />Definitions</button>
+        <button data-testid="ap-defs-toggle" onClick={() => setDefs(!defs)} className="text-xs text-sky-700 inline-flex items-center gap-1 mr-14"><Info size={13} />Definitions</button>
       </div>
       <p className="text-xs text-slate-500" data-testid="ap-view-help">{f.view === "cohort" ? "Leads created by Meta in the period, with their file outcomes as of " : "Imports, files, approvals and disbursals that happened in the period (each by its own date), as of "}{d ? new Date(d.as_of).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "…"} IST.</p>
       {defs && d && <div className="text-[11px] text-slate-600 bg-slate-50 border rounded-md p-3 space-y-1" data-testid="ap-definitions">{Object.entries(d.definitions).map(([k, v]) => <p key={k}><b>{k}:</b> {v}</p>)}<p><b>TAT:</b> {d.tat_definition}</p></div>}
@@ -83,7 +83,7 @@ export default function AdPerformance() {
       </div>
 
       {d && !spendOk && <p className="text-xs rounded-md border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2 flex items-start gap-2" data-testid="ap-spend-unavailable"><AlertTriangle size={14} className="mt-0.5 shrink-0" />{d.spend.reason}</p>}
-      {d && spendOk && <p className="text-xs text-slate-500" data-testid="ap-spend-status">Spend in {d.spend.currency} · ad account timezone {d.spend.timezone} · last sync {new Date(d.spend.last_success).toLocaleString("en-IN")}{d.spend.last_error ? ` · last error: ${d.spend.last_error}` : ""} <button onClick={syncSpend} data-testid="ap-spend-sync" className="ml-2 inline-flex items-center gap-1 text-sky-700"><RefreshCw size={11} />Sync spend</button></p>}
+      {d && spendOk && <p className="text-xs text-slate-500" data-testid="ap-spend-status">Spend in {d.spend.currency} · ad account timezone {d.spend.timezone} · last sync {new Date(d.spend.last_success).toLocaleString("en-IN")}{d.spend.spend_from ? ` · spend counted from ${d.spend.spend_from}${!f.date_from ? " (first CRM Meta lead)" : ""}` : ""}{d.spend.last_error ? ` · last error: ${d.spend.last_error}` : ""} <button onClick={syncSpend} data-testid="ap-spend-sync" className="ml-2 inline-flex items-center gap-1 text-sky-700"><RefreshCw size={11} />Sync spend</button></p>}
       {d && !spendOk && meta.isStaff && d.spend.reason?.startsWith("Spend not synced") && <button onClick={syncSpend} data-testid="ap-spend-sync" className="text-xs text-sky-700">Sync spend now</button>}
 
       {!d ? <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-slate-400" /></div> : (<>

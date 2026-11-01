@@ -186,7 +186,13 @@ async def ad_performance(view: str = "cohort", level: str = "campaign", date_fro
     groups = {}
     for f in facts:
         groups.setdefault(f[idk] or "__unknown__", []).append(f)
-    spend = await _spend(idk, None, q) if show_spend else {}
+    spend_q = dict(q)
+    if show_spend and not q.get("date_from"):
+        first = min((f["created"] for f in facts if f["created"]), default=None)
+        if first:
+            spend_q["date_from"] = mm.ist_date(first)  # never count spend from before the CRM's first Meta lead
+    sst["spend_from"] = spend_q.get("date_from")
+    spend = await _spend(idk, None, spend_q) if show_spend else {}
     rows = []
     for k, fs in groups.items():
         r = _agg(fs, view, s, e, now, maturity_days)
@@ -197,13 +203,13 @@ async def ad_performance(view: str = "cohort", level: str = "campaign", date_fro
                      "campaign_id": fs[0]["campaign_id"], "adset_id": fs[0]["adset_id"], **r, **_cost(r, spend.get(k))})
     rows.sort(key=lambda x: -x["leads"])
     total = _agg(facts, view, s, e, now, maturity_days)
-    total.update(_cost(total, (await _spend(None, None, q)).get("_all")) if show_spend else {})
+    total.update(_cost(total, (await _spend(None, None, spend_q)).get("_all")) if show_spend else {})
     # Best / worst ads (always ad level, cohort facts, optional mature-only cohort)
     by_ad = {}
     for f in facts:
         if f["ad_id"] and (not mature_only or (f["created"] and (now - f["created"]).days >= maturity_days)):
             by_ad.setdefault(f["ad_id"], []).append(f)
-    ad_spend = await _spend("ad_id", None, q) if show_spend else {}
+    ad_spend = await _spend("ad_id", None, spend_q) if show_spend else {}
     cands, small = [], 0
     for k, fs in by_ad.items():
         r = _agg(fs, "cohort", s, e, now, maturity_days)
@@ -212,13 +218,16 @@ async def ad_performance(view: str = "cohort", level: str = "campaign", date_fro
         if r["leads"] < min_sample:
             small += 1
             continue
-        cands.append({"id": k, "name": fs[0]["ad_name"], **r, **_cost(r, ad_spend.get(k))})
-    label, asc = RANKS.get(rank_by, RANKS["file_conv"])
-    ranked = [c for c in cands if c.get(rank_by) is not None]
-    ranked.sort(key=lambda c: c[rank_by], reverse=not asc)
+        cands.append({"id": k, "name": fs[0]["ad_name"], "adset_name": fs[0]["adset_name"], **r, **_cost(r, ad_spend.get(k))})
+    label, asc = RANKS.get(rank_by) if rank_by in RANKS and (show_spend or rank_by not in ("cpl", "cost_per_disb")) else RANKS["file_conv"]
+    if rank_by not in RANKS or (not show_spend and rank_by in ("cpl", "cost_per_disb")):
+        rank_by = "file_conv"
+    field = "crm_cpl" if rank_by == "cpl" else rank_by
+    ranked = [c for c in cands if c.get(field) is not None]
+    ranked.sort(key=lambda c: c[field], reverse=not asc)
 
     def reason(c, best):
-        txt = f"{c['leads']} leads, {c['files']} files, {c['disbursed']} disbursals; {label}: {c[rank_by]}"
+        txt = f"{c['leads']} leads, {c['files']} files, {c['disbursed']} disbursals; {label}: {c[field]}"
         txt += f" — {'best' if best else 'weakest'} {label.lower()} among {len(ranked)} eligible ads"
         if c["not_contacted_pct"] and c["not_contacted_pct"] >= 30:
             txt += f". Note: {c['not_contacted_pct']}% of leads not yet contacted (processing delay, not ad quality)"
@@ -227,8 +236,9 @@ async def ad_performance(view: str = "cohort", level: str = "campaign", date_fro
         if c["median_age_days"] is not None and c["median_age_days"] < maturity_days:
             txt += f". Young cohort (median {c['median_age_days']} days) — outcomes may still change"
         return txt
-    best = [{**c, "reason": reason(c, True)} for c in ranked[:5]]
-    worst = [{**c, "reason": reason(c, False)} for c in list(reversed(ranked))[:5] if c["id"] not in {b["id"] for b in best[:2]}]
+    half = (len(ranked) + 1) // 2
+    best = [{**c, "reason": reason(c, True)} for c in ranked[:min(5, half)]]
+    worst = [{**c, "reason": reason(c, False)} for c in list(reversed(ranked[half:]))[:5]]
     runs = await db.meta_import_runs.find({}, {"_id": 0}).sort("started_at", 1).to_list(5000)
     rq = [r for r in runs if _in(_parse_dt(r["started_at"]), s, e)] if (s or e) else runs
     imports = {"tracking_since": runs[0]["started_at"] if runs else None, "runs": len(rq), "imported": sum(r["imported"] for r in rq),
@@ -285,7 +295,8 @@ async def records(metric: str = "leads", view: str = "cohort", level: str = "", 
     if level in LEVELS:
         idk = LEVELS[level][0]
         facts = [f for f in facts if (f[idk] or "__unknown__") == (bucket or "__unknown__")]
-    ev = {"files": "files", "approved": "approved", "disbursed": "disbursed"}.get(metric, "leads") if view == "activity" else None
+    ev = ("files" if metric in ("files", "tat_exceeded", "declined") or metric.startswith("stage:") else
+          metric if metric in ("approved", "disbursed") else "leads") if view == "activity" else None
     sel = [f for f in _select(facts, view, s, e, ev) if _metric_ok(f, metric)]
     cols = ["lead_id", "name", "phone", "status", "stage", "campaign_name", "adset_name", "ad_name", "partner_name", "processor_name",
             "created", "file_at", "approved_at", "approved_amount", "disbursed_at", "disbursed_amount"]
@@ -300,7 +311,7 @@ async def records(metric: str = "leads", view: str = "cohort", level: str = "", 
     return {"items": rows, "total": len(rows)}
 
 
-async def sync_spend(days: int = 90) -> dict:
+async def sync_spend(days: int = 1100) -> dict:
     tok, acct = _ads_cfg()
     if not tok or not acct:
         return {"ok": False, "error": "META_ADS_ACCESS_TOKEN / META_AD_ACCOUNT_ID not configured"}

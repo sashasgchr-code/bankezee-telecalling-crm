@@ -1,0 +1,40 @@
+{
+  "summary": "Iteration 71: one pass over the Meta ad attribution, Meta Ad Performance and Processor Performance work. Backend: 29 pytest cases, 28 passed. Cohort totals reconcile at campaign, ad set and ad level (805 leads, 22 files, 5 approved, 4 disbursed, 13 over TAT). Cohort records counts match the totals for every metric. Activity-view records counts also match, except tat_exceeded (13 records vs total 12). Spend is unavailable and the reason mentions ads_read; spend fields are hidden. The options endpoint and the leads ad_id / attribution=missing filters work. On processor-perf, the files endpoint counts equal the row sums for tat_exceeded, followup_overdue, missing_info and no_activity. Processor teja sees only his own row and a growth partner gets 403. Frontend: Dashboard and Reports both show the processor section at the top with identical rows. Clicking a TAT count (6) opens records-dialog with 6 rows. The Ad Performance page shows the spend banner and hides spend columns. Cohort/activity toggle, drill-down to ad set, Files card dialog (22 records), rank-by change and CSV export all work. The Leads ad filters narrow the list (116 leads) and lead detail shows the attribution block. No page errors. No data was modified and sync was not triggered.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/meta/ad-perf/records?view=activity&metric=tat_exceeded", "issue": "Count doesn't match the total: records 13 vs total 12 for 2025-06-01..2026-12-31. RCA: in _agg (activity view), tat_exceeded is counted over files dated by file_at. records() maps tat_exceeded to the 'leads' event (imported date) because the ev dict only maps files/approved/disbursed. Fix: in records(), map tat_exceeded (and declined and stage:*) to the 'files' event in activity view."},
+      {"endpoint": "/api/meta/ad-perf (default rank_by=cpl)", "issue": "The backend default rank_by is 'cpl', so callers that don't send rank_by get empty best/worst lists while spend is unavailable. The frontend sends file_conv, so the UI is fine. Fall back to file_conv when spend is unavailable or the rank_by is unknown."},
+      {"endpoint": "/api/meta/ad-perf best/worst", "issue": "'Ads Needing Attention' overlaps 'Best Performing Ads'. Worst only excludes the top 2 best, so with 7 eligible ads 3 ads appear in both lists (e.g. 'Lead campaign | EMI | 250426' with 138 leads). Also, with 2 eligible ads, best shows both and worst is empty. Exclude all best IDs from worst, or split the ranked list (top half / bottom half)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "All /meta pages (top-right)", "issues": ["The fixed notification bell overlaps the right-most header button: 'Sync Now' on Dashboard/Leads, the 'Definitions' link on Ad Performance ('Defi…'), the 'Chat' button on lead detail."]},
+      {"screen": "Ad Performance Best/Worst lists", "issues": ["Different ads share the same name (e.g. two 'Lead campaign | EMI | 250426' entries with different stats) and no ad ID or ad set is shown, which is confusing. Show the ad ID or ad set name."]},
+      {"screen": "Lead detail > Meta ad attribution", "issues": ["'Meta lead created' shows the raw ISO string with a -05:00 offset (2026-11-01T04:18:14-05:00); format it in IST like 'CRM imported'."]},
+      {"screen": "Processor performance filters", "issues": ["The 'All stages' select stretches very wide on desktop; give it a max-width."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter71_ad_perf_processor_perf.py", "/app/test_reports/pytest/iter71.xml"],
+  "action_items": [
+    "In meta_ad_perf.records(), use the files event for tat_exceeded/declined/stage:* metrics in activity view so drill-down counts match the totals",
+    "Stop the worst-ads list overlapping the best-ads list",
+    "Default rank_by to file_conv when spend is unavailable",
+    "Fix the notification bell overlapping header buttons on /meta pages",
+    "Format meta_created_time in IST in the lead attribution block; show ad ID/ad set for ads in the Best/Worst lists"
+  ],
+  "critical_code_review_comments": [
+    "ProcessorPerformance calls /meta/processor-perf before its role check returns null, so growth partners make a wasted request that 403s. Gate the load effect on role.",
+    "processor_perf._row: `exc` excludes final files except for missing_info/no_reason/rework, and the files endpoint mirrors this. Consistent, but no_reason counts final files while no_followup doesn't; check this is intended.",
+    "Lead detail timeline shows 'WhatsApp not sent: chatbot link error' for newly imported leads. Out of scope here, but worth checking."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter71_ad_perf_processor_perf.py"],
+  "success_rate": {"backend": "96.5% (28/29)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run with REACT_APP_BACKEND_URL exported: pytest /app/backend/tests/test_iter71_ad_perf_processor_perf.py. It uses admin, teja (processor) and a minted GP token. The activity tat_exceeded test fails until the records() event mapping is fixed. Data at test time: 805 Meta leads (803 attributed), 3 campaigns, processors VANAM BHANU TEJA / Saikiran Masula / Teja / Unassigned with 13 TAT-exceeded in total. Do not POST /api/meta/leads/sync."
+}
