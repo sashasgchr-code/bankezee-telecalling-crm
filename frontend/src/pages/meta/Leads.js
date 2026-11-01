@@ -6,6 +6,7 @@ import { useMetaUser, StatusPill, STATUS_LABEL, STATUSES, fmtDate, fmtShort, BRA
 import MetaCallModal from "./MetaCallModal";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
 import { ChatButton } from "../../components/inbox/ChatSheet";
+import { AdAttributionFilter } from "../../components/meta/perf/MetaAttribution";
 import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, X, PhoneCall } from "lucide-react";
 import ColumnFilterMenu, { MenuSortRow } from "../../components/meta/ColumnFilterMenu";
 
@@ -70,6 +71,7 @@ export default function MetaLeads() {
   const [salMin, setSalMin] = useState(saved.salMin || "");
   const [salMax, setSalMax] = useState(saved.salMax || "");
   const [salBlank, setSalBlank] = useState(saved.salBlank || false);
+  const [adF, setAdF] = useState({ campaign_id: "", adset_id: "", ad_id: "", attribution: "" });
   const [outMin, setOutMin] = useState(saved.outMin || "");
   const [outMax, setOutMax] = useState(saved.outMax || "");
   const [outBlank, setOutBlank] = useState(saved.outBlank || false);
@@ -116,6 +118,7 @@ export default function MetaLeads() {
       if (salMin !== "") params.salary_min = salMin;
       if (salMax !== "") params.salary_max = salMax;
       if (salBlank) params.salary_blank = true;
+      Object.entries(adF).forEach(([k, v]) => { if (v) params[k] = v; });
       if (outMin !== "") params.outstanding_min = outMin;
       if (outMax !== "") params.outstanding_max = outMax;
       if (outBlank) params.outstanding_blank = true;
@@ -130,12 +133,12 @@ export default function MetaLeads() {
     } finally { setLoading(false); }
   }, [status, q, partnerFilter, sourceFilter, page, pageSize, sortBy, sortDir, fromDate, toDate,
       nameF, nameMode, contactF, citiesF, cityBlank, empF, empBlank, salMin, salMax, salBlank,
-      outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned]);
+      outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned, adF]);
 
   useEffect(() => { load(); }, [load]);
   // Reset to page 1 whenever any filter/sort changes (but NOT when only the page changes).
   useEffect(() => { setPage(1); }, [status, q, partnerFilter, sourceFilter, sortBy, sortDir, fromDate, toDate, pageSize,
-      nameF, nameMode, contactF, citiesF, cityBlank, empF, empBlank, salMin, salMax, salBlank, outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned]);
+      nameF, nameMode, contactF, citiesF, cityBlank, empF, empBlank, salMin, salMax, salBlank, outMin, outMax, outBlank, statusesF, partnersF, partnerUnassigned, adF]);
   useEffect(() => { setSelected(new Set()); }, [page, status, q, partnerFilter, sourceFilter, sortBy, sortDir, fromDate, toDate]);
   useEffect(() => { if (isStaff) api.get("/meta/partners").then(({ data }) => setPartners(data)).catch(() => {}); }, [isStaff]);
   useEffect(() => { api.get("/meta/leads/filter-options").then(({ data }) => { setOptCities(data.cities || []); setOptEmployments(data.employments || []); }).catch(() => {}); }, []);
@@ -500,6 +503,7 @@ export default function MetaLeads() {
           </div>
         )}
 
+        <AdAttributionFilter value={adF} onChange={setAdF} />
         {activeChips.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 mb-4" data-testid="meta-active-filters">
             <span className="text-xs font-semibold text-slate-500" data-testid="meta-active-filter-count">{activeChips.length} column filter{activeChips.length === 1 ? "" : "s"}:</span>
@@ -542,7 +546,7 @@ export default function MetaLeads() {
                       </td>
                     )}
                     <td className="py-2.5 px-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(lead.created_time || lead.created_at)}</td>
-                    <td className="py-2.5 px-3"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><WantsCallBadge lead={lead} /></div><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p></td>
+                    <td className="py-2.5 px-3"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><WantsCallBadge lead={lead} /></div><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p>{lead.meta_attr?.ad_name ? <p className="text-[10px] text-slate-400" data-testid={`lead-ad-name-${lead.lead_id}`}>Ad: {lead.meta_attr.ad_name.slice(0, 32)}{lead.meta_attr.adset_name && lead.meta_attr.adset_name !== lead.meta_attr.ad_name ? ` · Set: ${lead.meta_attr.adset_name.slice(0, 24)}` : ""}</p> : <p className="text-[10px] text-slate-300">Ad: Unknown / Not available</p>}</td>
                     <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <a data-testid={`meta-call-link-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center shrink-0" title="Call"><Phone size={14} /></a>

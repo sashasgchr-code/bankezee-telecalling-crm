@@ -4,6 +4,8 @@ import api from "../../services/api";
 import { toast } from "sonner";
 import { RefreshCw, Download, RotateCcw, Check, ChevronDown, Users2, UserCog } from "lucide-react";
 import { C, Section } from "../../components/meta/reports/ReportWidgets";
+import { ProcessorPerformance } from "../../components/meta/perf/ProcessorPerformance";
+import { useMetaUser } from "./metaCommon";
 import { KpiRows, Pipeline, GpTable, ProcTable, TatSection, OverdueTable, LoanTypes, Alerts } from "../../components/meta/reports/ReportSections";
 
 const STATE_KEY = "metaReportsFilters_v1";
@@ -40,6 +42,7 @@ export default function MetaReports() {
   const [draft, setDraft] = useState(saved || DEFAULT);
   const [applied, setApplied] = useState(saved || DEFAULT);
   const [opts, setOpts] = useState({ partners: [], processors: [], managers: [], loan_types: [], file_statuses: [], role: "" });
+  const metaUser = useMetaUser();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [updated, setUpdated] = useState(null);
@@ -112,6 +115,8 @@ export default function MetaReports() {
       </header>
 
       <div className="p-3 md:p-5 space-y-4">
+        <ProcessorPerformance role={metaUser.role} />
+        <a href="/meta/ad-performance" data-testid="reports-ad-perf-link" className="inline-block text-xs font-semibold text-sky-700 underline">Open Meta Ad Performance →</a>
         <div className="bg-white border border-slate-200 rounded-xl p-3 shadow-sm space-y-2.5" data-testid="reports-filters">
           <div className="flex flex-wrap gap-1.5">
             {PRESETS.map(([k, l]) => (

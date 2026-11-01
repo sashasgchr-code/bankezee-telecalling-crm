@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { ChatButton } from "../../components/inbox/ChatSheet";
+import { MetaAttribution } from "../../components/meta/perf/MetaAttribution";
 import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK, wantsCall } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
@@ -377,6 +378,7 @@ export default function MetaLeadDetail() {
               <InfoRow icon={Wallet} label="Outstanding Amount" value={lead.outstanding_amount} />
               {lead.cibil_score ? <InfoRow icon={Gauge} label="CIBIL Score" value={lead.cibil_score} /> : null}
               <InfoRow icon={Megaphone} label="Campaign" value={lead.campaign_name} />
+              <MetaAttribution lead={lead} />
             </div>
           </div>
 

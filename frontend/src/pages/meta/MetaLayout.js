@@ -24,6 +24,7 @@ export default function MetaLayout() {
   const navItems = [
     { to: "/meta", label: "Dashboard", icon: LayoutDashboard, testid: "meta-nav-dashboard", end: true },
     { to: "/meta/reports", label: "Reports", icon: PieChart, testid: "meta-nav-reports" },
+    { to: "/meta/ad-performance", label: "Meta Ad Performance", icon: BarChart3, testid: "meta-nav-ad-performance" },
     ...(inboxRole ? [{ to: "/meta/inbox", label: "WhatsApp Inbox", icon: MessagesSquare, testid: "meta-nav-inbox", badge: unread }] : []),
     { to: "/meta/leads", label: "Leads", icon: Users2, testid: "meta-nav-leads" },
     { to: "/meta/files", label: "Files", icon: FolderOpen, testid: "meta-nav-files" },

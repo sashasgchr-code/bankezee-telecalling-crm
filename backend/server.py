@@ -94,6 +94,10 @@ app.include_router(whatsapp_router)  # Meta WhatsApp: resend/status (/api/meta/.
 app.include_router(whatsapp_webhook_router)  # Meta WhatsApp webhook
 from routes.wa_inbox import router as wa_inbox_router, ensure_indexes as wa_inbox_indexes  # WhatsApp Team Inbox
 app.include_router(wa_inbox_router)
+from routes.meta_ad_perf import router as ad_perf_router, ensure_indexes as ad_perf_indexes  # Meta Ad Performance
+from routes.processor_perf import router as processor_perf_router  # Processor Performance
+app.include_router(ad_perf_router)
+app.include_router(processor_perf_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production
@@ -123,6 +127,9 @@ async def schedule_startup_tasks():
     from routes.cc_core import ensure_indexes as cc_indexes
     asyncio.create_task(cc_indexes())
     asyncio.create_task(wa_inbox_indexes())
+    asyncio.create_task(ad_perf_indexes())
+    from routes.meta_sync import backfill_attribution
+    asyncio.create_task(backfill_attribution())
     # One-time idempotent data migration: fix Rama's Connect<->Meta identity mapping.
     try:
         from migrations.rama_mapping import run as _run_rama_migration

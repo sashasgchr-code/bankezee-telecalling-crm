@@ -523,9 +523,20 @@ async def meta_leads(
     outstanding_blank: Optional[bool] = False,
     partners: Optional[str] = None,
     partner_unassigned: Optional[bool] = False,
+    campaign_id: Optional[str] = None,
+    adset_id: Optional[str] = None,
+    ad_id: Optional[str] = None,
+    attribution: Optional[str] = None,
 ):
     role, uid = _ctx(user)
     query = dict(NOT_DELETED)
+    for _k, _v in (("campaign_id", campaign_id), ("adset_id", adset_id), ("ad_id", ad_id)):
+        if _v:
+            query[f"meta_attr.{_k}"] = _v
+    if attribution == "missing":
+        query["meta_attr.ad_id"] = None
+    elif attribution == "available":
+        query["meta_attr.ad_id"] = {"$ne": None}
     if role == "processor":
         query["assigned_processor_id"] = uid
     elif role not in STAFF_ROLES:

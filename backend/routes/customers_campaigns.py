@@ -808,6 +808,9 @@ async def cron_tick(request: Request):
             last = await core.TPL.find_one({}, {"last_synced": 1}, sort=[("last_synced", -1)])
             if not last or (last.get("last_synced") or "") < iso(datetime.now(timezone.utc) - timedelta(hours=1)):
                 await core.sync_templates()
+                from routes.meta_ad_perf import sync_spend, _ads_cfg
+                if all(_ads_cfg()):
+                    await sync_spend(days=7)
             await core.sync_customers()
             await core.run_worker()
         except Exception:

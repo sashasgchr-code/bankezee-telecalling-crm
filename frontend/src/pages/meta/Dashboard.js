@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { useMetaUser, BRAND, BRAND_DARK } from "./metaCommon";
 import { FollowupWidget } from "./MetaFollowups";
 import { TatAlertWidget } from "./MetaTatAlerts";
+import { ProcessorPerformance } from "../../components/meta/perf/ProcessorPerformance";
 import { RefreshCw, Users2, UserCheck, TrendingUp, Clock, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from "recharts";
 
@@ -63,6 +64,7 @@ export default function MetaDashboard() {
       </header>
 
       <div className="p-4 md:p-8">
+        <div className="mb-6"><ProcessorPerformance role={meta.role} /></div>
         <div className="flex flex-wrap items-end gap-3 mb-6">
           <div>
             <label className="text-xs text-slate-500">From</label>

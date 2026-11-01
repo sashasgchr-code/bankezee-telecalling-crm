@@ -185,6 +185,25 @@ def _first_present(row: dict, keys: list) -> str:
     return ""
 
 
+def _clean_id(v) -> str:
+    """Meta sheet IDs come prefixed ('ag:', 'as:', 'c:', 'f:', 'l:'); keep the bare numeric ID."""
+    v = ("" if v is None else str(v)).strip()
+    if v.lower() in ("", "nan", "none", "null"):
+        return ""
+    return v.split(":", 1)[1] if ":" in v and v.split(":", 1)[0].isalpha() else v
+
+
+def _attribution(r: dict, sheet_id: str) -> Optional[dict]:
+    if r.get("source_tab") == "Website" or not (r.get("ad_id") or r.get("campaign_id")):
+        return None
+    return {"meta_lead_id": _clean_id(sheet_id), "ad_account_id": None,
+            "campaign_id": r.get("campaign_id") or None, "campaign_name": r.get("campaign_name") or None,
+            "adset_id": r.get("adset_id") or None, "adset_name": r.get("adset_name") or None,
+            "ad_id": r.get("ad_id") or None, "ad_name": r.get("ad_name") or None,
+            "form_id": r.get("form_id") or None, "form_name": r.get("form_name") or None,
+            "meta_created_time": r.get("created_time") or None, "import_source": "Google Sheet (Meta Lead Ads)"}
+
+
 def _normalize_row(raw: dict, tab_name: str) -> dict:
     """Map one raw sheet row (any tab's header layout) into the canonical Meta lead schema."""
     row = {(k or "").strip().lower(): ("" if v is None else str(v).strip()) for k, v in raw.items()}
@@ -199,6 +218,8 @@ def _normalize_row(raw: dict, tab_name: str) -> dict:
         "what_is_your_current_monthly_take-home_salary?": _first_present(row, _SALARY_KEYS),
         "what_is_the_total_outstanding_amount_of_your_loans_and_credit_card_bills?": _first_present(row, _OUTSTANDING_KEYS),
         "campaign_name": (row.get("campaign_name") or "").strip(),
+        **{k: _clean_id(row.get(k)) for k in ("ad_id", "adset_id", "campaign_id", "form_id")},
+        **{k: _first_present(row, [k]) for k in ("ad_name", "adset_name")},
         "form_name": (row.get("form_name") or "").strip() or tab_name,
         "platform": (row.get("platform") or "").strip(),
         "is_organic": row.get("is_organic", ""),
@@ -324,18 +345,22 @@ async def sync_leads_from_sheet() -> dict:
         })
 
     rows = meta_rows + website_kept
-    imported, updated = 0, 0
+    imported, updated, failed, skipped_worked = 0, 0, 0, 0
+    run_started = now_iso()
     for r in rows:
         sheet_id = (r.get("id") or "").strip()
         if not sheet_id:
+            failed += 1
             continue
         # Don't create a Meta duplicate of a website lead that has already been worked/assigned.
         is_website_row = (r.get("source_tab") == "Website")
         if not is_website_row and _norm10(r.get("phone_number", "")) in worked_website_phones:
             existing_meta = await db.meta_leads.find_one({"sheet_id": sheet_id}, {"_id": 1})
             if not existing_meta:
+                skipped_worked += 1
                 continue
-        existing = await db.meta_leads.find_one({"sheet_id": sheet_id}, {"_id": 1})
+        existing = await db.meta_leads.find_one({"sheet_id": sheet_id}, {"_id": 1, "meta_attr": 1, "created_at": 1})
+        attr = _attribution(r, sheet_id)
         sheet_status = (r.get("lead_status") or "CREATED").strip().upper()
         base = {
             "sheet_id": sheet_id,
@@ -357,8 +382,13 @@ async def sync_leads_from_sheet() -> dict:
             "source_tab": (r.get("source_tab") or "").strip(),
             "sheet_status": sheet_status,
         }
+        if attr:
+            base["meta_attr_latest"] = {k: attr[k] for k in ("campaign_name", "adset_name", "ad_name", "form_name")}
         if existing:
-            await db.meta_leads.update_one({"sheet_id": sheet_id}, {"$set": {**base, "updated_at": now_iso()}})
+            extra = {}
+            if attr and not existing.get("meta_attr"):  # backfill keyed by Meta lead ID (sheet row id) — never by name/phone
+                extra["meta_attr"] = {**attr, "crm_imported_at": existing.get("created_at"), "backfilled_at": now_iso()}
+            await db.meta_leads.update_one({"sheet_id": sheet_id}, {"$set": {**base, **extra, "updated_at": now_iso()}})
             updated += 1
         else:
             src_label = "Website" if base["source_tab"] == "Website" else "Google Sheet"
@@ -371,7 +401,14 @@ async def sync_leads_from_sheet() -> dict:
                 "activities": [{"type": "imported", "detail": f"Lead imported from {src_label}", "at": now_iso()}],
                 "created_at": now_iso(), "updated_at": now_iso(),
             }
-            await db.meta_leads.insert_one(doc)
+            if attr:
+                doc["meta_attr"] = {**attr, "crm_imported_at": doc["created_at"]}
+            try:
+                await db.meta_leads.insert_one(doc)
+            except Exception as ie:
+                failed += 1
+                logger.warning(f"Meta sheet sync insert failed for {sheet_id}: {ie}")
+                continue
             imported += 1
             # Fire-and-forget WhatsApp auto-send for new Meta lead-form leads (idempotent, never blocks sync).
             try:
@@ -379,6 +416,10 @@ async def sync_leads_from_sheet() -> dict:
                 asyncio.create_task(maybe_autosend(doc))
             except Exception as _wa_e:
                 logger.warning(f"WhatsApp autosend dispatch failed: {_wa_e}")
+    await db.meta_import_runs.insert_one({
+        "started_at": run_started, "finished_at": now_iso(), "received": len(meta_rows) + len(website_rows),
+        "meta_rows": len(meta_rows), "website_rows": len(website_rows), "imported": imported,
+        "duplicates_skipped": updated + len(website_rows) - len(website_kept) + skipped_worked, "failed": failed})
     await db.meta_meta.update_one({"key": "last_sync"},
                                   {"$set": {"key": "last_sync", "at": now_iso(), "imported": imported, "updated": updated}},
                                   upsert=True)
@@ -386,6 +427,24 @@ async def sync_leads_from_sheet() -> dict:
     if imported > 0:
         asyncio.create_task(notify_staff_new_leads(imported))
     return {"imported": imported, "updated": updated, "total_rows": len(rows)}
+
+
+async def backfill_attribution() -> dict:
+    """Fill meta_attr on existing leads from the sheet, matched ONLY by Meta lead ID (sheet row id). Never imports."""
+    done = 0
+    for r in await fetch_sheet_rows():
+        sid = (r.get("id") or "").strip()
+        attr = _attribution(r, sid) if sid else None
+        if not attr:
+            continue
+        lead = await db.meta_leads.find_one({"sheet_id": sid, "meta_attr": {"$exists": False}}, {"created_at": 1})
+        if lead:
+            await db.meta_leads.update_one({"_id": lead["_id"]}, {"$set": {
+                "meta_attr": {**attr, "crm_imported_at": lead.get("created_at"), "backfilled_at": now_iso()},
+                "meta_attr_latest": {k: attr[k] for k in ("campaign_name", "adset_name", "ad_name", "form_name")}}})
+            done += 1
+    logger.info(f"Meta attribution backfill: {done} leads updated")
+    return {"backfilled": done}
 
 
 # ------------------- routes -------------------
