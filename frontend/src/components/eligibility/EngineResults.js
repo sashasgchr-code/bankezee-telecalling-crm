@@ -14,6 +14,11 @@ export const DocumentReader = ({ scope, refId, onDone }) => {
   const [busy, setBusy] = useState(false);
   const load = () => api.get(`/doc-extract/${scope}/${refId}`).then(({ data }) => setS(data)).catch(() => {});
   useEffect(() => { load(); }, [scope, refId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const [wasBusy, setWasBusy] = useState(false);
+  useEffect(() => {
+    if (s?.processing) { setWasBusy(true); const t = setTimeout(load, 5000); return () => clearTimeout(t); }
+    if (wasBusy && s) { setWasBusy(false); onDone && onDone(); }
+  }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
   const read = async (force) => {
     setBusy(true);
     try { const { data } = await api.post(`/doc-extract/${scope}/${refId}/read-documents`, null, { params: { force } }); setS(data); toast.success('Documents read'); onDone && onDone(); }
@@ -26,7 +31,8 @@ export const DocumentReader = ({ scope, refId, onDone }) => {
         <button data-testid="doc-read-btn" disabled={busy} onClick={() => read(false)} className="text-xs border rounded-md px-2.5 py-1 disabled:opacity-50">{busy ? 'Reading…' : 'Read Documents'}</button>
         <button data-testid="doc-reprocess-btn" disabled={busy} onClick={() => read(true)} className="text-xs text-sky-700 inline-flex items-center gap-1"><RefreshCw className="w-3 h-3" />Reprocess all</button>
       </div>
-      {!s?.documents?.length ? <p className="text-xs text-slate-400">No documents processed yet. Uploads are read automatically.</p> : s.documents.map((d) => (
+      {s?.processing && <p className="text-xs text-sky-700 mb-1" data-testid="doc-processing">Reading uploaded documents in the background — results appear here automatically.</p>}
+      {!s?.documents?.length ? <p className="text-xs text-slate-400">{s?.processing ? '' : 'No documents processed yet. Uploads are read automatically.'}</p> : s.documents.map((d) => (
         <p key={d.doc_id} className="text-xs flex gap-2 py-0.5" data-testid={`doc-status-${d.doc_id}`}><span className="truncate max-w-[260px]">{d.doc_name}</span><b className={DOC_TONE[d.status]}>{d.status}</b><span className="text-slate-500">{d.message}</span></p>
       ))}
       {s?.names_seen?.length > 1 && <p className="text-xs text-red-600 mt-1" data-testid="doc-name-mismatch">Different customer names across documents: {s.names_seen.join(', ')} — check the documents belong to this customer.</p>}

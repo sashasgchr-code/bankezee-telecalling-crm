@@ -2513,3 +2513,5 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - `pages/admin/EligComparisonReport.js` "Calculator Accuracy" report (admin/manager `/files/reports/calculator-accuracy`, meta `/calculator-accuracy`): agreement stats, top reasons, recent comparisons, proposals with Replay → Approve/Reject → Undo (rollback).
 - Pending: P1 Meta CRM leads advanced filters & pagination (confirm with user).
 
+
+- Fix (2026-06): extraction skipped existing/legacy docs. Now: Meta legacy GridFS (meta_fs) + chatbot-sourced docs are read; Connect GridFS bucket fixed to "file_documents"; opening a file auto-backfills unread docs (GET /api/doc-extract/{scope}/{id} returns processing=true, UI polls & refreshes); Document reading panel added on File Details above Existing Loans.

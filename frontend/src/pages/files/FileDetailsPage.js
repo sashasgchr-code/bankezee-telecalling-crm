@@ -10,6 +10,7 @@ import api from '../../services/api';
 import { toast } from 'sonner';
 import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
 import ChatbotSubmittedLoans from '../../components/file-detail/ChatbotSubmittedLoans';
+import { DocumentReader } from '../../components/eligibility/EngineResults';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 import { isFollowupStatus, procStatusLabel, followupDays, followupUrgency, followupDaysLabel, URGENCY_META, computeTat, tatDurationLabel } from '../meta/metaCommon';
@@ -785,6 +786,7 @@ const FileDetailsPage = ({
               </div>
 
               {/* Existing Loans & Obligations */}
+              <div className="mb-4"><DocumentReader scope={isMeta ? 'meta' : 'connect'} refId={fileId} onDone={fetchFileData} /></div>
               <div className="mb-6 pt-4 border-t border-gray-100">
                 <h3 className="text-sm font-semibold text-green-600 mb-3">Existing Loans & Obligations</h3>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">

@@ -42,12 +42,20 @@ def _now():
 
 async def _load(scope: str, ref_id: str, doc: dict) -> Optional[bytes]:
     if scope == "meta":
+        if doc.get("chatbot_doc_id"):
+            from routes.chatbot_integration import _chatbot_request
+            resp = await _chatbot_request("GET", f"/api/crm/chatbot/sessions/{ref_id}/documents/{doc['chatbot_doc_id']}")
+            return resp.content
+        if not doc.get("storage_key"):
+            from routes.meta_compat import _read_legacy_binary
+            legacy = await _read_legacy_binary(doc["doc_id"])
+            return legacy[0] if legacy else None
         from utils import meta_storage
         data, _ = meta_storage.get_object(doc["storage_key"])
         return data
     from motor.motor_asyncio import AsyncIOMotorGridFSBucket
     if doc.get("grid_id"):
-        s = await AsyncIOMotorGridFSBucket(db).open_download_stream(ObjectId(doc["grid_id"]))
+        s = await AsyncIOMotorGridFSBucket(db, bucket_name="file_documents").open_download_stream(ObjectId(doc["grid_id"]))
         return await s.read()
     return None
 
@@ -55,8 +63,9 @@ async def _load(scope: str, ref_id: str, doc: dict) -> Optional[bytes]:
 async def _docs(scope: str, ref_id: str):
     if scope == "meta":
         lead = await db.meta_leads.find_one({"lead_id": ref_id}, {"documents": 1, "file": 1, "assigned_processor_id": 1, "assigned_partner_id": 1})
-        return lead, [{"doc_id": d["doc_id"], "name": d.get("filename"), "mime": d.get("content_type"), "storage_key": d.get("storage_key")}
-                      for d in (lead or {}).get("documents") or [] if d.get("storage_key")]
+        return lead, [{"doc_id": d["doc_id"], "name": d.get("filename"), "mime": d.get("content_type"), "storage_key": d.get("storage_key"),
+                       "chatbot_doc_id": d.get("chatbot_doc_id") if d.get("source") == "chatbot" else None}
+                      for d in (lead or {}).get("documents") or [] if d.get("doc_id")]
     lead = await db.leads.find_one({"id": ref_id}, {"_id": 0, "file_documents": 1, "file_details": 1})
     return lead, [{"doc_id": d.get("file_id"), "name": d.get("original_name") or d.get("file_name"), "mime": d.get("mime_type"), "grid_id": d.get("grid_id")}
                   for d in (lead or {}).get("file_documents") or []]
@@ -208,7 +217,21 @@ async def current_fd(scope, ref_id):
     return (lead or {}).get("file_details") or {}
 
 
+RUNNING: set = set()
+
+
 async def process(scope: str, ref_id: str, force: bool = False) -> dict:
+    key = (scope, ref_id)
+    if key in RUNNING:
+        return await get_state(scope, ref_id)
+    RUNNING.add(key)
+    try:
+        return await _process(scope, ref_id, force)
+    finally:
+        RUNNING.discard(key)
+
+
+async def _process(scope: str, ref_id: str, force: bool = False) -> dict:
     lead, docs = await _docs(scope, ref_id)
     if not lead:
         raise HTTPException(status_code=404, detail="File not found")
@@ -239,7 +262,7 @@ async def process(scope: str, ref_id: str, force: bool = False) -> dict:
         except Exception as e:
             logger.warning(f"doc extraction failed {scope}/{ref_id}/{d['doc_id']}: {type(e).__name__}")
             await EXT.update_one({"scope": scope, "ref_id": ref_id, "doc_id": d["doc_id"]},
-                                 {"$set": {"status": "Failed", "message": f"Extraction failed: {type(e).__name__}. Use Reprocess."}})
+                                 {"$set": {"status": "Failed", "message": str(e) if isinstance(e, ValueError) else f"Extraction failed: {type(e).__name__}. Use Reprocess."}})
     results = [{"data": r["data"], "doc_name": r.get("doc_name"), "at": r.get("at")}
                async for r in EXT.find({"scope": scope, "ref_id": ref_id, "data": {"$ne": None}})]
     fd, conflicts = merge(await current_fd(scope, ref_id), results)
@@ -276,4 +299,14 @@ async def read_documents(scope: str, ref_id: str, force: bool = False, user: dic
 @router.get("/{scope}/{ref_id}")
 async def get_status(scope: str, ref_id: str, user: dict = Depends(get_current_user)):
     await _authorize(scope, ref_id, user)
-    return await get_state(scope, ref_id)
+    st = await get_state(scope, ref_id)
+    if (scope, ref_id) not in RUNNING:
+        _, docs = await _docs(scope, ref_id)
+        done = {d["doc_id"] for d in st["documents"] if d.get("status") != "Processing"}
+        if any(d["doc_id"] not in done for d in docs):  # backfill documents uploaded before extraction existed
+            import asyncio
+            asyncio.create_task(process(scope, ref_id))
+            st["processing"] = True
+    else:
+        st["processing"] = True
+    return st
