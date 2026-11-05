@@ -98,6 +98,10 @@ from routes.meta_ad_perf import router as ad_perf_router, ensure_indexes as ad_p
 from routes.processor_perf import router as processor_perf_router  # Processor Performance
 app.include_router(ad_perf_router)
 app.include_router(processor_perf_router)
+from routes.doc_extract import router as doc_extract_router  # shared document extraction
+app.include_router(doc_extract_router)
+from routes.elig_compare import router as elig_compare_router  # calculator vs bank comparison
+app.include_router(elig_compare_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production

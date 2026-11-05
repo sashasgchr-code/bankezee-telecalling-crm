@@ -44,6 +44,7 @@ import EligibilityCheck from "./pages/files/EligibilityCheck";
 import DataMigration from "./pages/files/DataMigration";
 import PolicyMaster from "./pages/files/PolicyMaster";
 import BankPolicyMaster from "./pages/admin/BankPolicyMaster";
+import EligComparisonReport from "./pages/admin/EligComparisonReport";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
 import HrLayout from "./layouts/HrLayout";
@@ -190,6 +191,7 @@ function App() {
           <Route path="files/reports/rejected" element={<RejectedCasesReport />} />
           <Route path="files/reports/growth-partner" element={<GrowthPartnerReport />} />
           <Route path="files/reports/quality" element={<QualityReport />} />
+          <Route path="files/reports/calculator-accuracy" element={<EligComparisonReport />} />
           <Route path="files/reports/sales-ops" element={<SalesOpsReport />} />
           <Route path="approvals" element={<AdminApprovals />} />
           <Route path="users" element={<AdminUsers />} />
@@ -248,6 +250,7 @@ function App() {
           <Route path="files/reports/rejected" element={<RejectedCasesReport />} />
           <Route path="files/reports/growth-partner" element={<GrowthPartnerReport />} />
           <Route path="files/reports/quality" element={<QualityReport />} />
+          <Route path="files/reports/calculator-accuracy" element={<EligComparisonReport />} />
           <Route path="files/reports/sales-ops" element={<SalesOpsReport />} />
           <Route path="reports" element={<AdminReports />} />
           <Route path="tracking" element={<DailyTrackingSheet />} />
@@ -293,6 +296,8 @@ function App() {
           <Route path="files" element={<MetaFiles />} />
           <Route path="files/:leadId" element={<MetaFileDetail />} />
           <Route path="files/:leadId/check-eligibility" element={<MetaEligibilityCheck />} />
+          <Route path="files-policies" element={<BankPolicyMaster />} />
+          <Route path="calculator-accuracy" element={<EligComparisonReport />} />
           <Route path="file-reports" element={<MetaFileReports />} />
           <Route path="call-logs" element={<MetaCallLogs />} />
           <Route path="chatbot-report" element={<MetaChatbotReport />} />

@@ -2729,6 +2729,10 @@ async def upload_documents(
         except Exception as e:
             errors.append(f"'{file.filename}' - {str(e)}")
     
+    if uploaded:
+        import asyncio
+        from routes import doc_extract
+        asyncio.create_task(doc_extract.process("connect", file_id))
     return {
         "success": len(uploaded) > 0,
         "uploaded": uploaded,

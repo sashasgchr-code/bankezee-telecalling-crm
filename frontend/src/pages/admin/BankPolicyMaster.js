@@ -7,6 +7,7 @@ import { Label } from '../../components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { Checkbox } from '../../components/ui/checkbox';
 import { toast } from 'sonner';
+import { EngineRulesEditor, normaliseEngineRules } from '../../components/eligibility/EngineRulesEditor';
 import api from '../../services/api';
 import { ArrowLeft, Plus, Pencil, Trash2, Building2, Check, X } from 'lucide-react';
 
@@ -75,6 +76,7 @@ export default function BankPolicyMaster() {
         min_total_employment_months: formData.min_total_employment_months ? Number(formData.min_total_employment_months) : null,
         min_loan_seasoning_months: formData.min_loan_seasoning_months ? Number(formData.min_loan_seasoning_months) : null,
         max_bt_count: formData.max_bt_count ? Number(formData.max_bt_count) : null,
+        ...normaliseEngineRules(formData),
         required_documents: typeof formData.required_documents === 'string' ? formData.required_documents.split(',').map(s => s.trim()).filter(Boolean) : formData.required_documents,
         serviceable_locations: typeof formData.serviceable_locations === 'string' ? formData.serviceable_locations.split(',').map(s => s.trim()).filter(Boolean) : formData.serviceable_locations,
       };
@@ -205,6 +207,7 @@ export default function BankPolicyMaster() {
                 <F label="Max BT Count" field="max_bt_count" type="number" />
                 <F label="Processing Fee" field="processing_fee" />
               </div>
+              <EngineRulesEditor formData={formData} setFormData={setFormData} />
 
               {/* Company Categories */}
               <div>

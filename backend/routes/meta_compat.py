@@ -457,6 +457,10 @@ async def compat_upload_documents(lead_id: str, files: List[UploadFile] = File(.
                "content_type": ctype, "size": len(data), "uploaded_by": user.get("name"), "at": _now_iso()}
         await db.meta_leads.update_one({"lead_id": lead_id}, {"$push": {"documents": doc}, "$set": {"updated_at": _now_iso()}})
         uploaded.append(doc)
+    if uploaded:
+        import asyncio
+        from routes import doc_extract
+        asyncio.create_task(doc_extract.process("meta", lead_id))
     return {"uploaded": uploaded}
 
 
@@ -519,8 +523,9 @@ async def compat_check_eligibility(lead_id: str, user: dict = Depends(require_me
     _authorize_read(user, lead)
     from routes.bank_policies import analyze_eligibility
     connect = build_connect_file(lead)
+    from routes.doc_extract import current_fd
     synth = {
-        "file_details": connect["file_details"],
+        "file_details": await current_fd("meta", lead_id),
         "full_name": connect["name"],
         "name": connect["name"],
         "requirement": connect["requirement"],

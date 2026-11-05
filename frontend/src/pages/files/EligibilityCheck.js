@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { toast } from 'sonner';
+import { DocumentReader, EngineResults } from "../../components/eligibility/EngineResults";
+import { BankComparison } from "../../components/eligibility/BankComparison";
 import api from '../../services/api';
 import { ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Building2, AlertTriangle, CheckCircle, XCircle, HelpCircle, Trophy, Upload, FileText, Shield, Clock, Users, Banknote, Printer, History, Sparkles, Loader2 } from 'lucide-react';
 
@@ -335,6 +337,9 @@ export default function EligibilityCheck({
 
       {data && !loading && (
         <div className="max-w-[1200px] mx-auto px-4 py-4 space-y-4" ref={printRef}>
+          <DocumentReader scope={isMeta ? 'meta' : 'connect'} refId={leadId} onDone={runCheck} />
+          <EngineResults engine={data.engine} />
+          {data.engine && <BankComparison scope={isMeta ? 'meta' : 'connect'} refId={leadId} banks={data.engine.banks.map((b) => b.bank_name)} />}
           {data.insufficient_data && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4" data-testid="insufficient-data-banner">
               <p className="font-semibold text-amber-800">

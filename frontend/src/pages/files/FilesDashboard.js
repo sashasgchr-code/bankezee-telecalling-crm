@@ -911,6 +911,14 @@ const FilesDashboard = () => {
                   <Star size={14} />
                   <span className="hidden sm:inline">Quality</span>
                 </button>
+                <button
+                  onClick={() => navigate(`${getBasePath()}/files/reports/calculator-accuracy`)}
+                  className="px-2 md:px-3 py-1.5 text-xs md:text-sm bg-sky-50 text-sky-700 border border-sky-200 rounded-lg hover:bg-sky-100 flex items-center gap-1 whitespace-nowrap"
+                  data-testid="report-calc-accuracy"
+                >
+                  <Star size={14} />
+                  <span className="hidden sm:inline">Calculator Accuracy</span>
+                </button>
               </>
             )}
             <button 

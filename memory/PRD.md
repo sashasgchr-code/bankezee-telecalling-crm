@@ -2506,3 +2506,10 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
   - Leads page has attribution filters; lead detail shows the attribution block.
   - Tests: iteration_71 (backend 28/29 passed; all reported issues were fixed afterwards) and backend/tests/perf_validation.py.
 - 2026-11-01: Ads token connected and spend syncing (INR, Asia/Kolkata; 1100-day first sync, then the last 7 days hourly via the cc cron). When no start date is chosen, spend is counted from the first CRM Meta lead. The CPL rank uses the crm_cpl field.
+
+## 2026-06 — Eligibility Comparison & Learning (DONE, self-tested via curl + screenshot; user testing pending)
+- Registered `routes/elig_compare.py` in server.py (was missing). Any reason can carry an optional policy_patch → admin-approval proposal.
+- `components/eligibility/BankComparison.js` inside Check Eligibility (Connect + Meta): enter actual bank result, field-by-field diff, mismatch reason dropdown (Bank policy changed / Wrong or missing customer data / Company category differs at bank / Credit issue judged differently), optional "suggest policy update", Recalculate.
+- `pages/admin/EligComparisonReport.js` "Calculator Accuracy" report (admin/manager `/files/reports/calculator-accuracy`, meta `/calculator-accuracy`): agreement stats, top reasons, recent comparisons, proposals with Replay → Approve/Reject → Undo (rollback).
+- Pending: P1 Meta CRM leads advanced filters & pagination (confirm with user).
+

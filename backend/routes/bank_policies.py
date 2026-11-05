@@ -72,6 +72,20 @@ class BankPolicyCreate(BaseModel):
     bt_text: Optional[str] = None
     topup_text: Optional[str] = None
     eligible_employees: Optional[str] = None
+    # Shared eligibility engine rules (elig_engine.py). None = not configured -> result shows Needs Review.
+    pre_bt_max_foir: Optional[float] = None
+    bt_loan_types: List[str] = []
+    app_loan_disqualifies: bool = False
+    app_lenders: List[str] = []
+    cc_obligation_rule: Optional[str] = None  # pct_outstanding | emi | none
+    cc_obligation_pct: Optional[float] = None
+    seasoning_basis: Optional[str] = None  # disbursal | open | sanction
+    min_emis_paid: Optional[int] = None
+    settlement_allowed: Optional[bool] = None
+    writeoff_allowed: Optional[bool] = None
+    max_enquiries_month: Optional[int] = None
+    max_dpd_events: Optional[int] = None
+    additional_cash_allowed: Optional[bool] = None
 
 
 # ============ POLICY CRUD ============
@@ -131,6 +145,11 @@ async def update_policy(policy_id: str, policy_data: dict, current_user: dict = 
     policy_data["updated_by"] = current_user.get("name", "Admin")
     policy_data.pop("id", None)
     policy_data.pop("_id", None)
+    existing.pop("_id", None)
+    # Version history (audit + rollback); historical eligibility results keep their own policy_version.
+    await db.bank_policy_versions.insert_one({**existing, "policy_id": policy_id, "archived_at": policy_data["updated_at"],
+                                              "archived_by": policy_data["updated_by"]})
+    policy_data["version"] = int(existing.get("version") or 1) + 1
     
     await db.bank_policies.update_one({"id": policy_id}, {"$set": policy_data})
     
@@ -692,6 +711,8 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
         "required_missing": [m for m in missing_info
                              if m in ("CIBIL Score", "Net Salary", "Loan Amount Required")],
     }
+    from routes import elig_engine
+    check_result["engine"] = elig_engine.run(file_details, policies)
     
     return check_result
 

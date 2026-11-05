@@ -241,6 +241,7 @@ export default function MetaFiles() {
       <header className="h-16 border-b border-slate-200 bg-white px-4 md:px-8 flex items-center gap-2 sticky top-0 z-30">
         <FolderOpen size={20} className="text-violet-600" />
         <h1 className="text-xl font-bold" style={{ color: BRAND_DARK }}>Files &amp; Conversions</h1>
+        <button data-testid="meta-files-policies-btn" onClick={() => navigate("/meta/files-policies")} className="text-xs border rounded-md px-3 py-1.5 font-medium hover:bg-slate-50">Bank Policies</button>
       </header>
       <div className="p-4 md:p-8">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
