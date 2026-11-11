@@ -2515,3 +2515,11 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 
 
 - Fix (2026-06): extraction skipped existing/legacy docs. Now: Meta legacy GridFS (meta_fs) + chatbot-sourced docs are read; Connect GridFS bucket fixed to "file_documents"; opening a file auto-backfills unread docs (GET /api/doc-extract/{scope}/{id} returns processing=true, UI polls & refreshes); Document reading panel added on File Details above Existing Loans.
+
+## 2026-06 — Unified Check Eligibility + extraction fixes (tested: iteration_72 + fixes self-verified)
+- One results layout (original design). analyze_eligibility runs elig_engine once; each lender result carries `calc` (BT/FOIR/amounts) and calc.status == card status. Separate "Bank-by-bank" section removed. dedupe_policies: one policy per lender + numeric/list coercion (prod crash: AU Small Finance max_bt_count "3").
+- Obligations: unknown -> "Unavailable / Needs Review"; missing EMI -> flagged, FOIR on available EMIs (foir_basis partial) => lender Needs Review ("Possibly Eligible" group). Cards separate, per-bank card rule. Profile never Strong without credit history/obligations; capped by credit issues.
+- doc_extract: statuses Extracted/Unsupported/Password Required/Needs Review/Failed; per-doc Retry + password unlock (pypdf, never stored); OCR fallback via page images (pymupdf); Mongo job lock; failures keep prior extraction; closed accounts only in credit_analysis; manual loans never duplicated (row conflict); salary = latest month of current employer; cibil_issues saved as code; actionable conflicts (Apply extracted / Keep current) POST /api/doc-extract/{scope}/{id}/conflicts/{cid}; names_compatible for name variants; MERGE_VERSION re-merge on open.
+- Preview fixture: backend/tests/swamy_fixture.py (lead_swamytest01). Engine fixtures: backend/tests/elig_engine_fixtures.py (46 PASS).
+- Known/out of scope: auth hardening notes from iteration_72 (plain_password field, CORS *), Connect still has separate legacy "AI Parse Docs".
+

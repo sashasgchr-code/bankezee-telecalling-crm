@@ -117,7 +117,7 @@ export const CalcDetails = ({ calc }) => {
     ['Existing FOIR', pct(calc.existing_foir) + (calc.foir_basis === 'partial' && calc.existing_foir != null ? ' (partial)' : '')], ['Post-BT FOIR', pct(calc.post_bt_foir)], ['Max FOIR', calc.max_foir ? `${calc.max_foir}%` : '—']];
   return (
     <div className="p-3 bg-white/60 rounded-lg border text-xs space-y-1" data-testid={`calc-${calc.bank_name}`}>
-      <p className="font-semibold text-slate-700">BT & FOIR calculation</p>
+      <p className="font-semibold text-slate-700">BT & FOIR calculation{calc.foir_basis === 'partial' && <span className="font-normal text-amber-700"> · indicative — some EMIs / card obligations missing, amounts may be lower</span>}</p>
       <div className="grid grid-cols-3 md:grid-cols-9 gap-2">{cells.map(([l, v]) => <div key={l}><p className="text-[10px] text-slate-400">{l}</p><p className="font-semibold">{v}</p></div>)}</div>
       {sel.length > 0 && <p><b>Closed via BT:</b> {sel.map((a) => `${a.lender} ${inr(a.outstanding)} (EMI ${inr(a.obligation)} removed)`).join(' · ')}</p>}
       {kept.length > 0 && <p className="text-slate-600"><b>Retained obligations{calc.retained_obligations != null ? ` ${inr(calc.retained_obligations)}/month` : ''}:</b> {kept.map((a) => `${a.lender} ${a.obligation == null ? 'EMI missing' : inr(a.obligation)}${a.bt_reason && !(a.obligation == null && /EMI missing/.test(a.bt_reason)) ? ` — ${a.bt_reason}` : ''}`).join(' · ')}</p>}

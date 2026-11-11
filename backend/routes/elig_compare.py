@@ -64,7 +64,7 @@ async def _calc(scope, ref_id, bank_name, policy_override: Optional[dict] = None
     r = (res.get("results") or [None])[0]
     if not r:
         return None, res["engine_meta"]["inputs_hash"]
-    return {**r["calc"], "status": STATUS.get(r["eligibility"], r["eligibility"])}, res["engine_meta"]["inputs_hash"]
+    return r["calc"], res["engine_meta"]["inputs_hash"]
 
 
 def _calc_view(b):
@@ -85,14 +85,14 @@ def compare(calc: dict, bank: dict) -> list:
         if k == "status":
             mm = m != "Pending" and (c == "Eligible") != (m == "Eligible")
             rows.append({"field": k, "label": lbl, "calculator": c, "bank": m, "diff": "Different" if mm else "Same", "mismatch": mm,
-                         "flag": ("Calculator eligible, bank rejected" if c == "Eligible" else "Calculator rejected, bank eligible") if mm else None})
+                         "flag": ("Calculator eligible, bank rejected" if c == "Eligible" else f"Calculator {c.lower()}, bank eligible") if mm else None})
             continue
         d = round(m - c, 2)
-        rel = abs(d) / abs(c) if c else (1 if d else 0)
-        mm = (abs(d) > TOL[k]) if k in ("roi", "tenure", "foir") else rel > TOL[k]
+        rel = d / abs(c) if c else (1 if d else 0)
+        mm = (abs(d) > TOL[k]) if k in ("roi", "tenure", "foir") else abs(rel) > TOL[k]
         unit = " pp" if k in ("roi", "foir") else " months" if k == "tenure" else ""
         rows.append({"field": k, "label": lbl, "calculator": c, "bank": m, "mismatch": mm,
-                     "diff": f"{d:+,.2f}{unit}" + (f" ({rel * 100:+.1f}%)" if k in ("amount", "bt_amount", "emi", "retained", "additional") else "")})
+                     "diff": (f"{d:+,.0f}" if k in ("amount", "bt_amount", "emi", "retained", "additional") else f"{d:+,.2f}") + unit + (f" ({rel * 100:+.1f}%)" if k in ("amount", "bt_amount", "emi", "retained", "additional") else "")})
     ca, ba = set(calc.get("bt_accounts") or []), set(bank.get("bt_accounts") or [])
     if bank.get("bt_accounts") is not None:
         rows.append({"field": "bt_accounts", "label": "Selected BT accounts", "calculator": sorted(ca), "bank": sorted(ba),

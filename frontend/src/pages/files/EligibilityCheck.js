@@ -327,7 +327,7 @@ export default function EligibilityCheck({
         </div>
       </div>
 
-      {loading && (
+      {loading && !data && (
         <div className="max-w-[1200px] mx-auto px-4 py-20 text-center">
           <RefreshCw className="w-12 h-12 mx-auto mb-4 text-primary animate-spin" />
           <p className="text-lg font-medium text-slate-600">Analysing eligibility across {data?.total_policies || '...'} lenders...</p>
@@ -335,7 +335,7 @@ export default function EligibilityCheck({
         </div>
       )}
 
-      {data && !loading && (
+      {data && (
         <div className="max-w-[1200px] mx-auto px-4 py-4 space-y-4" ref={printRef}>
           <DocumentReader scope={isMeta ? 'meta' : 'connect'} refId={leadId} onDone={runCheck} />
           {data.insufficient_data && (
@@ -376,7 +376,7 @@ export default function EligibilityCheck({
                   { val: p.existing_emi, label: `EMI (${p.emi_source || 'auto'})`, fmt: v => v != null ? `₹${Number(v).toLocaleString()}` : 'Unavailable' },
                   { val: p.foir, label: 'FOIR', fmt: v => v != null ? `${v}%` : 'Unavailable' },
                   { val: p.loan_amount_required, label: 'Requested', fmt: v => v ? formatAmt(v) : '—' },
-                  { val: p.company_type, label: 'Company', fmt: v => v || '—' },
+                  { val: p.company_type || data.engine_meta?.profile?.company_name, label: 'Company', fmt: v => v || '—' },
                 ].map((item, i) => (
                   <div key={i} className="text-center p-2 rounded-lg bg-slate-50 border">
                     <p className="text-lg font-bold text-slate-800">{item.fmt(item.val)}</p>

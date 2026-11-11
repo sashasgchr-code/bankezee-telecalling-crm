@@ -596,6 +596,7 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
             eligibility, confidence = "possibly_eligible", "low" if calc.get("missing") else "medium"
         else:
             eligibility, confidence = "eligible", "high" if not reasons_warning else "medium"
+        calc = {**calc, "status": {"eligible": "Eligible", "possibly_eligible": "Needs Review", "not_eligible": "Not Eligible"}[eligibility], "engine_status": calc.get("status")}
         eligible_amount = calc.get("proposed_amount") if eligibility != "not_eligible" else None
         estimated_emi = calc.get("proposed_emi") if eligibility != "not_eligible" else None
         
@@ -748,7 +749,7 @@ async def get_bank_historical_data(bank_name: str, cibil: int = None, salary: fl
     data = result[0]
     approval_rate = None
     if data.get("total_logins", 0) > 0:
-        approval_rate = round((data.get("total_approved", 0) / data["total_logins"]) * 100, 1)
+        approval_rate = round(min(1, data.get("total_approved", 0) / data["total_logins"]) * 100, 1)
     
     avg_amount = 0
     if data.get("total_disbursed", 0) > 0:

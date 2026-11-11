@@ -1,0 +1,43 @@
+{
+  "summary": "Tested Meta Files Check Eligibility end to end (backend pytest plus Playwright UI) on fixture lead_swamytest01, the Connect regression endpoint and BankComparison. Almost everything requested works. There is exactly one results layout (no engine-results element). After the extractions are merged: CIBIL 766, salary 98,845 (latest month, TUV INDIA), EMI 58,255 and FOIR 58.9% (partial) before the Kotak apply, then 58,329 and 59.0% after the apply. Profile is Weak. The credit summary shows the card count and outstanding, 'EMI missing for' AXIO, FDPLFINPL and EARLYSALARY, Major Issues with report 2026-10-22, and 3 late-payment events. Counts are 0/31/3 out of 34; the cards match the counts and each of the 34 lenders appears once. The Axis calc panel shows all fields plus Closed via BT and retained obligations, and the company text is not split. The doc reader is collapsed by default. Form 16 Retry returns Failed with 'Document file is not available in storage'. Two conflicts appear. Apply and Keep both work, and kept conflicts do not come back after Read new documents or a page refresh. The loans table keeps 7 rows with no duplicate Kotak. No name-mismatch warning. Recheck works. BankComparison saves and the calculator status matches the card (Needs Review). cibil_issues is saved as major_issues. elig_engine_fixtures.py: 46/46 PASS. One significant issue: extractions that already exist are not merged into the file when the page opens.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/meta/files-compat/{id}/check-eligibility", "issue": "InCred Self Employed: result eligibility='not_eligible' (a legacy policy rule failed) but calc.status='Needs Review'. Two statuses for the same lender inside one payload. The UI is consistent because elig_compare._calc maps from r.eligibility, but calc.status should be aligned or documented."},
+      {"endpoint": "POST /api/elig-compare/{scope}/{id}/bank-result", "issue": "Two problems. (1) The diff string has a sign mismatch: '-2,489,825.40 (+75.7%)' because the percentage uses abs(). (2) The status flag says 'Calculator rejected, bank eligible' when the calculator status is 'Needs Review', which was not a rejection. The calculator amounts are also not rounded (32,89,825.4)."},
+      {"endpoint": "auth (playbook)", "issue": "These look like they were there before this work and are out of scope: the users collection has a plain_password field alongside the $2b$ bcrypt hash; CORS returns allow-origin '*' together with allow-credentials true; no httpOnly auth cookie is set (JWT bearer only); there was no lockout after 6 failed logins for an unknown email."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "EligibilityCheck / DocumentReader", "issue": "On a file whose doc_extractions exist but were never merged (the swamy_fixture starting state, which mirrors production files read by the old code), opening the page shows no extracted values: CIBIL —, Net Salary —, only the manual Kotak loan, 'Not Eligible Profile', 0 conflicts. Values appear only after the user clicks 'Read new documents'. GET /doc-extract only backfills documents with no extraction record, so it never calls _remerge for existing extractions. Fix suggestion: in get_status, call _remerge (or process) when the state has no 'at' or merge timestamp while extractions exist, or run a one-time migration.", "selector": "[data-testid=profile-summary]", "priority": "MEDIUM-HIGH"},
+      {"component": "EligibilityCheck", "issue": "After Retry, Apply or Keep in the doc reader, onDone runs runCheck. The page then renders `data && !loading`, which unmounts DocumentReader and the cards, so the doc list collapses again and any expanded lender card closes. Keep the previous data rendered while reloading.", "selector": "[data-testid=doc-list]", "priority": "LOW"},
+      {"component": "Lender card historical", "issue": "'5 past approvals (500% rate)' and 'Approval Rate: 500%' (Approved 5 / Logins 1). The approval rate can go above 100%.", "selector": "[data-testid='bank-card-Axis Bank']", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Profile summary", "issues": ["The Company tile shows '—' even though company_name was extracted (TUV INDIA PRIVATE LIMITED). The tile reads company_type."]},
+      {"screen": "Lender card amounts", "issues": ["Axis shows Eligible amount ₹32.9L (₹25.8L top-up) against an ₹8L request while FOIR is only partial (3 EMIs and the card obligation unknown). The card is Needs Review, but this large headline amount may mislead. Consider capping the amount or labelling it indicative when foir_basis is partial."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter72_unified_eligibility.py", "/app/backend/tests/iter72_apply_kotak_check.py", "/app/test_reports/pytest/iter72.xml"],
+  "action_items": [
+    "Merge existing doc_extractions into file fields and conflicts when the page opens (GET /doc-extract status or an on-load read), so production files like Swamy's show CIBIL, salary, loans and conflicts without a manual 'Read new documents' click",
+    "Align calc.status with the final eligibility when legacy reasons_fail forces not_eligible (InCred Self Employed)",
+    "BankComparison: fix the sign of the diff percentage, stop treating 'Needs Review' as 'Calculator rejected', and round amounts",
+    "Keep DocumentReader and the cards mounted during a recheck so the open or expanded state is kept",
+    "Cap or label the approval rate above 100%; show company_name in the Company tile",
+    "Security, already there before this work: remove plain_password from users and set explicit CORS origins"
+  ],
+  "critical_code_review_comments": [
+    "EligibilityCheck.js is 905 lines; consider splitting it (cards, comparison table, AI parser).",
+    "doc_extract._remerge runs only inside process(); there is no lazy merge path for extractions that already exist.",
+    "bank_policies.analyze_eligibility combines legacy reasons_fail with calc.status; one lender can carry two statuses."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter72_unified_eligibility.py", "/app/backend/tests/iter72_apply_kotak_check.py"],
+  "success_rate": {"backend": "95% (5/6 pytest pass; 1 failure is the minor calc.status consistency issue; 46/46 engine fixtures PASS)", "frontend": "90% (all requested flows pass once extractions are merged; the initial unmerged state is the issue)"},
+  "seed_data_creation": "Only the provided swamy_fixture was used and re-seeded at the end, so it is back in the starting state. One elig_comparisons record (meta/lead_swamytest01/axis bank) was created during testing and deleted.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run `cd /app/backend && python3 tests/swamy_fixture.py` to reset. Note that a fresh fixture shows unmerged data until 'Read new documents' is clicked or a read-documents POST is made. Conflict ids are stable: Kotak 2a9a5b1c729e, credit issues 737d2e4cc4a7. iter72_apply_kotak_check.py checks the apply-Kotak path (EMI 58,329, 7 loans). Clear elig_comparisons for axis bank on this lead before re-testing BankComparison, because the earlier snapshot is reused."
+}
