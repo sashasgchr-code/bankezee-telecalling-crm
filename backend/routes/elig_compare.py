@@ -41,14 +41,30 @@ class BankResult(BaseModel):
     remarks: Optional[str] = None
 
 
+STATUS = {"eligible": "Eligible", "possibly_eligible": "Needs Review", "not_eligible": "Not Eligible"}
+
+
 async def _calc(scope, ref_id, bank_name, policy_override: Optional[dict] = None):
-    fd = await current_fd(scope, ref_id)
-    pols = await db.bank_policies.find({"is_active": True}, {"_id": 0}).to_list(200)
-    pols = [p for p in pols if p["bank_name"].lower() == bank_name.lower()]
+    """Same authoritative calculation the Check Eligibility page shows (analyze_eligibility), for one bank."""
+    import re
+    from routes.bank_policies import analyze_eligibility
+    if scope == "meta":
+        from routes.meta_compat import build_connect_file
+        c = build_connect_file(await db.meta_leads.find_one({"lead_id": ref_id}, {"_id": 0}))
+        lead = {"file_details": await current_fd(scope, ref_id), "full_name": c["name"], "name": c["name"],
+                "requirement": c["requirement"], "eligibilities": c["eligibilities"]}
+    else:
+        lead = await db.leads.find_one({"id": ref_id}, {"_id": 0})
+    pols = await db.bank_policies.find({"is_active": True, "bank_name": re.compile(f"^{re.escape(bank_name)}$", re.I)}, {"_id": 0}).to_list(20)
     if policy_override and pols:
         pols = [{**pols[0], **policy_override}]
-    r = eng.run(fd, pols)
-    return (r["banks"][0] if r["banks"] else None), r["inputs_hash"]
+    if not lead or not pols:
+        return None, None
+    res = await analyze_eligibility(lead, ref_id, "Comparison", policies_override=pols)
+    r = (res.get("results") or [None])[0]
+    if not r:
+        return None, res["engine_meta"]["inputs_hash"]
+    return {**r["calc"], "status": STATUS.get(r["eligibility"], r["eligibility"])}, res["engine_meta"]["inputs_hash"]
 
 
 def _calc_view(b):
@@ -56,7 +72,7 @@ def _calc_view(b):
         return {}
     return {"status": b["status"], "amount": b.get("proposed_amount"), "bt_amount": b.get("bt_outstanding"), "additional": b.get("additional_amount"),
             "roi": b.get("roi"), "tenure": b.get("tenure"), "emi": b.get("proposed_emi"), "retained": b.get("retained_obligations"),
-            "foir": b.get("post_bt_foir"), "bt_accounts": [a["lender"] for a in b["accounts"] if a["bt"] == "Selected for BT"]}
+            "foir": b.get("post_bt_foir"), "bt_accounts": [a["lender"] for a in b.get("accounts") or [] if a["bt"] == "Selected for BT"]}
 
 
 def compare(calc: dict, bank: dict) -> list:

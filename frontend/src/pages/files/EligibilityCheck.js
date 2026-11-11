@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { toast } from 'sonner';
-import { DocumentReader, EngineResults } from "../../components/eligibility/EngineResults";
+import { DocumentReader, CreditSummary, CalcDetails } from "../../components/eligibility/EngineResults";
 import { BankComparison } from "../../components/eligibility/BankComparison";
 import api from '../../services/api';
 import { ArrowLeft, RefreshCw, ChevronDown, ChevronUp, Building2, AlertTriangle, CheckCircle, XCircle, HelpCircle, Trophy, Upload, FileText, Shield, Clock, Users, Banknote, Printer, History, Sparkles, Loader2 } from 'lucide-react';
@@ -338,8 +338,6 @@ export default function EligibilityCheck({
       {data && !loading && (
         <div className="max-w-[1200px] mx-auto px-4 py-4 space-y-4" ref={printRef}>
           <DocumentReader scope={isMeta ? 'meta' : 'connect'} refId={leadId} onDone={runCheck} />
-          <EngineResults engine={data.engine} />
-          {data.engine && <BankComparison scope={isMeta ? 'meta' : 'connect'} refId={leadId} banks={data.engine.banks.map((b) => b.bank_name)} />}
           {data.insufficient_data && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 p-4" data-testid="insufficient-data-banner">
               <p className="font-semibold text-amber-800">
@@ -375,8 +373,8 @@ export default function EligibilityCheck({
                 {[
                   { val: p.cibil_score, label: 'CIBIL', fmt: v => v || '—' },
                   { val: p.net_salary, label: 'Net Salary', fmt: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
-                  { val: p.existing_emi, label: p.emi_source === 'CRM Data' ? 'Current EMI' : `EMI (${p.emi_source || 'auto'})`, fmt: v => v ? `₹${Number(v).toLocaleString()}` : '—' },
-                  { val: p.foir, label: 'FOIR', fmt: v => v ? `${v}%` : '—' },
+                  { val: p.existing_emi, label: `EMI (${p.emi_source || 'auto'})`, fmt: v => v != null ? `₹${Number(v).toLocaleString()}` : 'Unavailable' },
+                  { val: p.foir, label: 'FOIR', fmt: v => v != null ? `${v}%` : 'Unavailable' },
                   { val: p.loan_amount_required, label: 'Requested', fmt: v => v ? formatAmt(v) : '—' },
                   { val: p.company_type, label: 'Company', fmt: v => v || '—' },
                 ].map((item, i) => (
@@ -402,6 +400,7 @@ export default function EligibilityCheck({
                 </div>
                 <span className="text-xs text-slate-400 ml-auto">of {data.total_policies} lenders checked</span>
               </div>
+              <CreditSummary meta={data.engine_meta} />
 
               {p.existing_loans_count > 0 && (
                 <div className="mt-3 border-t pt-3" data-testid="eligibility-existing-loans">
@@ -713,6 +712,7 @@ export default function EligibilityCheck({
           )}
 
           {/* Disclaimer */}
+          <BankComparison scope={isMeta ? 'meta' : 'connect'} refId={leadId} banks={data.results.map((r) => r.bank_name)} />
           <div className="text-[10px] text-slate-400 bg-slate-100 p-3 rounded-lg border mt-6" data-testid="disclaimer">
             <b>BankEzee Eligibility Estimate:</b> This assessment is generated using available customer information and BankEzee policy data. It is indicative only and does not constitute lender approval. Final eligibility, loan amount, interest rate, tenure and terms are determined by the respective bank/NBFC after underwriting and verification.
           </div>
@@ -747,6 +747,8 @@ function BankCard({ r, expanded, onToggle }) {
               <span className="text-slate-600">ROI: <b className="text-slate-700">{r.roi_range || '—'}</b></span>
               {r.tenure_text && <span className="text-slate-600">Tenure: <b className="text-slate-700">{r.tenure_text}</b></span>}
               {r.estimated_emi && <span className="text-slate-600">Est. EMI: <b className="text-slate-700">{formatAmt(r.estimated_emi)}</b></span>}
+              {r.calc?.bt_outstanding > 0 && <span className="text-slate-600">BT: <b className="text-slate-700">{formatAmt(r.calc.bt_outstanding)}</b></span>}
+              {r.calc && <span className="text-slate-600">FOIR: <b className="text-slate-700">{r.calc.existing_foir != null ? `${r.calc.existing_foir}%` : 'Unavailable'}{r.calc.post_bt_foir != null ? ` → ${r.calc.post_bt_foir}%` : ''}</b></span>}
               {r.salary_text && <span className="text-slate-600">Min Salary: <b className="text-slate-700">{r.salary_text}</b></span>}
               {r.cibil_text && <span className="text-slate-600">CIBIL: <b className="text-slate-700">{r.cibil_text}</b></span>}
             </div>
@@ -781,6 +783,7 @@ function BankCard({ r, expanded, onToggle }) {
         {/* Expanded Detail */}
         {expanded && (
           <div className="mt-3 pt-3 border-t space-y-4">
+            <CalcDetails calc={r.calc} />
             {/* Policy Details Grid */}
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2 p-3 bg-white/60 rounded-lg border">
               <InfoPill icon={Banknote} label="Salary Req" value={r.salary_text} />
@@ -792,7 +795,7 @@ function BankCard({ r, expanded, onToggle }) {
               <InfoPill icon={Building2} label="Company" value={r.company_requirement_text} />
               <InfoPill icon={Clock} label="Present Emp" value={r.present_employment_text} />
               <InfoPill icon={Clock} label="Total Emp" value={r.total_employment_text} />
-              {r.applicable_profiles?.length > 0 && (
+              {Array.isArray(r.applicable_profiles) && r.applicable_profiles.length > 0 && (
                 <InfoPill icon={Users} label="Profiles" value={r.applicable_profiles.map(p => p === 'self_employed' ? 'Self Employed' : p.charAt(0).toUpperCase() + p.slice(1)).join(', ')} />
               )}
             </div>

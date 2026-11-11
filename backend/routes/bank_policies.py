@@ -292,7 +292,29 @@ async def check_eligibility(lead_id: str, current_user: dict = Depends(get_curre
     return check_result
 
 
-async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "System") -> dict:
+NUMERIC_POLICY_KEYS = ("min_salary", "min_cibil", "max_foir", "max_tenure", "roi_min", "roi_max", "max_bt_count", "min_loan_amount",
+                       "max_loan_amount", "min_age", "max_age", "min_present_employment_months", "min_total_employment_months")
+
+
+def dedupe_policies(policies: list) -> list:
+    """One current policy per lender (latest update wins); numeric rule fields coerced so text never crashes a check."""
+    from routes.elig_engine import f
+    latest = {}
+    for p in policies:
+        p = dict(p)
+        for k in NUMERIC_POLICY_KEYS:
+            if k in p and p[k] not in (None, ""):
+                p[k] = f(p[k])
+        for k in ("company_categories", "applicable_profiles", "bt_loan_types", "app_lenders"):
+            if isinstance(p.get(k), str):
+                p[k] = [x.strip() for x in p[k].split(",") if x.strip()]
+        key = str(p.get("bank_name") or p.get("id")).strip().lower()
+        if key not in latest or str(p.get("updated_at") or "") > str(latest[key].get("updated_at") or ""):
+            latest[key] = p
+    return list(latest.values())
+
+
+async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "System", policies_override: list = None) -> dict:
     """Shared eligibility engine used by Connect (db.leads) and Meta compat (meta_leads).
     Pure analysis: takes a lead dict with file_details, returns the check_result payload."""
     file_details = lead.get("file_details") or lead.get("additional_data") or {}
@@ -317,17 +339,17 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
     cibil_score = safe_int(file_details.get("cibil_score"))
     net_salary = safe_float(file_details.get("net_salary"))
     gross_salary = safe_float(file_details.get("gross_salary"))
-    existing_emi = safe_float(file_details.get("obligations_emi") or file_details.get("existing_emi"))
+    from routes import elig_engine
+    policies = await db.bank_policies.find({"is_active": True}, {"_id": 0}).to_list(200)
+    policies = dedupe_policies(policies_override if policies_override is not None else policies)
+    engine = elig_engine.run(file_details, policies)
+    eng_by_id = {b["policy_id"]: b for b in engine["banks"]}
+    eprof = engine["profile"]
+    existing_emi = eprof["obligations_from_loans"]
     loan_amount_required = safe_float(file_details.get("loan_amount_required"))
 
-    # Structured existing loans drive the obligations figure when they are captured
     loans_summary = summarize_existing_loans(file_details)
-    declared_emi = existing_emi or 0
-    if loans_summary["total_emi"] > 0:
-        existing_emi = max(loans_summary["total_emi"], declared_emi)
-    
-    # Calculate FOIR
-    foir = calculate_foir(net_salary, existing_emi) if net_salary else None
+    foir = eprof["existing_foir"]
     
     # Age calculation
     age = None
@@ -352,11 +374,14 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
     is_bachelor = "bachelor" in accommodation.lower() if accommodation else False
     is_hostel = "hostel" in accommodation.lower() if accommodation else False
     
-    # Get all active policies
-    policies = await db.bank_policies.find({"is_active": True}, {"_id": 0}).to_list(200)
-    
-    # Determine profile strength
     profile_strength = calculate_profile_strength(cibil_score, foir, net_salary, loan_amount_required)
+    order = ["Strong", "Moderate", "Fair", "Weak"]
+    cat = engine["credit"].get("category")
+    cap = "Weak" if cat in ("Major Issues", "Settlement", "Write Off", "Settlement & Write Off") else "Moderate" if cat == "Minor Issues" or eprof["emi_missing_for"] else None
+    if cap and profile_strength in order and order.index(profile_strength) < order.index(cap):
+        profile_strength = cap
+    if not cat or not eprof["obligations_known"]:
+        profile_strength = "Incomplete"  # never "Strong" without credit history and established obligations
     
     # Missing info tracking
     missing_info = []
@@ -366,8 +391,12 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
         missing_info.append("Net Salary")
     if not loan_amount_required:
         missing_info.append("Loan Amount Required")
-    if foir is None and net_salary:
+    if not eprof["obligations_known"]:
         missing_info.append("Existing EMI/Obligations")
+    elif eprof["emi_missing_for"]:
+        missing_info.append("EMI for " + ", ".join(eprof["emi_missing_for"]))
+    if not engine["credit"].get("category"):
+        missing_info.append("Credit report")
     if not age:
         missing_info.append("Date of Birth")
     if not present_emp_months:
@@ -375,15 +404,14 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
     if not company_type:
         missing_info.append("Company Type/Category")
     
-    # EMI source tracking
-    if loans_summary["total_emi"] > 0 and loans_summary["total_emi"] >= declared_emi:
-        emi_source = f"Existing Loans ({loans_summary['count']})"
-    elif existing_emi:
-        emi_source = "CRM Data"
-    else:
+    if not eprof["obligations_known"]:
         emi_source = "Not Available"
+    elif loans_summary["count"]:
+        emi_source = f"Existing Loans ({eprof['active_loans']} active)" + (" — partial" if eprof["emi_missing_for"] else "")
+    else:
+        emi_source = "CRM Data" if eprof.get("declared_obligations") is not None else "Credit report — no active loans"
 
-    if loans_summary["count"] == 0:
+    if loans_summary["count"] == 0 and not eprof["obligations_known"]:
         missing_info.append("Existing Loan Details (bank, ROI, EMI, outstanding)")
     
     # Check eligibility against each policy
@@ -463,13 +491,6 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
                 "source": "Missing Data"
             })
         
-        # 4. FOIR Check
-        max_foir = policy.get("max_foir")
-        if max_foir and foir is not None:
-            if not check_rule("FOIR", f"{foir}%", f"Max {max_foir}%", foir <= max_foir,
-                             "FOIR within limit", f"FOIR {foir}% exceeds max {max_foir}%"):
-                is_eligible = False
-        
         # 5. Age Check
         min_age = policy.get("min_age", 21)
         max_age = policy.get("max_age", 60)
@@ -533,18 +554,6 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
 
         # 10. Existing loan book (balance transfer / takeover rules)
         if loans_summary["count"] > 0:
-            max_bt_count = policy.get("max_bt_count")
-            if max_bt_count and loans_summary["unsecured_count"] > max_bt_count:
-                if not check_rule("Balance Transfer Count",
-                                  f"{loans_summary['unsecured_count']} unsecured loans",
-                                  f"Max {max_bt_count}", False, "",
-                                  f"{loans_summary['unsecured_count']} unsecured loans exceed max BT count {max_bt_count}",
-                                  source="Existing Loans"):
-                    is_eligible = False
-            elif max_bt_count:
-                check_rule("Balance Transfer Count", f"{loans_summary['unsecured_count']} unsecured loans",
-                           f"Max {max_bt_count}", True, "Within bank's BT limit", "", source="Existing Loans")
-
             if policy.get("bt_allowed") is False:
                 reasons_warning.append({
                     "rule": "Balance Transfer",
@@ -570,41 +579,25 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
                     "source": "Existing Loans"
                 })
         
-        # Calculate eligible amount
-        eligible_amount = None
-        if is_eligible and net_salary and net_salary > 0:
-            available_foir = (max_foir or 60) - (foir or 0)
-            if available_foir > 0:
-                monthly_capacity = net_salary * (available_foir / 100)
-                # Estimate: multiplier based on 12% ROI and max tenure
-                max_tenure = policy.get("max_tenure", 60)
-                multiplier = max_tenure * 0.75  # Rough EMI-to-principal conversion
-                eligible_amount = min(
-                    monthly_capacity * multiplier,
-                    max_loan or 50000000,
-                    loan_amount_required or 50000000
-                )
-                eligible_amount = round(eligible_amount, -3)  # Round to nearest 1000
-        
-        # Determine eligibility status
-        if is_eligible and len(reasons_fail) == 0:
-            eligibility = "eligible"
-            confidence = "high" if len(reasons_warning) == 0 else "medium"
-        elif len(reasons_fail) <= 1 and len(reasons_warning) > 0:
-            eligibility = "possibly_eligible"
-            confidence = "medium" if len(reasons_fail) == 0 else "low"
+        calc = eng_by_id.get(policy.get("id")) or {}
+        for msg in calc.get("reasons") or []:
+            reasons_fail.append({"rule": "Obligations / BT / Credit", "customer": "", "required": "", "result": "FAIL", "source": "Calculator", "detail": msg})
+        for msg in (calc.get("missing") or []) + (calc.get("partial") or []):
+            reasons_warning.append({"rule": "Needs Review", "customer": msg, "required": "", "result": "WARN", "source": "Missing Data"})
+        if calc.get("existing_foir") is not None and calc.get("max_foir") and not any("FOIR" in m for m in calc.get("reasons") or []):
+            reasons_pass.append(
+                {"rule": "FOIR", "customer": f"{calc['existing_foir']}% existing → {calc.get('post_bt_foir', '—')}% post-BT",
+                 "required": f"Max {calc['max_foir']}%", "result": "PASS", "source": "Calculator" + (" (available EMIs only)" if calc.get("foir_basis") == "partial" else "")})
+        for rr in reasons_fail:
+            rr["customer"] = rr["customer"] or rr.get("detail", "")
+        if reasons_fail or calc.get("status") == "Not Eligible":
+            eligibility, confidence = "not_eligible", "low"
+        elif calc.get("status") == "Needs Review" or any(w.get("source") == "Missing Data" for w in reasons_warning):
+            eligibility, confidence = "possibly_eligible", "low" if calc.get("missing") else "medium"
         else:
-            eligibility = "not_eligible"
-            confidence = "low"
-        
-        # Estimated EMI
-        estimated_emi = None
-        if eligible_amount and eligible_amount > 0:
-            roi = (policy.get("roi_min") or 12) / 100 / 12
-            tenure = policy.get("max_tenure", 60)
-            if roi > 0:
-                estimated_emi = eligible_amount * roi * ((1 + roi) ** tenure) / (((1 + roi) ** tenure) - 1)
-                estimated_emi = round(estimated_emi)
+            eligibility, confidence = "eligible", "high" if not reasons_warning else "medium"
+        eligible_amount = calc.get("proposed_amount") if eligibility != "not_eligible" else None
+        estimated_emi = calc.get("proposed_emi") if eligibility != "not_eligible" else None
         
         # Build result
         result = {
@@ -627,7 +620,7 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
             "age_text": f"{policy.get('min_age', 21)}-{policy.get('max_age', 60)} years",
             "present_employment_text": f"Min {policy.get('min_present_employment_months')} months" if policy.get("min_present_employment_months") else None,
             "total_employment_text": f"Min {policy.get('min_total_employment_months')} months" if policy.get("min_total_employment_months") else None,
-            "company_requirement_text": ", ".join(policy.get("company_categories", [])) if policy.get("company_categories") else "All",
+            "company_requirement_text": (policy["company_categories"] if isinstance(policy.get("company_categories"), str) else ", ".join(policy.get("company_categories") or [])) or "All",
             "eligible_employees": policy.get("eligible_employees"),
             "applicable_profiles": policy.get("applicable_profiles"),
             # BT/Topup info
@@ -646,6 +639,7 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
             "special_notes": policy.get("special_notes"),
             "processing_fee": policy.get("processing_fee"),
             "required_documents": policy.get("required_documents", []),
+            "calc": calc,
         }
         
         results.append(result)
@@ -711,8 +705,8 @@ async def analyze_eligibility(lead: dict, lead_id: str, generated_by: str = "Sys
         "required_missing": [m for m in missing_info
                              if m in ("CIBIL Score", "Net Salary", "Loan Amount Required")],
     }
-    from routes import elig_engine
-    check_result["engine"] = elig_engine.run(file_details, policies)
+    check_result["engine_meta"] = {"inputs_hash": engine["inputs_hash"], "engine_version": engine["engine_version"], "as_of": engine["as_of"],
+                                   "profile": eprof, "credit": engine["credit"]}
     
     return check_result
 
