@@ -114,3 +114,9 @@ Note: password reset by agent for testing the TL layer.
 |-------|--------------|----------|--------------|----------|
 | rama@neosales.org | Manager | Manager@123 | Meta Ops (rama.saffronglobal@gmail.com / user_f78e7c76fd60) | Web |
 | rama@bankezee.com | Growth Partner | (existing plain_password in DB) | Meta GP (rama@neosales.org / user_ff7502ecd6a5) | Web + Mobile |
+
+## Growth Partner Programme test accounts (preview)
+| Login | Password | Notes |
+|-------|----------|-------|
+| 8125832945 (test_ui_8125832945@example.com) | Partner@123 | New-flow GP, Active, code TEST9B4002D6 — sign in at /gp/login |
+| pinkynagulapally@gmail.com | Pinky@1234 | Legacy GP via /gp/login (stays Active) |

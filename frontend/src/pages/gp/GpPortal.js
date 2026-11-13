@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { NavLink, Outlet, useNavigate, useOutletContext } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { toast } from 'sonner';
 import { QRCodeCanvas } from 'qrcode.react';
 import api from '../../services/api';
@@ -79,7 +79,7 @@ export const GpDashboard = () => {
   const [leads, setLeads] = useState(null);
   const [pay, setPay] = useState(null);
   useEffect(() => { api.get('/gp/leads').then(({ data }) => setLeads(data)); api.get('/gp/payouts').then(({ data }) => setPay(data)); }, []);
-  const link = { profile: '/gp/profile', kyc: '/gp/profile', kyc_fix: '/gp/profile', payout: '/gp/profile', bank_doc: '/gp/profile', agreement: '/gp/agreement' };
+  const link = { profile: '/gp/profile', kyc: '/gp/profile?tab=kyc', kyc_fix: '/gp/profile?tab=kyc', kyc_review: '/gp/profile?tab=kyc', payout: '/gp/profile?tab=payout', bank_doc: '/gp/profile?tab=payout', agreement: '/gp/agreement', agreement_wait: '/gp/agreement' };
   return (
     <>
       <PageHead title={`Hello, ${me.name || 'Partner'}`} sub={<>Partner ID <b data-testid="dash-partner-id">{me.partner_id}</b> · <Badge s={me.status} /></>}
@@ -203,7 +203,7 @@ export const GpCard = () => {
 
 export const GpProfile = () => {
   const { me, setMe } = useMe();
-  const [tab, setTab] = useState('profile');
+  const [tab, setTab] = useState(new URLSearchParams(useLocation().search).get('tab') || 'profile');
   return (
     <>
       <PageHead title="Profile & KYC" sub={<>Partner ID {me.partner_id} · {me.mobile}</>} />

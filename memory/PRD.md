@@ -2532,3 +2532,12 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 
 - 2026-06: Meta Reports page now includes "Partner Call Activity" (components/meta/MetaCallActivity.js: MetaSummaryTable with period + MetaHourlyTable with IST date). Customers & Campaigns is admin-only: backend ctx() 403 for non-admin (incl. ops), nav link only for role admin, /agent|/manager|/hr customers-campaigns redirect to files, /admin route wrapped in AdminOnly.
 
+
+---
+## Growth Partner Programme (Nov 2026) — DONE & TESTED (iterations 74, 75)
+- /gp/signup resumable stepper (Account Individual/Business → Profile → KYC → Payout → Agreement), no OTP; /gp/login by mobile or email with 5-failure / 15-min lockout per account
+- GP portal (/gp): Dashboard (tasks deep-link to tabs), Leads (+referral link/QR, public /r/{code}), Payouts (Overview/Request/Commission Report + CSV statement), Payout Structure, Card & Certificate, Profile & KYC, Partner Agreement, Support
+- Admin /admin/gp-programme: KYC Verify/Reject (dialog), Payout Structure CSV import (template/validate/preview/publish, versioned), Payout Ledger (dialogs for On Hold/Reversed/Paid), Agreement templates (placeholder block, publish, issue); agreement auto-issued once steps 1–4 done
+- Agreement signing: clickwrap + one-time code via shared Resend transport (env RESEND_API_KEY or admin Settings DB key, same as Meta CRM). Preview has no key → GP_SIGNING_CODE_ON_SCREEN=true shows code on screen (only when email is not configured)
+- Legacy partners (source != gp_signup) stay Active; partner identity uses users.id (fixes legacy id mismatch)
+- Backlog: lockout on /api/auth/login, split gp_portal.py, PDF iframe fallback on mobile Safari, admin date pickers

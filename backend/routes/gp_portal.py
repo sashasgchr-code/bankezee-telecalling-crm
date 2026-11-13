@@ -111,7 +111,9 @@ class MobileLogin(BaseModel):
 async def gp_login(inp: MobileLogin):
     ident = inp.identifier.strip()
     email = ident.lower()
-    key = ident.lower()
+    norm = email if "@" in ident else norm_mobile(ident)
+    acct = await db.users.find_one({"email": {"$regex": f"^{re.escape(norm)}$", "$options": "i"}} if "@" in ident else {"phone": {"$regex": f"{norm}$"}}, {"id": 1})
+    key = uid(acct) if acct else norm
     since = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
     if await db.gp_login_failures.count_documents({"key": key, "at": {"$gte": since}}) >= 5:
         raise HTTPException(429, "Too many failed attempts — try again in 15 minutes")
@@ -182,14 +184,14 @@ async def state(u):
         await db.users.update_one({"_id": u["_id"]}, {"$set": {"gp_status": "active", "gp_activated_at": now()}})
         active = True
     tasks = [{"key": k, "label": lbl} for k, lbl, need in (
-        ("profile", "Complete your profile", not steps["profile"]), ("kyc", "Upload KYC documents", not steps["kyc"]),
+        ("profile", "Complete your profile", not steps["profile"]), ("kyc", "Upload KYC documents", not steps["kyc"] and not any(v.get("status") == "Action Required" for v in kyc.values())),
         ("payout", "Add payout bank account", not steps["payout"]),
         ("bank_doc", "Upload a cancelled cheque or bank statement", steps["payout"] and kyc.get("bank", {}).get("status") == "Not Submitted"),
         ("kyc_review", "Your documents are being reviewed by Bankezee (usually 1–2 working days)", not active and any(v.get("status") == "Pending" for v in kyc.values())),
         ("kyc_fix", "Correct KYC items marked Action Required", any(v.get("status") == "Action Required" for v in kyc.values())),
         ("agreement", "Sign your Partner Agreement", bool(ag and ag.get("status") != "Signed"))) if need]
     if not ag and not active and all(steps[s] for s in STEPS[:4]):
-        tasks.append({"key": "agreement_wait", "label": "Your Partner Agreement will be issued by Bankezee — you'll be asked to sign here"})
+        tasks.append({"key": "agreement_wait", "label": "Sign your Partner Agreement"})
     return {"partner_id": code, "user_id": pid, "name": u.get("name"), "mobile": u.get("phone"), "email": u.get("email"),
             "status": "Active" if active else "Onboarding", "profile": p, "kyc": kyc, "steps": steps,
             "first_incomplete": next((s for s in STEPS if not steps[s]), None), "tasks": tasks, "legacy_partner": legacy,
@@ -292,7 +294,7 @@ async def get_doc(doc_id: str, u: dict = Depends(get_current_user)):
     except NoFile:
         raise HTTPException(404, "Document not found")
     meta = s.metadata or {}
-    if normalize_role(u.get("role", "")) != "admin" and meta.get("partner_id") != uid(u):
+    if normalize_role(u.get("role", "")) != "admin" and meta.get("partner_id") not in (uid(u), str(u.get("_id") or "")):
         raise HTTPException(403, "Not your document")
     return Response(await s.read(), media_type=meta.get("content_type") or "application/octet-stream",
                     headers={"Content-Disposition": f'inline; filename="{s.filename}"'})
@@ -456,7 +458,9 @@ async def rate_preview(file: UploadFile = File(...), u: dict = Depends(require_a
             errs.append("qualifying_event must be disbursement, sanction or login")
         r["qualifying_event"] = r["qualifying_event"].lower()
         try:
-            if not r["effective_from"] or (_d(r["effective_to"]) and _d(r["effective_to"]) < _d(r["effective_from"])):
+            if not r["effective_from"] or not re.match(r"^\d{4}-\d{2}-\d{2}$", r["effective_from"]) or (r["effective_to"] and not re.match(r"^\d{4}-\d{2}-\d{2}$", r["effective_to"])):
+                raise ValueError
+            if _d(r["effective_to"]) and _d(r["effective_to"]) < _d(r["effective_from"]):
                 errs.append("effective_from required and before effective_to")
         except ValueError:
             errs.append("dates must be YYYY-MM-DD")

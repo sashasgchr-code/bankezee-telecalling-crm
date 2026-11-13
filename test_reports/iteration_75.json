@@ -1,0 +1,48 @@
+{
+  "summary": "Retested the GP programme after the iteration-74 fixes. The legacy-partner identity fix works. iter74_legacy_id_probe.py shows: own doc 200, admin decide 200, lead visible 1, agreement current 'Awaiting Signature', payout rows 1. New pytest test_iter75_gp_retest.py passes 12/12. It covers kyc_decide 404/400, docs invalid id 404, the lockout (5 failures then 429 with the correct password), the counter resetting after a successful login, the full legacy flow including signing with the on-screen code, and download filenames. The iter74 regression suite still passes 26/26. UI was tested end to end on desktop with a temporary legacy GP (users.id != str(_id)) and a fresh onboarding GP. Results: GpSignIn sends an Onboarding partner to /gp/signup at the first incomplete step, and Active partners go to /gp. The greeting shows the full name, the 'Finish these pending items' header shows for Active legacy partners, and the 'documents are being reviewed' and cheque tasks show for new partners. KYC and bank-doc uploads work. Admin Reject opens gpa-ask-dialog (Confirm is disabled until a note is entered) and the note reaches the partner. Admin Verify works for legacy and new partners. Admin Issue gives 'Issued to 1', and the legacy partner then signs in the UI (a wrong code shows 'Incorrect code'). Ledger On Hold shows the reason dialog, and Cancel leaves the status unchanged. Paid shows the payment_date and txn_ref dialog, and both values were saved in the database. Ledger payouts appear in the partner's Payouts page. The full new-partner flow reaches Active. CSV preview with errors works and Publish stays disabled. Pinky's legacy login works and her data was not changed. One new bug: a CSV date validation gap (medium).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/gp/admin/rates/preview", "issue": "MEDIUM: effective_from is never parsed when effective_to is blank. In gp_portal.py around line 459, _d(effective_from) is only called inside the effective_to branch. A row with effective_from='01/12/2026' and blank effective_to comes back as kind=New with no errors (verified, then the draft was discarded). If published, string date comparisons in rate resolution (r['effective_from'] <= d) become wrong, and _overlap/_d would raise ValueError (500) on the next upload that overlaps. Fix: always call _d(r['effective_from']) inside the try block."},
+      {"endpoint": "POST /api/gp/login lockout", "issue": "The lockout key is the raw identifier string, so it is per identifier, not per account. After 5 failures on the mobile number, signing in with the same account's email returns 200. Format variants ('+91 98...', '098...') also get a fresh counter. POST /api/auth/login has no lockout at all (6 wrong attempts all return 401, never 429), and a GP can sign in there with their email. Consider keying the counter on the resolved user id plus the normalized mobile. Also, anyone who knows a partner's mobile can lock that partner out for 15 minutes; consider adding an IP component."},
+      {"endpoint": "GET /api/gp/docs/{id}", "issue": "Access is checked against metadata.partner_id == uid(u). Any legacy-user document uploaded before the fix was stored under str(_id), so its owner now gets 403. This is low impact if no real legacy partner uploaded before the fix; accepting either id would cover it."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "GpDashboard tasks", "issue": "The Upload KYC / Correct KYC / Add payout / cheque tasks all link to /gp/profile, which opens on the 'Profile' tab, not the KYC or Payout tab. The user has to find the right tab. Pass the tab (e.g. /gp/profile?tab=kyc).", "selector": "[data-testid=task-kyc], [data-testid=task-kyc_fix], [data-testid=task-bank_doc]", "priority": "LOW"},
+      {"component": "GpDashboard tasks", "issue": "Duplicate tasks are still shown. When an item is Action Required, both 'Upload KYC documents' and 'Correct KYC items marked Action Required' appear.", "selector": "[data-testid=task-kyc]", "priority": "LOW"},
+      {"component": "GpDashboard tasks (new partner)", "issue": "Before the partner reaches the agreement step, the task says 'Your Partner Agreement will be issued by Bankezee'. In fact, auto_issue creates it as soon as the partner opens the agreement step, so the message is misleading. Word it as 'Sign your agreement' or link to /gp/signup.", "selector": "[data-testid=task-agreement_wait]", "priority": "LOW"},
+      {"component": "Admin Partners 'signed copy' / Agreements 'Signed PDF'", "issue": "The admin downloads use the generic filename 'signed.pdf'. The partner-side downloads are named correctly (Bankezee_GP_Agreement_v1_signed.pdf, Bankezee_Partner_Certificate_{code}.pdf, bankezee_payout_statement.csv, gp_payout_structure_template.csv).", "selector": "AdminGpProgramme.js lines 46 and 133", "priority": "LOW"},
+      {"component": "Admin Ledger status change", "issue": "There is no success toast after On Hold, Payable or Paid (the update itself works). The table does not show the payment date or txn ref for Paid rows.", "selector": "[data-testid^=ledger-status-]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Admin GP Programme Paid dialog / Ledger form / Profile DOB", "issues": ["Native browser date inputs (type=date) are used for gpa-ask-payment_date, ledger-disbursement_date and pf-dob instead of the shadcn Calendar/Popover date picker."]},
+      {"screen": "Legacy partner Profile", "issues": ["The Legal name field is empty for legacy partners even though users.name exists; prefill it from name."]},
+      {"screen": "Admin GP Programme (1920px)", "issues": ["A mobile-style bottom nav (Files/Users/Approvals/More) is shown on desktop width. This is probably the existing admin layout; check it."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter75_gp_retest.py", "/app/backend/tests/test_iter74_gp_programme.py", "/app/backend/tests/iter74_legacy_id_probe.py", "/app/backend/tests/iter75_ui_fixture.py", "/app/test_reports/pytest/iter75_gp.xml"],
+  "action_items": [
+    "Fix the CSV import date validation. Always validate effective_from (and effective_to when present) as YYYY-MM-DD, even when effective_to is blank.",
+    "Harden the lockout. Key it on the resolved account (user id) rather than the raw identifier string, and consider adding a lockout to /api/auth/login, which GPs can also use.",
+    "Dashboard tasks: deep-link to the KYC/Payout tab, remove the duplicate kyc/kyc_fix tasks, and reword the 'agreement will be issued' task.",
+    "Give the admin signed-PDF downloads proper filenames (Bankezee_GP_Agreement_{code}_v{n}_signed.pdf).",
+    "Optional: show a toast after ledger status changes, show the payment date and txn ref for Paid rows, use the shadcn date picker, and prefill the legacy legal name."
+  ],
+  "critical_code_review_comments": [
+    "gp_portal.py is now 1003 lines; split it into gp_onboarding, gp_rates, gp_ledger, gp_agreements and gp_admin modules.",
+    "rates preview: _d() is only reached inside the effective_to branch (see the bug above). Also, _overlap would raise on a stored bad date.",
+    "get_doc checks ownership only against uid(u). Accept both users.id and str(_id) for backward compatibility.",
+    "AskDialog onSubmit: the UI closes the dialog before the API call finishes. On a failed PATCH the user sees only an error toast and the dialog has already closed. This is acceptable but worth noting."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter75_gp_retest.py", "/app/backend/tests/iter75_ui_fixture.py"],
+  "success_rate": {"backend": "100% (12/12 new + 26/26 regression + probe all green). One new medium validation bug found by a separate probe", "frontend": "~95%: every requested flow passes; only low-severity UX issues remain"},
+  "test_credentials": "Admin admin@bankezee.com / ConnectSasha12!!; legacy GP pinkynagulapally@gmail.com / Pinky@1234 (logged in only, nothing modified). The UI test users were temporary and have been deleted.",
+  "seed_data_creation": "Temporary legacy GP (5265561107, TESTLU1107) and onboarding GP (9341128311, TESTCB5A6C50) were deleted together with their agreements, payouts, GridFS docs and UI lead. The pytest fixtures delete their own temporary legacy user, lead, agreement and payout. Left in place: pytest-created TEST GP users test_gp75_*@example.com (same as earlier iterations). Two stale gp_login_failures entries from iter74 suite TEST users were removed. The CSV draft batches were discarded; nothing was published.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -p no:xdist. Use tests/iter75_ui_fixture.py setup/cleanup to create a temporary legacy and onboarding GP for UI tests (legacy password Legacy@123, onboarding password Partner@123). Profile requires DOB (pf-dob). Do not publish agreement templates or standard rates. The server clock is 2026-11-13.",
+  "rca of the issue": "CSV date gap: in preview_rates, the check `if not r['effective_from'] or (_d(r['effective_to']) and _d(r['effective_to']) < _d(r['effective_from']))` short-circuits when effective_to is blank, so date.fromisoformat(effective_from) never runs and a bad format is never caught. Reproduce by uploading a valid row with effective_from=01/12/2026 and blank effective_to: preview returns New with no errors. Mitigation: parse effective_from unconditionally inside the try block."
+}

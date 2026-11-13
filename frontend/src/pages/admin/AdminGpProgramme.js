@@ -43,7 +43,7 @@ const Partners = () => {
           {v.doc_id && <button data-testid={`gpa-view-${r.partner_id}-${k}`} className="text-[#24508F] underline" onClick={() => dl(`/gp/docs/${v.doc_id}`, '', true)}>view</button>}
           {v.status === 'Pending' && <><button data-testid={`gpa-verify-${r.partner_id}-${k}`} className="text-[#1F7A33] font-semibold" onClick={() => decide(r, k, 'Verified')}>Verify</button>
             <button data-testid={`gpa-reject-${r.partner_id}-${k}`} className="text-[#A12B2B]" onClick={() => decide(r, k, 'Action Required')}>Reject</button></>}</div>)}</div>],
-        ['agreement', 'Agreement', (r) => (r.agreement ? <span><Badge s={r.agreement.status} /> <span className="text-xs">v{r.agreement.version}</span>{r.agreement.status === 'Signed' && <button className="block text-xs text-[#24508F] underline" onClick={() => dl(`/gp/agreement/${r.agreement.id}/pdf`, 'signed.pdf')}>signed copy</button>}</span> : <span className="text-xs text-[#6B6F6A]">Not issued</span>)]]} />
+        ['agreement', 'Agreement', (r) => (r.agreement ? <span><Badge s={r.agreement.status} /> <span className="text-xs">v{r.agreement.version}</span>{r.agreement.status === 'Signed' && <button className="block text-xs text-[#24508F] underline" onClick={() => dl(`/gp/agreement/${r.agreement.id}/pdf`, `Bankezee_GP_Agreement_${r.partner_id}_v${r.agreement.version}_signed.pdf`)}>signed copy</button>}</span> : <span className="text-xs text-[#6B6F6A]">Not issued</span>)]]} />
     </Card>
   );
 };
@@ -89,7 +89,7 @@ const Ledger = () => {
     const fields = ['On Hold', 'Reversed'].includes(s) ? [{ key: 'reason', label: 'Reason shown to the partner' }] : s === 'Paid' ? [{ key: 'payment_date', label: 'Payment date', type: 'date' }, { key: 'txn_ref', label: 'Transaction reference' }] : [];
     if (fields.length && !extra) return setAsk({ title: `Mark as ${s}`, fields, onSubmit: (v) => status(r, s, v) });
     const body = { status: s, ...(extra || {}) };
-    try { await api.patch(`/gp/admin/payouts/${r.id}`, body); load(); } catch (er) { toast.error(errMsg(er)); }
+    try { await api.patch(`/gp/admin/payouts/${r.id}`, body); toast.success(`Marked as ${s}`); load(); } catch (er) { toast.error(errMsg(er)); }
   };
   return (
     <div className="space-y-4">
@@ -99,7 +99,7 @@ const Ledger = () => {
           <Field key={k} label={l}><Input data-testid={`ledger-${k}`} type={k === 'disbursement_date' ? 'date' : 'text'} required={['partner_code', 'product_code', 'disbursement_date', 'disbursed_amount'].includes(k)} value={f[k]} onChange={set(k)} /></Field>)}
         <Btn data-testid="ledger-add">Add payout</Btn></form></Card>
       <Card className="p-4"><RTable testid="ledger-table" rows={rows} cols={[['partner_code', 'Partner'], ['referral_ref', 'Ref'], ['product_code', 'Product'], ['disbursement_date', 'Date'], ['disbursed_amount', 'Amount', (r) => inr(r.disbursed_amount)], ['rate_code', 'Rate (version)', (r) => `${r.rate_code} v${r.rate_version}`], ['net', 'Net', (r) => inr(r.net)],
-        ['status', 'Status', (r) => <span><Badge s={r.status} />{r.reason && <span className="block text-xs">{r.reason}</span>}</span>], ['act', 'Update', (r) => <Select data-testid={`ledger-status-${r.id}`} value="" onChange={(e) => e.target.value && status(r, e.target.value)} options={[['', 'Change…'], 'Under Verification', 'Payable', 'Paid', 'On Hold', 'Reversed'].map((x) => (Array.isArray(x) ? x : [x, x]))} />]]} /></Card>
+        ['status', 'Status', (r) => <span><Badge s={r.status} />{r.reason && <span className="block text-xs">{r.reason}</span>}{r.status === 'Paid' && r.payment_date && <span className="block text-xs text-[#6B6F6A]" data-testid={`ledger-paid-${r.id}`}>{r.payment_date} · {r.txn_ref}</span>}</span>], ['act', 'Update', (r) => <Select data-testid={`ledger-status-${r.id}`} value="" onChange={(e) => e.target.value && status(r, e.target.value)} options={[['', 'Change…'], 'Under Verification', 'Payable', 'Paid', 'On Hold', 'Reversed'].map((x) => (Array.isArray(x) ? x : [x, x]))} />]]} /></Card>
     </div>
   );
 };
@@ -130,7 +130,7 @@ const Agreements = () => {
         <Field label="Agreement body" hint="Placeholders: {{company_name}} {{partner_name}} {{partner_id}} {{effective_date}} {{activities}} {{schedule_version}} {{reg_type}} {{address}} {{mobile}} {{email}} {{pan_masked}} {{bank_masked}} {{ifsc}}"><textarea className="w-full h-72 border rounded-lg p-3 text-xs font-mono" value={ed.body} onChange={(e) => setEd({ ...ed, body: e.target.value })} /></Field>
         <Field label="Commercial schedule"><textarea className="w-full h-32 border rounded-lg p-3 text-xs font-mono" value={ed.schedule} onChange={(e) => setEd({ ...ed, schedule: e.target.value })} /></Field>
         <div className="flex gap-2 justify-end"><Btn variant="outline" onClick={() => setEd(null)}>Cancel</Btn><Btn onClick={save}>Save as new draft</Btn></div></Card>}
-      <Card className="p-4"><b className="block mb-2">Partner agreements</b><RTable rows={ags} cols={[['partner_code', 'Partner'], ['version', 'Version'], ['status', 'Status', (r) => <Badge s={r.status} />], ['issued_at', 'Issued', (r) => String(r.issued_at).slice(0, 10)], ['signed_at', 'Signed', (r) => (r.signed_at ? `${String(r.signed_at).slice(0, 16)} · ${r.txn_ref}` : '—')], ['ev', 'Evidence', (r) => (r.status === 'Signed' ? <button className="text-xs underline text-[#24508F]" onClick={() => dl(`/gp/agreement/${r.id}/pdf`, 'signed.pdf')}>Signed PDF</button> : '—')]]} /></Card>
+      <Card className="p-4"><b className="block mb-2">Partner agreements</b><RTable rows={ags} cols={[['partner_code', 'Partner'], ['version', 'Version'], ['status', 'Status', (r) => <Badge s={r.status} />], ['issued_at', 'Issued', (r) => String(r.issued_at).slice(0, 10)], ['signed_at', 'Signed', (r) => (r.signed_at ? `${String(r.signed_at).slice(0, 16)} · ${r.txn_ref}` : '—')], ['ev', 'Evidence', (r) => (r.status === 'Signed' ? <button className="text-xs underline text-[#24508F]" onClick={() => dl(`/gp/agreement/${r.id}/pdf`, `Bankezee_GP_Agreement_${r.partner_code}_v${r.version}_signed.pdf`)}>Signed PDF</button> : '—')]]} /></Card>
     </div>
   );
 };
