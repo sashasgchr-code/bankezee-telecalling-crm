@@ -71,7 +71,7 @@ const Editor = ({ c, onClose, onSaved }) => {
   };
   const replace = async (file) => {
     const fd = new FormData(); fd.append('file', file); setBusy(true);
-    try { const { data } = await api.post(`/gp/admin/creatives/${c.id}/replace`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); setCur(data); setP(data.placement.mode === 'overlay' ? data.placement : { ...p, mode: 'footer' }); setTick((t) => t + 1); onSaved(); toast.success('Image replaced — placement re-checked. Publish to update partners.'); }
+    try { await api.post(`/gp/admin/creatives/${c.id}/replace`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); onSaved(); onClose(); toast.success('Image replaced — QR placement is being re-analysed. Open it again to review, then publish.'); }
     catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
   const publish = async () => { const { data } = await api.post('/gp/admin/creatives/publish', { ids: [c.id] }); const r = data.results[0]; r.ok ? toast.success('Published to Growth Partners') : toast.error(r.error); onSaved(); if (r.ok) onClose(); };
@@ -114,15 +114,15 @@ const Editor = ({ c, onClose, onSaved }) => {
   );
 };
 
-const Tile = ({ c, sel, toggle, onEdit, onHide }) => {
-  const src = useBlob(`/gp/admin/creatives/${c.id}/preview.png`, `${c.version}-${c.updated_at}`);
+const Tile = ({ c, sel, toggle, onEdit, onHide, onRetry }) => {
+  const src = useBlob(c.processing ? null : `/gp/admin/creatives/${c.id}/preview.png`, `${c.version}-${c.updated_at}`);
   return (
     <Card className="p-3 flex flex-col" data-testid={`creative-${c.id}`}>
-      <div className="aspect-square bg-[#F6F7F5] rounded-xl overflow-hidden flex items-center justify-center">{src ? <img src={src} alt={c.name} className="max-h-full max-w-full object-contain" /> : <span className="text-xs">Loading…</span>}</div>
+      <div className="aspect-square bg-[#F6F7F5] rounded-xl overflow-hidden flex items-center justify-center">{c.processing ? <span className="text-xs text-[#6B6F6A] flex items-center gap-1.5" data-testid={`creative-analysing-${c.id}`}><RefreshCw className="w-3.5 h-3.5 animate-spin" />Analysing layout…</span> : src ? <img src={src} alt={c.name} className="max-h-full max-w-full object-contain" /> : <span className="text-xs">Loading…</span>}</div>
       <div className="flex items-center gap-2 mt-2"><input type="checkbox" checked={sel} onChange={toggle} data-testid={`creative-select-${c.id}`} /><p className="font-semibold text-sm truncate mr-auto">{c.name}</p><Badge tone={TONE[c.status]} s={c.status}>{c.status}</Badge></div>
       <p className="text-xs text-[#6B6F6A]">{c.orientation} · {c.loan_label || 'General'} · {c.placement.mode === 'footer' ? 'footer' : 'on artwork'} · v{c.version}{c.pending_republish ? ' (unpublished changes)' : ''}</p>
       {c.issues.length > 0 && <p className="text-xs text-red-700 mt-1" data-testid={`creative-issues-${c.id}`}>{c.issues[0]}</p>}
-      <div className="flex gap-2 mt-auto pt-2"><Btn variant="outline" className="!py-1 flex-1" data-testid={`creative-edit-${c.id}`} onClick={onEdit}>Edit</Btn>
+      <div className="flex gap-2 mt-auto pt-2">{c.processing_error ? <Btn variant="outline" className="!py-1 flex-1" data-testid={`creative-retry-${c.id}`} onClick={onRetry}>Retry analysis</Btn> : <Btn variant="outline" className="!py-1 flex-1" disabled={!!c.processing} data-testid={`creative-edit-${c.id}`} onClick={onEdit}>Edit</Btn>}
         {c.status !== 'hidden' && <Btn variant="outline" className="!py-1" data-testid={`creative-hide-${c.id}`} onClick={onHide}><EyeOff className="w-4 h-4" /></Btn>}</div>
     </Card>
   );
@@ -137,15 +137,17 @@ export const AdminCreatives = () => {
   const [busy, setBusy] = useState(false);
   const load = () => api.get('/gp/admin/creatives').then(({ data }) => setRows(data));
   useEffect(() => { load(); }, []);
+  const analysing = (rows || []).some((c) => c.processing);
+  useEffect(() => { if (!analysing) return undefined; const t = setInterval(load, 4000); return () => clearInterval(t); }, [analysing]);
   const upload = async (files) => {
     if (!files.length) return;
     const fd = new FormData(); [...files].forEach((f) => fd.append('files', f)); if (loan) fd.append('loan_type', loan);
     setBusy(true);
     try {
-      const { data } = await api.post('/gp/admin/creatives', fd, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300000 });
+      const { data } = await api.post('/gp/admin/creatives', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       const bad = data.results.filter((r) => r.error); const fine = data.results.filter((r) => !r.error);
       bad.forEach((r) => toast.error(`${r.file}: ${r.error}`));
-      if (fine.length) toast.success(`${fine.length} creative(s) added as drafts — review the previews, then publish`);
+      if (fine.length) toast.success(`${fine.length} image(s) uploaded — QR placement is being analysed, previews appear in a few seconds`);
       setSel(fine.map((r) => r.id)); load();
     } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
@@ -162,12 +164,12 @@ export const AdminCreatives = () => {
         <Field label="Loan product for this upload (optional)"><select value={loan} onChange={(e) => setLoan(e.target.value)} data-testid="creatives-upload-loan" className="rounded-lg border border-[#D9DCD6] bg-white px-3 py-2.5 text-sm">
           <option value="">General application form</option>{loanTypes.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}</select></Field>
         <label className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#2FB34A] text-white text-sm font-semibold cursor-pointer ${busy ? 'opacity-60 pointer-events-none' : ''}`}>
-          <Upload className="w-4 h-4" />{busy ? 'Analysing layouts…' : 'Upload images'}
+          <Upload className="w-4 h-4" />{busy ? 'Uploading…' : 'Upload images'}
           <input type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden" data-testid="creatives-upload-input" onChange={(e) => { upload(e.target.files); e.target.value = ''; }} /></label>
         <p className="text-xs text-[#6B6F6A] mr-auto">PNG, JPG or WebP · square, portrait or landscape · QR is placed automatically</p>
         <Btn data-testid="creatives-publish-selected" disabled={!sel.length} onClick={publish}><Send className="w-4 h-4" />Publish selected ({sel.length})</Btn>
       </Card>
-      {rows && (rows.length ? <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">{rows.map((c) => <Tile key={c.id} c={c} sel={sel.includes(c.id)} toggle={() => setSel(sel.includes(c.id) ? sel.filter((i) => i !== c.id) : [...sel, c.id])} onEdit={() => setEdit(c)} onHide={() => hide(c)} />)}</div>
+      {rows && (rows.length ? <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">{rows.map((c) => <Tile key={c.id} c={c} sel={sel.includes(c.id)} toggle={() => setSel(sel.includes(c.id) ? sel.filter((i) => i !== c.id) : [...sel, c.id])} onEdit={() => setEdit(c)} onHide={() => hide(c)} onRetry={() => api.post(`/gp/admin/creatives/${c.id}/reanalyse`).then(load)} />)}</div>
         : <Card><Empty icon={Eye} title="No creatives yet" text="Upload your first marketing images. Each partner downloads them with their own QR." /></Card>)}
       {edit && <Editor c={edit} onClose={() => setEdit(null)} onSaved={load} />}
     </div>

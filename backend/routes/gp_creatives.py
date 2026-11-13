@@ -84,6 +84,38 @@ async def analyse_and_place(art):
     return analysis, ce.auto_place(art, analysis)
 
 
+def placeholder_fields(art):
+    return {"width": art.width, "height": art.height, "orientation": "square" if abs(art.width - art.height) < 0.05 * art.width else "portrait" if art.height > art.width else "landscape",
+            "analysis": {"occupied": [], "source": "pending"}, "auto_placement": {"mode": "footer", "reason": "Analysing layout…"}, "placement": {"mode": "footer"},
+            "issues": ["Layout analysis in progress"], "overlaps": [], "qr_check": {"ok": False}, "export": None}
+
+
+async def process(cid, base):
+    """Background: layout analysis + automatic placement + scan check (too slow for a single HTTP request)."""
+    import logging
+    try:
+        c = await load_c(cid)
+        art = ce.load(await get(c["image_id"]))
+        async with SEM:
+            analysis, auto = await analyse_and_place(art)
+        c.update(analysis=analysis, auto_placement=auto)
+        placement, ev = await evaluate(art, c, {k: v for k, v in auto.items() if k != "reason"}, base)
+        await db.gp_creatives.update_one({"id": cid, "image_id": c["image_id"]}, {"$set": {"analysis": analysis, "auto_placement": auto, "placement": placement, **ev,
+                                                                                         "processing": None, "processing_error": None, "updated_at": now()}})
+    except Exception as e:
+        logging.getLogger(__name__).exception(f"creative {cid} processing failed")
+        await db.gp_creatives.update_one({"id": cid}, {"$set": {"processing": None, "processing_error": str(e)[:200], "issues": ["Layout analysis failed — click Retry analysis"]}})
+
+
+_TASKS = set()
+
+
+def start(cid, base):
+    t = asyncio.create_task(process(cid, base))
+    _TASKS.add(t)
+    t.add_done_callback(_TASKS.discard)
+
+
 async def ingest(f: UploadFile, name: str, loan_type: Optional[str], base: str, user: dict):
     data = await f.read()
     if (f.content_type or "").lower() not in MIMES:
@@ -94,16 +126,12 @@ async def ingest(f: UploadFile, name: str, loan_type: Optional[str], base: str, 
         art = ce.load(data)
     except Exception:
         return {"file": f.filename, "error": "Could not read this image"}
-    async with SEM:
-        analysis, auto = await analyse_and_place(art)
     cid = uuid.uuid4().hex[:12]
     c = {"id": cid, "name": name or (f.filename or "Creative").rsplit(".", 1)[0], "loan_type": loan_type if loan_type in LOAN_LABEL else None,
-         "status": "draft", "version": 1, "image_id": await put(data, f.filename or "creative", {"creative_id": cid, "version": 1}),
-         "mime": f.content_type, "width": art.width, "height": art.height, "orientation": "square" if abs(art.width - art.height) < 0.05 * art.width else "portrait" if art.height > art.width else "landscape",
-         "analysis": analysis, "auto_placement": auto, "created_at": now(), "created_by": user.get("name"), "updated_at": now()}
-    placement, ev = await evaluate(art, c, {k: v for k, v in auto.items() if k != "reason"}, base)
-    c.update(placement=placement, **ev)
+         "status": "draft", "version": 1, "image_id": await put(data, f.filename or "creative", {"creative_id": cid, "version": 1}), "mime": f.content_type,
+         **placeholder_fields(art), "processing": "analysing", "processing_started": now(), "created_at": now(), "created_by": user.get("name"), "updated_at": now()}
     await db.gp_creatives.insert_one(dict(c))
+    start(cid, base)
     return view(c)
 
 
@@ -113,12 +141,24 @@ async def upload(request: Request, files: List[UploadFile] = File(...), names: O
     if len(files) > 25:
         raise HTTPException(400, "Upload up to 25 images at a time")
     nm = [n.strip() for n in (names or "").split("|")]
-    res = await asyncio.gather(*[ingest(f, nm[i] if i < len(nm) else "", loan_type, base_url(request), u) for i, f in enumerate(files)])
-    return {"results": list(res)}
+    res = [await ingest(f, nm[i] if i < len(nm) else "", loan_type, base_url(request), u) for i, f in enumerate(files)]
+    return {"results": res}
+
+
+@router.post("/admin/creatives/{cid}/reanalyse")
+async def reanalyse(cid: str, request: Request, _: dict = Depends(require_admin_only)):
+    await load_c(cid)
+    await db.gp_creatives.update_one({"id": cid}, {"$set": {"processing": "analysing", "processing_started": now(), "processing_error": None}})
+    start(cid, base_url(request))
+    return {"ok": True}
 
 
 @router.get("/admin/creatives")
 async def list_creatives(_: dict = Depends(require_admin_only)):
+    from datetime import datetime, timezone, timedelta
+    stale = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    await db.gp_creatives.update_many({"processing": "analysing", "processing_started": {"$lt": stale}},
+                                      {"$set": {"processing": None, "processing_error": "Analysis did not finish", "issues": ["Layout analysis did not finish — click Retry analysis"]}})
     return [view(c) for c in await db.gp_creatives.find({}, {"_id": 0}).sort("created_at", -1).to_list(500)]
 
 
@@ -160,6 +200,8 @@ class Edit(BaseModel):
 @router.put("/admin/creatives/{cid}")
 async def edit(cid: str, inp: Edit, request: Request, u: dict = Depends(require_admin_only)):
     c = await load_c(cid)
+    if c.get("processing"):
+        raise HTTPException(409, "Layout analysis is still running — try again in a few seconds")
     if inp.name is not None:
         c["name"] = inp.name.strip() or c["name"]
     if inp.loan_type is not None:
@@ -185,14 +227,12 @@ async def replace(cid: str, request: Request, file: UploadFile = File(...), u: d
     if (file.content_type or "").lower() not in MIMES or len(data) > 15 * 1024 * 1024:
         raise HTTPException(400, "Upload a PNG, JPG, JPEG or WebP image up to 15 MB")
     art = ce.load(data)
-    analysis, auto = await analyse_and_place(art)
     v = c["version"] + 1
-    c.update(version=v, image_id=await put(data, file.filename or "creative", {"creative_id": cid, "version": v}), mime=file.content_type,
-             width=art.width, height=art.height, analysis=analysis, auto_placement=auto)
-    pl, ev = await evaluate(art, c, {k: val for k, val in auto.items() if k != "reason"}, base_url(request))
-    upd = {k: c[k] for k in ("version", "image_id", "mime", "width", "height", "analysis", "auto_placement")} | {"placement": pl, **ev, "updated_at": now(),
-                                                                                                                 "updated_by": u.get("name"), "pending_republish": bool(c.get("published"))}
+    upd = {"version": v, "image_id": await put(data, file.filename or "creative", {"creative_id": cid, "version": v}), "mime": file.content_type, **placeholder_fields(art),
+           "processing": "analysing", "processing_started": now(), "processing_error": None, "updated_at": now(), "updated_by": u.get("name"),
+           "pending_republish": bool(c.get("published"))}
     await db.gp_creatives.update_one({"id": cid}, {"$set": upd})
+    start(cid, base_url(request))
     return view({**c, **upd})
 
 
@@ -207,6 +247,8 @@ async def publish(inp: Ids, u: dict = Depends(require_admin_only)):
         c = await db.gp_creatives.find_one({"id": cid}, {"_id": 0})
         if not c:
             out.append({"id": cid, "ok": False, "error": "Not found"})
+        elif c.get("processing"):
+            out.append({"id": cid, "ok": False, "error": "Layout analysis is still running"})
         elif c.get("issues"):
             out.append({"id": cid, "ok": False, "error": "; ".join(c["issues"])})
         else:

@@ -29,6 +29,10 @@ const Partners = () => {
   const [ask, setAsk] = useState(null);
   const load = () => api.get('/gp/admin/partners').then(({ data }) => setRows(data));
   useEffect(() => { load(); }, []);
+  const approve = (p, reason = null) => {
+    if (!reason) return setAsk({ title: `Approve ${p.name} as an Active partner?`, fields: [{ key: 'reason', label: 'Reason (recorded with your name)' }], onSubmit: (v) => approve(p, v.reason) });
+    api.post(`/gp/admin/partners/${p.user_id}/approve`, { reason }).then(() => { toast.success(`${p.name} is now Active`); load(); }).catch((e) => toast.error(errMsg(e)));
+  };
   const decide = async (p, item, status, note = null) => {
     if (status === 'Action Required' && !note) return setAsk({ title: `What should ${p.name} correct?`, fields: [{ key: 'note', label: 'Note shown to the partner' }], onSubmit: (v) => decide(p, item, status, v.note) });
     try { await api.post(`/gp/admin/partners/${p.user_id}/kyc/${item}`, { status, note }); toast.success('Updated'); load(); } catch (e) { toast.error(errMsg(e)); }
@@ -39,7 +43,7 @@ const Partners = () => {
       <AskDialog ask={ask} onClose={() => setAsk(null)} />
       <Input data-testid="gpa-search" className="!w-72 mb-3" placeholder="Search partner" value={q} onChange={(e) => setQ(e.target.value)} />
       <RTable testid="gpa-partners" rows={list.slice(0, 200)} keyF={(r) => r.user_id} cols={[['name', 'Partner', (r) => <span><b>{r.name}</b><span className="block text-xs text-[#6B6F6A]">{r.partner_id} · {r.mobile} · {r.reg_type || 'existing'}</span></span>],
-        ['status', 'Status', (r) => <Badge s={r.status} />],
+        ['status', 'Status', (r) => <span className="flex flex-col items-start gap-1"><Badge s={r.status} />{r.status !== 'Active' && <button data-testid={`gpa-approve-${r.partner_id}`} className="text-xs font-semibold text-[#1F7A33] underline" onClick={() => approve(r)}>Approve as Active</button>}</span>],
         ['kyc', 'KYC', (r) => <div className="space-y-1">{Object.entries(r.kyc).map(([k, v]) => <div key={k} className="flex items-center gap-1 text-xs"><span className="w-20 capitalize">{k.replace('_', ' ')}</span><Badge s={v.status} />
           {v.doc_id && <button data-testid={`gpa-view-${r.partner_id}-${k}`} className="text-[#24508F] underline" onClick={() => dl(`/gp/docs/${v.doc_id}`, '', true)}>view</button>}
           {v.status === 'Pending' && <><button data-testid={`gpa-verify-${r.partner_id}-${k}`} className="text-[#1F7A33] font-semibold" onClick={() => decide(r, k, 'Verified')}>Verify</button>

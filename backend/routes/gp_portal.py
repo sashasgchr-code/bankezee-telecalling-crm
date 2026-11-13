@@ -913,6 +913,23 @@ async def admin_partners(_: dict = Depends(require_admin_only)):
     return out
 
 
+class Approval(BaseModel):
+    reason: str
+
+
+@router.post("/admin/partners/{pid}/approve")
+async def approve_partner(pid: str, inp: Approval, u: dict = Depends(require_admin_only)):
+    if not inp.reason.strip():
+        raise HTTPException(400, "Enter a reason for approving this partner")
+    ors = [{"id": pid}, {"partner_code": pid}] + ([{"_id": ObjectId(pid)}] if ObjectId.is_valid(pid) else [])
+    p = await db.users.find_one({"$or": ors, "role": {"$in": ["growth_partner", "telecaller", "sales_agent", "partner"]}}, {"_id": 1, "gp_status": 1})
+    if not p:
+        raise HTTPException(404, "Partner not found")
+    await db.users.update_one({"_id": p["_id"]}, {"$set": {"gp_status": "active", "is_active": True, "gp_activated_at": now(),
+                                                         "gp_approval": {"by": u.get("name"), "at": now(), "reason": inp.reason.strip(), "previous": p.get("gp_status")}}})
+    return {"ok": True}
+
+
 class KycDecision(BaseModel):
     status: str
     note: Optional[str] = None
