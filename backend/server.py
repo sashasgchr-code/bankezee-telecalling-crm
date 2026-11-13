@@ -43,6 +43,24 @@ from routes.whatsapp import router as whatsapp_router, webhook_router as whatsap
 
 app = FastAPI(title="BANKEZEE Connect API")
 
+# Legacy Connect telecalling / attendance APIs are retired (web + installed mobile app). Data stays in MongoDB.
+import re as _re
+from fastapi.responses import JSONResponse as _JSONResponse
+_RETIRED_API = _re.compile(
+    r"^/api/(call-sessions|call-logs|call-outcomes|activity|follow-ups|recordings|attendance|leave)(/|$)"
+    r"|^/api/leads/[^/]+/call-logs/?$"
+    r"|^/api/tl/(leads|stats|call-logs|reports)(/|$)"
+    r"|^/api/dashboard/(stats|recent-calls)/?$"
+    r"|^/api/reports/(detailed-calls|telecallers|hourly|my-hourly|daily-summary|verified-call-stats|daily-tracking-sheet|manager-team-stats)/?$")
+
+
+@app.middleware("http")
+async def retire_legacy_telecalling(request, call_next):
+    if _RETIRED_API.match(request.url.path):
+        return _JSONResponse(status_code=410, content={"detail": "Connect telecalling, attendance and leave have been retired. Use Files."})
+    return await call_next(request)
+
+
 # CORS
 app.add_middleware(
     CORSMiddleware,

@@ -4,7 +4,6 @@ import { Toaster } from "./components/ui/sonner";
 import useAuthStore from "./store/authStore";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import AdminDashboard from "./pages/admin/Dashboard";
 import MetaLayout from "./pages/meta/MetaLayout";
 import MetaDashboard from "./pages/meta/Dashboard";
 import MetaReports from "./pages/meta/Reports";
@@ -21,23 +20,12 @@ import MetaUserManagement from "./pages/meta/UserManagement";
 import MetaChatbotReport from "./pages/meta/ChatbotReport";
 import MetaInbox from "./pages/meta/Inbox";
 import MetaAdPerformance from "./pages/meta/AdPerformance";
-import AdminLeads from "./pages/admin/Leads";
 import AdminUsers from "./pages/admin/Users";
 import AdminApprovals from "./pages/admin/Approvals";
-import AdminReports from "./pages/admin/Reports";
 import AdminSettings from "./pages/admin/Settings";
-import AdminAttendance from "./pages/admin/Attendance";
-import DailyTrackingSheet from "./pages/admin/DailyTrackingSheet";
-import LeaveManagement from "./pages/admin/LeaveManagement";
 import LegacyUserMapping from "./pages/admin/LegacyUserMapping";
-import TelecallerDashboard from "./pages/telecaller/Dashboard";
-import TelecallerLeads from "./pages/telecaller/Leads";
-import TelecallerFollowUps from "./pages/telecaller/FollowUps";
 import TelecallerProfile from "./pages/telecaller/Profile";
-import TelecallerAttendance from "./pages/telecaller/Attendance";
-import TelecallerTrackReport from "./pages/telecaller/TrackReport";
-import { TeamMembers, TeamData, TeamFiles, TeamCalls, TeamLeads } from "./pages/telecaller/team";
-import LeadDetail from "./pages/LeadDetail";
+import { TeamMembers, TeamFiles } from "./pages/telecaller/team";
 import { FilesDashboard, FileDetailsPage } from "./pages/files";
 import BankEligibilityAnalysis from "./pages/files/BankEligibilityAnalysis";
 import EligibilityCheck from "./pages/files/EligibilityCheck";
@@ -50,10 +38,14 @@ import AdminLayout from "./layouts/AdminLayout";
 import HrLayout from "./layouts/HrLayout";
 import TelecallerLayout from "./layouts/TelecallerLayout";
 import ManagerLayout from "./layouts/ManagerLayout";
-import ManagerDashboard from "./pages/manager/ManagerDashboard";
 import ManagerTeam from "./pages/manager/ManagerTeam";
 import LoadingScreen from "./components/LoadingScreen";
 import "./App.css";
+
+// Legacy Connect telecalling screens (retired): old bookmarks land on the Files Dashboard of the same section.
+const RETIRED = ["dashboard", "leads", "leads/:id", "tracking", "attendance", "leave", "reports", "followups",
+  "team/leads", "team/data", "team/calls"];
+const retiredRoutes = (base) => RETIRED.map((p) => <Route key={p} path={p} element={<Navigate to={`${base}/files`} replace />} />);
 
 // Role-neutral File redirect component
 const RoleNeutralFileRedirect = () => {
@@ -178,9 +170,8 @@ function App() {
             <AdminLayout />
           </ProtectedRoute>
         }>
-          <Route index element={<AdminDashboard />} />
-          <Route path="leads" element={<AdminLeads />} />
-          <Route path="leads/:id" element={<LeadDetail />} />
+          <Route index element={<Navigate to="/admin/files" replace />} />
+          {retiredRoutes("/admin")}
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
@@ -196,11 +187,6 @@ function App() {
           <Route path="approvals" element={<AdminApprovals />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="users/legacy-mapping" element={<LegacyUserMapping />} />
-          <Route path="reports" element={<AdminReports />} />
-          <Route path="team/leads" element={<TeamLeads />} />
-          <Route path="tracking" element={<DailyTrackingSheet />} />
-          <Route path="attendance" element={<AdminAttendance />} />
-          <Route path="leave" element={<LeaveManagement />} />
           <Route path="settings" element={<AdminSettings />} />
           <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
@@ -211,26 +197,16 @@ function App() {
             <TelecallerLayout />
           </ProtectedRoute>
         }>
-          <Route index element={<TelecallerLeads />} />
-          <Route path="dashboard" element={<TelecallerDashboard />} />
-          <Route path="leads" element={<TelecallerLeads />} />
-          <Route path="leads/:id" element={<LeadDetail />} />
+          <Route index element={<Navigate to="/agent/files" replace />} />
+          {retiredRoutes("/agent")}
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
           <Route path="files/:fileId/check-eligibility" element={<EligibilityCheck />} />
           <Route path="files/policies" element={<PolicyMaster />} />
-          <Route path="followups" element={<TelecallerFollowUps />} />
-          <Route path="tracking" element={<TelecallerTrackReport />} />
-          <Route path="attendance" element={<TelecallerAttendance />} />
-          <Route path="leave" element={<LeaveManagement />} />
           <Route path="profile" element={<TelecallerProfile />} />
           <Route path="team" element={<TeamMembers />} />
-          <Route path="team/data" element={<TeamData />} />
           <Route path="team/files" element={<TeamFiles />} />
-          <Route path="team/calls" element={<TeamCalls />} />
-          <Route path="team/leads" element={<TeamLeads />} />
-          <Route path="reports" element={<AdminReports />} />
           <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
 
@@ -240,7 +216,8 @@ function App() {
             <ManagerLayout />
           </ProtectedRoute>
         }>
-          <Route index element={<ManagerDashboard />} />
+          <Route index element={<Navigate to="/manager/files" replace />} />
+          {retiredRoutes("/manager")}
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
@@ -252,13 +229,7 @@ function App() {
           <Route path="files/reports/quality" element={<QualityReport />} />
           <Route path="files/reports/calculator-accuracy" element={<EligComparisonReport />} />
           <Route path="files/reports/sales-ops" element={<SalesOpsReport />} />
-          <Route path="reports" element={<AdminReports />} />
-          <Route path="tracking" element={<DailyTrackingSheet />} />
-          <Route path="attendance" element={<AdminAttendance />} />
-          <Route path="leave" element={<LeaveManagement />} />
           <Route path="team" element={<ManagerTeam />} />
-          <Route path="team/calls" element={<TeamCalls />} />
-          <Route path="team/leads" element={<TeamLeads />} />
           <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
 
@@ -268,9 +239,8 @@ function App() {
             <HrLayout />
           </ProtectedRoute>
         }>
-          <Route index element={<AdminDashboard />} />
-          <Route path="attendance" element={<AdminAttendance />} />
-          <Route path="leave" element={<LeaveManagement />} />
+          <Route index element={<Navigate to="/hr/files" replace />} />
+          {retiredRoutes("/hr")}
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />

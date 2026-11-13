@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, FolderOpen, BarChart3, LogOut, ClipboardList, Clock, Calendar, MoreHorizontal, X, UserCheck, Boxes, PhoneCall, HeartHandshake } from 'lucide-react';
+import { Users, FolderOpen, LogOut, MoreHorizontal, UserCheck, Boxes, HeartHandshake } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
@@ -18,21 +18,14 @@ const AdminLayout = () => {
 
   // Primary nav items - 5 items max for mobile
   const primaryNavItems = [
-    { path: '/admin', icon: LayoutDashboard, label: 'Dashboard', exact: true },
-    { path: '/admin/leads', icon: FileText, label: 'Data' },
     { path: '/admin/files', icon: FolderOpen, label: 'Files' },
-    { path: '/admin/tracking', icon: ClipboardList, label: 'Track Report' },
+    { path: '/admin/users', icon: Users, label: 'Users' },
+    { path: '/admin/approvals', icon: UserCheck, label: 'Approvals' },
   ];
 
   // More menu items - overflow items
   const moreNavItems = [
-    { path: '/admin/approvals', icon: UserCheck, label: 'Approvals' },
-    { path: '/admin/users', icon: Users, label: 'Users' },
-    { path: '/admin/reports', icon: BarChart3, label: 'Reports' },
     { path: '/admin/customers-campaigns', icon: HeartHandshake, label: 'Customers & Campaigns' },
-    { path: '/admin/team/leads', icon: PhoneCall, label: 'Team Leads (TL)' },
-    { path: '/admin/attendance', icon: Clock, label: 'Attendance' },
-    { path: '/admin/leave', icon: Calendar, label: 'Leave' },
     ...(user?.meta_access ? [{ path: '/meta', icon: Boxes, label: 'Meta CRM' }] : []),
   ];
 
@@ -64,7 +57,7 @@ const AdminLayout = () => {
         <Outlet />
       </main>
 
-      {/* Bottom Navigation - 5 items: Dashboard, Data, Files, Track Report, More */}
+      {/* Bottom Navigation: Files, Users, Approvals, More */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-40">
         <div className="flex items-center justify-around py-2">
           {primaryNavItems.map((item) => (

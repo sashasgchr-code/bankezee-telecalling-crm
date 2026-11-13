@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Clock, Calendar, FolderOpen, LogOut } from 'lucide-react';
+import { FolderOpen, LogOut } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 
 const HrLayout = () => {
@@ -15,9 +15,6 @@ const HrLayout = () => {
   };
 
   const navItems = [
-    { path: '/hr', icon: LayoutDashboard, label: 'Dashboard', exact: true, testId: 'hr-nav-dashboard' },
-    { path: '/hr/attendance', icon: Clock, label: 'Attendance', testId: 'hr-nav-attendance' },
-    { path: '/hr/leave', icon: Calendar, label: 'Leave Management', testId: 'hr-nav-leave' },
     { path: '/hr/files', icon: FolderOpen, label: 'Files', testId: 'hr-nav-files' },
   ];
 
