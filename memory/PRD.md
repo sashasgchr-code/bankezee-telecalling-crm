@@ -2523,3 +2523,10 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Preview fixture: backend/tests/swamy_fixture.py (lead_swamytest01). Engine fixtures: backend/tests/elig_engine_fixtures.py (46 PASS).
 - Known/out of scope: auth hardening notes from iteration_72 (plain_password field, CORS *), Connect still has separate legacy "AI Parse Docs".
 
+
+## 2026-06 — Legacy Connect telecalling retired (preview only; user will republish) — tested iteration_73 (100%)
+- Frontend: App.js RETIRED routes (dashboard, leads, leads/:id, tracking, attendance, leave, reports, followups, team/leads, team/data, team/calls) redirect to <section>/files; section index -> files for admin/agent/manager/hr. Layout navs: Admin (Files, Users, Approvals, More: C&C, Meta), Manager (Files, C&C, More: Meta, My Team), Agent (Files, C&C, More: Profile, Meta; TL: My Team, Team Files), HR (Files). Break/activity ping/call sessions removed from TelecallerLayout. Team pages show Files/Disbursed only.
+- Backend: server.py middleware returns 410 for /api/call-sessions, call-logs, call-outcomes, activity, follow-ups (legacy lead), recordings, attendance, leave, /api/leads/{id}/call-logs, /api/tl/{leads,stats,call-logs,reports}, /api/dashboard/{stats,recent-calls}, legacy /api/reports/*. Kept: /api/leads (Files + Sheets export script), /api/tl/meta, /api/files/*, /api/meta/*, users, cc. Data untouched in MongoDB.
+- Retired page files remain in repo (unused) for easy rollback. Mobile app needs its own release (calls/attendance/leave now 410).
+- Lost with Connect admin Reports page: the combined Connect+Meta hourly/summary tables (Meta's own Reports page unchanged).
+

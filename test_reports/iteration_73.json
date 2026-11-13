@@ -1,0 +1,35 @@
+{
+  "summary": "Tested the retirement of the legacy Connect telecalling module. Backend: 42/42 pytest checks passed. 21 retired GET paths and 6 retired POST paths (activity/ping, call-sessions/start, call-logs, attendance/check-in, follow-ups, leave/request) return 410 with a 'retired' detail, including unauthenticated requests. 10 kept admin endpoints and 3 kept TL endpoints return 200. The regex does not catch /api/leads list, /api/tl/meta, /api/files/dashboard/stats or /api/meta/*. Frontend: tested admin, manager, TL (mobile 390x844) and GP. Each lands on <section>/files. Nav and More menus match the spec. All 41 old bookmarks tested redirect to <section>/files (admin 12, manager 9, TL 11; plus /agent/team and /agent/team/files for GP, which correctly bounce to /agent/files). Kept pages load: admin users/approvals/legacy-mapping/settings/customers-campaigns/quality report, file detail, check-eligibility, Meta dashboard plus leads/files/reports/call-logs/inbox, manager My Team, TL My Team/Team Files/Profile, GP own files (15). The Create File modal opens for TL and GP (cancelled, not submitted, so no data created). Across all screens: 0 requests to retired APIs, 0 HTTP 410s, 0 API 4xx/5xx, no app console errors (only visual-editor hydration warnings from injected <span> inside <select>/<option>).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/auth/login", "issue": "Not part of this change. Auth uses a Bearer token only (no app httpOnly cookie). CORS returns Access-Control-Allow-Origin '*' together with allow-credentials true. No brute-force lockout: 6 bad logins all returned 401."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "/manager/team (ManagerTeam) and /agent/team (TeamMembers)", "issues": ["Member cards still show legacy telecalling metrics 'Calls', 'Leads'/'Data' (always 0) and 'Active Today'. These numbers are meaningless now that telecalling is retired. Suggest hiding them and keeping Files/Disbursed."]},
+      {"screen": "/agent/profile", "issues": ["Role label shows 'Telecaller' for a growth_partner TL"]},
+      {"screen": "Files Dashboard (GP/TL)", "issues": ["A GP sees the 'All Managers / All Team Leads / All Growth Partners' filters, which don't apply to their own files", "On mobile (390px) the 'All Status' and 'All Growth Partners' selects overflow the filter card's right edge"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter73_retire_telecalling.py", "/app/test_reports/pytest/pytest_iter73.xml"],
+  "action_items": [
+    "Optional: remove the legacy Calls/Leads/Data/Active Today stats from the ManagerTeam and TeamMembers cards",
+    "Optional cleanup: retired page and component files are still in the bundle but no longer routed (pages/admin/Dashboard.js, Attendance.js, LeaveManagement.js, Reports.js, DailyTrackingSheet.js, telecaller/Dashboard.js, FollowUps.js, Attendance.js, team/TeamLeads.js, TeamData.js, TeamCalls.js, LeadDetail.js, manager/ManagerDashboard.js, components/CallModal.js, PostCallModal.js, TodaysCallActivity.js, VerifiedCallStats.js, components/attendance/*, services/offlineQueue.js). Delete them to stop accidental reuse.",
+    "Optional: Profile role label for growth_partner"
+  ],
+  "critical_code_review_comments": [
+    "server.py retire_legacy_telecalling middleware: the regex is anchored and correctly scoped. It runs before auth, so any client gets 410 (intended).",
+    "App.js retiredRoutes(): uses relative child paths under each section and also covers 'leads/:id'. No unknown sub-paths found leaking into retired pages.",
+    "Dead code: the retired modules listed in action_items still call the retired APIs. They are harmless now (not imported by any route), but they add bundle weight."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter73_retire_telecalling.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. No files created (the Create File modal was opened and cancelled). Visiting /admin/files/{id}/check-eligibility automatically re-runs the eligibility analysis for that file (existing behaviour), which may add an eligibility history entry for file c36d3b05-97e1-4730-a635-183341de0a12.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Telecalling retired: run test_iter73_retire_telecalling.py for 410/200 regression. The frontend nav uses a bottom tab bar on all viewports (data-testid nav-*, nav-more, more-<label lowercase>, team-nav-my-team / team-nav-team-files). File rows use file-row-<id>; the add-file modal uses add-new-file-btn / cancel-add-file."
+}

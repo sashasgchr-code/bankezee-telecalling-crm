@@ -55,7 +55,7 @@ const TeamMembers = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 gap-3 mb-6">
+      <div className="grid grid-cols-1 gap-3 mb-6">
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
@@ -64,17 +64,6 @@ const TeamMembers = () => {
             <div>
               <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
               <p className="text-xs text-gray-500">Team Members</p>
-            </div>
-          </div>
-        </div>
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <Calendar size={20} className="text-blue-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{stats.active_today}</p>
-              <p className="text-xs text-gray-500">Active Today</p>
             </div>
           </div>
         </div>
@@ -119,27 +108,13 @@ const TeamMembers = () => {
               </div>
 
               {/* Member Stats */}
-              <div className="grid grid-cols-3 gap-2 mt-4 pt-3 border-t border-gray-100">
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
-                    <FileText size={14} />
-                  </div>
-                  <p className="text-lg font-semibold text-gray-900">{member.stats?.total_data || 0}</p>
-                  <p className="text-xs text-gray-500">Data</p>
-                </div>
+              <div className="grid grid-cols-1 gap-2 mt-4 pt-3 border-t border-gray-100">
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
                     <FileText size={14} />
                   </div>
                   <p className="text-lg font-semibold text-gray-900">{member.stats?.total_files || 0}</p>
                   <p className="text-xs text-gray-500">Files</p>
-                </div>
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-1 text-gray-500 mb-1">
-                    <PhoneCall size={14} />
-                  </div>
-                  <p className="text-lg font-semibold text-gray-900">{member.stats?.total_calls || 0}</p>
-                  <p className="text-xs text-gray-500">Calls</p>
                 </div>
               </div>
 

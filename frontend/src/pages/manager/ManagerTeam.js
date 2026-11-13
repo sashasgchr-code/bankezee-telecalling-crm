@@ -135,17 +135,7 @@ const ManagerTeam = () => {
                 </div>
                 
                 {/* TL Stats */}
-                <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-blue-100">
-                  <div className="text-center">
-                    <Phone size={14} className="mx-auto text-blue-500 mb-1" />
-                    <div className="text-sm font-semibold">{tl.calls || 0}</div>
-                    <div className="text-[10px] text-gray-500">Calls</div>
-                  </div>
-                  <div className="text-center">
-                    <Database size={14} className="mx-auto text-purple-500 mb-1" />
-                    <div className="text-sm font-semibold">{tl.leads || 0}</div>
-                    <div className="text-[10px] text-gray-500">Leads</div>
-                  </div>
+                <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-blue-100">
                   <div className="text-center">
                     <FileText size={14} className="mx-auto text-orange-500 mb-1" />
                     <div className="text-sm font-semibold">{tl.files || 0}</div>
@@ -193,15 +183,7 @@ const ManagerTeam = () => {
               </div>
               
               {/* GP Stats */}
-              <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-gray-100">
-                <div className="text-center">
-                  <div className="text-sm font-semibold text-blue-600">{member.calls || 0}</div>
-                  <div className="text-[10px] text-gray-500">Calls</div>
-                </div>
-                <div className="text-center">
-                  <div className="text-sm font-semibold text-purple-600">{member.leads || 0}</div>
-                  <div className="text-[10px] text-gray-500">Leads</div>
-                </div>
+              <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-gray-100">
                 <div className="text-center">
                   <div className="text-sm font-semibold text-orange-600">{member.files || 0}</div>
                   <div className="text-[10px] text-gray-500">Files</div>

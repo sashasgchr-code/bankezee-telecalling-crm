@@ -64,7 +64,7 @@ const TelecallerProfile = () => {
           </div>
           <div>
             <h3 className="text-xl font-bold text-gray-900">{user?.name}</h3>
-            <p className="text-gray-500 capitalize">{user?.role}</p>
+            <p className="text-gray-500">{['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'].includes(user?.role) ? `Growth Partner${user?.is_tl ? ' · Team Lead' : ''}` : user?.role}</p>
           </div>
         </div>
 
