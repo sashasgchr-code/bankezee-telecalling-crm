@@ -216,6 +216,8 @@ async def public_docs(fid: str, token: str, category: str = "general", files: Li
 async def backfill_partner_files():
     """Idempotent: tag earlier partner-submitted Files with the Growth Partner source (files stay where they are)."""
     await db.gp_submissions.create_index("at")
+    from routes.gp_file_payout import ensure_indexes
+    await ensure_indexes()
     r = await db.leads.update_many({"status": "file", "gp_referral.partner_id": {"$exists": True}, "file_source": {"$ne": PARTNER_SOURCE}},
                                    {"$set": {"file_source": PARTNER_SOURCE, "file_details.source_type": "Growth Partner"}})
     return r.modified_count

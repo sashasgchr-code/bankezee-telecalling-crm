@@ -67,15 +67,14 @@ class TestSignup:
         assert r.status_code == 409 and r.json().get("detail") == "already_registered"
         assert requests.get(f"{API}/gp/check", params={"mobile": S["mobile"]}).json()["registered"] is True
 
-    def test_business_signup(self):
+    def test_business_signup_ignored(self):
+        # iteration 76: new signups are individual-only; reg_type=business is ignored
         m = mob()
         r = requests.post(f"{API}/gp/signup", json={"reg_type": "business", "mobile": m, "email": f"test_biz_{m}@example.com", "name": "TEST_Biz Sig", "password": "Partner@123"})
         assert r.status_code == 200
         d = me(r.json()["token"])
-        assert set(d["kyc"]) == {"pan", "identity", "business_reg", "bank"}
-        # business profile needs entity_name for the profile step
-        d = requests.put(f"{API}/gp/me/profile", headers=H(r.json()["token"]), json={"legal_name": "TEST Biz", "city": "Hyd", "pin": "500001"}).json()
-        assert d["steps"]["profile"] is False
+        assert set(d["kyc"]) == {"pan", "identity", "bank"}
+        assert d["profile"].get("reg_type") == "individual"
 
     def test_login_mobile_and_email(self, gp):
         for ident in (S["mobile"], S["email"]):
@@ -167,21 +166,21 @@ class TestAdminKyc:
 # ---- leads & referrals ----
 class TestLeads:
     def test_add_lead(self, gp):
-        body = {"name": "TEST_Lead One", "mobile": mob(), "city": "Hyd", "loan_type": "Personal Loan", "amount": 500000}
-        assert requests.post(f"{API}/gp/leads", headers=H(gp), json=body | {"consent": False}).status_code == 400
-        r = requests.post(f"{API}/gp/leads", headers=H(gp), json=body | {"consent": True})
+        body = {"name": "TEST_Lead One", "mobile": mob(), "city": "Hyd", "loan_type": "new_personal_loan", "employment_type": "salaried", "loan_amount_required": 500000}
+        assert requests.post(f"{API}/gp/files", headers=H(gp), json=body | {"consent": False}).status_code == 400
+        r = requests.post(f"{API}/gp/files", headers=H(gp), json=body | {"consent": True})
         assert r.status_code == 200, r.text
         S["lead_name"] = body["name"]
-        d = requests.get(f"{API}/gp/leads", headers=H(gp), params={"search": "TEST_Lead One"}).json()
+        d = requests.get(f"{API}/gp/files", headers=H(gp), params={"search": "TEST_Lead One"}).json()
         assert d["total"] >= 1 and d["rows"][0]["name"] == "TEST_Lead One"
 
     def test_public_referral(self, gp):
         p = requests.get(f"{API}/gp/public/partner/{S['code']}")
         assert p.status_code == 200 and p.json()["partner_id"] == S["code"]
-        r = requests.post(f"{API}/gp/public/refer/{S['code']}", json={"name": "TEST_Ref Cust", "mobile": mob(), "loan_type": "Home Loan", "consent": True})
-        assert r.status_code == 200 and r.json()["ok"]
-        rows = requests.get(f"{API}/gp/leads", headers=H(gp)).json()["rows"]
-        assert any(x["name"] == "TEST_Ref Cust" and x["via"] == "Referral link" for x in rows)
+        r = requests.post(f"{API}/gp/public/refer/{S['code']}", json={"name": "TEST_Ref Cust", "mobile": mob(), "loan_type": "new_home_loan", "employment_type": "self_employed", "consent": True})
+        assert r.status_code == 200 and r.json()["file_id"]
+        rows = requests.get(f"{API}/gp/files", headers=H(gp)).json()["rows"]
+        assert any(x["name"] == "TEST_Ref Cust" and x["via"] == "Application link" for x in rows)
         assert requests.get(f"{API}/gp/public/partner/NOPE000000").status_code == 404
 
 

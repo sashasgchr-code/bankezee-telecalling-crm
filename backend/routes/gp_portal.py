@@ -534,7 +534,9 @@ async def add_payout(inp: LedgerEntry, u: dict = Depends(require_admin_only)):
     if not rate:
         raise HTTPException(400, err)
     gross = round(inp.disbursed_amount * rate["payout_value"] / 100, 2) if rate["payout_type"] == "percent" else rate["payout_value"]
-    doc = {"id": uuid.uuid4().hex[:12], "partner_id": uid(p), "partner_code": p["partner_code"], **inp.dict(exclude={"partner_code"}),
+    doc = {"id": uuid.uuid4().hex[:12], "partner_id": uid(p), "partner_code": p["partner_code"], **inp.dict(exclude={"partner_code"}), "kind": "payout", "source": "csv",
+           **({"file_key": inp.file_id} if inp.file_id else {}),
+           "calc": {"rate_code": rate["rate_code"], "rate_version": rate["version"], "payout_type": rate["payout_type"], "payout_value": rate["payout_value"]},
            "product_code": inp.product_code.upper(), "lender_code": (inp.lender_code or "").upper(), "rate_code": rate["rate_code"], "rate_version": rate["version"],
            "payout_type": rate["payout_type"], "payout_value": rate["payout_value"], "gross": gross, "net": round(gross - inp.deductions, 2),
            "status": "Under Verification", "reason": None, "payment_date": None, "txn_ref": None, "created_by": u.get("name"), "created_at": now()}
@@ -557,10 +559,17 @@ async def update_payout(pid: str, inp: PayoutUpdate, u: dict = Depends(require_a
         raise HTTPException(400, "A partner-facing reason is required for On Hold / Reversed")
     if inp.status == "Paid" and not (inp.payment_date and inp.txn_ref):
         raise HTTPException(400, "Payment date and transaction reference are required for Paid")
-    r = await db.gp_payouts.find_one_and_update({"id": pid}, {"$set": {**inp.dict(), "updated_by": u.get("name"), "updated_at": now()},
-                                                              "$push": {"history": {"status": inp.status, "by": u.get("name"), "at": now()}}})
-    if not r:
+    cur = await db.gp_payouts.find_one({"id": pid}, {"status": 1})
+    if not cur:
         raise HTTPException(404, "Payout not found")
+    if cur["status"] == "Paid" and inp.status != "Reversed":
+        raise HTTPException(409, "Paid payouts are locked — add an adjustment from the File's Growth Partner Payout section")
+    if cur["status"] == "Reversed":
+        raise HTTPException(409, "Reversed payouts are locked")
+    upd = {"$set": {**inp.dict(), "updated_by": u.get("name"), "updated_at": now()}, "$push": {"history": {"status": inp.status, "by": u.get("name"), "at": now()}}}
+    if inp.status == "Reversed":
+        upd["$unset"] = {"file_key": ""}
+    await db.gp_payouts.update_one({"id": pid}, upd)
     return {"ok": True}
 
 
@@ -573,7 +582,8 @@ async def payout_rows(pid, status="", dfrom="", dto=""):
     q = {"partner_id": pid}
     if status:
         q["status"] = status
-    rows = await db.gp_payouts.find(q, {"_id": 0, "created_by": 0, "history": 0}).sort("disbursement_date", -1).to_list(5000)
+    rows = await db.gp_payouts.find(q, {"_id": 0, "created_by": 0, "history": 0, "audit": 0, "calc": 0, "manual": 0, "needs_review": 0, "review_note": 0,
+                                        "internal_reason": 0, "file_key": 0, "updated_by": 0}).sort("disbursement_date", -1).to_list(5000)
     legacy = await db.commissions.find({"source_id": pid}, {"_id": 0}).to_list(5000)
     rows += [{"id": f"legacy-{i}", "referral_ref": c.get("lead_id"), "product_code": c.get("type") or "—", "disbursement_date": str(c.get("created_at") or "")[:10],
               "gross": c.get("amount"), "net": c.get("amount"), "status": "Paid" if c.get("status") == "paid" else "Payable", "legacy": True} for i, c in enumerate(legacy)]
@@ -591,7 +601,7 @@ async def my_payouts(status: str = "", dfrom: str = "", dto: str = "", u: dict =
 @router.get("/payouts/statement.csv")
 async def my_statement(status: str = "", dfrom: str = "", dto: str = "", u: dict = Depends(require_gp)):
     rows = await payout_rows(uid(u), status, dfrom, dto)
-    cols = ["referral_ref", "product_code", "lender_code", "disbursement_date", "disbursed_amount", "payout_type", "payout_value", "rate_code", "rate_version",
+    cols = ["file_id", "referral_ref", "product_code", "lender_code", "disbursement_date", "disbursed_amount", "payout_type", "payout_value", "rate_code", "rate_version",
             "gross", "deductions", "net", "status", "reason", "payment_date", "txn_ref"]
     buf = io.StringIO()
     w = csv.writer(buf)

@@ -11,6 +11,7 @@ import { toast } from 'sonner';
 import ExistingLoansEditor from '../../components/file-detail/ExistingLoansEditor';
 import ChatbotSubmittedLoans from '../../components/file-detail/ChatbotSubmittedLoans';
 import { DocumentReader } from '../../components/eligibility/EngineResults';
+import GpPayoutSection from '../../components/file-detail/GpPayoutSection';
 import BankEligibilityRow from '../../components/file-detail/BankEligibilityRow';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 import { isFollowupStatus, procStatusLabel, followupDays, followupUrgency, followupDaysLabel, URGENCY_META, computeTat, tatDurationLabel } from '../meta/metaCommon';
@@ -199,6 +200,7 @@ const FileDetailsPage = ({
   const { loanTypes: canonicalLoanTypes, categoryLabels: canonicalCategoryLabels } = useLoanTypes();
   
   const [fileData, setFileData] = useState(null);
+  const [payoutTick, setPayoutTick] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -408,6 +410,7 @@ const FileDetailsPage = ({
       // Persist first, then adopt exactly what the backend stored (no optimistic success)
       const response = await api.put(`${apiBase}/${fileId}/eligibilities`, { eligibilities: banks });
       setEligibilities(normalizeEligibilities(response.data?.eligibilities || banks));
+      setTimeout(() => setPayoutTick((t) => t + 1), 800);
       toast.success(successMessage);
       return true;
     } catch (error) {
@@ -1167,6 +1170,7 @@ const FileDetailsPage = ({
 
           {/* Right Column - Documents & Activity */}
           <div className="space-y-6">
+            {apiBase === '/files' && (isAdmin || isOps) && <GpPayoutSection fileId={fileId} refreshKey={payoutTick} />}
             {sidebarExtra}
             {/* Documents */}
             <div className="bg-white rounded-xl border border-gray-200 p-4">

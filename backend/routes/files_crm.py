@@ -2392,6 +2392,8 @@ async def update_file_status(file_id: str, status_update: FileStatusUpdate, curr
         }
     )
     
+    from routes.gp_file_payout import safe_sync
+    safe_sync(file_id)
     return {"message": "File status updated successfully"}
 
 
@@ -2571,6 +2573,8 @@ async def update_eligibilities(file_id: str, eligibility_update: EligibilityUpda
         raise HTTPException(status_code=500, detail="Eligibility update did not match exactly one file")
     
     saved = await db.leads.find_one(lead_filter(file_id), {"_id": 0, "eligibilities": 1})
+    from routes.gp_file_payout import safe_sync
+    safe_sync(file_id)
     return {
         "message": "Eligibilities updated successfully",
         "count": len(eligibilities_data),

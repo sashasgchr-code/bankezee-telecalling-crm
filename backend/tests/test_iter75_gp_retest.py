@@ -166,9 +166,9 @@ class TestLegacy:
         assert any(p["user_id"] == S["leg_uid"] for p in lst)
 
     def test_lead_visible(self, legacy):
-        lead = requests.post(f"{API}/gp/leads", headers=H(legacy), json={"name": "TEST_Leg75Lead", "mobile": mob("6"), "consent": True}).json()
-        S["leg_lead"] = lead.get("id")
-        lv = requests.get(f"{API}/gp/leads", headers=H(legacy)).json()
+        lead = requests.post(f"{API}/gp/files", headers=H(legacy), json={"name": "TEST_Leg75Lead", "mobile": mob("6"), "loan_type": "new_personal_loan", "employment_type": "salaried", "consent": True}).json()
+        S["leg_lead"] = lead.get("file_id")
+        lv = requests.get(f"{API}/gp/files", headers=H(legacy)).json()
         assert lv["total"] == 1
 
     def test_agreement_sign(self, admin, legacy):

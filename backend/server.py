@@ -124,6 +124,8 @@ from routes.gp_portal import router as gp_portal_router  # Growth Partner progra
 app.include_router(gp_portal_router)
 from routes.gp_files import router as gp_files_router, backfill_partner_files  # Growth Partner files -> Connect CRM Files
 app.include_router(gp_files_router)
+from routes.gp_file_payout import router as gp_file_payout_router  # GP payout on a disbursed File (CSV auto / manual override)
+app.include_router(gp_file_payout_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production
