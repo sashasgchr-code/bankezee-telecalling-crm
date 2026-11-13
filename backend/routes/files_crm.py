@@ -2179,7 +2179,7 @@ async def get_file_details(file_id: str, current_user: dict = Depends(get_curren
             if "file_details" not in file_doc:
                 file_doc["file_details"] = {}
             file_doc["file_details"]["growth_partner_name"] = file_doc["source_name"]
-            file_doc["file_details"]["growth_partner_code"] = source_user.get("employee_code") or source_id[:8]
+            file_doc["file_details"]["growth_partner_code"] = (file_doc.get("gp_referral") or {}).get("partner_code") or source_user.get("partner_code") or source_user.get("employee_code") or source_id[:8]
             file_doc["file_details"]["growth_partner_contact"] = source_user.get("phone") or source_user.get("email", "")
     
     # Map file_documents to documents with download URLs

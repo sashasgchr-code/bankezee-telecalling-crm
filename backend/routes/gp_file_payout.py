@@ -111,6 +111,8 @@ async def sync(fid, user=None):
         if rec and rec["status"] not in LOCKED and not rec.get("needs_review"):
             await db.gp_payouts.update_one({"file_key": fid}, {"$set": {"needs_review": True, "review_note": "Disbursement is no longer recorded on the file"}})
         return
+    if not rec and await db.gp_payouts.find_one({"file_id": fid, "kind": {"$ne": "adjustment"}, "status": "Reversed"}, {"_id": 1}):
+        return  # reversed payouts are not re-created automatically; staff can enter a new one manually
     changed = rec and float(rec.get("disbursed_amount") or 0) != disb["amount"]
     if rec and rec["status"] in LOCKED:
         if changed and not rec.get("needs_review"):

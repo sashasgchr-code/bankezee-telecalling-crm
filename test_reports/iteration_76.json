@@ -1,0 +1,49 @@
+{
+  "summary": "Tested both features end-to-end. (A) GP Files: signup opens straight on the individual form, and reg_type=business still creates an individual. Leads->Files renames, the /gp/leads redirect, Add New File (submit stays disabled until 4 fields + consent, then File ID + 'New', Open file, checklist shows Missing, adding a doc later works), optional fields + payslip/CIBIL (all saved; doc_extract read both docs; staff File Detail shows the values and the conflicts for review), the public link /r/TEST9B4002D6 (customer consent wording, File ID, token upload, refer-invalid), staff source filter + GP badge + Unassigned queue + file_source stats, exact status label 'Sent for Login' in GP My Files and history, isolation and reassign (main agent's test_iter76_gp_files.py) all pass. (B) GP payout: PL_STD 1.25% on 5,00,000 = 6,250 Under Verification (csv), one record per file after repeated saves and status changes. Gold loan shows Manual Payout Required, then 'Entered Manually'. Admin and ops overrides by % and by amount, with preview (original/revised/diff), audit history and Restore. Changing the disbursed amount flags a manual payout for review and recalculates an auto payout with the frozen rate version. A newly published partner-scoped TEST rate does not change the saved payout (new files use it). Ledger Payable->Paid (dialog) locks the payout: PATCH and manual PUT return 409, and Add adjustment creates a separate entry. GP Payouts/Commission Report/statement CSV show the same final amounts and statuses, with no internal reasons. Manager and GP get 403 and the section is not rendered for the manager. Found 1 significant bug (a Reversed payout is re-created automatically), 1 data leak (cross-partner submission_id) and a few display issues.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PATCH /api/gp/admin/payouts/{id} status=Reversed + gp_file_payout.sync", "issue": "Reversing a file payout unsets file_key, so the next sync (GET /api/gp/file-payout/{fid}, eligibility save or status change) finds no record and creates a NEW auto 'Under Verification' payout. Reproduced: reverse -> view -> 2 payout docs, the new one Under Verification. Reversal is undone silently and the partner gets a fresh payable entry.", "priority": "HIGH"},
+      {"endpoint": "POST /api/gp/files and /api/gp/public/refer/{code} (submission_id)", "issue": "The submission_id dedupe is global, not per partner. Partner B posting partner A's submission_id gets partner A's file_id back (duplicate=true), which leaks another partner's File ID. Failing test: test_iter76_gp_files.py::TestIdempotency::test_submission_id_cross_partner. Fix: key gp_submissions by (partner_id, submission_id) and match prev on gp_referral.partner_id too.", "priority": "MEDIUM"}
+    ],
+    "minor": [
+      {"endpoint": "POST /api/gp/files (same mobile, no submission_id)", "issue": "The 24h same-mobile check is check-then-insert, so 3 parallel posts created 3 files. The UI sends submission_id, so impact is low; a unique key or lock per (partner, mobile, day) would close the race."},
+      {"endpoint": "submit_file", "issue": "gp_submissions is inserted before create_file_direct. If file creation then fails, every retry with that submission_id returns 409 'already being submitted' forever."},
+      {"endpoint": "GET /api/files/{id} (files_crm.py ~L2182)", "issue": "file_details.growth_partner_code is overwritten with employee_code or source_id[:8], so the staff File Detail shows 'Growth Partner Code 6af6e81b' instead of the stored TEST9B4002D6. It should prefer partner_code / gp_referral.partner_code."},
+      {"endpoint": "GET /api/gp/payouts, /payouts/statement.csv", "issue": "For a manual override the partner row/statement shows rate_code PL_STD v1 with payout_value 1.5% (PL_STD is actually 1.25%), which misrepresents the published rate. The 'source':'manual' field is also exposed to the partner. Adjustment rows have no label (deduction_note is not shown), so a bare ₹-200 row appears under the same file id."},
+      {"endpoint": "CORS", "issue": "Pre-existing: access-control-allow-origin '*' together with allow-credentials true. Auth uses bearer tokens (no httpOnly cookie)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminGpProgramme Payout Ledger table", "issue": "The 'Rate (version)' column shows 'undefined vundefined' for manual payouts without a CSV rate (e.g. gold loan) and for adjustment rows. Manual overrides of a CSV rate show 'PL_STD v1' with no Manual indicator.", "selector": "[data-testid='ledger-table']", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Staff File Detail (GP files)", "issues": ["Headings still say 'Complete Lead Information' and 'Lead Source & Status' (Files rename not applied on the staff side)", "Growth Partner Code shows internal id prefix (see backend minor)"]},
+      {"screen": "GP Payouts Commission Report / Admin ledger", "issues": ["Native browser date inputs (mm/dd/yyyy) instead of the shadcn date picker"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter76_gp_files.py", "/app/backend/tests/test_iter76_gp_file_payout.py", "/app/backend/tests/test_iter74_gp_programme.py", "/app/backend/tests/test_iter75_gp_retest.py"],
+  "action_items": [
+    "Fix the Reversed payout being re-created by sync: keep file_key on reversal or have sync/upsert skip files whose latest payout is Reversed (unless staff explicitly re-create one)",
+    "Scope submission_id idempotency per partner (gp_submissions key partner_id+submission_id; prev lookup must also match gp_referral.partner_id)",
+    "Ledger table: render rate as '—' or 'Manual' when rate_code is missing, and show a Manual/Adjustment tag",
+    "GET /api/files/{id}: do not overwrite file_details.growth_partner_code with source_id[:8] when partner_code exists",
+    "Partner payout rows/statement: for manual payouts don't show the CSV rate_code next to the manual %; label adjustment rows (e.g. show deduction_note 'Adjustment')",
+    "Optional: release gp_submissions on create failure; guard the same-mobile race"
+  ],
+  "critical_code_review_comments": [
+    "gp_file_payout.view() runs sync() on every GET, so a GET mutates state (creates payouts and audit entries). That is acceptable, but combined with the Reversed/file_key unset it causes the re-creation bug",
+    "update_payout: Reversed unsets file_key, but add_payout's duplicate check ignores Reversed too, so both paths treat Reversed as 'no payout' and will re-create one",
+    "safe_sync uses asyncio.create_task without keeping a reference (the task can be garbage-collected) and its failures are only logged as warnings",
+    "files_crm.py is 4869 lines and gp_portal.py 934 lines; consider splitting",
+    "The public refer endpoint has no rate limiting or captcha, so anyone can create Files for any partner code"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter76_gp_file_payout.py"],
+  "success_rate": {"backend": "96% (26/27 iter76 tests; 38/38 iter74+75 regression) + 1 extra bug found ad hoc (Reversed re-create)", "frontend": "95% (all flows work; ledger 'undefined vundefined' display bug)"},
+  "seed_data_creation": "Created TEST_ files (all deleted by id), a TEST_ GP via signup and a partner-scoped TEST_ rate (both deleted by the test fixture). GP TEST9B4002D6 ledger rows from my UI runs were deleted. The main agent's file 8a0b4b2e and 'TEST_UI GP File' were left untouched.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest on test_iter76_gp_files.py + test_iter76_gp_file_payout.py with -p no:xdist. The cross_partner test should pass once submission_id is scoped per partner. Re-check the Reversed flow: create a PL GP file, disburse, PATCH Reversed with a reason, GET /api/gp/file-payout/{fid} -> there should be no new Under Verification payout. Login: staff /login (email-input/password-input/login-submit-btn); GP /gp/login (gp-signin-id/password/submit). Ledger is at /admin/gp-programme, tab-ledger.",
+  "rca of the issue": "Reversed re-create: update_payout sets $unset file_key on Reversed; current(fid) looks up only by file_key, so sync() sees rec=None and the disbursement still exists, so upsert inserts a new csv payout. Cross-partner leak: gp_submissions _id is submission_id only, and the DuplicateKeyError branch looks up leads by gp_referral.submission_id without a partner filter."
+}

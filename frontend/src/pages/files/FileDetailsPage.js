@@ -644,7 +644,7 @@ const FileDetailsPage = ({
             {/* Complete Lead Information */}
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-lg font-semibold text-gray-900">Complete Lead Information</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Complete File Information</h2>
                 {canEditLeadInfo && (
                   <button
                     onClick={() => isEditingDetails ? handleSaveDetails() : setIsEditingDetails(true)}
@@ -889,7 +889,7 @@ const FileDetailsPage = ({
 
               {/* Lead Source & Status */}
               <div className="pt-4 border-t border-gray-100">
-                <h3 className="text-sm font-semibold text-green-600 mb-3">Lead Source & Status</h3>
+                <h3 className="text-sm font-semibold text-green-600 mb-3">File Source & Status</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">Source Type</label>

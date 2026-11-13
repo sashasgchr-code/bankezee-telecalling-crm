@@ -124,7 +124,6 @@ class FileSubmit(BaseModel):
 
 
 async def submit_file(partner: dict, inp: FileSubmit, channel: str):
-    from routes.files_crm import create_file_direct, FileCreate
     if not inp.consent:
         raise HTTPException(400, "Customer consent to be contacted is required")
     mob = norm_mobile(inp.mobile)
@@ -135,18 +134,38 @@ async def submit_file(partner: dict, inp: FileSubmit, channel: str):
     if inp.cibil_score is not None and not 300 <= inp.cibil_score <= 900:
         raise HTTPException(400, "CIBIL score must be between 300 and 900")
     pid = uid(partner)
-    if inp.submission_id:
-        try:
-            await db.gp_submissions.insert_one({"_id": inp.submission_id, "partner_id": pid, "at": now()})
-        except DuplicateKeyError:
-            prev = await db.leads.find_one({"gp_referral.submission_id": inp.submission_id}, {"id": 1, "file_status": 1})
-            if prev:
-                return {"file_id": prev["id"], "status": status_info(prev.get("file_status")), "duplicate": True}
-            raise HTTPException(409, "This file is already being submitted — refresh My Files in a moment")
     dup = await db.leads.find_one({"status": "file", "phone": {"$regex": f"{mob}$"}, "gp_referral.partner_id": pid,
                                    "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=1)}}, {"id": 1, "file_status": 1})
     if dup:
         return {"file_id": dup["id"], "status": status_info(dup.get("file_status")), "duplicate": True}
+    claims = [f"{pid}:sub:{inp.submission_id}"] if inp.submission_id else []
+    claims.append(f"{pid}:mob:{mob}:{now()[:10]}")
+    taken = []
+    for c in claims:
+        try:
+            await db.gp_submissions.insert_one({"_id": c, "partner_id": pid, "at": now()})
+            taken.append(c)
+        except DuplicateKeyError:
+            await db.gp_submissions.delete_many({"_id": {"$in": taken}})
+            q = {"gp_referral.submission_id": inp.submission_id} if ":sub:" in c else {"phone": {"$regex": f"{mob}$"},
+                                                                                       "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=1)}}
+            prev = await db.leads.find_one({"status": "file", "gp_referral.partner_id": pid, **q}, {"id": 1, "file_status": 1})
+            if prev:
+                return {"file_id": prev["id"], "status": status_info(prev.get("file_status")), "duplicate": True}
+            fresh = (datetime.now(timezone.utc) - timedelta(minutes=2)).isoformat()
+            if ":sub:" in c or await db.gp_submissions.find_one({"_id": c, "at": {"$gte": fresh}}):
+                raise HTTPException(409, "This file is already being submitted — refresh My Files in a moment")
+            await db.gp_submissions.update_one({"_id": c}, {"$set": {"at": now()}})
+            taken.append(c)
+    try:
+        return await _create(partner, pid, mob, inp, channel)
+    except Exception:
+        await db.gp_submissions.delete_many({"_id": {"$in": taken}})
+        raise
+
+
+async def _create(partner, pid, mob, inp, channel):
+    from routes.files_crm import create_file_direct, FileCreate
     extra = {k: v for k, v in {"loan_amount_required": inp.loan_amount_required, "company_name": (inp.company_name or "").strip() or None,
                                "net_salary": inp.net_salary, "cibil_score": inp.cibil_score, "monthly_emi_obligations": inp.monthly_emi_obligations,
                                "existing_loans": [ln.dict() for ln in inp.existing_loans or [] if ln.bank or ln.emi or ln.outstanding] or None,

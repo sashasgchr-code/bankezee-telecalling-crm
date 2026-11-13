@@ -2541,3 +2541,11 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Agreement signing: clickwrap + one-time code via shared Resend transport (env RESEND_API_KEY or admin Settings DB key, same as Meta CRM). Preview has no key → GP_SIGNING_CODE_ON_SCREEN=true shows code on screen (only when email is not configured)
 - Legacy partners (source != gp_signup) stay Active; partner identity uses users.id (fixes legacy id mismatch)
 - Backlog: lockout on /api/auth/login, split gp_portal.py, PDF iframe fallback on mobile Safari, admin date pickers
+
+## GP Files → Connect CRM Files + GP File Payouts (Nov 2026) — DONE & TESTED (iteration 76 + fixes)
+- New GP signup individual-only (API forces individual; existing business accounts preserved)
+- GP portal "Leads" → "Files": Add New File form (4 required fields + consent, conditional details, ExistingLoansEditor, doc checklist by employment type) → real Connect File via create_file_direct (file_source=growth_partner, gp_referral.partner_id); public /r/{code} creates same File + token doc upload; idempotent per partner (submission_id + same-mobile/day claims in gp_submissions)
+- GP sees exact CRM status labels; My Files, file detail (/gp/files/:id) with checklist & later uploads (triggers doc_extract connect scope)
+- Staff Files: Source filter (Growth Partner portal / Unassigned queue), GP badge; 12 earlier GP files left in place, tagged via startup backfill
+- GP payout on disbursed File (routes/gp_file_payout.py): auto from CSV rate (frozen rate snapshot), Manual Payout Required, Admin/Ops manual entry/override (% or ₹, reason, preview, audit), Restore Calculated Payout, review flag on amount change, Paid lock + adjustments, Reversed never auto-recreated; one record per file (unique file_key)
+- Backlog: shadcn date pickers in payout filters; CORS tightening; product-specific doc checklist if the business defines one

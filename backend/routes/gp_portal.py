@@ -584,6 +584,12 @@ async def payout_rows(pid, status="", dfrom="", dto=""):
         q["status"] = status
     rows = await db.gp_payouts.find(q, {"_id": 0, "created_by": 0, "history": 0, "audit": 0, "calc": 0, "manual": 0, "needs_review": 0, "review_note": 0,
                                         "internal_reason": 0, "file_key": 0, "updated_by": 0}).sort("disbursement_date", -1).to_list(5000)
+    for r in rows:
+        src = r.pop("source", None)
+        if src == "manual":
+            r.update(rate_code=None, rate_version=None)
+        if r.get("kind") == "adjustment":
+            r.update(file_id=f"{r.get('file_id')} (adjustment)", payout_type=None, deduction_note=None)
     legacy = await db.commissions.find({"source_id": pid}, {"_id": 0}).to_list(5000)
     rows += [{"id": f"legacy-{i}", "referral_ref": c.get("lead_id"), "product_code": c.get("type") or "—", "disbursement_date": str(c.get("created_at") or "")[:10],
               "gross": c.get("amount"), "net": c.get("amount"), "status": "Paid" if c.get("status") == "paid" else "Payable", "legacy": True} for i, c in enumerate(legacy)]
