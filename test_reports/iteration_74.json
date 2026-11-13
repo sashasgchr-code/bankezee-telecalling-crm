@@ -1,0 +1,55 @@
+{
+  "summary": "First full test of the GP programme (backend pytest with 26 tests + UI flows on desktop and 390px mobile). The core flows work end to end for NEW gp_signup partners: split-screen signup with stepper, Individual/Business signup with no OTP, duplicate-mobile message, resume after reload and from /gp/signup after sign-in, profile/KYC/payout validation, on-screen signing code, wrong-code error, signing, signed PDF, admin Verify/Reject, activation, card/certificate, leads, public referral, CSV rate import with all error types and versioning, ledger with status rules, GP payouts/report/statement, rate tags and 'Your rate', template placeholder block, role guards, and the legacy Pinky login with banner. TWO CRITICAL BUGS: (1) In the UI, KYC upload and admin CSV upload always failed with 422 'Field required'. I applied a hotfix for this. (2) Legacy partners have an ID mismatch, so admin KYC review, agreement signing, new leads, payouts and own-document download are broken for 112 of the 118 existing GPs.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "/api/gp/* (legacy partners: uid(raw)=str(_id) vs uid(current_user)=user.id)", "issue": "112/118 existing GPs have users.id != str(_id). serialize_doc keeps the legacy 'id', so require_gp gives uid(u)=legacy id, but raw_user/state/issue/add_payout/upload_kyc/create_referral store str(_id). Verified with a temporary TEST legacy user (cleaned up): admin POST /api/gp/admin/partners/{user_id}/kyc/pan -> 404 'Partner not found' (also reproduced on pinkynagulapally user_id 6a96f82a...). GET own /api/gp/docs/{id} -> 403. A lead added via POST /api/gp/leads is not visible in GET /api/gp/leads (total 0). An agreement issued by admin shows in /gp/me but GET /api/gp/agreement current=None, so send-code/sign return 404 and legacy partners can never sign. An admin payout for the partner_code gives GET /api/gp/payouts rows=0.", "priority": "CRITICAL"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/gp/docs/{doc_id}", "issue": "An invalid ObjectId gives 500 (bson InvalidId). A missing GridFS file would also 500. It should return 400/404."},
+      {"endpoint": "POST /api/gp/admin/partners/{pid}/kyc/{item}", "issue": "item is not validated against KYC_ITEMS. 'bogus_item' returns 200 and writes gp_kyc.bogus_item. It also allows Verified on an item that was never submitted (no doc_id)."},
+      {"endpoint": "POST /api/gp/login", "issue": "No brute-force lockout: 6 wrong passwords and then the correct one -> 200. The mobile path calls verify_password directly. Auth is a Bearer token in localStorage with no httpOnly cookie (existing app design)."},
+      {"endpoint": "GET /api/gp/admin/partners", "issue": "N+1 queries: each partner runs state(), which calls ensure_code (writes) and may auto-activate (writes inside a GET). It is fast now (0.2s for 117 users) but will not scale to 3000."},
+      {"endpoint": "POST /api/gp/signup", "issue": "The duplicate check is not atomic (no unique index on phone/email), so concurrent signups can create duplicate users."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "KycRow upload (Onboarding.js) + Admin Rates CSV upload (AdminGpProgramme.js)", "issue": "FIXED BY TESTER: the axios instance defaults Content-Type to application/json. axios 1.x then serializes the FormData to JSON, so the backend returns 422 'Field required' and KYC/CSV upload was impossible from the UI. Added { headers: { 'Content-Type': 'multipart/form-data' } } to both calls, the same pattern as LeadDetail.js. Re-tested and both work now.", "selector": "[data-testid=kyc-pan-upload], [data-testid=rates-upload]", "priority": "CRITICAL"},
+      {"component": "GpSignIn", "issue": "A partner who is still Onboarding lands on the /gp dashboard after sign-in instead of resuming the signup stepper at first_incomplete. /gp/signup resumes correctly when opened directly. Consider routing to /gp/signup when status=Onboarding and first_incomplete is set.", "selector": "[data-testid=gp-signin-submit]", "priority": "MEDIUM"},
+      {"component": "AgreementPanel download", "issue": "The Playwright download was named with a blob UUID ('94224d28-....pdf') instead of Bankezee_GP_Agreement_v1_signed.pdf. The anchor is not appended to the DOM before click(). The admin template download names correctly.", "selector": "[data-testid=agreement-download]", "priority": "LOW"},
+      {"component": "AgreementPanel viewer", "issue": "The iframe with the PDF blob was blank in headless Chromium (probably a headless PDF-viewer limitation). Check it in a real browser, and on mobile Safari, which often does not render PDF iframes; a text fallback may be needed.", "selector": "[data-testid=agreement-viewer]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Admin Partners & KYC for legacy partners", "issue": "Verify/Reject call /gp/admin/partners/{user_id} with str(_id), which kyc_decide cannot match for legacy users. See the critical backend issue.", "affected_selectors": ["gpa-verify-{code}-{item}"]}
+    ],
+    "design_issues": [
+      {"screen": "Admin GP Programme", "issues": ["The Reject, view, Edit as new version, Issue, Issue to all, partner-codes input and ledger status select have no data-testid.", "Reject and ledger On Hold/Reversed/Paid use window.prompt (three native prompts for Paid). Use a shadcn Dialog with date picker + txn ref fields."]},
+      {"screen": "GP Dashboard", "issues": ["The greeting uses the first word of name ('Hello, Nagulapally' is a surname for this user).", "When an item is Action Required, both 'Upload KYC documents' and 'Correct KYC items marked Action Required' tasks show (duplicate)."]},
+      {"screen": "GP Leads mobile 390px", "issues": ["The tabs row overflows and 'Share link / QR' is cut off at the right edge with no scroll affordance."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter74_gp_programme.py", "/app/backend/tests/iter74_legacy_id_probe.py", "/app/test_reports/pytest/iter74_gp.xml"],
+  "action_items": [
+    "CRITICAL: unify the partner identity in gp_portal.py. Make uid() return the same value for both the get_current_user dict and the raw DB doc (e.g. always the users.id field, falling back to str(_id)). Or make every query/insert use one key, and match kyc_decide on {'$or':[{'id':pid},{'_id':ObjectId(pid)},{'partner_code':pid}]}. Re-run /app/backend/tests/iter74_legacy_id_probe.py: it should show own doc 200, admin decide 200, lead visible 1, agreement current present, payout rows 1.",
+    "Keep the multipart/form-data header fix in Onboarding.js and AdminGpProgramme.js, and check any other new FormData uploads with the shared api instance.",
+    "GET /api/gp/docs/{id}: validate ObjectId and catch NoFile -> 404.",
+    "kyc_decide: reject unknown items (404) and only allow a decision when the item has a doc_id/Pending status.",
+    "Route Onboarding partners from GpSignIn to /gp/signup (resume).",
+    "Add a login lockout/rate limit on /api/gp/login.",
+    "Add data-testids to the admin Reject/Issue/Edit buttons and replace window.prompt with dialogs."
+  ],
+  "critical_code_review_comments": [
+    "gp_portal.py is 970 lines; split it into gp_onboarding, gp_rates, gp_ledger, gp_agreements and gp_admin modules.",
+    "state() has write side effects (ensure_code, auto-activation) and runs inside GET list endpoints.",
+    "publish_batch fallback without transactions can double-supersede if it fails partway; acceptable on standalone Mongo but log it.",
+    "auto_issue only runs when GET /gp/agreement is called, so nothing is issued until the partner opens the agreement step (fine, but document it)."
+  ],
+  "updated_files": ["/app/frontend/src/pages/gp/Onboarding.js", "/app/frontend/src/pages/admin/AdminGpProgramme.js", "/app/backend/tests/test_iter74_gp_programme.py", "/app/backend/tests/iter74_legacy_id_probe.py"],
+  "success_rate": {"backend": "92% (24/26 pytest; the 2 failures are minor robustness issues). The legacy-partner ID bug was found by a separate probe script and is not counted in this rate", "frontend": "~90% of requested flows pass after the multipart fix. The legacy KYC review/sign path is broken"},
+  "test_credentials": "Admin admin@bankezee.com / ConnectSasha12!!; Ops ops@bankezee.com / ops@bzc12; legacy GP pinkynagulapally@gmail.com / Pinky@1234 (works via /gp/login). UI test GP: mobile 8125832945 / test_ui_8125832945@example.com / Partner@123 (Active, code TEST9B4002D6).",
+  "seed_data_creation": "Created TEST GP users (test_gp_*, test_biz_*, test_o_*@example.com, TEST_UI Partner 8125832945), TEST_ leads/referrals, published TEST_* rates scoped only to TEST partner codes (published rate count 3 -> 6, no effect on standard rates), and ledger payouts for TEST partners. Deleted my 2 draft templates ('TEST_ Agreement' v2/v3) by id. The temporary legacy probe user and its lead/agreement/payout were deleted. pinkynagulapally: PUT /gp/me/profile with an empty body (no field changes; gp_profile may now exist as {}).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with -p no:xdist (the tests are ordered and share module state). The CSV rate tests use partner_code-scoped TEST_ rate_codes to avoid overlap with the live PL_STD/PL_ADITYA_BIRLA rates. The server clock is 2026-11-13. Publishing a clean agreement template was NOT tested, because it would replace the global published v1 for all new partners; issuing v1 to a partner was tested via the probe. After the legacy ID fix, re-run iter74_legacy_id_probe.py and admin Verify on a legacy partner.",
+  "rca of the issue": "KYC upload 422: services/api.js sets headers {'Content-Type':'application/json'} on the instance. axios >=1.x transformRequest converts FormData to JSON when the content-type is JSON, so FastAPI never receives the 'file' part. Fix: pass a multipart header per request (applied), or remove the instance-level JSON default. Legacy ID mismatch: utils/helpers.serialize_doc only sets id=str(_id) when 'id' is missing, and legacy users carry a different 'id'. gp_portal.uid() returns str(_id) for raw docs but the legacy id for the serialized current_user, so records written with one key are read with the other."
+}

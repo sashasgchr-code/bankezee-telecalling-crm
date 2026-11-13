@@ -1,30 +1,48 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import api from '../../services/api';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
 import { Btn, Card, Badge, PageHead, Tabs, RTable, Field, Input, Select, inr, errMsg } from '../gp/ui';
 
-const dl = async (url, name, open) => { const r = await api.get(url, { responseType: 'blob' }); const u = URL.createObjectURL(r.data); if (open) return window.open(u); const l = document.createElement('a'); l.href = u; l.download = name; l.click(); };
+const dl = async (url, name, open) => { const r = await api.get(url, { responseType: 'blob' }); const u = URL.createObjectURL(r.data); if (open) return window.open(u); const l = document.createElement('a'); l.href = u; l.download = name; document.body.appendChild(l); l.click(); l.remove(); };
+
+const AskDialog = ({ ask, onClose }) => {
+  const [v, setV] = useState({});
+  useEffect(() => { setV({}); }, [ask]);
+  if (!ask) return null;
+  const ok = ask.fields.every((f) => (v[f.key] || '').trim());
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent data-testid="gpa-ask-dialog">
+        <DialogHeader><DialogTitle>{ask.title}</DialogTitle></DialogHeader>
+        <div className="space-y-3">{ask.fields.map((f) => <Field key={f.key} label={f.label}><Input data-testid={`gpa-ask-${f.key}`} type={f.type || 'text'} value={v[f.key] || ''} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} /></Field>)}</div>
+        <div className="flex justify-end gap-2 mt-2"><Btn variant="outline" data-testid="gpa-ask-cancel" onClick={onClose}>Cancel</Btn><Btn data-testid="gpa-ask-submit" disabled={!ok} onClick={() => { ask.onSubmit(v); onClose(); }}>Confirm</Btn></div>
+      </DialogContent>
+    </Dialog>
+  );
+};
 
 const Partners = () => {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState('');
+  const [ask, setAsk] = useState(null);
   const load = () => api.get('/gp/admin/partners').then(({ data }) => setRows(data));
   useEffect(() => { load(); }, []);
-  const decide = async (p, item, status) => {
-    const note = status === 'Action Required' ? window.prompt('What should the partner correct?') : null;
-    if (status === 'Action Required' && !note) return;
+  const decide = async (p, item, status, note = null) => {
+    if (status === 'Action Required' && !note) return setAsk({ title: `What should ${p.name} correct?`, fields: [{ key: 'note', label: 'Note shown to the partner' }], onSubmit: (v) => decide(p, item, status, v.note) });
     try { await api.post(`/gp/admin/partners/${p.user_id}/kyc/${item}`, { status, note }); toast.success('Updated'); load(); } catch (e) { toast.error(errMsg(e)); }
   };
   const list = rows.filter((r) => !q || `${r.name} ${r.partner_id} ${r.mobile}`.toLowerCase().includes(q.toLowerCase()));
   return (
     <Card className="p-4">
+      <AskDialog ask={ask} onClose={() => setAsk(null)} />
       <Input data-testid="gpa-search" className="!w-72 mb-3" placeholder="Search partner" value={q} onChange={(e) => setQ(e.target.value)} />
       <RTable testid="gpa-partners" rows={list.slice(0, 200)} keyF={(r) => r.user_id} cols={[['name', 'Partner', (r) => <span><b>{r.name}</b><span className="block text-xs text-[#6B6F6A]">{r.partner_id} · {r.mobile} · {r.reg_type || 'existing'}</span></span>],
         ['status', 'Status', (r) => <Badge s={r.status} />],
         ['kyc', 'KYC', (r) => <div className="space-y-1">{Object.entries(r.kyc).map(([k, v]) => <div key={k} className="flex items-center gap-1 text-xs"><span className="w-20 capitalize">{k.replace('_', ' ')}</span><Badge s={v.status} />
-          {v.doc_id && <button className="text-[#24508F] underline" onClick={() => dl(`/gp/docs/${v.doc_id}`, '', true)}>view</button>}
+          {v.doc_id && <button data-testid={`gpa-view-${r.partner_id}-${k}`} className="text-[#24508F] underline" onClick={() => dl(`/gp/docs/${v.doc_id}`, '', true)}>view</button>}
           {v.status === 'Pending' && <><button data-testid={`gpa-verify-${r.partner_id}-${k}`} className="text-[#1F7A33] font-semibold" onClick={() => decide(r, k, 'Verified')}>Verify</button>
-            <button className="text-[#A12B2B]" onClick={() => decide(r, k, 'Action Required')}>Reject</button></>}</div>)}</div>],
+            <button data-testid={`gpa-reject-${r.partner_id}-${k}`} className="text-[#A12B2B]" onClick={() => decide(r, k, 'Action Required')}>Reject</button></>}</div>)}</div>],
         ['agreement', 'Agreement', (r) => (r.agreement ? <span><Badge s={r.agreement.status} /> <span className="text-xs">v{r.agreement.version}</span>{r.agreement.status === 'Signed' && <button className="block text-xs text-[#24508F] underline" onClick={() => dl(`/gp/agreement/${r.agreement.id}/pdf`, 'signed.pdf')}>signed copy</button>}</span> : <span className="text-xs text-[#6B6F6A]">Not issued</span>)]]} />
     </Card>
   );
@@ -36,7 +54,7 @@ const Rates = () => {
   const [hist, setHist] = useState([]);
   const load = () => { api.get('/gp/admin/rates').then(({ data }) => setRates(data)); api.get('/gp/admin/rates/batches').then(({ data }) => setHist(data)); };
   useEffect(() => { load(); }, []);
-  const upload = async (e) => { const fd = new FormData(); fd.append('file', e.target.files[0]); e.target.value = ''; try { const { data } = await api.post('/gp/admin/rates/preview', fd); setBatch(data); load(); } catch (er) { toast.error(errMsg(er)); } };
+  const upload = async (e) => { const fd = new FormData(); fd.append('file', e.target.files[0]); e.target.value = ''; try { const { data } = await api.post('/gp/admin/rates/preview', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); setBatch(data); load(); } catch (er) { toast.error(errMsg(er)); } };
   const publish = async () => { try { const { data } = await api.post(`/gp/admin/rates/batches/${batch.id}/publish`); toast.success(`Published ${data.published} rate(s)`); setBatch(null); load(); } catch (er) { toast.error(errMsg(er)); } };
   return (
     <div className="space-y-4">
@@ -62,24 +80,26 @@ const Rates = () => {
 const Ledger = () => {
   const [rows, setRows] = useState([]);
   const [f, setF] = useState({ partner_code: '', referral_ref: '', file_id: '', product_code: 'PL', lender_code: '', disbursement_date: '', disbursed_amount: '', deductions: 0, deduction_note: '' });
+  const [ask, setAsk] = useState(null);
   const load = () => api.get('/gp/admin/payouts').then(({ data }) => setRows(data));
   useEffect(() => { load(); }, []);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
   const add = async (e) => { e.preventDefault(); try { await api.post('/gp/admin/payouts', { ...f, disbursed_amount: Number(f.disbursed_amount), deductions: Number(f.deductions || 0), file_id: f.file_id || null }); toast.success('Payout added — rate resolved and frozen'); load(); } catch (er) { toast.error(errMsg(er)); } };
-  const status = async (r, s) => {
-    const body = { status: s };
-    if (['On Hold', 'Reversed'].includes(s)) body.reason = window.prompt('Partner-facing reason');
-    if (s === 'Paid') { body.payment_date = window.prompt('Payment date (YYYY-MM-DD)'); body.txn_ref = window.prompt('Transaction reference'); }
+  const status = async (r, s, extra) => {
+    const fields = ['On Hold', 'Reversed'].includes(s) ? [{ key: 'reason', label: 'Reason shown to the partner' }] : s === 'Paid' ? [{ key: 'payment_date', label: 'Payment date', type: 'date' }, { key: 'txn_ref', label: 'Transaction reference' }] : [];
+    if (fields.length && !extra) return setAsk({ title: `Mark as ${s}`, fields, onSubmit: (v) => status(r, s, v) });
+    const body = { status: s, ...(extra || {}) };
     try { await api.patch(`/gp/admin/payouts/${r.id}`, body); load(); } catch (er) { toast.error(errMsg(er)); }
   };
   return (
     <div className="space-y-4">
+      <AskDialog ask={ask} onClose={() => setAsk(null)} />
       <Card className="p-4"><form onSubmit={add} className="grid sm:grid-cols-4 gap-3 items-end" data-testid="ledger-form">
         {[['partner_code', 'Partner ID'], ['referral_ref', 'Referral ref'], ['file_id', 'File ID (optional)'], ['product_code', 'Product code'], ['lender_code', 'Lender code'], ['disbursement_date', 'Qualifying event date'], ['disbursed_amount', 'Disbursed amount ₹'], ['deductions', 'Deductions ₹'], ['deduction_note', 'Deduction note']].map(([k, l]) =>
           <Field key={k} label={l}><Input data-testid={`ledger-${k}`} type={k === 'disbursement_date' ? 'date' : 'text'} required={['partner_code', 'product_code', 'disbursement_date', 'disbursed_amount'].includes(k)} value={f[k]} onChange={set(k)} /></Field>)}
         <Btn data-testid="ledger-add">Add payout</Btn></form></Card>
       <Card className="p-4"><RTable testid="ledger-table" rows={rows} cols={[['partner_code', 'Partner'], ['referral_ref', 'Ref'], ['product_code', 'Product'], ['disbursement_date', 'Date'], ['disbursed_amount', 'Amount', (r) => inr(r.disbursed_amount)], ['rate_code', 'Rate (version)', (r) => `${r.rate_code} v${r.rate_version}`], ['net', 'Net', (r) => inr(r.net)],
-        ['status', 'Status', (r) => <span><Badge s={r.status} />{r.reason && <span className="block text-xs">{r.reason}</span>}</span>], ['act', 'Update', (r) => <Select value="" onChange={(e) => e.target.value && status(r, e.target.value)} options={[['', 'Change…'], 'Under Verification', 'Payable', 'Paid', 'On Hold', 'Reversed'].map((x) => (Array.isArray(x) ? x : [x, x]))} />]]} /></Card>
+        ['status', 'Status', (r) => <span><Badge s={r.status} />{r.reason && <span className="block text-xs">{r.reason}</span>}</span>], ['act', 'Update', (r) => <Select data-testid={`ledger-status-${r.id}`} value="" onChange={(e) => e.target.value && status(r, e.target.value)} options={[['', 'Change…'], 'Under Verification', 'Payable', 'Paid', 'On Hold', 'Reversed'].map((x) => (Array.isArray(x) ? x : [x, x]))} />]]} /></Card>
     </div>
   );
 };
@@ -99,12 +119,12 @@ const Agreements = () => {
       {setup && <Card className="p-4 text-sm" data-testid="agreement-setup">Signing method: <b>{setup.signing_method}</b> · Signing email: <Badge s={setup.signing_email_configured ? 'Verified' : 'Action Required'}>{setup.signing_email_configured ? 'Configured' : 'Not configured'}</Badge> · Approved template: <Badge s={setup.template_published ? 'Verified' : 'Pending'}>{setup.template_published ? `Published v${setup.published_version}` : 'Not published'}</Badge> · Published rates: {setup.rates_published}</Card>}
       <Card className="p-4"><b className="block mb-2">Templates</b>{tpls.map((t) => (
         <div key={t.id} className="flex flex-wrap gap-2 items-center py-2 border-t border-[#F0F1EE] text-sm"><span className="mr-auto">v{t.version} · {t.title} <Badge s={t.status === 'published' ? 'Current' : 'Pending'}>{t.status}</Badge></span>
-          <Btn variant="outline" className="!py-1" onClick={() => dl(`/gp/admin/agreement-templates/${t.id}/preview`, '', true)}>Preview</Btn>
-          <Btn variant="outline" className="!py-1" onClick={() => setEd({ title: t.title, body: t.body, schedule: t.schedule })}>Edit as new version</Btn>
+          <Btn variant="outline" className="!py-1" data-testid={`tpl-preview-${t.version}`} onClick={() => dl(`/gp/admin/agreement-templates/${t.id}/preview`, '', true)}>Preview</Btn>
+          <Btn variant="outline" className="!py-1" data-testid={`tpl-edit-${t.version}`} onClick={() => setEd({ title: t.title, body: t.body, schedule: t.schedule })}>Edit as new version</Btn>
           {t.status === 'draft' && <Btn className="!py-1" data-testid={`tpl-publish-${t.version}`} onClick={() => act(() => api.post(`/gp/admin/agreement-templates/${t.id}/publish`), () => 'Published')}>Publish</Btn>}
-          {t.status === 'published' && <><Input className="!w-56 !py-1" placeholder="Partner IDs, comma separated" value={codes} onChange={(e) => setCodes(e.target.value)} />
-            <Btn className="!py-1" onClick={() => act(() => api.post(`/gp/admin/agreement-templates/${t.id}/issue`, { partner_codes: codes.split(',').map((c) => c.trim()).filter(Boolean) }), (d) => `Issued to ${d.issued}`)}>Issue</Btn>
-            <Btn variant="outline" className="!py-1" onClick={() => window.confirm('Issue to ALL active partners?') && act(() => api.post(`/gp/admin/agreement-templates/${t.id}/issue`, { all_partners: true }), (d) => `Issued to ${d.issued}`)}>Issue to all</Btn></>}
+          {t.status === 'published' && <><Input data-testid="tpl-issue-codes" className="!w-56 !py-1" placeholder="Partner IDs, comma separated" value={codes} onChange={(e) => setCodes(e.target.value)} />
+            <Btn className="!py-1" data-testid="tpl-issue" onClick={() => act(() => api.post(`/gp/admin/agreement-templates/${t.id}/issue`, { partner_codes: codes.split(',').map((c) => c.trim()).filter(Boolean) }), (d) => `Issued to ${d.issued}`)}>Issue</Btn>
+            <Btn variant="outline" className="!py-1" data-testid="tpl-issue-all" onClick={() => window.confirm('Issue to ALL active partners?') && act(() => api.post(`/gp/admin/agreement-templates/${t.id}/issue`, { all_partners: true }), (d) => `Issued to ${d.issued}`)}>Issue to all</Btn></>}
         </div>))}</Card>
       {ed && <Card className="p-4 space-y-3"><Field label="Title"><Input value={ed.title} onChange={(e) => setEd({ ...ed, title: e.target.value })} /></Field>
         <Field label="Agreement body" hint="Placeholders: {{company_name}} {{partner_name}} {{partner_id}} {{effective_date}} {{activities}} {{schedule_version}} {{reg_type}} {{address}} {{mobile}} {{email}} {{pan_masked}} {{bank_masked}} {{ifsc}}"><textarea className="w-full h-72 border rounded-lg p-3 text-xs font-mono" value={ed.body} onChange={(e) => setEd({ ...ed, body: e.target.value })} /></Field>

@@ -12,7 +12,7 @@ const NAV = [['/gp', 'Dashboard', LayoutDashboard], ['/gp/leads', 'Leads', Users
   ['/gp/card', 'Card & Certificate', IdCard], ['/gp/profile', 'Profile & KYC', ShieldCheck], ['/gp/agreement', 'Partner Agreement', FileSignature], ['/gp/support', 'Support', LifeBuoy]];
 const PRODUCTS = ['Personal Loan', 'Business Loan', 'Home Loan', 'Loan Against Property', 'Balance Transfer', 'Credit Card', 'Auto Loan', 'Education Loan', 'Gold Loan'];
 export const refLink = (code) => `${window.location.origin}/r/${code}`;
-const download = async (url, name) => { const r = await api.get(url, { responseType: 'blob' }); const l = document.createElement('a'); l.href = URL.createObjectURL(r.data); l.download = name; l.click(); };
+const download = async (url, name) => { const r = await api.get(url, { responseType: 'blob' }); const l = document.createElement('a'); l.href = URL.createObjectURL(r.data); l.download = name; document.body.appendChild(l); l.click(); l.remove(); };
 
 export const GpLayout = () => {
   const { user, logout } = useAuthStore();
@@ -82,7 +82,7 @@ export const GpDashboard = () => {
   const link = { profile: '/gp/profile', kyc: '/gp/profile', kyc_fix: '/gp/profile', payout: '/gp/profile', bank_doc: '/gp/profile', agreement: '/gp/agreement' };
   return (
     <>
-      <PageHead title={`Hello, ${(me.name || '').split(' ')[0]}`} sub={<>Partner ID <b data-testid="dash-partner-id">{me.partner_id}</b> · <Badge s={me.status} /></>}
+      <PageHead title={`Hello, ${me.name || 'Partner'}`} sub={<>Partner ID <b data-testid="dash-partner-id">{me.partner_id}</b> · <Badge s={me.status} /></>}
         actions={<div className="flex flex-wrap gap-2"><Btn data-testid="qa-add-lead" onClick={() => nav('/gp/leads?add=1')}><Plus className="w-4 h-4" />Add a Lead</Btn>
           <Btn variant="outline" data-testid="qa-share" onClick={() => nav('/gp/leads?share=1')}><Share2 className="w-4 h-4" />Share My Referral Link</Btn>
           <Btn variant="outline" data-testid="qa-payouts" onClick={() => nav('/gp/payouts')}><Wallet className="w-4 h-4" />View Payouts</Btn></div>} />

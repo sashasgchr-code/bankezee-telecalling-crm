@@ -41,7 +41,9 @@ export const GpSignIn = () => {
       const { data } = await api.post('/gp/login', f);
       setSession(data.token, data.user);
       const r = data.user.role;
-      nav(r === 'admin' ? '/admin' : r === 'manager' ? '/manager' : r === 'hr' ? '/hr' : '/gp');
+      if (['admin', 'manager', 'hr'].includes(r)) return nav(r === 'admin' ? '/admin' : `/${r}`);
+      const { data: me } = await api.get('/gp/me').catch(() => ({ data: null }));
+      nav(me && me.status === 'Onboarding' && me.first_incomplete ? '/gp/signup' : '/gp');
     } catch (er) { toast.error(errMsg(er, 'Sign-in failed')); } finally { setBusy(false); }
   };
   return (

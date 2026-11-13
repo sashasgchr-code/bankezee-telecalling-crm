@@ -60,7 +60,7 @@ const KycRow = ({ k, item, onSaved }) => {
     if (num) fd.append('number', num);
     if (m.idType) fd.append('id_type', idType);
     setBusy(true);
-    try { const { data } = await api.post(`/gp/me/kyc/${k}`, fd); toast.success(`${m.label} submitted for verification`); setEdit(false); onSaved(data); } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+    try { const { data } = await api.post(`/gp/me/kyc/${k}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); toast.success(`${m.label} submitted for verification`); setEdit(false); onSaved(data); } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
   return (
     <div className="border border-[#E6E8E3] rounded-xl p-4" data-testid={`kyc-${k}`}>
@@ -137,7 +137,7 @@ export const AgreementPanel = ({ onSigned }) => {
   React.useEffect(() => { load(); }, []);
   const dl = async (id, name) => {
     const r = await api.get(`/gp/agreement/${id}/pdf`, { responseType: 'blob' });
-    const u = URL.createObjectURL(r.data); const l = document.createElement('a'); l.href = u; l.download = name; l.click();
+    const u = URL.createObjectURL(r.data); const l = document.createElement('a'); l.href = u; l.download = name; document.body.appendChild(l); l.click(); l.remove();
   };
   const [shown, setShown] = useState(null);
   const send = async () => { setBusy(true); try { const { data } = await api.post(`/gp/agreement/${a.current.id}/send-code`); setSent(data.sent_to); setShown(data.preview_code || null); toast.success(data.preview_code ? 'Signing code generated' : `Code sent to ${data.sent_to}`); } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); } };

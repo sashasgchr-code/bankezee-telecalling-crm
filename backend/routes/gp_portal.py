@@ -33,7 +33,7 @@ def now():
 
 
 def uid(u):
-    return str(u.get("_id")) if u.get("_id") is not None else u.get("id")
+    return u.get("id") or str(u.get("_id"))
 
 
 def mask(v, keep=4):
@@ -109,17 +109,32 @@ class MobileLogin(BaseModel):
 
 @router.post("/login")
 async def gp_login(inp: MobileLogin):
-    from routes.auth import login, UserLogin
     ident = inp.identifier.strip()
     email = ident.lower()
+    key = ident.lower()
+    since = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+    if await db.gp_login_failures.count_documents({"key": key, "at": {"$gte": since}}) >= 5:
+        raise HTTPException(429, "Too many failed attempts — try again in 15 minutes")
+    try:
+        res = await _gp_login(ident, email, inp.password)
+    except HTTPException as e:
+        if e.status_code == 401:
+            await db.gp_login_failures.insert_one({"key": key, "at": now()})
+        raise
+    await db.gp_login_failures.delete_many({"key": key})
+    return res
+
+
+async def _gp_login(ident, email, password):
+    from routes.auth import login, UserLogin
     if "@" not in ident:
         mob = norm_mobile(ident)
         cands = await db.users.find({"phone": {"$regex": f"{mob}$"}}, {"email": 1, "password": 1, "password_hash": 1, "is_active": 1}).to_list(10)
-        hit = next((c for c in cands if any(c.get(k) and verify_password(inp.password, c[k]) for k in ("password", "password_hash"))), None)
+        hit = next((c for c in cands if any(c.get(k) and verify_password(password, c[k]) for k in ("password", "password_hash"))), None)
         if not hit:
             raise HTTPException(401, "Invalid mobile number or password")
         email = hit["email"]
-    return await login(UserLogin(email=email, password=inp.password, platform="web"))
+    return await login(UserLogin(email=email, password=password, platform="web"))
 
 
 @router.get("/check")
@@ -189,8 +204,12 @@ async def me(u: dict = Depends(require_gp)):
 
 
 async def raw_user(u):
+    if u.get("id"):
+        r = await db.users.find_one({"id": u["id"]})
+        if r:
+            return r
     i = str(u.get("_id") or u.get("id"))
-    return (await db.users.find_one({"_id": ObjectId(i)}) if ObjectId.is_valid(i) else None) or await db.users.find_one({"id": i})
+    return await db.users.find_one({"_id": ObjectId(i)}) if ObjectId.is_valid(i) else None
 
 
 class Profile(BaseModel):
@@ -265,7 +284,13 @@ async def save_payout(inp: Payout, u: dict = Depends(require_gp)):
 
 @router.get("/docs/{doc_id}")
 async def get_doc(doc_id: str, u: dict = Depends(get_current_user)):
-    s = await BUCKET().open_download_stream(ObjectId(doc_id))
+    from gridfs.errors import NoFile
+    if not ObjectId.is_valid(doc_id):
+        raise HTTPException(404, "Document not found")
+    try:
+        s = await BUCKET().open_download_stream(ObjectId(doc_id))
+    except NoFile:
+        raise HTTPException(404, "Document not found")
     meta = s.metadata or {}
     if normalize_role(u.get("role", "")) != "admin" and meta.get("partner_id") != uid(u):
         raise HTTPException(403, "Not your document")
@@ -963,7 +988,15 @@ async def kyc_decide(pid: str, item: str, inp: KycDecision, u: dict = Depends(re
         raise HTTPException(400, "Status must be Verified or Action Required")
     if inp.status == "Action Required" and not inp.note:
         raise HTTPException(400, "Tell the partner what to correct")
-    r = await db.users.update_one({"$or": [{"id": pid}, {"partner_code": pid}]}, {"$set": {f"gp_kyc.{item}.status": inp.status, f"gp_kyc.{item}.note": inp.note,
+    if item not in KYC_ITEMS["business"]:
+        raise HTTPException(404, "Unknown KYC item")
+    ors = [{"id": pid}, {"partner_code": pid}] + ([{"_id": ObjectId(pid)}] if ObjectId.is_valid(pid) else [])
+    p = await db.users.find_one({"$or": ors}, {"gp_kyc": 1})
+    if not p:
+        raise HTTPException(404, "Partner not found")
+    if not ((p.get("gp_kyc") or {}).get(item) or {}).get("doc_id"):
+        raise HTTPException(400, "This document hasn't been submitted yet")
+    r = await db.users.update_one({"_id": p["_id"]}, {"$set": {f"gp_kyc.{item}.status": inp.status, f"gp_kyc.{item}.note": inp.note,
                                                                                        f"gp_kyc.{item}.reviewed_by": u.get("name"), f"gp_kyc.{item}.reviewed_at": now()}})
     if not r.matched_count:
         raise HTTPException(404, "Partner not found")
