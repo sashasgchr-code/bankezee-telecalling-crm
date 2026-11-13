@@ -120,6 +120,8 @@ from routes.doc_extract import router as doc_extract_router  # shared document e
 app.include_router(doc_extract_router)
 from routes.elig_compare import router as elig_compare_router  # calculator vs bank comparison
 app.include_router(elig_compare_router)
+from routes.gp_portal import router as gp_portal_router  # Growth Partner programme
+app.include_router(gp_portal_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production

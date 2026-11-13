@@ -7,6 +7,13 @@ const useAuthStore = create((set, get) => ({
   isLoading: true,
   isAuthenticated: false,
 
+  setSession: (token, user) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(user));
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    set({ user, token, isAuthenticated: true, isLoading: false });
+  },
+
   login: async (email, password) => {
     try {
       const response = await api.post('/auth/login', { email, password, platform: 'web' });

@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "./components/ui/sonner";
 import useAuthStore from "./store/authStore";
 import Login from "./pages/Login";
-import Register from "./pages/Register";
+import Register from "./pages/Register"; // eslint-disable-line no-unused-vars
 import MetaLayout from "./pages/meta/MetaLayout";
 import MetaDashboard from "./pages/meta/Dashboard";
 import MetaReports from "./pages/meta/Reports";
@@ -33,6 +33,10 @@ import DataMigration from "./pages/files/DataMigration";
 import PolicyMaster from "./pages/files/PolicyMaster";
 import BankPolicyMaster from "./pages/admin/BankPolicyMaster";
 import EligComparisonReport from "./pages/admin/EligComparisonReport";
+import AdminGpProgramme from "./pages/admin/AdminGpProgramme";
+import { GpSignIn, GpSignup } from "./pages/gp/GpAuth";
+import PublicRefer from "./pages/gp/PublicRefer";
+import { GpLayout, GpDashboard, GpLeads, GpPayouts, GpRates, GpCard, GpProfile, GpAgreement, GpSupport } from "./pages/gp/GpPortal";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
 import HrLayout from "./layouts/HrLayout";
@@ -51,6 +55,13 @@ const retiredRoutes = (base, extra = []) => RETIRED.concat(extra).map((p) => <Ro
 const AdminOnly = ({ children }) => {
   const { user } = useAuthStore();
   return user?.role === 'admin' ? children : <Navigate to="/admin/files" replace />;
+};
+
+const GpOnly = ({ children }) => {
+  const { isAuthenticated, user, isLoading } = useAuthStore();
+  if (isLoading) return <LoadingScreen />;
+  if (!isAuthenticated) return <Navigate to="/gp/login" replace />;
+  return ["growth_partner", "telecaller", "sales_agent", "partner", "team_leader"].includes(user?.role) ? children : <Navigate to="/login" replace />;
 };
 
 // Role-neutral File redirect component
@@ -155,6 +166,20 @@ function App() {
       <Toaster position="top-right" richColors closeButton />
       <Routes>
         {/* Public Routes */}
+        <Route path="/gp/signup" element={<GpSignup />} />
+        <Route path="/gp/join" element={<Navigate to="/gp/signup" replace />} />
+        <Route path="/gp/login" element={<GpSignIn />} />
+        <Route path="/r/:code" element={<PublicRefer />} />
+        <Route path="/gp" element={<GpOnly><GpLayout /></GpOnly>}>
+          <Route index element={<GpDashboard />} />
+          <Route path="leads" element={<GpLeads />} />
+          <Route path="payouts" element={<GpPayouts />} />
+          <Route path="payout-structure" element={<GpRates />} />
+          <Route path="card" element={<GpCard />} />
+          <Route path="profile" element={<GpProfile />} />
+          <Route path="agreement" element={<GpAgreement />} />
+          <Route path="support" element={<GpSupport />} />
+        </Route>
         <Route path="/login" element={
           isAuthenticated ? (
             <Navigate to={getBaseRoute()} replace />
@@ -162,13 +187,7 @@ function App() {
             <Login />
           )
         } />
-        <Route path="/register" element={
-          isAuthenticated ? (
-            <Navigate to={getBaseRoute()} replace />
-          ) : (
-            <Register />
-          )
-        } />
+        <Route path="/register" element={<Navigate to="/gp/signup" replace />} />
 
         {/* Admin Routes */}
         <Route path="/admin" element={
@@ -195,6 +214,7 @@ function App() {
           <Route path="users/legacy-mapping" element={<LegacyUserMapping />} />
           <Route path="settings" element={<AdminSettings />} />
           <Route path="customers-campaigns" element={<AdminOnly><CustomersCampaigns /></AdminOnly>} />
+          <Route path="gp-programme" element={<AdminOnly><AdminGpProgramme /></AdminOnly>} />
         </Route>
 
         {/* Telecaller/Agent Routes */}
@@ -205,6 +225,7 @@ function App() {
         }>
           <Route index element={<Navigate to="/agent/files" replace />} />
           {retiredRoutes("/agent", ["customers-campaigns"])}
+          <Route path="dashboard-gp" element={<Navigate to="/gp" replace />} />
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />

@@ -29,6 +29,8 @@ const Login = () => {
         navigate('/admin');
       } else if (user.role === 'manager') {
         navigate('/manager');
+      } else if (['growth_partner', 'telecaller', 'sales_agent', 'partner'].includes(user.role) && !user.is_tl) {
+        navigate('/gp');
       } else {
         navigate('/agent');
       }
@@ -114,7 +116,7 @@ const Login = () => {
 
           <p className="text-center mt-6 text-gray-500">
             Don't have an account?{' '}
-            <Link to="/register" className="text-green-600 font-semibold hover:underline" data-testid="register-link">
+            <Link to="/gp/signup" className="text-green-600 font-semibold hover:underline" data-testid="register-link">
               Sign Up
             </Link>
           </p>

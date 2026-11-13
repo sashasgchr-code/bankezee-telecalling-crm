@@ -29,6 +29,7 @@ const TelecallerLayout = () => {
   
   // More menu items - overflow (Reports removed - shown inline on Dashboard for GPs)
   const moreNavItems = [
+    { path: '/gp', icon: Users, label: 'Partner Portal' },
     ...(user?.meta_access ? [{ path: '/meta', icon: Database, label: 'Meta CRM' }] : []),
   ];
 

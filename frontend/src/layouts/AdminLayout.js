@@ -25,7 +25,7 @@ const AdminLayout = () => {
 
   // More menu items - overflow items
   const moreNavItems = [
-    ...(user?.role === 'admin' ? [{ path: '/admin/customers-campaigns', icon: HeartHandshake, label: 'Customers & Campaigns' }] : []),
+    ...(user?.role === 'admin' ? [{ path: '/admin/customers-campaigns', icon: HeartHandshake, label: 'Customers & Campaigns' }, { path: '/admin/gp-programme', icon: Users, label: 'Growth Partner Programme' }] : []),
     ...(user?.meta_access ? [{ path: '/meta', icon: Boxes, label: 'Meta CRM' }] : []),
   ];
 
