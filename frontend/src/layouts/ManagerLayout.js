@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { FolderOpen, LogOut, MoreHorizontal, Users, Boxes, HeartHandshake } from 'lucide-react';
+import { FolderOpen, LogOut, MoreHorizontal, Users, Boxes } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
 
@@ -19,7 +19,6 @@ const ManagerLayout = () => {
   // Primary nav items - 5 items max for mobile (Manager has no Data section)
   const primaryNavItems = [
     { path: '/manager/files', icon: FolderOpen, label: 'Files' },
-    { path: '/manager/customers-campaigns', icon: HeartHandshake, label: 'Customers & Campaigns' },
   ];
 
   // More menu items - Reports is now a primary nav item
@@ -60,7 +59,7 @@ const ManagerLayout = () => {
         <Outlet />
       </main>
 
-      {/* Bottom Navigation: Files, Customers & Campaigns, More */}
+      {/* Bottom Navigation: Files, More */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-40">
         <div className="flex items-center justify-around py-2">
           {primaryNavItems.map((item) => (

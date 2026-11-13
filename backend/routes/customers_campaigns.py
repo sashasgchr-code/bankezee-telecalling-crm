@@ -25,8 +25,8 @@ MEDIA_RULES = {"image/jpeg": ("IMAGE", 5), "image/png": ("IMAGE", 5), "video/mp4
 # ------------------------------------------------------------------ permissions & scope
 async def ctx(user: dict) -> dict:
     role = normalize_role(user.get("role") or "")
-    if role == "hr":
-        raise HTTPException(403, "Not permitted")
+    if role != "admin":
+        raise HTTPException(403, "Customers & Campaigns is available to admins only")
     is_admin = role == "admin"
     if role in ("admin", "ops"):
         scope = {}  # matches Connect visibility: ops already see all files

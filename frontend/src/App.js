@@ -45,7 +45,13 @@ import "./App.css";
 // Legacy Connect telecalling screens (retired): old bookmarks land on the Files Dashboard of the same section.
 const RETIRED = ["dashboard", "leads", "leads/:id", "tracking", "attendance", "leave", "reports", "followups",
   "team/leads", "team/data", "team/calls"];
-const retiredRoutes = (base) => RETIRED.map((p) => <Route key={p} path={p} element={<Navigate to={`${base}/files`} replace />} />);
+const retiredRoutes = (base, extra = []) => RETIRED.concat(extra).map((p) => <Route key={p} path={p} element={<Navigate to={`${base}/files`} replace />} />);
+
+// Customers & Campaigns is admin-only (ops share the admin section but not this page).
+const AdminOnly = ({ children }) => {
+  const { user } = useAuthStore();
+  return user?.role === 'admin' ? children : <Navigate to="/admin/files" replace />;
+};
 
 // Role-neutral File redirect component
 const RoleNeutralFileRedirect = () => {
@@ -188,7 +194,7 @@ function App() {
           <Route path="users" element={<AdminUsers />} />
           <Route path="users/legacy-mapping" element={<LegacyUserMapping />} />
           <Route path="settings" element={<AdminSettings />} />
-          <Route path="customers-campaigns" element={<CustomersCampaigns />} />
+          <Route path="customers-campaigns" element={<AdminOnly><CustomersCampaigns /></AdminOnly>} />
         </Route>
 
         {/* Telecaller/Agent Routes */}
@@ -198,7 +204,7 @@ function App() {
           </ProtectedRoute>
         }>
           <Route index element={<Navigate to="/agent/files" replace />} />
-          {retiredRoutes("/agent")}
+          {retiredRoutes("/agent", ["customers-campaigns"])}
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
@@ -207,7 +213,6 @@ function App() {
           <Route path="profile" element={<TelecallerProfile />} />
           <Route path="team" element={<TeamMembers />} />
           <Route path="team/files" element={<TeamFiles />} />
-          <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
 
         {/* Manager Routes - Admin-like access without User Management */}
@@ -217,7 +222,7 @@ function App() {
           </ProtectedRoute>
         }>
           <Route index element={<Navigate to="/manager/files" replace />} />
-          {retiredRoutes("/manager")}
+          {retiredRoutes("/manager", ["customers-campaigns"])}
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
@@ -230,7 +235,6 @@ function App() {
           <Route path="files/reports/calculator-accuracy" element={<EligComparisonReport />} />
           <Route path="files/reports/sales-ops" element={<SalesOpsReport />} />
           <Route path="team" element={<ManagerTeam />} />
-          <Route path="customers-campaigns" element={<CustomersCampaigns />} />
         </Route>
 
         {/* HR Routes - Dashboard & Files are view only, Attendance & Leave same as Admin */}
@@ -240,7 +244,7 @@ function App() {
           </ProtectedRoute>
         }>
           <Route index element={<Navigate to="/hr/files" replace />} />
-          {retiredRoutes("/hr")}
+          {retiredRoutes("/hr", ["customers-campaigns"])}
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/policies" element={<PolicyMaster />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />

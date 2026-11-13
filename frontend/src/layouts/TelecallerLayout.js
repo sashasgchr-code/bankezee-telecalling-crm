@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { User, LogOut, FileText, MoreHorizontal, Users, Database, HeartHandshake } from 'lucide-react';
+import { User, LogOut, FileText, MoreHorizontal, Users, Database } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
@@ -24,12 +24,11 @@ const TelecallerLayout = () => {
   // Primary nav items - 5 items max for mobile: Dashboard, Data, Files, Follow-ups, More
   const primaryNavItems = [
     { path: '/agent/files', icon: FileText, label: 'Files' },
-    { path: '/agent/customers-campaigns', icon: HeartHandshake, label: 'Customers & Campaigns' },
+    { path: '/agent/profile', icon: User, label: 'Profile' },
   ];
   
   // More menu items - overflow (Reports removed - shown inline on Dashboard for GPs)
   const moreNavItems = [
-    { path: '/agent/profile', icon: User, label: 'Profile' },
     ...(user?.meta_access ? [{ path: '/meta', icon: Database, label: 'Meta CRM' }] : []),
   ];
 
@@ -73,7 +72,7 @@ const TelecallerLayout = () => {
         <Outlet />
       </main>
 
-      {/* Bottom Navigation: Files, Customers & Campaigns, More */}
+      {/* Bottom Navigation: Files, Profile, More */}
       <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-area-bottom z-40">
         <div className="flex items-center justify-around py-2">
           {primaryNavItems.map((item) => (

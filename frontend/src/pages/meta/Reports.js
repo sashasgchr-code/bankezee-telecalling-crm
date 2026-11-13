@@ -6,6 +6,7 @@ import { RefreshCw, Download, RotateCcw, Check, ChevronDown, Users2, UserCog } f
 import { C, Section } from "../../components/meta/reports/ReportWidgets";
 import { ProcessorPerformance } from "../../components/meta/perf/ProcessorPerformance";
 import { useMetaUser } from "./metaCommon";
+import MetaCallActivity from "../../components/meta/MetaCallActivity";
 import { KpiRows, Pipeline, GpTable, ProcTable, TatSection, OverdueTable, LoanTypes, Alerts } from "../../components/meta/reports/ReportSections";
 
 const STATE_KEY = "metaReportsFilters_v1";
@@ -172,6 +173,7 @@ export default function MetaReports() {
             </div>
           </>
         )}
+        <MetaCallActivity />
       </div>
     </div>
   );

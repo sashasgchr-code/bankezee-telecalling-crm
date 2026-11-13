@@ -2530,3 +2530,5 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Retired page files remain in repo (unused) for easy rollback. Mobile app needs its own release (calls/attendance/leave now 410).
 - Lost with Connect admin Reports page: the combined Connect+Meta hourly/summary tables (Meta's own Reports page unchanged).
 
+- 2026-06: Meta Reports page now includes "Partner Call Activity" (components/meta/MetaCallActivity.js: MetaSummaryTable with period + MetaHourlyTable with IST date). Customers & Campaigns is admin-only: backend ctx() 403 for non-admin (incl. ops), nav link only for role admin, /agent|/manager|/hr customers-campaigns redirect to files, /admin route wrapped in AdminOnly.
+
