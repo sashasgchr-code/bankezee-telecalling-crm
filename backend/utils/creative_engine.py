@@ -42,7 +42,7 @@ def export_base(im: Image.Image) -> Image.Image:
 
 
 def min_qr(w, h):
-    return max(220, round(0.15 * min(w, h)))
+    return max(185, round(0.14 * min(w, h)))
 
 
 def default_qr(w, h):
@@ -50,7 +50,7 @@ def default_qr(w, h):
 
 
 def footprint(p):
-    return (p["x"], p["y"], p["x"] + p["size"], p["y"] + round(p["size"] * (1 + CAPTION)))
+    return (p["x"], p["y"], p["x"] + p["size"], p["y"] + round(p["size"] * (1 + (CAPTION if p.get("caption", True) else 0))))
 
 
 def _inter(a, b):
@@ -81,7 +81,7 @@ Return ONLY JSON:
  "has_bankezee_logo":true|false}
 Coordinates are integers 0-1000 relative to image width (x) and height (y).
 List EVERY piece of text including tiny print, phone numbers, URLs, disclaimers, logos, buttons, faces, people, products and illustrations.
-qr_placeholder = an empty box/frame clearly meant for a QR code (e.g. labelled "scan", or a blank white square). blank_footer = an empty plain band at the bottom with no content.
+qr_placeholder = the empty space where the designer intended the QR code to go: an empty box/frame, a blank white square, or a blank area next to/below a "Scan to apply" / "Scan here" label, arrow or button (often inside a footer band). Return the full empty area, excluding the label itself. blank_footer = an empty plain band at the bottom with no content.
 has_bankezee_logo = true only if the Bankezee brand name/logo is visible."""
 
 
@@ -145,10 +145,11 @@ def auto_place(im: Image.Image, analysis: dict):
         b = analysis.get(key)
         if b:
             bw, bh = b[2] - b[0], b[3] - b[1]
-            size = min(round(bw * 0.92), round(bh * 0.92 / (1 + CAPTION)), round(1.4 * dq))
+            cap = 0 if key == "qr_placeholder" else CAPTION
+            size = min(round(bw * 0.9), round(bh * 0.9 / (1 + cap)), round(1.4 * dq))
             if size >= mn:
                 p = {"mode": "overlay", "size": size, "x": b[0] + (bw - size) // 2 if key == "qr_placeholder" else b[2] - size - round(0.03 * W),
-                     "y": b[1] + (bh - round(size * (1 + CAPTION))) // 2}
+                     "y": b[1] + (bh - round(size * (1 + cap))) // 2, "caption": key != "qr_placeholder"}
                 if key == "qr_placeholder":
                     p["zone"] = b
                 if in_bounds(p, W, H) and not overlaps(p, analysis, W, H, bmk):
@@ -195,10 +196,12 @@ def render(art: Image.Image, placement: dict, url: str, add_logo: bool) -> Image
         size = round(placement["size"] * k)
         x, y = round(placement["x"] * k), round(placement["y"] * k)
         out = im.copy()
-        cap = round(size * CAPTION)
+        cap = round(size * CAPTION) if placement.get("caption", True) else 0
         d = ImageDraw.Draw(out)
         d.rectangle([x, y, x + size, y + size + cap], fill="white")
         out.paste(qr_tile(url, size), (x, y))
+        if not cap:
+            return out
         f = font(cap * 0.55)
         t = "Scan to Apply"
         tw = d.textlength(t, font=f)

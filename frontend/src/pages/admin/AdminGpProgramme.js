@@ -9,17 +9,37 @@ const dl = async (url, name, open) => { const r = await api.get(url, { responseT
 
 const AskDialog = ({ ask, onClose }) => {
   const [v, setV] = useState({});
-  useEffect(() => { setV({}); }, [ask]);
+  useEffect(() => { setV(ask?.initial || {}); }, [ask]);
   if (!ask) return null;
   const ok = ask.fields.every((f) => (v[f.key] || '').trim());
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent data-testid="gpa-ask-dialog">
         <DialogHeader><DialogTitle>{ask.title}</DialogTitle></DialogHeader>
+        {ask.text && <p className="text-sm text-[#55585A]">{ask.text}</p>}
         <div className="space-y-3">{ask.fields.map((f) => <Field key={f.key} label={f.label}><Input data-testid={`gpa-ask-${f.key}`} type={f.type || 'text'} value={v[f.key] || ''} onChange={(e) => setV({ ...v, [f.key]: e.target.value })} /></Field>)}</div>
-        <div className="flex justify-end gap-2 mt-2"><Btn variant="outline" data-testid="gpa-ask-cancel" onClick={onClose}>Cancel</Btn><Btn data-testid="gpa-ask-submit" disabled={!ok} onClick={() => { ask.onSubmit(v); onClose(); }}>Confirm</Btn></div>
+        <div className="flex justify-end gap-2 mt-2"><Btn variant="outline" data-testid="gpa-ask-cancel" onClick={onClose}>Cancel</Btn><Btn data-testid="gpa-ask-submit" variant={ask.danger ? 'dark' : 'primary'} disabled={!ok} onClick={() => { ask.onSubmit(v); onClose(); }}>{ask.cta || 'Confirm'}</Btn></div>
       </DialogContent>
     </Dialog>
+  );
+};
+
+const ManageCell = ({ r, onEdit, onPass, onActive, onDelete }) => {
+  const [pw, setPw] = useState(null);
+  const view = () => (pw !== null ? setPw(null) : api.get(`/gp/admin/partners/${r.user_id}/password`).then(({ data }) => setPw(data.password || '')).catch((e) => toast.error(errMsg(e))));
+  const b = 'text-xs font-semibold underline-offset-2 hover:underline';
+  return (
+    <div className="flex flex-col items-start gap-1 min-w-[140px]" data-testid={`gpa-manage-${r.partner_id}`}>
+      {!r.is_active && <Badge tone="red" s="Deactivated">Deactivated</Badge>}
+      <div className="flex flex-wrap gap-x-2 gap-y-1">
+        <button className={`${b} text-[#24508F]`} data-testid={`gpa-edit-${r.partner_id}`} onClick={onEdit}>Edit</button>
+        <button className={`${b} text-[#24508F]`} data-testid={`gpa-password-${r.partner_id}`} onClick={onPass}>Change password</button>
+        <button className={`${b} text-[#24508F]`} data-testid={`gpa-view-password-${r.partner_id}`} onClick={view}>{pw !== null ? 'Hide password' : 'View password'}</button>
+        <button className={`${b} ${r.is_active ? 'text-[#8A6100]' : 'text-[#1F7A33]'}`} data-testid={`gpa-active-${r.partner_id}`} onClick={onActive}>{r.is_active ? 'Deactivate' : 'Reactivate'}</button>
+        <button className={`${b} text-[#A12B2B]`} data-testid={`gpa-delete-${r.partner_id}`} onClick={onDelete}>Delete</button>
+      </div>
+      {pw !== null && <span className="text-xs font-mono bg-[#F6F7F5] border border-[#E6E8E3] rounded px-1.5 py-0.5" data-testid={`gpa-password-value-${r.partner_id}`}>{pw || 'Not stored — set a new password'}</span>}
+    </div>
   );
 };
 
@@ -33,6 +53,19 @@ const Partners = () => {
     if (!reason) return setAsk({ title: `Approve ${p.name} as an Active partner?`, fields: [{ key: 'reason', label: 'Reason (recorded with your name)' }], onSubmit: (v) => approve(p, v.reason) });
     api.post(`/gp/admin/partners/${p.user_id}/approve`, { reason }).then(() => { toast.success(`${p.name} is now Active`); load(); }).catch((e) => toast.error(errMsg(e)));
   };
+  const call = (fn, msg) => fn().then(() => { toast.success(msg); load(); }).catch((e) => toast.error(errMsg(e)));
+  const editP = (p) => setAsk({ title: `Edit ${p.name}`, cta: 'Save', initial: { name: p.name, mobile: p.full_mobile || '', email: p.full_email || '' },
+    fields: [{ key: 'name', label: 'Full name' }, { key: 'mobile', label: 'Mobile number' }, { key: 'email', label: 'Email', type: 'email' }],
+    onSubmit: (v) => call(() => api.put(`/gp/admin/partners/${p.user_id}`, v), 'Partner updated') });
+  const passP = (p) => setAsk({ title: `Set a new password for ${p.name}`, cta: 'Change password', text: 'Share the new password with the partner securely. It works immediately.',
+    fields: [{ key: 'new_password', label: 'New password (min 8 characters)' }], onSubmit: (v) => call(() => api.put(`/gp/admin/partners/${p.user_id}/password`, v), 'Password changed') });
+  const activeP = (p) => setAsk({ title: `${p.is_active ? 'Deactivate' : 'Reactivate'} ${p.name}?`, cta: p.is_active ? 'Deactivate' : 'Reactivate', danger: p.is_active, fields: [],
+    text: p.is_active ? 'They will not be able to sign in. Files, payouts and agreements are kept.' : 'They will be able to sign in again.',
+    onSubmit: () => call(() => api.post(`/gp/admin/partners/${p.user_id}/active`, { active: !p.is_active }), p.is_active ? 'Partner deactivated' : 'Partner reactivated') });
+  const deleteP = (p) => setAsk({ title: `Delete ${p.name}?`, cta: 'Delete permanently', danger: true, fields: [], text: 'This permanently removes the partner account. Partners with files, payouts or a signed agreement cannot be deleted — deactivate them instead.',
+    onSubmit: () => api.delete(`/gp/admin/partners/${p.user_id}`).then(() => { toast.success('Partner deleted'); load(); }).catch((e) => {
+      toast.error(errMsg(e)); if (e?.response?.status === 409 && p.is_active) activeP(p);
+    }) });
   const decide = async (p, item, status, note = null) => {
     if (status === 'Action Required' && !note) return setAsk({ title: `What should ${p.name} correct?`, fields: [{ key: 'note', label: 'Note shown to the partner' }], onSubmit: (v) => decide(p, item, status, v.note) });
     try { await api.post(`/gp/admin/partners/${p.user_id}/kyc/${item}`, { status, note }); toast.success('Updated'); load(); } catch (e) { toast.error(errMsg(e)); }
@@ -48,6 +81,7 @@ const Partners = () => {
           {v.doc_id && <button data-testid={`gpa-view-${r.partner_id}-${k}`} className="text-[#24508F] underline" onClick={() => dl(`/gp/docs/${v.doc_id}`, '', true)}>view</button>}
           {v.status === 'Pending' && <><button data-testid={`gpa-verify-${r.partner_id}-${k}`} className="text-[#1F7A33] font-semibold" onClick={() => decide(r, k, 'Verified')}>Verify</button>
             <button data-testid={`gpa-reject-${r.partner_id}-${k}`} className="text-[#A12B2B]" onClick={() => decide(r, k, 'Action Required')}>Reject</button></>}</div>)}</div>],
+        ['manage', 'Manage', (r) => <ManageCell r={r} onEdit={() => editP(r)} onPass={() => passP(r)} onActive={() => activeP(r)} onDelete={() => deleteP(r)} />],
         ['agreement', 'Agreement', (r) => (r.agreement ? <span><Badge s={r.agreement.status} /> <span className="text-xs">v{r.agreement.version}</span>{r.agreement.status === 'Signed' && <button className="block text-xs text-[#24508F] underline" onClick={() => dl(`/gp/agreement/${r.agreement.id}/pdf`, `Bankezee_GP_Agreement_${r.partner_id}_v${r.agreement.version}_signed.pdf`)}>signed copy</button>}</span> : <span className="text-xs text-[#6B6F6A]">Not issued</span>)]]} />
     </Card>
   );

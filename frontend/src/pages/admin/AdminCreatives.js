@@ -17,9 +17,10 @@ const useBlob = (url, dep) => {
   }, [url, dep]);
   return src;
 };
-const hit = (p, b) => !(p.x + p.size <= b[0] || b[2] <= p.x || p.y + p.size * (1 + CAP) <= b[1] || b[3] <= p.y);
+const capOf = (p) => (p.caption === false ? 0 : CAP);
+const hit = (p, b) => !(p.x + p.size <= b[0] || b[2] <= p.x || p.y + p.size * (1 + capOf(p)) <= b[1] || b[3] <= p.y);
 
-const PlacementEditor = ({ c, p, setP }) => {
+const PlacementEditor = ({ c, p, setP, onCommit }) => {
   const src = useBlob(`/gp/admin/creatives/${c.id}/original`, c.version);
   const box = useRef(null);
   const [w, setW] = useState(0);
@@ -27,12 +28,14 @@ const PlacementEditor = ({ c, p, setP }) => {
   const drag = (e, resize) => {
     e.preventDefault();
     const sx = e.clientX; const sy = e.clientY; const o = { ...p };
+    let last = o;
     const move = (ev) => {
       const dx = (ev.clientX - sx) / k; const dy = (ev.clientY - sy) / k;
-      if (resize) { const s = Math.max(c.min_qr, Math.min(c.width - o.x, Math.round(o.size + Math.max(dx, dy)))); setP({ ...o, size: s }); }
-      else setP({ ...o, x: Math.round(Math.min(Math.max(0, o.x + dx), c.width - o.size)), y: Math.round(Math.min(Math.max(0, o.y + dy), c.height - o.size * (1 + CAP))) });
+      last = resize ? { ...o, size: Math.max(c.min_qr, Math.min(c.width - o.x, Math.round(o.size + Math.max(dx, dy)))) }
+        : { ...o, x: Math.round(Math.min(Math.max(0, o.x + dx), c.width - o.size)), y: Math.round(Math.min(Math.max(0, o.y + dy), c.height - o.size * (1 + capOf(o)))) };
+      setP(last);
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); if (last !== o) onCommit(last); };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   };
   const clashes = p.mode === 'overlay' ? (c.analysis?.occupied || []).filter((o) => hit(p, o.box) && !(p.zone && o.box[0] >= p.zone[0] && o.box[2] <= p.zone[2] && o.box[1] >= p.zone[1] && o.box[3] <= p.zone[3])) : [];
@@ -42,8 +45,8 @@ const PlacementEditor = ({ c, p, setP }) => {
       {k > 0 && clashes.map((o, i) => <div key={i} className="absolute border-2 border-red-500 bg-red-500/20" style={{ left: o.box[0] * k, top: o.box[1] * k, width: (o.box[2] - o.box[0]) * k, height: (o.box[3] - o.box[1]) * k }} data-testid="creative-overlap-box" />)}
       {k > 0 && p.mode === 'overlay' && (
         <div onPointerDown={(e) => drag(e, false)} data-testid="creative-qr-box" className={`absolute cursor-move border-2 ${clashes.length ? 'border-red-600 bg-red-100/70' : 'border-[#2FB34A] bg-white/85'} flex flex-col items-center justify-center text-[10px] font-semibold`}
-          style={{ left: p.x * k, top: p.y * k, width: p.size * k, height: p.size * (1 + CAP) * k }}>
-          QR<span className="font-normal">Scan to Apply</span>
+          style={{ left: p.x * k, top: p.y * k, width: p.size * k, height: p.size * (1 + capOf(p)) * k }}>
+          QR{p.caption !== false && <span className="font-normal">Scan to Apply</span>}
           <span onPointerDown={(e) => { e.stopPropagation(); drag(e, true); }} className="absolute -right-1.5 -bottom-1.5 w-4 h-4 bg-[#2FB34A] rounded-sm cursor-se-resize" data-testid="creative-qr-resize" />
         </div>)}
       {p.mode === 'footer' && <div className="absolute inset-x-0 bottom-0 bg-[#2FB34A] text-white text-xs text-center py-1">White QR footer will be added below the artwork</div>}
@@ -61,21 +64,26 @@ const Editor = ({ c, onClose, onSaved }) => {
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
   const preview = useBlob(`/gp/admin/creatives/${c.id}/preview.png`, `${tick}-${cur.version}`);
-  const save = async (extra = {}) => {
+  const save = async (extra = {}, pp = p, quiet = false) => {
     setBusy(true);
     try {
-      const { data } = await api.put(`/gp/admin/creatives/${c.id}`, { name, loan_type: loan, placement: p.mode === 'overlay' ? { mode: 'overlay', x: p.x, y: p.y, size: p.size } : { mode: 'footer' }, ...extra });
+      const { data } = await api.put(`/gp/admin/creatives/${c.id}`, { name, loan_type: loan, placement: pp.mode === 'overlay' ? { mode: 'overlay', x: pp.x, y: pp.y, size: pp.size, caption: pp.caption !== false } : { mode: 'footer' }, ...extra });
       setCur(data); if (extra.use_auto || extra.placement) setP(data.placement.mode === 'overlay' ? data.placement : { ...p, mode: 'footer' }); setTick((t) => t + 1); onSaved();
-      toast[data.issues.length ? 'warning' : 'success'](data.issues.length ? 'Saved with placement issues' : 'Saved — QR passes the scan check');
-    } catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
+      if (!quiet) toast[data.issues.length ? 'warning' : 'success'](data.issues.length ? 'Saved with placement issues' : 'Saved — QR passes the scan check');
+      return data;
+    } catch (e) { toast.error(errMsg(e)); return null; } finally { setBusy(false); }
   };
   const replace = async (file) => {
     const fd = new FormData(); fd.append('file', file); setBusy(true);
     try { await api.post(`/gp/admin/creatives/${c.id}/replace`, fd, { headers: { 'Content-Type': 'multipart/form-data' } }); onSaved(); onClose(); toast.success('Image replaced — QR placement is being re-analysed. Open it again to review, then publish.'); }
     catch (e) { toast.error(errMsg(e)); } finally { setBusy(false); }
   };
-  const publish = async () => { const { data } = await api.post('/gp/admin/creatives/publish', { ids: [c.id] }); const r = data.results[0]; r.ok ? toast.success('Published to Growth Partners') : toast.error(r.error); onSaved(); if (r.ok) onClose(); };
-  const ok = !cur.issues.length && cur.qr_check?.ok;
+  const publish = async () => {
+    const saved = await save({}, p, true);
+    if (!saved) return;
+    if (saved.issues.length) { toast.error(saved.issues[0]); return; }
+    const { data } = await api.post('/gp/admin/creatives/publish', { ids: [c.id] }); const r = data.results[0]; r.ok ? toast.success('Published to Growth Partners') : toast.error(r.error); onSaved(); if (r.ok) onClose(); };
+  const ok = true;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-6xl max-h-[92vh] overflow-y-auto" data-testid="creative-editor">
@@ -83,11 +91,12 @@ const Editor = ({ c, onClose, onSaved }) => {
         <div className="grid lg:grid-cols-2 gap-5">
           <div className="space-y-3">
             <p className="text-xs text-[#6B6F6A]">Drag the QR to move it, drag the green corner to resize (minimum {cur.min_qr}px). Red boxes show content the QR would cover.</p>
-            <PlacementEditor c={cur} p={p} setP={setP} />
+            <PlacementEditor c={cur} p={p} setP={setP} onCommit={(np) => save({}, np, true)} />
             <div className="flex flex-wrap gap-2">
               <Btn variant="outline" data-testid="creative-auto" disabled={busy} onClick={() => save({ use_auto: true })}><Wand2 className="w-4 h-4" />Auto place</Btn>
               <Btn variant="outline" data-testid="creative-footer" disabled={busy} onClick={() => { setP({ ...p, mode: 'footer' }); save({ placement: { mode: 'footer' } }); }}><PanelBottom className="w-4 h-4" />Add QR Footer</Btn>
-              {p.mode === 'footer' && <Btn variant="outline" data-testid="creative-overlay" onClick={() => setP({ ...p, mode: 'overlay' })}>Place on image</Btn>}
+              {p.mode === 'footer' && <Btn variant="outline" data-testid="creative-overlay" onClick={() => { const np = { ...p, mode: 'overlay' }; setP(np); save({}, np, true); }}>Place on image</Btn>}
+              {p.mode === 'overlay' && <label className="inline-flex items-center gap-1.5 text-sm"><input type="checkbox" data-testid="creative-caption" checked={p.caption !== false} onChange={(e) => { const np = { ...p, caption: e.target.checked }; setP(np); save({}, np, true); }} />'Scan to Apply' label under QR</label>}
               <label className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-[#D9DCD6] text-sm font-semibold cursor-pointer"><RefreshCw className="w-4 h-4" />Replace image
                 <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" data-testid="creative-replace" onChange={(e) => e.target.files[0] && replace(e.target.files[0])} /></label>
             </div>

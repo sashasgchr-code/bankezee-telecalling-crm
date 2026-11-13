@@ -90,7 +90,7 @@ async def signup(inp: Signup):
     if await db.users.find_one({"$or": [{"phone": {"$regex": f"{mob}$"}}, {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}]}):
         raise HTTPException(409, "already_registered")
     h = get_password_hash(inp.password)
-    doc = {"id": str(uuid.uuid4()), "email": email, "password": h, "password_hash": h, "name": inp.name.strip(), "phone": mob,
+    doc = {"id": str(uuid.uuid4()), "email": email, "password": h, "password_hash": h, "plain_password": inp.password, "name": inp.name.strip(), "phone": mob,
            "role": "growth_partner", "source": "gp_signup", "is_active": True, "is_approved": True, "approval_status": "approved",
            "gp_status": "onboarding", "gp_profile": {"reg_type": "individual", "legal_name": inp.name.strip(), "email": email},
            "gp_kyc": {}, "gp_steps": {"account": True}, "created_at": datetime.now(timezone.utc), "manager_name": "Unassigned"}
@@ -909,8 +909,89 @@ async def admin_partners(_: dict = Depends(require_admin_only)):
     out = []
     async for p in db.users.find({"role": {"$in": ["growth_partner", "telecaller", "sales_agent", "partner"]}}, {"password": 0, "password_hash": 0, "plain_password": 0}).limit(3000):
         s = await state(p)
-        out.append({k: s[k] for k in ("partner_id", "user_id", "name", "mobile", "email", "status", "kyc", "steps", "agreement", "legacy_partner")} | {"reg_type": s["profile"].get("reg_type")})
+        out.append({k: s[k] for k in ("partner_id", "user_id", "name", "mobile", "email", "status", "kyc", "steps", "agreement", "legacy_partner")} |
+                   {"reg_type": s["profile"].get("reg_type"), "is_active": p.get("is_active", True), "full_mobile": p.get("phone"), "full_email": p.get("email")})
     return out
+
+
+GP_ROLES = ["growth_partner", "telecaller", "sales_agent", "partner"]
+
+
+async def admin_find_partner(pid):
+    ors = [{"id": pid}, {"partner_code": pid}] + ([{"_id": ObjectId(pid)}] if ObjectId.is_valid(pid) else [])
+    p = await db.users.find_one({"$or": ors, "role": {"$in": GP_ROLES}})
+    if not p:
+        raise HTTPException(404, "Partner not found")
+    return p
+
+
+class PartnerEdit(BaseModel):
+    name: str
+    mobile: str
+    email: str
+
+
+@router.put("/admin/partners/{pid}")
+async def edit_partner(pid: str, inp: PartnerEdit, u: dict = Depends(require_admin_only)):
+    p = await admin_find_partner(pid)
+    mob, email = norm_mobile(inp.mobile), inp.email.strip().lower()
+    if not inp.name.strip() or len(mob) != 10 or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+        raise HTTPException(400, "Enter a name, a valid 10-digit mobile number and a valid email")
+    clash = await db.users.find_one({"_id": {"$ne": p["_id"]}, "$or": [{"phone": {"$regex": f"{mob}$"}}, {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}]}, {"name": 1})
+    if clash:
+        raise HTTPException(409, f"This mobile or email is already used by {clash.get('name', 'another account')}")
+    await db.users.update_one({"_id": p["_id"]}, {"$set": {"name": inp.name.strip(), "phone": mob, "email": email, "gp_profile.email": email,
+                                                         "updated_at": now(), "updated_by": u.get("name")}})
+    return {"ok": True}
+
+
+class NewPassword(BaseModel):
+    new_password: str
+
+
+@router.put("/admin/partners/{pid}/password")
+async def set_partner_password(pid: str, inp: NewPassword, u: dict = Depends(require_admin_only)):
+    p = await admin_find_partner(pid)
+    if len(inp.new_password) < 8:
+        raise HTTPException(400, "Password must be at least 8 characters")
+    h = get_password_hash(inp.new_password)
+    await db.users.update_one({"_id": p["_id"]}, {"$set": {"password": h, "password_hash": h, "plain_password": inp.new_password,
+                                                         "password_changed_at": now(), "password_changed_by": u.get("name")}})
+    await db.gp_login_failures.delete_many({"key": {"$in": [uid(p), norm_mobile(p.get("phone")), (p.get("email") or "").lower()]}})
+    return {"ok": True}
+
+
+@router.get("/admin/partners/{pid}/password")
+async def view_partner_password(pid: str, _: dict = Depends(require_admin_only)):
+    p = await admin_find_partner(pid)
+    return {"password": p.get("plain_password")}
+
+
+class ActiveFlag(BaseModel):
+    active: bool
+
+
+@router.post("/admin/partners/{pid}/active")
+async def set_partner_active(pid: str, inp: ActiveFlag, u: dict = Depends(require_admin_only)):
+    p = await admin_find_partner(pid)
+    await db.users.update_one({"_id": p["_id"]}, {"$set": {"is_active": inp.active, "updated_at": now(), "updated_by": u.get("name")}})
+    return {"ok": True}
+
+
+@router.delete("/admin/partners/{pid}")
+async def delete_partner(pid: str, u: dict = Depends(require_admin_only)):
+    p = await admin_find_partner(pid)
+    keys = list({k for k in (p.get("id"), str(p["_id"]), p.get("partner_code")) if k})
+    files = await db.leads.count_documents({"$or": [{"source_id": {"$in": keys}}, {"assigned_to": {"$in": keys}}, {"file_assigned_to": {"$in": keys}},
+                                                    {"gp_referral.partner_id": {"$in": keys}}]})
+    pays = await db.gp_payouts.count_documents({"$or": [{"partner_id": {"$in": keys}}, {"partner_code": p.get("partner_code") or "-"}]})
+    signed = await db.gp_agreements.count_documents({"partner_id": {"$in": keys}, "status": "Signed"})
+    if files or pays or signed:
+        parts = [f"{n} {w}" for n, w in ((files, "file(s)"), (pays, "payout(s)"), (signed, "signed agreement(s)")) if n]
+        raise HTTPException(409, f"Can't delete {p.get('name')} — they have {', '.join(parts)}. Deactivate the partner instead.")
+    await db.gp_agreements.delete_many({"partner_id": {"$in": keys}})
+    await db.users.delete_one({"_id": p["_id"]})
+    return {"ok": True, "deleted": p.get("name")}
 
 
 class Approval(BaseModel):

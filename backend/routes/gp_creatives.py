@@ -57,7 +57,7 @@ async def evaluate(art, c, placement, base):
     W, H = art.size
     issues, hits = [], []
     if placement["mode"] == "overlay":
-        placement = {**placement, "x": int(placement["x"]), "y": int(placement["y"]), "size": int(placement["size"])}
+        placement = {**placement, "x": int(placement["x"]), "y": int(placement["y"]), "size": int(placement["size"]), "caption": placement.get("caption", True) is not False}
         placement["zone"] = c["analysis"].get("qr_placeholder")
         if placement["size"] < ce.min_qr(W, H):
             issues.append(f"QR is smaller than the minimum scannable size ({ce.min_qr(W, H)} px)")
@@ -185,6 +185,7 @@ async def preview(cid: str, request: Request, _: dict = Depends(require_admin_on
 
 class Placement(BaseModel):
     mode: str
+    caption: Optional[bool] = True
     x: Optional[float] = 0
     y: Optional[float] = 0
     size: Optional[float] = 0

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Loader2, Handshake } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 
 const Login = () => {
@@ -48,7 +48,7 @@ const Login = () => {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-green-600">BANKEZEE</h1>
           <p className="text-2xl text-gray-600 -mt-1">Connect</p>
-          <p className="text-sm text-gray-500 mt-2">Telecalling CRM</p>
+          <p className="text-sm text-gray-500 mt-2">Staff sign in</p>
         </div>
 
         {/* Form */}
@@ -114,10 +114,14 @@ const Login = () => {
             </button>
           </form>
 
-          <p className="text-center mt-6 text-gray-500">
-            Don't have an account?{' '}
+          <div className="flex items-center gap-3 my-6 text-xs text-gray-400"><span className="flex-1 h-px bg-gray-200" />Growth Partner?<span className="flex-1 h-px bg-gray-200" /></div>
+          <Link to="/gp/login" className="w-full flex items-center justify-center gap-2 py-3.5 rounded-lg border-2 border-green-600 text-green-700 font-semibold hover:bg-green-50 transition-colors" data-testid="gp-signin-link">
+            <Handshake size={18} />Sign in as Growth Partner
+          </Link>
+          <p className="text-center mt-5 text-gray-500">
+            New Growth Partner?{' '}
             <Link to="/gp/signup" className="text-green-600 font-semibold hover:underline" data-testid="register-link">
-              Sign Up
+              Become a Growth Partner
             </Link>
           </p>
         </div>
