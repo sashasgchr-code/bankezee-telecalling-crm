@@ -122,6 +122,8 @@ from routes.elig_compare import router as elig_compare_router  # calculator vs b
 app.include_router(elig_compare_router)
 from routes.gp_portal import router as gp_portal_router  # Growth Partner programme
 app.include_router(gp_portal_router)
+from routes.gp_files import router as gp_files_router, backfill_partner_files  # Growth Partner files -> Connect CRM Files
+app.include_router(gp_files_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production
@@ -148,6 +150,7 @@ async def schedule_startup_tasks():
     readiness probe allows, which would keep the new revision from rolling out.
     """
     asyncio.create_task(setup_admin_accounts())
+    asyncio.create_task(backfill_partner_files())
     from routes.cc_core import ensure_indexes as cc_indexes
     asyncio.create_task(cc_indexes())
     asyncio.create_task(wa_inbox_indexes())

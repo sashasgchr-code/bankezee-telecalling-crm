@@ -68,7 +68,6 @@ async def ensure_code(u):
 
 # ---------------- signup / sign-in ----------------
 class Signup(BaseModel):
-    reg_type: str
     mobile: str
     email: str
     name: str
@@ -84,7 +83,7 @@ def norm_mobile(m):
 async def signup(inp: Signup):
     from routes.auth import login, UserLogin
     mob, email = norm_mobile(inp.mobile), inp.email.strip().lower()
-    if inp.reg_type not in KYC_ITEMS or len(mob) != 10 or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+    if len(mob) != 10 or not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise HTTPException(400, "Enter a valid 10-digit mobile number and email")
     if len(inp.password) < 8:
         raise HTTPException(400, "Password must be at least 8 characters")
@@ -93,7 +92,7 @@ async def signup(inp: Signup):
     h = get_password_hash(inp.password)
     doc = {"id": str(uuid.uuid4()), "email": email, "password": h, "password_hash": h, "name": inp.name.strip(), "phone": mob,
            "role": "growth_partner", "source": "gp_signup", "is_active": True, "is_approved": True, "approval_status": "approved",
-           "gp_status": "onboarding", "gp_profile": {"reg_type": inp.reg_type, "legal_name": inp.name.strip(), "email": email},
+           "gp_status": "onboarding", "gp_profile": {"reg_type": "individual", "legal_name": inp.name.strip(), "email": email},
            "gp_kyc": {}, "gp_steps": {"account": True}, "created_at": datetime.now(timezone.utc), "manager_name": "Unassigned"}
     r = await db.users.insert_one(doc)
     doc["_id"] = r.inserted_id
@@ -235,7 +234,7 @@ class Profile(BaseModel):
 @router.put("/me/profile")
 async def save_profile(inp: Profile, u: dict = Depends(require_gp)):
     raw = await raw_user(u)
-    p = {**(raw.get("gp_profile") or {}), **{k: v.strip() if isinstance(v, str) else v for k, v in inp.dict().items() if v is not None}}
+    p = {**(raw.get("gp_profile") or {}), **{k: v.strip() if isinstance(v, str) else v for k, v in inp.dict().items() if v is not None and k != "reg_type"}}
     if p.get("pin") and not re.match(r"^\d{6}$", p["pin"]):
         raise HTTPException(400, "PIN code must be 6 digits")
     await db.users.update_one({"_id": raw["_id"]}, {"$set": {"gp_profile": p, "city": p.get("city") or raw.get("city")}})
@@ -298,91 +297,6 @@ async def get_doc(doc_id: str, u: dict = Depends(get_current_user)):
         raise HTTPException(403, "Not your document")
     return Response(await s.read(), media_type=meta.get("content_type") or "application/octet-stream",
                     headers={"Content-Disposition": f'inline; filename="{s.filename}"'})
-
-
-# ---------------- leads & referrals (files attributed to the partner) ----------------
-def stage(f):
-    s = str(f.get("processing_status") or f.get("file_status") or "new").lower()
-    if "disburs" in s:
-        return "Disbursed"
-    if "reject" in s or "declin" in s:
-        return "Rejected"
-    if "sanction" in s or "approv" in s:
-        return "Sanctioned"
-    if "login" in s or "process" in s or "query" in s or "hold" in s:
-        return "In Process"
-    return "Submitted"
-
-
-@router.get("/leads")
-async def my_leads(search: str = "", stage_f: str = "", u: dict = Depends(require_gp)):
-    pid = uid(u)
-    q = {"status": "file", "$or": [{"file_assigned_to": pid}, {"assigned_to": pid}, {"gp_referral.partner_id": pid}]}
-    if search:
-        q["$and"] = [{"$or": [{"name": {"$regex": re.escape(search), "$options": "i"}}, {"phone": {"$regex": re.escape(search)}}]}]
-    files = await db.leads.find(q, {"_id": 0, "id": 1, "name": 1, "phone": 1, "file_details.type_of_loan": 1, "requirement": 1, "processing_status": 1,
-                                   "file_status": 1, "created_at": 1, "file_created_at": 1, "updated_at": 1, "gp_referral": 1, "query_hold_reason": 1}).sort("created_at", -1).to_list(2000)
-    rows = [{"id": f.get("id"), "name": f.get("name"), "phone": mask(f.get("phone"), 4), "product": (f.get("file_details") or {}).get("type_of_loan") or f.get("requirement"),
-             "stage": stage(f), "status": f.get("processing_status") or f.get("file_status") or "New", "added": str(f.get("file_created_at") or f.get("created_at") or "")[:10],
-             "updated": str(f.get("updated_at") or "")[:16].replace("T", " "), "via": (f.get("gp_referral") or {}).get("channel", "Partner"),
-             "note": f.get("query_hold_reason")} for f in files]
-    counts = {s: sum(1 for r in rows if r["stage"] == s) for s in ("Submitted", "In Process", "Sanctioned", "Disbursed", "Rejected")}
-    if stage_f:
-        rows = [r for r in rows if r["stage"] == stage_f]
-    return {"rows": rows, "counts": counts, "total": sum(counts.values())}
-
-
-class Referral(BaseModel):
-    name: str
-    mobile: str
-    city: Optional[str] = None
-    loan_type: Optional[str] = None
-    amount: Optional[float] = None
-    consent: bool
-
-
-async def create_referral(partner: dict, inp: Referral, channel: str):
-    from routes.files_crm import create_file_direct, FileCreate
-    if not inp.consent:
-        raise HTTPException(400, "Customer consent is required")
-    mob = norm_mobile(inp.mobile)
-    if len(mob) != 10:
-        raise HTTPException(400, "Enter a valid 10-digit mobile number")
-    pid = uid(partner)
-    dup = await db.leads.find_one({"status": "file", "phone": {"$regex": f"{mob}$"}, "gp_referral.partner_id": pid,
-                                   "created_at": {"$gte": datetime.now(timezone.utc) - timedelta(days=1)}}, {"id": 1})
-    if dup:
-        return {"id": dup.get("id"), "duplicate": True}
-    res = await create_file_direct(FileCreate(full_name=inp.name.strip(), mobile=mob, city=inp.city, type_of_loan=inp.loan_type, gp_id=pid,
-                                              additional_data={"loan_amount": inp.amount} if inp.amount else None), current_user=partner)
-    fid = res.get("file_id") or res.get("id")
-    await db.leads.update_one({"id": fid}, {"$set": {"gp_referral": {"partner_id": pid, "partner_code": partner.get("partner_code"), "channel": channel,
-                                                                    "consent_at": now()}}})
-    return {"id": fid, "duplicate": False}
-
-
-@router.post("/leads")
-async def add_lead(inp: Referral, u: dict = Depends(require_gp)):
-    raw = await raw_user(u)
-    return await create_referral(raw | {"id": uid(raw)}, inp, "Partner entered")
-
-
-@router.get("/public/partner/{code}")
-async def public_partner(code: str):
-    p = await db.users.find_one({"partner_code": code.upper(), "is_active": {"$ne": False}}, {"name": 1, "partner_code": 1, "role": 1})
-    if not p or not is_gp_role(p.get("role", "")):
-        raise HTTPException(404, "Referral link not found")
-    return {"partner_id": p["partner_code"], "display_name": (p.get("name") or "").split(" ")[0], "products": list(PRODUCT_CODES.values())}
-
-
-@router.post("/public/refer/{code}")
-async def public_refer(code: str, inp: Referral):
-    p = await db.users.find_one({"partner_code": code.upper(), "is_active": {"$ne": False}})
-    if not p or not is_gp_role(p.get("role", "")):
-        raise HTTPException(404, "Referral link not found")
-    p["id"] = uid(p)
-    r = await create_referral(p, inp, "Referral link")
-    return {"ok": True, "duplicate": r["duplicate"]}
 
 
 # ---------------- payout structure (rates) ----------------
@@ -612,6 +526,8 @@ async def add_payout(inp: LedgerEntry, u: dict = Depends(require_admin_only)):
     p = await db.users.find_one({"partner_code": inp.partner_code.upper()})
     if not p:
         raise HTTPException(404, "Unknown partner_code")
+    if inp.file_id and not await db.leads.find_one({"id": inp.file_id, "status": "file", "$or": [{"gp_referral.partner_id": uid(p)}, {"source_id": uid(p)}]}, {"_id": 1}):
+        raise HTTPException(400, "This File ID is not attributed to that partner")
     if inp.file_id and await db.gp_payouts.find_one({"file_id": inp.file_id, "status": {"$ne": "Reversed"}}):
         raise HTTPException(409, "A payout already exists for this file")
     rate, err = await resolve_rate(inp.partner_code.upper(), inp.product_code.upper(), (inp.lender_code or "").upper(), inp.disbursement_date, inp.disbursed_amount)

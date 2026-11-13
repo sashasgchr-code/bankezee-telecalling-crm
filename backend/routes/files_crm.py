@@ -334,6 +334,8 @@ async def get_all_files(
     limit: int = 50,
     min_star: Optional[int] = None,
     team_view: Optional[str] = None,
+    file_source: Optional[str] = None,
+    queue: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Get all leads with status='file' (Files Dashboard)
@@ -365,6 +367,8 @@ async def get_all_files(
         activity_end_date=activity_end_date,
         min_star=min_star,
         team_view=(team_view == 'true'),
+        file_source=file_source,
+        queue=queue,
     )
     if query is None:
         # Fail closed: an explicitly selected scope resolved to nobody
@@ -2928,6 +2932,8 @@ async def get_files_dashboard_stats(
     activity_end_date: Optional[str] = None,
     min_star: Optional[int] = None,
     team_view: Optional[str] = None,
+    file_source: Optional[str] = None,
+    queue: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -3040,6 +3046,8 @@ async def get_files_dashboard_stats(
         activity_end_date=None,
         min_star=min_star,
         team_view=(team_view == 'true'),
+        file_source=file_source,
+        queue=queue,
     )
     if query is None:
         return EMPTY_DASHBOARD_STATS()
@@ -4188,6 +4196,8 @@ async def export_dashboard_csv(
     activity_end_date: Optional[str] = None,
     min_star: Optional[int] = None,
     team_view: Optional[str] = None,
+    file_source: Optional[str] = None,
+    queue: Optional[str] = None,
     current_user: dict = Depends(get_current_user)
 ):
     """Export dashboard data as CSV - same population as the Files list and stats"""
@@ -4202,6 +4212,8 @@ async def export_dashboard_csv(
         start_date=start_date, end_date=end_date,
         activity_start_date=activity_start_date, activity_end_date=activity_end_date,
         team_view=(team_view == 'true'),
+        file_source=file_source,
+        queue=queue,
     )
     files = [] if query is None else await db.leads.find(
         query,

@@ -5,7 +5,7 @@ import api from '../../services/api';
 import useAuthStore from '../../store/authStore';
 import { LOGO, Btn, Field, Input, Card, errMsg } from './ui';
 import { ProfileForm, KycForm, PayoutForm, AgreementPanel } from './Onboarding';
-import { User, Building2, Check, CheckCircle2, IndianRupee, Share2, BadgeCheck } from 'lucide-react';
+import { Check, CheckCircle2, IndianRupee, Share2, BadgeCheck } from 'lucide-react';
 
 export const AuthShell = ({ children }) => (
   <div className="min-h-screen bg-[#F6F7F5] lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" style={{ fontFamily: "'Poppins', 'Segoe UI', sans-serif" }}>
@@ -13,9 +13,9 @@ export const AuthShell = ({ children }) => (
       <img src={LOGO} alt="Bankezee" className="h-12 w-auto self-start" />
       <div>
         <p className="text-xs font-bold tracking-[0.2em] text-[#2FB34A] uppercase">Growth Partner Programme</p>
-        <h2 className="text-4xl font-bold text-[#2B2B2B] leading-tight mt-3">Refer customers.<br />Track every file.<br />Get paid on time.</h2>
+        <h2 className="text-4xl font-bold text-[#2B2B2B] leading-tight mt-3">Submit loan files.<br />Track every status.<br />Get paid on time.</h2>
         <ul className="mt-8 space-y-4 text-[#2B2B2B]">
-          {[[IndianRupee, 'Transparent payout structure with statements'], [Share2, 'Your own referral link and QR'], [BadgeCheck, 'Digital partner card and certificate']].map(([I, t]) => (
+          {[[IndianRupee, 'Transparent payout structure with statements'], [Share2, 'Your own application link and QR'], [BadgeCheck, 'Digital partner card and certificate']].map(([I, t]) => (
             <li key={t} className="flex items-center gap-3 text-sm"><span className="w-9 h-9 rounded-full bg-white border border-[#E6E8E3] flex items-center justify-center"><I className="w-4 h-4 text-[#2FB34A]" /></span>{t}</li>
           ))}
         </ul>
@@ -76,7 +76,7 @@ const Stepper = ({ cur, done }) => (
 );
 
 const AccountStep = ({ onDone }) => {
-  const [f, setF] = useState({ reg_type: 'individual', mobile: '', email: '', name: '', password: '' });
+  const [f, setF] = useState({ mobile: '', email: '', name: '', password: '' });
   const [busy, setBusy] = useState(false);
   const [exists, setExists] = useState(false);
   const { setSession } = useAuthStore();
@@ -90,15 +90,7 @@ const AccountStep = ({ onDone }) => {
   };
   return (
     <form onSubmit={go} className="space-y-4" data-testid="account-step">
-      <div className="grid grid-cols-2 gap-3">
-        {[['individual', 'Individual', User], ['business', 'Business', Building2]].map(([v, l, I]) => (
-          <button type="button" key={v} data-testid={`regtype-${v}`} onClick={() => setF({ ...f, reg_type: v })}
-            className={`rounded-xl border p-4 text-left transition-colors ${f.reg_type === v ? 'border-[#2FB34A] bg-[#E8F6EA]' : 'border-[#D9DCD6] bg-white hover:bg-[#F6F7F5]'}`}>
-            <I className="w-5 h-5 text-[#2FB34A]" /><p className="font-semibold text-sm mt-2">{l}</p><p className="text-xs text-[#6B6F6A]">{v === 'individual' ? 'Registering in your own name' : 'Firm, LLP or company'}</p>
-          </button>
-        ))}
-      </div>
-      <Field label={f.reg_type === 'business' ? 'Authorised signatory name' : 'Full name'}><Input data-testid="acc-name" required value={f.name} onChange={set('name')} /></Field>
+      <Field label="Full name (as on PAN)"><Input data-testid="acc-name" required value={f.name} onChange={set('name')} /></Field>
       <Field label="Mobile number" error={exists ? 'This number is already registered.' : null}><Input data-testid="acc-mobile" required inputMode="tel" value={f.mobile} onChange={(e) => { setExists(false); set('mobile')(e); }} onBlur={checkMobile} placeholder="10-digit mobile" /></Field>
       {exists && <div className="rounded-lg bg-[#EAF1FB] border border-[#C9DAF2] p-3 text-sm" data-testid="acc-exists">You already have a Bankezee account. <Link to="/gp/login" className="font-semibold text-[#24508F] underline">Sign in to continue</Link></div>}
       <Field label="Email" hint="Used for statements and to email your agreement signing code"><Input data-testid="acc-email" type="email" required value={f.email} onChange={set('email')} /></Field>
@@ -106,8 +98,7 @@ const AccountStep = ({ onDone }) => {
       <Card className="p-4 bg-[#FAFBF9]" data-testid="what-you-need">
         <p className="text-sm font-semibold mb-2">What you'll need</p>
         <ul className="text-xs text-[#55585A] space-y-1 list-disc pl-4">
-          <li>PAN {f.reg_type === 'business' ? 'of the business' : 'card'}</li><li>Aadhaar or another identity proof{f.reg_type === 'business' ? ' of the authorised signatory' : ''}</li>
-          {f.reg_type === 'business' && <li>GST / registration certificate</li>}<li>Bank account details and a cancelled cheque</li><li>About 5 minutes — you can stop and resume anytime</li>
+          <li>PAN card</li><li>Aadhaar or another identity proof</li><li>Bank account details and a cancelled cheque</li><li>About 5 minutes — you can stop and resume anytime</li>
         </ul>
       </Card>
       <Btn className="w-full" data-testid="acc-continue" disabled={busy || exists}>{busy ? 'Creating account…' : 'Continue'}</Btn>

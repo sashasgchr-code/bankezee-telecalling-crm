@@ -86,6 +86,8 @@ async def build_files_query(
     min_star=None,
     team_view=False,
     index=None,
+    file_source=None,
+    queue=None,
 ):
     """Return the Mongo query for the requested Files population, or None to fail closed."""
     idx = index or await load_user_index(db)
@@ -150,6 +152,11 @@ async def build_files_query(
             clauses.append({"file_details.type_of_loan": {"$in": types}})
     if search:
         clauses.append(search_clause(search))
+    if file_source:
+        clauses.append({"file_source": file_source})
+    if queue == "unassigned":
+        clauses.append({"$or": [{"file_assigned_to": {"$in": [None, ""]}}, {"file_assigned_to": {"$exists": False}},
+                                {"$expr": {"$eq": ["$file_assigned_to", "$source_id"]}}]})
 
     # File-created date (the day the lead BECAME a File), with a legacy fallback to created_at.
     # NOTE: activity-date is intentionally NOT applied to the base population - it only narrows

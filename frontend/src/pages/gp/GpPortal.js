@@ -6,9 +6,10 @@ import api from '../../services/api';
 import useAuthStore from '../../store/authStore';
 import { LOGO, Btn, Card, Badge, PageHead, Tabs, Empty, Stat, RTable, Field, Input, Select, inr, errMsg } from './ui';
 import { ProfileForm, KycForm, PayoutForm, AgreementPanel } from './Onboarding';
-import { LayoutDashboard, Users, Wallet, Percent, IdCard, ShieldCheck, FileSignature, LifeBuoy, Menu, X, LogOut, Plus, Share2, Copy, Download, MessageCircle, ArrowRight, FolderOpen } from 'lucide-react';
+import { statusTone } from './FileForm';
+import { LayoutDashboard, Wallet, Percent, IdCard, ShieldCheck, FileSignature, LifeBuoy, Menu, X, LogOut, Plus, Share2, Copy, Download, MessageCircle, ArrowRight, FolderOpen } from 'lucide-react';
 
-const NAV = [['/gp', 'Dashboard', LayoutDashboard], ['/gp/leads', 'Leads', Users], ['/gp/payouts', 'Payouts', Wallet], ['/gp/payout-structure', 'Payout Structure', Percent],
+const NAV = [['/gp', 'Dashboard', LayoutDashboard], ['/gp/files', 'Files', FolderOpen], ['/gp/payouts', 'Payouts', Wallet], ['/gp/payout-structure', 'Payout Structure', Percent],
   ['/gp/card', 'Card & Certificate', IdCard], ['/gp/profile', 'Profile & KYC', ShieldCheck], ['/gp/agreement', 'Partner Agreement', FileSignature], ['/gp/support', 'Support', LifeBuoy]];
 const PRODUCTS = ['Personal Loan', 'Business Loan', 'Home Loan', 'Loan Against Property', 'Balance Transfer', 'Credit Card', 'Auto Loan', 'Education Loan', 'Gold Loan'];
 export const refLink = (code) => `${window.location.origin}/r/${code}`;
@@ -55,11 +56,11 @@ export const GpLayout = () => {
 
 const useMe = () => useOutletContext();
 
-const ShareTools = ({ code, compact }) => {
+export const ShareTools = ({ code, compact }) => {
   const link = refLink(code);
-  const copy = () => { navigator.clipboard.writeText(link); toast.success('Referral link copied'); };
-  const qr = () => { const c = document.getElementById('gp-qr'); const l = document.createElement('a'); l.href = c.toDataURL('image/png'); l.download = `bankezee-referral-${code}.png`; l.click(); };
-  const wa = `https://wa.me/?text=${encodeURIComponent(`Looking for a loan? Apply through my Bankezee partner link: ${link}`)}`;
+  const copy = () => { navigator.clipboard.writeText(link); toast.success('Application link copied'); };
+  const qr = () => { const c = document.getElementById('gp-qr'); const l = document.createElement('a'); l.href = c.toDataURL('image/png'); l.download = `bankezee-application-${code}.png`; l.click(); };
+  const wa = `https://wa.me/?text=${encodeURIComponent(`Looking for a loan? Apply through my Bankezee application link: ${link}`)}`;
   return (
     <div className={`flex ${compact ? 'flex-col sm:flex-row' : 'flex-col md:flex-row'} gap-5 items-start`} data-testid="share-tools">
       <div className="p-3 bg-white border border-[#E6E8E3] rounded-xl"><QRCodeCanvas id="gp-qr" value={link} size={compact ? 120 : 150} fgColor="#2B2B2B" /></div>
@@ -67,7 +68,7 @@ const ShareTools = ({ code, compact }) => {
         <div className="flex gap-2"><Input readOnly value={link} data-testid="ref-link" /><Btn variant="outline" onClick={copy} data-testid="ref-copy"><Copy className="w-4 h-4" />Copy</Btn></div>
         <div className="flex flex-wrap gap-2"><a href={wa} target="_blank" rel="noreferrer"><Btn variant="primary" data-testid="ref-whatsapp"><MessageCircle className="w-4 h-4" />Share on WhatsApp</Btn></a>
           <Btn variant="outline" onClick={qr} data-testid="ref-qr-download"><Download className="w-4 h-4" />Download QR</Btn></div>
-        <p className="text-xs text-[#6B6F6A]">Customers who apply through this link are automatically credited to you, through to disbursement.</p>
+        <p className="text-xs text-[#6B6F6A]">Customers who apply through this link create a Loan File credited to you, through to disbursement.</p>
       </div>
     </div>
   );
@@ -76,63 +77,25 @@ const ShareTools = ({ code, compact }) => {
 export const GpDashboard = () => {
   const { me } = useMe();
   const nav = useNavigate();
-  const [leads, setLeads] = useState(null);
+  const [files, setFiles] = useState(null);
   const [pay, setPay] = useState(null);
-  useEffect(() => { api.get('/gp/leads').then(({ data }) => setLeads(data)); api.get('/gp/payouts').then(({ data }) => setPay(data)); }, []);
+  useEffect(() => { api.get('/gp/files').then(({ data }) => setFiles(data)); api.get('/gp/payouts').then(({ data }) => setPay(data)); }, []);
   const link = { profile: '/gp/profile', kyc: '/gp/profile?tab=kyc', kyc_fix: '/gp/profile?tab=kyc', kyc_review: '/gp/profile?tab=kyc', payout: '/gp/profile?tab=payout', bank_doc: '/gp/profile?tab=payout', agreement: '/gp/agreement', agreement_wait: '/gp/agreement' };
   return (
     <>
       <PageHead title={`Hello, ${me.name || 'Partner'}`} sub={<>Partner ID <b data-testid="dash-partner-id">{me.partner_id}</b> · <Badge s={me.status} /></>}
-        actions={<div className="flex flex-wrap gap-2"><Btn data-testid="qa-add-lead" onClick={() => nav('/gp/leads?add=1')}><Plus className="w-4 h-4" />Add a Lead</Btn>
-          <Btn variant="outline" data-testid="qa-share" onClick={() => nav('/gp/leads?share=1')}><Share2 className="w-4 h-4" />Share My Referral Link</Btn>
+        actions={<div className="flex flex-wrap gap-2"><Btn data-testid="qa-add-file" onClick={() => nav('/gp/files?add=1')}><Plus className="w-4 h-4" />Add New File</Btn>
+          <Btn variant="outline" data-testid="qa-share" onClick={() => nav('/gp/files?share=1')}><Share2 className="w-4 h-4" />Share Application Link</Btn>
           <Btn variant="outline" data-testid="qa-payouts" onClick={() => nav('/gp/payouts')}><Wallet className="w-4 h-4" />View Payouts</Btn></div>} />
       {me.tasks.length > 0 && <Card className="p-4 mb-6 border-[#F2DDA4] bg-[#FFFBEF]" data-testid="dash-tasks">
         <p className="text-sm font-semibold text-[#8A6100] mb-2">{me.status === 'Active' ? 'Finish these pending items on your account' : 'Complete these to activate your partnership'}</p>
         {me.tasks.map((t) => <button key={t.key} data-testid={`task-${t.key}`} onClick={() => link[t.key] && nav(link[t.key])} className="w-full flex items-center justify-between text-sm py-2 border-t border-[#F2DDA4] first:border-0 text-left"><span>{t.label}</span>{link[t.key] && <ArrowRight className="w-4 h-4 text-[#8A6100]" />}</button>)}
       </Card>}
-      <h2 className="text-sm font-semibold text-[#55585A] mb-2">Referrals by stage</h2>
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">{leads && Object.entries(leads.counts).map(([k, v]) => <Stat key={k} label={k} value={v} id={`dash-stage-${k.toLowerCase().replace(/\s/g, '-')}`} />)}</div>
+      <h2 className="text-sm font-semibold text-[#55585A] mb-2">Files by Status</h2>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6" data-testid="dash-files-by-status">{files && <Stat label="Total files" value={files.total} id="dash-files-total" />}
+        {files?.counts.map((c) => <button key={c.code} className="text-left" onClick={() => nav('/gp/files')} data-testid={`dash-status-${c.code}`}><Stat label={c.label} value={c.count} id={`dash-status-count-${c.code}`} accent={statusTone(c) === 'green'} /></button>)}</div>
       <h2 className="text-sm font-semibold text-[#55585A] mb-2">Payout summary</h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{pay && [['Earned', 'earned'], ['Under verification', 'under_verification'], ['Payable', 'payable'], ['Paid', 'paid']].map(([l, k]) => <Stat key={k} label={l} value={inr(pay.summary[k])} id={`dash-pay-${k}`} accent={k === 'paid'} />)}</div>
-    </>
-  );
-};
-
-export const GpLeads = () => {
-  const { me } = useMe();
-  const q = new URLSearchParams(window.location.search);
-  const [tab, setTab] = useState(q.get('share') ? 'share' : q.get('add') ? 'add' : 'list');
-  const [d, setD] = useState(null);
-  const [search, setSearch] = useState('');
-  const [stage, setStage] = useState('');
-  const [f, setF] = useState({ name: '', mobile: '', city: '', loan_type: 'Personal Loan', amount: '', consent: false });
-  const load = () => api.get('/gp/leads', { params: { search, stage_f: stage } }).then(({ data }) => setD(data));
-  useEffect(() => { load(); }, [stage]); // eslint-disable-line react-hooks/exhaustive-deps
-  const add = async (e) => {
-    e.preventDefault();
-    try { const { data } = await api.post('/gp/leads', { ...f, amount: f.amount ? Number(f.amount) : null }); toast.success(data.duplicate ? 'This customer was already referred today' : 'Lead added — our team will contact the customer'); setF({ ...f, name: '', mobile: '', amount: '', consent: false }); setTab('list'); load(); }
-    catch (er) { toast.error(errMsg(er)); }
-  };
-  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  return (
-    <>
-      <PageHead title="Leads" sub="Your referred customers and their progress." actions={<Btn data-testid="leads-add" onClick={() => setTab('add')}><Plus className="w-4 h-4" />Add a Lead</Btn>} />
-      <Tabs tabs={[['list', `My Leads${d ? ` (${d.total})` : ''}`], ['add', 'Refer a customer'], ['share', 'Share link / QR']]} value={tab} onChange={setTab} />
-      {tab === 'list' && <Card className="p-4">
-        <div className="flex flex-wrap gap-2 mb-4"><Input data-testid="leads-search" className="!w-64" placeholder="Search name or mobile" value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && load()} />
-          <Select data-testid="leads-stage" value={stage} onChange={(e) => setStage(e.target.value)} options={[['', 'All stages'], ...['Submitted', 'In Process', 'Sanctioned', 'Disbursed', 'Rejected'].map((x) => [x, x])]} /></div>
-        {d && (d.rows.length ? <RTable testid="leads-table" rows={d.rows} cols={[['name', 'Customer'], ['phone', 'Mobile'], ['product', 'Product'], ['stage', 'Status', (r) => <Badge s={r.stage} />], ['added', 'Date added'], ['updated', 'Last update', (r) => <span className="text-xs">{r.updated}{r.note ? ` · ${r.note}` : ''}</span>], ['via', 'Source']]} />
-          : <Empty icon={Users} title="No leads yet" text="Refer your first customer or share your referral link to get started." action={<Btn onClick={() => setTab('add')}>Refer a customer</Btn>} />)}
-      </Card>}
-      {tab === 'add' && <Card className="p-5"><form onSubmit={add} className="grid sm:grid-cols-2 gap-4" data-testid="lead-form">
-        <Field label="Customer name"><Input data-testid="lead-name" required value={f.name} onChange={set('name')} /></Field>
-        <Field label="Customer mobile"><Input data-testid="lead-mobile" required inputMode="tel" value={f.mobile} onChange={set('mobile')} /></Field>
-        <Field label="City"><Input data-testid="lead-city" value={f.city} onChange={set('city')} /></Field>
-        <Field label="Product"><Select data-testid="lead-product" value={f.loan_type} onChange={set('loan_type')} options={PRODUCTS} /></Field>
-        <Field label="Approx. amount (₹, optional)"><Input data-testid="lead-amount" inputMode="numeric" value={f.amount} onChange={set('amount')} /></Field>
-        <label className="sm:col-span-2 flex gap-2 text-sm"><input data-testid="lead-consent" type="checkbox" checked={f.consent} onChange={(e) => setF({ ...f, consent: e.target.checked })} className="mt-1" />The customer has agreed to be contacted by Bankezee about this loan enquiry.</label>
-        <div className="sm:col-span-2 flex justify-end"><Btn data-testid="lead-submit" disabled={!f.consent}>Submit lead</Btn></div></form></Card>}
-      {tab === 'share' && <Card className="p-5"><ShareTools code={me.partner_id} /></Card>}
     </>
   );
 };
@@ -152,10 +115,10 @@ export const GpPayouts = () => {
       {d && tab === 'report' && <Card className="p-4">
         <div className="flex flex-wrap gap-2 mb-4"><Select data-testid="pay-filter-status" value={flt.status} onChange={setF('status')} options={[['', 'All statuses'], ...['Under Verification', 'Payable', 'Paid', 'On Hold', 'Reversed'].map((x) => [x, x])]} />
           <Input data-testid="pay-filter-from" type="date" className="!w-40" value={flt.dfrom} onChange={setF('dfrom')} /><Input data-testid="pay-filter-to" type="date" className="!w-40" value={flt.dto} onChange={setF('dto')} /></div>
-        {d.rows.length ? <RTable testid="payout-table" rows={d.rows} cols={[['referral_ref', 'Referral'], ['product_code', 'Product'], ['disbursement_date', 'Disbursed on'], ['disbursed_amount', 'Amount', (r) => inr(r.disbursed_amount)],
+        {d.rows.length ? <RTable testid="payout-table" rows={d.rows} cols={[['referral_ref', 'File', (r) => r.file_id || r.referral_ref || '—'], ['product_code', 'Product'], ['disbursement_date', 'Disbursed on'], ['disbursed_amount', 'Amount', (r) => inr(r.disbursed_amount)],
           ['rate', 'Rate', (r) => (r.payout_type === 'percent' ? `${r.payout_value}%` : r.payout_type ? inr(r.payout_value) : '—')], ['gross', 'Gross', (r) => inr(r.gross)], ['deductions', 'Deductions', (r) => (r.deductions ? `${inr(r.deductions)}${r.deduction_note ? ` · ${r.deduction_note}` : ''}` : '—')],
           ['net', 'Net payout', (r) => <b>{inr(r.net)}</b>], ['status', 'Status', (r) => <span><Badge s={r.status} />{r.reason && <span className="block text-xs text-[#A12B2B] mt-1">{r.reason}</span>}</span>], ['payment_date', 'Paid on', (r) => r.payment_date ? `${r.payment_date} · ${r.txn_ref}` : '—']]} />
-          : <Empty icon={Wallet} title="No payouts yet" text="When a customer you referred is disbursed, the commission appears here as Under Verification." />}
+          : <Empty icon={Wallet} title="No payouts yet" text="When one of your loan files is disbursed, the commission appears here as Under Verification." />}
       </Card>}
     </>
   );
@@ -194,7 +157,7 @@ export const GpCard = () => {
             <div className="flex items-end justify-between mt-6"><div className="text-sm"><p className="text-[#6B6F6A] text-xs">Partner ID</p><p className="font-semibold" data-testid="card-id">{me.partner_id}</p></div>
               <QRCodeCanvas value={refLink(me.partner_id)} size={84} fgColor="#2B2B2B" bgColor="transparent" /></div>
           </div>
-          <Card className="p-6"><p className="font-semibold">Partnership certificate</p><p className="text-sm text-[#6B6F6A] mt-1">A printable certificate with your name, partner ID, issue date and referral QR. Your KYC and bank details are never shown.</p>
+          <Card className="p-6"><p className="font-semibold">Partnership certificate</p><p className="text-sm text-[#6B6F6A] mt-1">A printable certificate with your name, partner ID, issue date and application QR. Your KYC and bank details are never shown.</p>
             <Btn className="mt-4" data-testid="certificate-download" onClick={() => download('/gp/certificate.pdf', `Bankezee_Partner_Certificate_${me.partner_id}.pdf`)}><Download className="w-4 h-4" />Download certificate</Btn></Card>
         </div>)}
     </>
@@ -225,7 +188,7 @@ export const GpAgreement = () => {
 
 export const GpSupport = () => (
   <><PageHead title="Support" sub="We're here to help." />
-    <Card className="p-6 space-y-3 text-sm" data-testid="support-card"><p>For questions about referrals, payouts or your agreement, contact the Bankezee partner team:</p>
+    <Card className="p-6 space-y-3 text-sm" data-testid="support-card"><p>For questions about your files, payouts or your agreement, contact the Bankezee partner team:</p>
       <p>Email: <a className="text-[#1F7A33] font-semibold" href="mailto:support@bankezee.com">support@bankezee.com</a></p>
       <p className="text-xs text-[#6B6F6A]">Please mention your Partner ID in every message.</p></Card></>
 );

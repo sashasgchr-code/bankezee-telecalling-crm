@@ -119,6 +119,7 @@ const FilesDashboard = () => {
   const [loanTypeFilter, setLoanTypeFilter] = useState([]); // Changed to array for multi-select
   const [managerFilter, setManagerFilter] = useState('');
   const [gpFilter, setGpFilter] = useState(''); // New: Growth Partner filter
+  const [sourceFilter, setSourceFilter] = useState(''); // '', 'growth_partner' or 'unassigned'
   const [tlFilter, setTlFilter] = useState(''); // New: Team Lead filter
   const [starFilter, setStarFilter] = useState('');
   const [createdDateFilter, setCreatedDateFilter] = useState('all');
@@ -311,7 +312,7 @@ const FilesDashboard = () => {
 
   useEffect(() => {
     fetchAll();
-  }, [page, statusFilter, managerFilter, gpFilter, tlFilter, starFilter, createdDateFilter, activityDateFilter, customStartDate, customEndDate, activityCustomStartDate, activityCustomEndDate, loanTypeFilter]);
+  }, [page, statusFilter, managerFilter, gpFilter, sourceFilter, tlFilter, starFilter, createdDateFilter, activityDateFilter, customStartDate, customEndDate, activityCustomStartDate, activityCustomEndDate, loanTypeFilter]);
 
   // Debounced search effect
   useEffect(() => {
@@ -363,6 +364,8 @@ const FilesDashboard = () => {
     if (statusFilter) params.append('file_status', statusFilter);
     if (managerFilter) params.append('manager_id', managerFilter);
     if (gpFilter) params.append('gp_id', gpFilter);
+    if (sourceFilter === 'growth_partner') params.append('file_source', 'growth_partner');
+    if (sourceFilter === 'unassigned') params.append('queue', 'unassigned');
     if (starFilter) params.append('min_star', starFilter);
     if (tlFilter) params.append('tl_id', tlFilter);
     if (searchTerm) params.append('search', searchTerm);
@@ -1201,6 +1204,16 @@ const FilesDashboard = () => {
                   ))}
                 </select>
                 
+                {/* Source / queue */}
+                {!isGpRole && (
+                  <select value={sourceFilter} onChange={(e) => { setSourceFilter(e.target.value); setPage(1); }}
+                    className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white" data-testid="source-filter">
+                    <option value="">All sources</option>
+                    <option value="growth_partner">Growth Partner portal</option>
+                    <option value="unassigned">Unassigned queue</option>
+                  </select>
+                )}
+
                 {/* Stars */}
                 <select
                   value={starFilter}
@@ -2157,6 +2170,7 @@ const FilesDashboard = () => {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h4 className="font-semibold text-gray-900 truncate">{file.name || 'Unnamed'}</h4>
+                          {file.file_source === 'growth_partner' && <span className="shrink-0 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-semibold" data-testid={`file-gp-badge-${file.id}`}>GP {file.gp_referral?.partner_code || ''}</span>}
                           {gpName && (
                             <span className="text-[10px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-medium">
                               {gpName.split(' ')[0]}
