@@ -37,6 +37,7 @@ import AdminGpProgramme from "./pages/admin/AdminGpProgramme";
 import { GpSignIn, GpSignup } from "./pages/gp/GpAuth";
 import PublicRefer from "./pages/gp/PublicRefer";
 import { GpFiles, GpFileDetail } from "./pages/gp/GpFiles";
+import { GpCreatives } from "./pages/gp/GpCreatives";
 import { GpLayout, GpDashboard, GpPayouts, GpRates, GpCard, GpProfile, GpAgreement, GpSupport } from "./pages/gp/GpPortal";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
@@ -175,6 +176,7 @@ function App() {
           <Route index element={<GpDashboard />} />
           <Route path="files" element={<GpFiles />} />
           <Route path="files/:id" element={<GpFileDetail />} />
+          <Route path="creatives" element={<GpCreatives />} />
           <Route path="leads" element={<Navigate to="/gp/files" replace />} />
           <Route path="payouts" element={<GpPayouts />} />
           <Route path="payout-structure" element={<GpRates />} />

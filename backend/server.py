@@ -126,6 +126,8 @@ from routes.gp_files import router as gp_files_router, backfill_partner_files  #
 app.include_router(gp_files_router)
 from routes.gp_file_payout import router as gp_file_payout_router  # GP payout on a disbursed File (CSV auto / manual override)
 app.include_router(gp_file_payout_router)
+from routes.gp_creatives import router as gp_creatives_router  # Marketing Creatives with per-partner QR
+app.include_router(gp_creatives_router)
 
 # Predefined role-based accounts
 # Note: Do NOT hard-code passwords in committed code in production

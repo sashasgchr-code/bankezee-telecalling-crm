@@ -7,10 +7,10 @@ import useAuthStore from '../../store/authStore';
 import { LOGO, Btn, Card, Badge, PageHead, Tabs, Empty, Stat, RTable, Field, Input, Select, inr, errMsg } from './ui';
 import { ProfileForm, KycForm, PayoutForm, AgreementPanel } from './Onboarding';
 import { statusTone } from './FileForm';
-import { LayoutDashboard, Wallet, Percent, IdCard, ShieldCheck, FileSignature, LifeBuoy, Menu, X, LogOut, Plus, Share2, Copy, Download, MessageCircle, ArrowRight, FolderOpen } from 'lucide-react';
+import { LayoutDashboard, Wallet, Percent, IdCard, ShieldCheck, FileSignature, LifeBuoy, Menu, X, LogOut, Plus, Share2, Copy, Download, MessageCircle, ArrowRight, FolderOpen, Image as ImageIcon } from 'lucide-react';
 
 const NAV = [['/gp', 'Dashboard', LayoutDashboard], ['/gp/files', 'Files', FolderOpen], ['/gp/payouts', 'Payouts', Wallet], ['/gp/payout-structure', 'Payout Structure', Percent],
-  ['/gp/card', 'Card & Certificate', IdCard], ['/gp/profile', 'Profile & KYC', ShieldCheck], ['/gp/agreement', 'Partner Agreement', FileSignature], ['/gp/support', 'Support', LifeBuoy]];
+  ['/gp/card', 'Card & Certificate', IdCard], ['/gp/creatives', 'Marketing Creatives', ImageIcon], ['/gp/profile', 'Profile & KYC', ShieldCheck], ['/gp/agreement', 'Partner Agreement', FileSignature], ['/gp/support', 'Support', LifeBuoy]];
 const PRODUCTS = ['Personal Loan', 'Business Loan', 'Home Loan', 'Loan Against Property', 'Balance Transfer', 'Credit Card', 'Auto Loan', 'Education Loan', 'Gold Loan'];
 export const refLink = (code) => `${window.location.origin}/r/${code}`;
 const download = async (url, name) => { const r = await api.get(url, { responseType: 'blob' }); const l = document.createElement('a'); l.href = URL.createObjectURL(r.data); l.download = name; document.body.appendChild(l); l.click(); l.remove(); };

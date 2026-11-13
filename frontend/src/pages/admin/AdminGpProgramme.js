@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import api from '../../services/api';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../../components/ui/dialog';
+import { AdminCreatives } from './AdminCreatives';
 import { Btn, Card, Badge, PageHead, Tabs, RTable, Field, Input, Select, inr, errMsg } from '../gp/ui';
 
 const dl = async (url, name, open) => { const r = await api.get(url, { responseType: 'blob' }); const u = URL.createObjectURL(r.data); if (open) return window.open(u); const l = document.createElement('a'); l.href = u; l.download = name; document.body.appendChild(l); l.click(); l.remove(); };
@@ -140,8 +141,8 @@ export default function AdminGpProgramme() {
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto" data-testid="admin-gp-programme">
       <PageHead title="Growth Partner Programme" sub="Partner KYC review, payout structure, payout ledger and agreements." />
-      <Tabs tabs={[['partners', 'Partners & KYC'], ['rates', 'Payout Structure'], ['ledger', 'Payout Ledger'], ['agreements', 'Agreements']]} value={tab} onChange={setTab} />
-      {tab === 'partners' && <Partners />}{tab === 'rates' && <Rates />}{tab === 'ledger' && <Ledger />}{tab === 'agreements' && <Agreements />}
+      <Tabs tabs={[['partners', 'Partners & KYC'], ['rates', 'Payout Structure'], ['ledger', 'Payout Ledger'], ['agreements', 'Agreements'], ['creatives', 'Marketing Creatives']]} value={tab} onChange={setTab} />
+      {tab === 'partners' && <Partners />}{tab === 'rates' && <Rates />}{tab === 'ledger' && <Ledger />}{tab === 'agreements' && <Agreements />}{tab === 'creatives' && <AdminCreatives />}
     </div>
   );
 }

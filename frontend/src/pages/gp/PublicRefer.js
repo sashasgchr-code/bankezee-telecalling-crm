@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { AuthShell } from './GpAuth';
 import { FileForm, FileSuccess } from './FileForm';
 
 export default function PublicRefer() {
   const { code } = useParams();
+  const [qs] = useSearchParams();
   const [p, setP] = useState(null);
   const [err, setErr] = useState(null);
   const [res, setRes] = useState(null);
@@ -18,7 +19,7 @@ export default function PublicRefer() {
         <>
           <h1 className="text-3xl font-bold">Apply for a loan</h1>
           <p className="text-sm text-[#6B6F6A] mt-1 mb-6">Shared by Bankezee Growth Partner {p.display_name} ({p.partner_id})</p>
-          <FileForm customer endpoint={`/gp/public/refer/${code}`} uploadUrl={(d, cat) => `/gp/public/files/${d.file_id}/documents?token=${d.upload_token}&category=${cat}`} onDone={setRes} />
+          <FileForm customer initialLoan={qs.get('loan') || ''} endpoint={`/gp/public/refer/${code}`} uploadUrl={(d, cat) => `/gp/public/files/${d.file_id}/documents?token=${d.upload_token}&category=${cat}`} onDone={setRes} />
         </>
       )}
     </AuthShell>

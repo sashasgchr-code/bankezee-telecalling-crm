@@ -32,10 +32,10 @@ const DocPicker = ({ items, picked, setPicked }) => (
   </div>
 );
 
-export const FileForm = ({ endpoint, uploadUrl, customer, onDone }) => {
+export const FileForm = ({ endpoint, uploadUrl, customer, onDone, initialLoan = '' }) => {
   const { loanTypes } = useLoanTypes();
   const cfg = useFormConfig(customer);
-  const [f, setF] = useState(EMPTY);
+  const [f, setF] = useState({ ...EMPTY, loan_type: initialLoan });
   const [picked, setPicked] = useState({});
   const [sid, setSid] = useState(newId);
   const [busy, setBusy] = useState(false);
@@ -57,7 +57,7 @@ export const FileForm = ({ endpoint, uploadUrl, customer, onDone }) => {
         try { await api.post(uploadUrl(data, cat), fd, { headers: { 'Content-Type': 'multipart/form-data' } }); } catch { failed += 1; }
       }
       if (failed) toast.error(`${failed} document(s) could not be uploaded — add them to the file later`);
-      setF(EMPTY); setPicked({}); setSid(newId());
+      setF({ ...EMPTY, loan_type: initialLoan }); setPicked({}); setSid(newId());
       onDone(data);
     } catch (er) { toast.error(errMsg(er, 'Could not submit the file')); } finally { setBusy(false); }
   };
