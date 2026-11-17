@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, Loader2, Handshake } from 'lucide-react';
 import useAuthStore from '../store/authStore';
+import { gpLanding } from './gp/GpAuth';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -29,8 +30,8 @@ const Login = () => {
         navigate('/admin');
       } else if (user.role === 'manager') {
         navigate('/manager');
-      } else if (['growth_partner', 'telecaller', 'sales_agent', 'partner'].includes(user.role) && !user.is_tl) {
-        navigate('/gp');
+      } else if (['growth_partner', 'telecaller', 'sales_agent', 'partner', 'team_leader'].includes(user.role)) {
+        navigate(await gpLanding());
       } else {
         navigate('/agent');
       }

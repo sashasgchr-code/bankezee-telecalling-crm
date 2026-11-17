@@ -130,11 +130,19 @@ async def _gp_login(ident, email, password):
     from routes.auth import login, UserLogin
     if "@" not in ident:
         mob = norm_mobile(ident)
-        cands = await db.users.find({"phone": {"$regex": f"{mob}$"}}, {"email": 1, "password": 1, "password_hash": 1, "is_active": 1}).to_list(10)
-        hit = next((c for c in cands if any(c.get(k) and verify_password(password, c[k]) for k in ("password", "password_hash"))), None)
-        if not hit:
+        cands = await db.users.find({"phone": {"$regex": f"{mob}$"}}, {"email": 1, "password": 1, "is_active": 1, "name": 1}).to_list(20)
+        # Same rule as /api/auth/login: only the stored `password` credential counts, and an active account wins over a
+        # dormant legacy duplicate (previously the first match won, which could pick a legacy copy without Meta access).
+        verified = [c for c in cands if c.get("email") and c.get("password") and verify_password(password, c["password"])]
+        if not verified:
             raise HTTPException(401, "Invalid mobile number or password")
-        email = hit["email"]
+        active = [c for c in verified if c.get("is_active", True)]
+        emails = {c["email"].strip().lower() for c in (active or verified)}
+        if len(emails) > 1:
+            await db.gp_login_review.update_one({"mobile": mob}, {"$set": {"mobile": mob, "accounts": [str(c["_id"]) for c in active or verified],
+                                                                           "emails": sorted(emails), "flagged_at": now()}}, upsert=True)
+            raise HTTPException(409, "More than one account uses this mobile number — please sign in with your email address. Our team has been notified.")
+        email = emails.pop()
     return await login(UserLogin(email=email, password=password, platform="web"))
 
 

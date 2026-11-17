@@ -2266,7 +2266,9 @@ async def create_file_direct(payload: FileCreate, current_user: dict = Depends(r
         "file_assigned_to": owner_id,
         "source_name": owner_name,
         "source_system": "connect",
-        "file_source": "manual",
+        "file_source": "growth_partner" if is_gp_role(role) and current_user.get("partner_code") else "manual",
+        **({"gp_referral": {"partner_id": creator_id, "partner_code": current_user.get("partner_code"), "channel": "Partner entered", "consent_by": "partner"}}
+           if is_gp_role(role) and current_user.get("partner_code") and owner_id == creator_id else {}),
         "created_by": creator_id,
         "created_by_name": current_user.get("name", "Unknown"),
         "created_by_role": role,

@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { User, LogOut, FileText, MoreHorizontal, Users, Database } from 'lucide-react';
+import { User, LogOut, FileText, MoreHorizontal, Users, Database, Wallet, Percent, Share2, Image as ImageIcon, IdCard, ShieldCheck, FileSignature, LifeBuoy } from 'lucide-react';
+import { GpTasksBanner } from '../pages/gp/GpShell';
+
+const GP_ROLES = ['growth_partner', 'telecaller', 'sales_agent', 'partner', 'team_leader'];
 import useAuthStore from '../store/authStore';
 import api from '../services/api';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../components/ui/sheet';
@@ -28,8 +31,18 @@ const TelecallerLayout = () => {
   ];
   
   // More menu items - overflow (Reports removed - shown inline on Dashboard for GPs)
+  const isGp = GP_ROLES.includes(user?.role);
   const moreNavItems = [
-    { path: '/gp', icon: Users, label: 'Partner Portal' },
+    ...(isGp ? [
+      { path: '/agent/payouts', icon: Wallet, label: 'Payouts' },
+      { path: '/agent/payout-structure', icon: Percent, label: 'Payout Structure' },
+      { path: '/agent/share', icon: Share2, label: 'Link & QR' },
+      { path: '/agent/creatives', icon: ImageIcon, label: 'Creatives' },
+      { path: '/agent/card', icon: IdCard, label: 'Card & Certificate' },
+      { path: '/agent/partner-profile', icon: ShieldCheck, label: 'Profile & KYC' },
+      { path: '/agent/agreement', icon: FileSignature, label: 'Agreement' },
+      { path: '/agent/support', icon: LifeBuoy, label: 'Support' },
+    ] : []),
     ...(user?.meta_access ? [{ path: '/meta', icon: Database, label: 'Meta CRM' }] : []),
   ];
 
@@ -70,6 +83,7 @@ const TelecallerLayout = () => {
 
       {/* Main Content */}
       <main className="flex-1 overflow-auto pb-20">
+        {isGp && <GpTasksBanner />}
         <Outlet />
       </main>
 
@@ -125,7 +139,7 @@ const TelecallerLayout = () => {
                           : 'text-gray-600 hover:bg-gray-50'
                       }`
                     }
-                    data-testid={`more-${item.label.toLowerCase()}`}
+                    data-testid={`more-${item.label.toLowerCase().replace(/[^a-z]+/g, '-')}`}
                   >
                     <item.icon size={24} />
                     <span className="text-xs mt-1.5 font-medium">{item.label}</span>

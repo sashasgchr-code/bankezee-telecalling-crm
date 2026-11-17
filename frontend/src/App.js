@@ -36,9 +36,9 @@ import EligComparisonReport from "./pages/admin/EligComparisonReport";
 import AdminGpProgramme from "./pages/admin/AdminGpProgramme";
 import { GpSignIn, GpSignup } from "./pages/gp/GpAuth";
 import PublicRefer from "./pages/gp/PublicRefer";
-import { GpFiles, GpFileDetail } from "./pages/gp/GpFiles";
 import { GpCreatives } from "./pages/gp/GpCreatives";
-import { GpLayout, GpDashboard, GpPayouts, GpRates, GpCard, GpProfile, GpAgreement, GpSupport } from "./pages/gp/GpPortal";
+import { GpPayouts, GpRates, GpCard, GpProfile, GpAgreement, GpSupport } from "./pages/gp/GpPortal";
+import { GpRedirect, GpData, GpShare } from "./pages/gp/GpShell";
 import { RejectedCasesReport, GrowthPartnerReport, QualityReport, SalesOpsReport } from "./pages/files/reports";
 import AdminLayout from "./layouts/AdminLayout";
 import HrLayout from "./layouts/HrLayout";
@@ -172,19 +172,12 @@ function App() {
         <Route path="/gp/join" element={<Navigate to="/gp/signup" replace />} />
         <Route path="/gp/login" element={<GpSignIn />} />
         <Route path="/r/:code" element={<PublicRefer />} />
-        <Route path="/gp" element={<GpOnly><GpLayout /></GpOnly>}>
-          <Route index element={<GpDashboard />} />
-          <Route path="files" element={<GpFiles />} />
-          <Route path="files/:id" element={<GpFileDetail />} />
-          <Route path="creatives" element={<GpCreatives />} />
-          <Route path="leads" element={<Navigate to="/gp/files" replace />} />
-          <Route path="payouts" element={<GpPayouts />} />
-          <Route path="payout-structure" element={<GpRates />} />
-          <Route path="card" element={<GpCard />} />
-          <Route path="profile" element={<GpProfile />} />
-          <Route path="agreement" element={<GpAgreement />} />
-          <Route path="support" element={<GpSupport />} />
-        </Route>
+        {/* Old Partner Portal links redirect to the shared Growth Partner dashboard under /agent */}
+        <Route path="/gp" element={<GpOnly><GpRedirect /></GpOnly>} />
+        <Route path="/gp/files/:id" element={<GpOnly><GpRedirect /></GpOnly>} />
+        {["files", "leads", "payouts", "payout-structure", "creatives", "card", "profile", "agreement", "support"].map((p) => (
+          <Route key={p} path={`/gp/${p}`} element={<GpOnly><GpRedirect /></GpOnly>} />
+        ))}
         <Route path="/login" element={
           isAuthenticated ? (
             <Navigate to={getBaseRoute()} replace />
@@ -230,7 +223,7 @@ function App() {
         }>
           <Route index element={<Navigate to="/agent/files" replace />} />
           {retiredRoutes("/agent", ["customers-campaigns"])}
-          <Route path="dashboard-gp" element={<Navigate to="/gp" replace />} />
+          <Route path="dashboard-gp" element={<Navigate to="/agent/files" replace />} />
           <Route path="files" element={<FilesDashboard />} />
           <Route path="files/:fileId" element={<FileDetailsPage />} />
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
@@ -239,6 +232,16 @@ function App() {
           <Route path="profile" element={<TelecallerProfile />} />
           <Route path="team" element={<TeamMembers />} />
           <Route path="team/files" element={<TeamFiles />} />
+          <Route path="share" element={<GpOnly><GpShare /></GpOnly>} />
+          <Route element={<GpOnly><GpData /></GpOnly>}>
+            <Route path="payouts" element={<GpPayouts />} />
+            <Route path="payout-structure" element={<GpRates />} />
+            <Route path="creatives" element={<GpCreatives />} />
+            <Route path="card" element={<GpCard />} />
+            <Route path="partner-profile" element={<GpProfile />} />
+            <Route path="agreement" element={<GpAgreement />} />
+            <Route path="support" element={<GpSupport />} />
+          </Route>
         </Route>
 
         {/* Manager Routes - Admin-like access without User Management */}

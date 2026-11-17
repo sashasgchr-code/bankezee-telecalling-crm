@@ -7,6 +7,12 @@ import { LOGO, Btn, Field, Input, Card, errMsg } from './ui';
 import { ProfileForm, KycForm, PayoutForm, AgreementPanel } from './Onboarding';
 import { Check, CheckCircle2, IndianRupee, Share2, BadgeCheck } from 'lucide-react';
 
+// Single landing rule for Growth Partners, used by both /login and /gp/login.
+export const gpLanding = async () => {
+  const { data: me } = await api.get('/gp/me').catch(() => ({ data: null }));
+  return me && me.status === 'Onboarding' && me.first_incomplete ? '/gp/signup' : '/agent/files';
+};
+
 export const AuthShell = ({ children }) => (
   <div className="min-h-screen bg-[#F6F7F5] lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]" style={{ fontFamily: "'Poppins', 'Segoe UI', sans-serif" }}>
     <aside className="hidden lg:flex flex-col justify-between p-12 bg-gradient-to-b from-[#EEF8EF] to-[#F6F7F5] border-r border-[#E6E8E3]">
@@ -42,8 +48,7 @@ export const GpSignIn = () => {
       setSession(data.token, data.user);
       const r = data.user.role;
       if (['admin', 'manager', 'hr'].includes(r)) return nav(r === 'admin' ? '/admin' : `/${r}`);
-      const { data: me } = await api.get('/gp/me').catch(() => ({ data: null }));
-      nav(me && me.status === 'Onboarding' && me.first_incomplete ? '/gp/signup' : '/gp');
+      nav(await gpLanding());
     } catch (er) { toast.error(errMsg(er, 'Sign-in failed')); } finally { setBusy(false); }
   };
   return (
@@ -129,8 +134,8 @@ export const GpSignup = () => {
       {step === 'profile' && me && <ProfileForm me={me} onSaved={next} />}
       {step === 'kyc' && me && <><KycForm me={me} onSaved={setMe} /><Nav back="profile" next={() => next(me)} ok={done.kyc} setStep={setStep} /></>}
       {step === 'payout' && me && <><PayoutForm me={me} onSaved={setMe} /><Nav back="kyc" next={() => next(me)} ok={done.payout} setStep={setStep} /></>}
-      {step === 'agreement' && me && <><AgreementPanel onSigned={load} /><Nav back="payout" next={() => nav('/gp')} ok label="Go to dashboard" setStep={setStep} /></>}
-      {step === 'done' && <div className="text-center py-8" data-testid="signup-done"><CheckCircle2 className="w-12 h-12 text-[#2FB34A] mx-auto" /><p className="mt-3 text-sm text-[#55585A]">Your onboarding is complete.</p><Btn className="mt-5" data-testid="goto-dashboard" onClick={() => nav('/gp')}>Go to dashboard</Btn></div>}
+      {step === 'agreement' && me && <><AgreementPanel onSigned={load} /><Nav back="payout" next={() => nav('/agent/files')} ok label="Go to dashboard" setStep={setStep} /></>}
+      {step === 'done' && <div className="text-center py-8" data-testid="signup-done"><CheckCircle2 className="w-12 h-12 text-[#2FB34A] mx-auto" /><p className="mt-3 text-sm text-[#55585A]">Your onboarding is complete.</p><Btn className="mt-5" data-testid="goto-dashboard" onClick={() => nav('/agent/files')}>Go to dashboard</Btn></div>}
     </AuthShell>
   );
 };
