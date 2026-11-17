@@ -265,10 +265,45 @@ async def on_inbound(msg: dict, value: dict):
     if media and media.get("id"):
         await _cache_media(m["id"], media)
     try:
+        if await welcome_on_inbound(conv, sender, profile, text):
+            return
+    except Exception as e:
+        logger.warning(f"inbound welcome error: {e}")
+    try:
         from routes import wa_bot
         await wa_bot.handle_inbound({**conv, "lead_id": conv.get("lead_id")}, m, msg)
     except Exception as e:
         logger.warning(f"wa_bot error: {e}")
+
+
+async def welcome_on_inbound(conv: dict, sender: str, profile: Optional[str], text: Optional[str]) -> bool:
+    """Customer-initiated chat: create a Meta lead if unknown, then send the standard welcome template once."""
+    from routes.wa_bot import STOP_WORDS
+    if not wa._send_configured() or (text or "").strip().lower() in STOP_WORDS:
+        return False
+    lead = await db.meta_leads.find_one({"lead_id": conv["lead_id"], **NOT_DELETED}) if conv.get("lead_id") else await _lead_for_number(sender)
+    if lead and (lead.get("whatsapp") or {}).get("wamid"):
+        return False
+    p10 = sender[-10:]
+    try:
+        await db.wa_inbound_welcome.insert_one({"_id": p10, "at": _iso()})
+    except DuplicateKeyError:
+        return False
+    if not lead:
+        now = _iso()
+        lead = {"sheet_id": None, "source": "whatsapp", "source_tab": "WhatsApp Inbound", "created_time": now, "full_name": (profile or "").strip() or "WhatsApp customer",
+                "phone": sender, "phone_norm": p10, "email": "", "city": "", "employment_status": "", "monthly_salary": "", "outstanding_amount": "",
+                "monthly_salary_num": None, "outstanding_amount_num": None, "cibil_score": "", "campaign_name": "", "form_name": "WhatsApp Inbound", "platform": "whatsapp",
+                "sheet_status": "NEW", "lead_id": f"lead_{uuid.uuid4().hex[:12]}", "status": "NEW", "assigned_partner_id": None, "assigned_partner_name": None,
+                "notes": [], "activities": [{"type": "created", "detail": "Lead created from a customer-initiated WhatsApp chat", "at": now}], "created_at": now, "updated_at": now}
+        await db.meta_leads.insert_one(dict(lead))
+    if conv.get("lead_id") != lead["lead_id"]:
+        await CONV.update_one({"id": conv["id"]}, {"$set": {"lead_id": lead["lead_id"], "customer_name": lead.get("full_name") or conv.get("customer_name")}})
+    try:
+        res = await wa.send_whatsapp_for_lead(lead, trigger="inbound")
+    finally:
+        await db.wa_inbound_welcome.delete_one({"_id": p10})
+    return bool(res.get("ok"))
 
 
 async def _download_meta_media(media_id: str):
