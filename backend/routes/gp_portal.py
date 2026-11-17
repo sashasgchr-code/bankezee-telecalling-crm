@@ -887,40 +887,79 @@ async def sign(aid: str, inp: Sign, request: Request, u: dict = Depends(require_
 
 # ---------------- card & certificate ----------------
 def certificate_image(name, pid, issued):
-    """A4 landscape @300dpi; the same image is used for the on-page preview and the PDF."""
-    from PIL import Image, ImageDraw
+    """A4 landscape @300dpi, modern Bankezee style; the same image is used for the on-page preview and the PDF."""
+    import math
+    import numpy as np
+    from PIL import Image, ImageDraw, ImageFilter
     from utils.creative_engine import font, logo_img
     W, H = 3508, 2480
-    im = Image.new("RGB", (W, H), (255, 255, 252))
+    yy, xx = np.mgrid[0:H, 0:W]
+    t = (xx / W * 0.6 + yy / H * 0.4)[..., None]
+    bg = (np.array([250, 252, 250]) * (1 - t) + np.array([232, 245, 236]) * t).astype("uint8")
+    im = Image.fromarray(bg, "RGB")
+    green, dark, ink, mute = (47, 179, 74), (16, 64, 32), (24, 32, 28), (100, 108, 102)
+    # soft glow + scalloped seal on the right
+    cx, cy, R = 2700, 1000, 520
+    pts = [(cx + R * (0.95 + 0.05 * math.cos(24 * a)) * math.cos(a), cy + R * (0.95 + 0.05 * math.cos(24 * a)) * math.sin(a)) for a in (2 * math.pi * k / 720 for k in range(720))]
+    glow = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(glow).ellipse([cx - R * 1.35, cy - R * 1.35, cx + R * 1.35, cy + R * 1.35], fill=120)
+    im.paste(Image.new("RGB", (W, H), (190, 230, 200)), (0, 0), glow.filter(ImageFilter.GaussianBlur(160)))
+    mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(mask).polygon(pts, fill=255)
+    g = np.linspace(0, 1, H)[:, None, None]
+    grad = Image.fromarray((np.array([120, 210, 130]) * (1 - g) + np.array([22, 120, 52]) * g).repeat(W, axis=1).astype("uint8"), "RGB")
+    im.paste(grad, (0, 0), mask)
     d = ImageDraw.Draw(im)
-    green, gold, ink = (31, 122, 51), (191, 154, 64), (34, 38, 34)
-    d.rectangle([60, 60, W - 60, H - 60], outline=green, width=36)
-    d.rectangle([130, 130, W - 130, H - 130], outline=gold, width=10)
-    d.rectangle([160, 160, W - 160, H - 160], outline=gold, width=3)
-    for cx, cy in ((190, 190), (W - 190, 190), (190, H - 190), (W - 190, H - 190)):
-        d.regular_polygon((cx, cy, 34), 4, rotation=45, fill=gold)
+    d.ellipse([cx - R * 0.66, cy - R * 0.66, cx + R * 0.66, cy + R * 0.66], outline="white", width=16)
+    d.ellipse([cx - R * 0.56, cy - R * 0.56, cx + R * 0.56, cy + R * 0.56], fill="white")
     lg = logo_img()
-    lw = 760
-    lgr = lg.resize((lw, round(lg.height * lw / lg.width)))
-    im.paste(lgr, ((W - lw) // 2, 290), lgr)
+    mark = lg.crop((round(lg.width * 0.68), 0, lg.width, lg.height))
+    mh = round(R * 0.62)
+    mark = mark.resize((round(mark.width * mh / mark.height), mh), Image.LANCZOS)
+    im.paste(mark, (cx - mark.width // 2, cy - mh // 2), mark)
+    # card frame
+    d.rounded_rectangle([70, 70, W - 70, H - 70], radius=90, outline=(210, 228, 214), width=6)
+    # header
+    lw = 640
+    lgr = lg.resize((lw, round(lg.height * lw / lg.width)), Image.LANCZOS)
+    im.paste(lgr, (300, 250), lgr)
+    d.line([(300 + lw + 40, 280), (300 + lw + 40, 250 + lgr.height - 30)], fill=(180, 190, 182), width=5)
+    d.text((300 + lw + 80, 250 + lgr.height / 2 - 60), "partners", font=font(110), fill=ink)
+    cid = f"Certificate ID: {pid}"
+    f = font(54, bold=False)
+    d.text((W - 300 - d.textlength(cid, font=f), 300), cid, font=f, fill=mute)
+    # body
 
-    def center(y, text, f, fill=ink):
-        d.text(((W - d.textlength(text, font=f)) / 2, y), text, font=f, fill=fill)
-    center(720, "Certificate of Partnership", font(170), green)
-    d.line([(W / 2 - 520, 940), (W / 2 + 520, 940)], fill=gold, width=6)
-    center(1030, "This certifies that", font(70, bold=False))
-    nf = font(150)
-    while d.textlength(name, font=nf) > W - 900 and nf.size > 70:
-        nf = font(nf.size - 8)
-    center(1150, name, nf, ink)
-    center(1390, "is enrolled as a Growth Partner in the", font(70, bold=False))
-    center(1490, "Bankezee Growth Partner Programme.", font(70, bold=False))
-    sf, sv = font(52, bold=False), font(64)
-    d.text((420, 1820), "Partner ID", font=sf, fill=(110, 115, 110))
-    d.text((420, 1890), pid, font=sv, fill=ink)
-    d.text((W - 420 - d.textlength("Issued on", font=sf), 1820), "Issued on", font=sf, fill=(110, 115, 110))
-    d.text((W - 420 - d.textlength(issued, font=sv), 1890), issued, font=sv, fill=ink)
-    center(2160, "Bankezee is a brand of NeoSales Consulting Pvt Ltd.", font(50, bold=False), (90, 95, 90))
+    def spaced(x, y, text, size, fill):
+        fs = font(size, bold=False)
+        for ch in text:
+            d.text((x, y), ch, font=fs, fill=fill)
+            x += d.textlength(ch, font=fs) + size * 0.32
+    spaced(300, 830, "CERTIFICATE OF", 58, mute)
+    d.text((290, 900), "Partnership", font=font(250), fill=dark)
+    spaced(300, 1260, "THIS CERTIFIES THAT", 58, mute)
+    nf = font(165)
+    while d.textlength(name, font=nf) > 1950 and nf.size > 80:
+        nf = font(nf.size - 6)
+    nm = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(nm).text((300, 1340), name, font=nf, fill=255)
+    tg = np.linspace(0, 1, W)[None, :, None]
+    ng = Image.fromarray((np.array([31, 140, 60]) * (1 - tg) + np.array([16, 90, 70]) * tg).repeat(H, axis=0).astype("uint8"), "RGB")
+    im.paste(ng, (0, 0), nm)
+    d = ImageDraw.Draw(im)
+    bf = font(72, bold=False)
+    d.text((300, 1590), "is enrolled as a Growth Partner in the", font=bf, fill=(60, 66, 62))
+    d.text((300, 1690), "Bankezee Growth Partner Programme.", font=bf, fill=(60, 66, 62))
+    lf, vf = font(60), font(66, bold=False)
+    for x, label, val in ((300, "Date of issue", issued), (1150, "Partner ID", pid)):
+        d.text((x, 1930), label, font=lf, fill=ink)
+        d.line([(x, 2020), (x + 700, 2020)], fill=(170, 182, 172), width=4)
+        d.text((x, 2060), val, font=vf, fill=(60, 66, 62))
+    d.text((2700 - d.textlength("Authorised by Bankezee", font=lf) / 2, 1930), "Authorised by Bankezee", font=lf, fill=ink)
+    d.line([(2400, 2020), (3000, 2020)], fill=(170, 182, 172), width=4)
+    ff = font(50, bold=False)
+    d.text((2700 - d.textlength("Growth Partner Programme", font=ff) / 2, 2060), "Growth Partner Programme", font=ff, fill=mute)
+    d.text((300, 2270), "Bankezee is a brand of NeoSales Consulting Pvt Ltd.  ·  connect.bankezee.com", font=font(48, bold=False), fill=mute)
     return im
 
 
