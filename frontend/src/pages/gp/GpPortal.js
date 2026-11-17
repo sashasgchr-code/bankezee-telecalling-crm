@@ -142,40 +142,95 @@ export const GpRates = () => {
   );
 };
 
+const CertificatePreview = () => {
+  const [src, setSrc] = useState(null);
+  useEffect(() => { let u; api.get('/gp/certificate.png', { responseType: 'blob' }).then((r) => { u = URL.createObjectURL(r.data); setSrc(u); }).catch(() => {}); return () => u && URL.revokeObjectURL(u); }, []);
+  return src ? <img src={src} alt="Certificate of Partnership" className="w-full rounded-xl border border-[#E6E8E3] shadow-sm" data-testid="certificate-preview" /> : <div className="aspect-[1.414] rounded-xl bg-[#F6F7F5] animate-pulse" />;
+};
+
 export const GpCard = () => {
   const { me } = useMe();
   const active = me.status === 'Active';
+  if (!active) {
+    return (
+      <>
+        <PageHead title="Card & Certificate" sub="Your digital partner card and Certificate of Partnership." />
+        <Card className="p-6" data-testid="certificate-not-issued">
+          <div className="flex items-center gap-2"><IdCard className="w-5 h-5 text-[#8A6100]" /><p className="font-semibold">Not issued yet</p><Badge s={me.status} /></div>
+          <p className="text-sm text-[#6B6F6A] mt-2">Your partner card and certificate are issued automatically once your partnership is Active.</p>
+          {me.tasks?.length > 0 && <div className="mt-3"><p className="text-xs font-semibold text-[#55585A] mb-1">Next steps</p>{me.tasks.map((t) => <p key={t.key} className="text-sm">• {t.label}</p>)}</div>}
+        </Card>
+      </>
+    );
+  }
   return (
     <>
-      <PageHead title="Card & Certificate" sub="Your digital partner card and partnership certificate." />
-      {!active ? <Card><Empty icon={IdCard} title="Available once you're active" text="Complete verification and sign your agreement to unlock your partner card and certificate." /></Card> : (
-        <div className="grid lg:grid-cols-2 gap-6">
-          <div className="rounded-2xl p-6 bg-gradient-to-br from-white to-[#EEF8EF] border border-[#BFE5C6] shadow-sm max-w-md" data-testid="partner-card">
+      <PageHead title="Card & Certificate" sub="Your digital partner card and Certificate of Partnership." />
+      <div className="grid lg:grid-cols-5 gap-6 items-start">
+        <div className="lg:col-span-2 space-y-3">
+          <div className="rounded-2xl p-6 bg-gradient-to-br from-white to-[#EEF8EF] border border-[#BFE5C6] shadow-sm" data-testid="partner-card">
             <div className="flex items-center justify-between"><img src={LOGO} alt="Bankezee" className="h-8" /><Badge s="Verified">Verified Partner</Badge></div>
             <p className="text-[11px] font-bold tracking-[0.2em] text-[#2FB34A] uppercase mt-6">Growth Partner</p>
             <p className="text-2xl font-bold mt-1" data-testid="card-name">{me.profile?.entity_name || me.name}</p>
             <div className="flex items-end justify-between mt-6"><div className="text-sm"><p className="text-[#6B6F6A] text-xs">Partner ID</p><p className="font-semibold" data-testid="card-id">{me.partner_id}</p></div>
               <QRCodeCanvas value={refLink(me.partner_id)} size={84} fgColor="#2B2B2B" bgColor="transparent" /></div>
           </div>
-          <Card className="p-6"><p className="font-semibold">Partnership certificate</p><p className="text-sm text-[#6B6F6A] mt-1">A printable certificate with your name, partner ID, issue date and application QR. Your KYC and bank details are never shown.</p>
-            <Btn className="mt-4" data-testid="certificate-download" onClick={() => download('/gp/certificate.pdf', `Bankezee_Partner_Certificate_${me.partner_id}.pdf`)}><Download className="w-4 h-4" />Download certificate</Btn></Card>
-        </div>)}
+        </div>
+        <Card className="p-5 lg:col-span-3 space-y-4">
+          <div className="flex flex-wrap items-center gap-3"><p className="font-semibold mr-auto">Certificate of Partnership</p>
+            <Btn data-testid="certificate-download" onClick={() => download('/gp/certificate.pdf', `Bankezee_Partner_Certificate_${me.partner_id}.pdf`)}><Download className="w-4 h-4" />Download Certificate (PDF)</Btn></div>
+          <CertificatePreview />
+          <p className="text-xs text-[#6B6F6A]">Print-ready A4 landscape PDF, identical to this preview. Your KYC and bank details are never shown.</p>
+        </Card>
+      </div>
     </>
+  );
+};
+
+const Security = () => {
+  const [f, setF] = useState({ current_password: '', new_password: '', confirm: '' });
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const save = async (e) => {
+    e.preventDefault();
+    if (f.new_password.length < 8) return toast.error('New password must be at least 8 characters');
+    if (f.new_password !== f.confirm) return toast.error('New passwords do not match');
+    setBusy(true);
+    try { await api.post('/auth/change-password', { current_password: f.current_password, new_password: f.new_password }); toast.success('Password changed'); setF({ current_password: '', new_password: '', confirm: '' }); }
+    catch (er) { toast.error(errMsg(er, 'Could not change password')); } finally { setBusy(false); }
+  };
+  return (
+    <form onSubmit={save} className="max-w-md space-y-4" data-testid="security-form">
+      <p className="text-sm font-semibold">Change password</p>
+      <Field label="Current password"><Input type="password" data-testid="sec-current" value={f.current_password} onChange={set('current_password')} required /></Field>
+      <Field label="New password (min 8 characters)"><Input type="password" data-testid="sec-new" value={f.new_password} onChange={set('new_password')} required /></Field>
+      <Field label="Confirm new password"><Input type="password" data-testid="sec-confirm" value={f.confirm} onChange={set('confirm')} required /></Field>
+      <Btn data-testid="sec-save" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</Btn>
+    </form>
   );
 };
 
 export const GpProfile = () => {
   const { me, setMe } = useMe();
-  const [tab, setTab] = useState(new URLSearchParams(useLocation().search).get('tab') || 'profile');
+  const loc = useLocation();
+  const [tab, setTab] = useState(new URLSearchParams(loc.search).get('tab') || 'profile');
+  useEffect(() => { const t = new URLSearchParams(loc.search).get('tab'); if (t) setTab(t); }, [loc.search]);
   return (
     <>
-      <PageHead title="Profile & KYC" sub={<>Partner ID {me.partner_id} · {me.mobile}</>} />
-      <Tabs tabs={[['profile', 'Profile'], ['kyc', 'KYC documents'], ['payout', 'Payout account'], ['link', 'Partner link']]} value={tab} onChange={setTab} />
+      <PageHead title="Profile" sub="Your partner account, KYC, payout account, link and security." />
+      <Card className="p-4 mb-5 flex flex-wrap items-center gap-x-8 gap-y-2" data-testid="profile-summary">
+        <div><p className="text-lg font-bold" data-testid="profile-name">{me.name}</p><p className="text-xs text-[#6B6F6A]">Partner ID <b data-testid="profile-partner-id">{me.partner_id}</b></p></div>
+        <div className="text-sm"><p className="text-xs text-[#6B6F6A]">Mobile</p><p data-testid="profile-mobile">{me.mobile || '—'}</p></div>
+        <div className="text-sm"><p className="text-xs text-[#6B6F6A]">Email</p><p data-testid="profile-email">{me.email || '—'}</p></div>
+        <div className="text-sm"><p className="text-xs text-[#6B6F6A]">Status</p><Badge s={me.status} /></div>
+      </Card>
+      <Tabs tabs={[['profile', 'Personal Details'], ['kyc', 'KYC Documents'], ['payout', 'Payout Account'], ['link', 'Partner Link & QR'], ['security', 'Security']]} value={tab} onChange={setTab} />
       <Card className="p-5">
         {tab === 'profile' && <ProfileForm me={me} onSaved={setMe} submitLabel="Save changes" />}
         {tab === 'kyc' && <KycForm me={me} onSaved={setMe} />}
         {tab === 'payout' && <PayoutForm me={me} onSaved={setMe} />}
         {tab === 'link' && <ShareTools code={me.partner_id} compact />}
+        {tab === 'security' && <Security />}
       </Card>
     </>
   );

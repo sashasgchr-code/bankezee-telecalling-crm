@@ -7,6 +7,7 @@ import {
   Calendar, Users, Building2, Timer, Plus, X
 } from 'lucide-react';
 import api from '../../services/api';
+import { GpInsights } from '../gp/GpInsights';
 import { toast } from 'sonner';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 import { LOAN_TYPES as CANONICAL_LOAN_TYPES, CATEGORY_LABELS as CANONICAL_CATEGORY_LABELS } from '../../constants/loanTypes';
@@ -119,7 +120,10 @@ const FilesDashboard = () => {
   const [loanTypeFilter, setLoanTypeFilter] = useState([]); // Changed to array for multi-select
   const [managerFilter, setManagerFilter] = useState('');
   const [gpFilter, setGpFilter] = useState(''); // New: Growth Partner filter
-  const [sourceFilter, setSourceFilter] = useState(''); // '', 'growth_partner' or 'unassigned'
+  const [sourceFilter, setSourceFilter] = useState('');
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') setShowAddFileModal(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Growth Partners never use staff scope filters: clear any stale/URL values (server enforces their own scope regardless).
+  useEffect(() => { if (isGpRole) { setManagerFilter(''); setTlFilter(''); setGpFilter(''); } }, [isGpRole]); // eslint-disable-line react-hooks/exhaustive-deps // '', 'growth_partner' or 'unassigned'
   const [tlFilter, setTlFilter] = useState(''); // New: Team Lead filter
   const [starFilter, setStarFilter] = useState('');
   const [createdDateFilter, setCreatedDateFilter] = useState('all');
@@ -986,6 +990,7 @@ const FilesDashboard = () => {
       {/* Approvals and Users moved to separate admin pages under More menu */}
 
       <div className="p-4 space-y-4">
+        {isGpRole && <GpInsights />}
         {/* Dashboard Content */}
         <>
           {/* Filters Row */}
@@ -1163,7 +1168,7 @@ const FilesDashboard = () => {
                 
                 {/* Managers dropdown - Admin/Ops only. A Manager is scoped to their own
                     subtree, so the org-wide Manager filter is hidden for them. */}
-                {!isManager && (
+                {!isManager && !isGpRole && (
                   <select
                     value={managerFilter}
                     onChange={(e) => { setManagerFilter(e.target.value); setPage(1); }}
@@ -1179,7 +1184,7 @@ const FilesDashboard = () => {
 
                 {/* Team Leads - shown for Admin/Ops AND Managers (a Manager may map
                     multiple TLs). Options are scoped to the caller's subtree by the API. */}
-                <select
+                {!isGpRole && <select
                   value={tlFilter}
                   onChange={(e) => { setTlFilter(e.target.value); setPage(1); }}
                   className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
@@ -1189,10 +1194,10 @@ const FilesDashboard = () => {
                   {teamLeads.map(tl => (
                     <option key={tl.id} value={tl.id}>{tl.full_name || tl.name}</option>
                   ))}
-                </select>
+                </select>}
                 
                 {/* Growth Partners */}
-                <select
+                {!isGpRole && <select
                   value={gpFilter}
                   onChange={(e) => { setGpFilter(e.target.value); setPage(1); }}
                   className="h-10 px-3 border border-gray-200 rounded-lg text-sm bg-white"
@@ -1202,7 +1207,7 @@ const FilesDashboard = () => {
                   {growthPartners.map(gp => (
                     <option key={gp.id} value={gp.id}>{gp.full_name || gp.name} ({gp.email?.split('@')[0]})</option>
                   ))}
-                </select>
+                </select>}
                 
                 {/* Source / queue */}
                 {!isGpRole && (

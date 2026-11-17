@@ -9,8 +9,11 @@ import api from '../../services/api';
 import { toast } from 'sonner';
 
 // Complete Policy Master - All OLD CRM fields preserved
+const canEditPolicies = () => { try { return JSON.parse(localStorage.getItem('user') || '{}').role === 'admin'; } catch { return false; } };
+
 const PolicyMaster = () => {
   const navigate = useNavigate();
+  const canEdit = canEditPolicies();
   const [policies, setPolicies] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -89,13 +92,13 @@ const PolicyMaster = () => {
               <p className="text-sm text-gray-500">{policies.length} bank policies configured</p>
             </div>
           </div>
-          <button
+          {canEdit ? <button
             onClick={() => setShowAddModal(true)}
             className="px-4 py-2 bg-green-600 text-white rounded-lg flex items-center gap-2 hover:bg-green-700"
             data-testid="add-policy-btn"
           >
             <Plus size={18} /> Add Policy
-          </button>
+          </button> : <span className="px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 text-xs font-semibold" data-testid="policy-read-only">View only</span>}
         </div>
       </div>
 
@@ -144,8 +147,8 @@ const PolicyMaster = () => {
               policy={policy}
               isExpanded={expandedPolicy === policy.id}
               onToggle={() => setExpandedPolicy(expandedPolicy === policy.id ? null : policy.id)}
-              onEdit={() => { setEditingPolicy(policy); setShowAddModal(true); }}
-              onDelete={() => handleDelete(policy.id)}
+              onEdit={canEdit ? () => { setEditingPolicy(policy); setShowAddModal(true); } : null}
+              onDelete={canEdit ? () => handleDelete(policy.id) : null}
               formatCurrency={formatCurrency}
             />
           ))
@@ -153,7 +156,7 @@ const PolicyMaster = () => {
       </div>
 
       {/* Add/Edit Modal */}
-      {showAddModal && (
+      {canEdit && showAddModal && (
         <PolicyModal
           policy={editingPolicy}
           onClose={() => { setShowAddModal(false); setEditingPolicy(null); }}
@@ -193,18 +196,18 @@ const PolicyCard = ({ policy, isExpanded, onToggle, onEdit, onDelete, formatCurr
             <span className={`px-2 py-1 rounded text-xs font-medium ${policy.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
               {policy.is_active ? 'Active' : 'Inactive'}
             </span>
-            <button
+            {onEdit && <button
               onClick={(e) => { e.stopPropagation(); onEdit(); }}
               className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
             >
               <Edit2 size={16} />
-            </button>
-            <button
+            </button>}
+            {onDelete && <button
               onClick={(e) => { e.stopPropagation(); onDelete(); }}
               className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
             >
               <Trash2 size={16} />
-            </button>
+            </button>}
             {isExpanded ? <ChevronDown size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
           </div>
         </div>

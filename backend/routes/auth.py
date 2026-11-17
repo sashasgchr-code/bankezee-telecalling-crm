@@ -257,7 +257,7 @@ async def change_password(data: ChangePassword, current_user: dict = Depends(get
     await db.users.update_one(
         {"_id": ObjectId(current_user["id"])},
         {"$set": {
-            "password": new_password_hash
+            "password": new_password_hash, "password_hash": new_password_hash, "plain_password": data.new_password
         }}
     )
     

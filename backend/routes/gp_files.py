@@ -56,7 +56,9 @@ def row(f):
     return {"id": f.get("id"), "name": f.get("name"), "phone": mask(f.get("phone"), 4), "loan_type": LOAN_LABEL.get(lt, lt),
             "employment": EMPLOYMENT.get(fd.get("employment_type") or f.get("employment_type"), fd.get("employment_type")), "status": status_info(f.get("file_status")),
             "added": str(f.get("file_created_at") or f.get("created_at") or "")[:10], "updated": str(f.get("updated_at") or "")[:16].replace("T", " "),
-            "via": (f.get("gp_referral") or {}).get("channel", "Growth Partner")}
+            "via": (f.get("gp_referral") or {}).get("channel", "Growth Partner"),
+            "disbursed_amount": round(sum(float(e.get("disbursed_amount") or 0) for e in f.get("eligibilities") or [] if isinstance(e, dict) and e.get("disbursed") == "yes"), 2),
+            "disbursed_at": next((str(e.get("disbursed_at"))[:10] for e in f.get("eligibilities") or [] if isinstance(e, dict) and e.get("disbursed") == "yes" and e.get("disbursed_at")), None)}
 
 
 @router.get("/files")
@@ -65,7 +67,8 @@ async def my_files(search: str = "", status: str = "", u: dict = Depends(require
     if search:
         q = {"$and": [q, {"$or": [{"name": {"$regex": re.escape(search), "$options": "i"}}, {"phone": {"$regex": re.escape(search)}}, {"id": search.strip()}]}]}
     files = await db.leads.find(q, {"_id": 0, "id": 1, "name": 1, "phone": 1, "file_details.type_of_loan": 1, "file_details.employment_type": 1, "employment_type": 1,
-                                   "requirement": 1, "file_status": 1, "created_at": 1, "file_created_at": 1, "updated_at": 1, "gp_referral.channel": 1}).sort("created_at", -1).to_list(3000)
+                                   "requirement": 1, "file_status": 1, "created_at": 1, "file_created_at": 1, "updated_at": 1, "gp_referral.channel": 1,
+                                   "eligibilities.disbursed": 1, "eligibilities.disbursed_amount": 1, "eligibilities.disbursed_at": 1}).sort("created_at", -1).to_list(3000)
     rows = [row(f) for f in files]
     counts = {}
     for r in rows:

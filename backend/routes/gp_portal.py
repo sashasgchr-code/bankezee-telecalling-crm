@@ -886,28 +886,70 @@ async def sign(aid: str, inp: Sign, request: Request, u: dict = Depends(require_
 
 
 # ---------------- card & certificate ----------------
-@router.get("/certificate.pdf")
-async def certificate(u: dict = Depends(require_gp)):
-    import pymupdf
-    import qrcode
+def certificate_image(name, pid, issued):
+    """A4 landscape @300dpi; the same image is used for the on-page preview and the PDF."""
+    from PIL import Image, ImageDraw
+    from utils.creative_engine import font, logo_img
+    W, H = 3508, 2480
+    im = Image.new("RGB", (W, H), (255, 255, 252))
+    d = ImageDraw.Draw(im)
+    green, gold, ink = (31, 122, 51), (191, 154, 64), (34, 38, 34)
+    d.rectangle([60, 60, W - 60, H - 60], outline=green, width=36)
+    d.rectangle([130, 130, W - 130, H - 130], outline=gold, width=10)
+    d.rectangle([160, 160, W - 160, H - 160], outline=gold, width=3)
+    for cx, cy in ((190, 190), (W - 190, 190), (190, H - 190), (W - 190, H - 190)):
+        d.regular_polygon((cx, cy, 34), 4, rotation=45, fill=gold)
+    lg = logo_img()
+    lw = 760
+    lgr = lg.resize((lw, round(lg.height * lw / lg.width)))
+    im.paste(lgr, ((W - lw) // 2, 290), lgr)
+
+    def center(y, text, f, fill=ink):
+        d.text(((W - d.textlength(text, font=f)) / 2, y), text, font=f, fill=fill)
+    center(720, "Certificate of Partnership", font(170), green)
+    d.line([(W / 2 - 520, 940), (W / 2 + 520, 940)], fill=gold, width=6)
+    center(1030, "This certifies that", font(70, bold=False))
+    nf = font(150)
+    while d.textlength(name, font=nf) > W - 900 and nf.size > 70:
+        nf = font(nf.size - 8)
+    center(1150, name, nf, ink)
+    center(1390, "is enrolled as a Growth Partner in the", font(70, bold=False))
+    center(1490, "Bankezee Growth Partner Programme.", font(70, bold=False))
+    sf, sv = font(52, bold=False), font(64)
+    d.text((420, 1820), "Partner ID", font=sf, fill=(110, 115, 110))
+    d.text((420, 1890), pid, font=sv, fill=ink)
+    d.text((W - 420 - d.textlength("Issued on", font=sf), 1820), "Issued on", font=sf, fill=(110, 115, 110))
+    d.text((W - 420 - d.textlength(issued, font=sv), 1890), issued, font=sv, fill=ink)
+    center(2160, "Bankezee is a brand of NeoSales Consulting Pvt Ltd.", font(50, bold=False), (90, 95, 90))
+    return im
+
+
+async def certificate_data(u):
     raw = await raw_user(u)
     st = await state(raw)
     if st["status"] != "Active":
-        raise HTTPException(403, "The certificate is available once your partnership is active")
+        raise HTTPException(403, "The certificate is issued once your partnership is active")
+    issued = datetime.fromisoformat(str(raw.get("gp_activated_at") or raw.get("created_at") or now())[:19].replace("Z", "")).strftime("%d %B %Y")
+    return st, certificate_image(st["profile"].get("entity_name") or st["name"], st["partner_id"], issued)
+
+
+@router.get("/certificate.png")
+async def certificate_png(u: dict = Depends(require_gp)):
+    _, im = await certificate_data(u)
+    b = io.BytesIO()
+    im.resize((1754, 1240)).save(b, format="PNG")
+    return Response(b.getvalue(), media_type="image/png", headers={"Cache-Control": "private, no-store"})
+
+
+@router.get("/certificate.pdf")
+async def certificate(u: dict = Depends(require_gp)):
+    import pymupdf
+    st, im = await certificate_data(u)
+    b = io.BytesIO()
+    im.save(b, format="JPEG", quality=92, optimize=True)
     doc = pymupdf.open()
     pg = doc.new_page(width=842, height=595)
-    pg.draw_rect(pg.rect, color=(0.19, 0.7, 0.29), width=10)
-    pg.draw_rect(pymupdf.Rect(28, 28, 814, 567), color=(0.17, 0.17, 0.17), width=0.8)
-    pg.insert_textbox(pymupdf.Rect(60, 70, 782, 120), "CERTIFICATE OF PARTNERSHIP", fontsize=28, fontname="hebo", align=1, color=(0.17, 0.17, 0.17))
-    pg.insert_textbox(pymupdf.Rect(60, 140, 782, 170), "This is to certify that", fontsize=13, align=1)
-    pg.insert_textbox(pymupdf.Rect(60, 180, 782, 225), st["profile"].get("entity_name") or st["name"], fontsize=26, fontname="hebo", align=1, color=(0.19, 0.6, 0.27))
-    pg.insert_textbox(pymupdf.Rect(80, 240, 762, 300), f"is an authorised Growth Partner of {COMPANY['brand']} ({COMPANY['name']}).", fontsize=13, align=1)
-    issued = str(raw.get("gp_activated_at") or raw.get("created_at") or now())[:10]
-    pg.insert_textbox(pymupdf.Rect(80, 330, 600, 400), f"Partner ID: {st['partner_id']}\nIssued on: {issued}", fontsize=12)
-    img = io.BytesIO()
-    qrcode.make(f"https://connect.bankezee.com/r/{st['partner_id']}").save(img, format="PNG")
-    pg.insert_image(pymupdf.Rect(660, 320, 760, 420), stream=img.getvalue())
-    pg.insert_textbox(pymupdf.Rect(640, 425, 780, 445), "Scan to refer a customer", fontsize=8, align=1)
+    pg.insert_image(pg.rect, stream=b.getvalue())
     return Response(doc.tobytes(), media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="Bankezee_Partner_Certificate_{st["partner_id"]}.pdf"'})
 
 

@@ -229,7 +229,7 @@ function App() {
           <Route path="files/:fileId/eligibility" element={<BankEligibilityAnalysis />} />
           <Route path="files/:fileId/check-eligibility" element={<EligibilityCheck />} />
           <Route path="files/policies" element={<PolicyMaster />} />
-          <Route path="profile" element={<TelecallerProfile />} />
+          <Route path="profile" element={["growth_partner", "telecaller", "sales_agent", "partner", "team_leader"].includes(useAuthStore.getState().user?.role) ? <Navigate to="/agent/partner-profile" replace /> : <TelecallerProfile />} />
           <Route path="team" element={<TeamMembers />} />
           <Route path="team/files" element={<TeamFiles />} />
           <Route path="share" element={<GpOnly><GpShare /></GpOnly>} />
