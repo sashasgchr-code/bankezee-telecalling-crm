@@ -33,7 +33,7 @@ const ManageCell = ({ r, onEdit, onPass, onActive, onDelete }) => {
       {!r.is_active && <Badge tone="red" s="Deactivated">Deactivated</Badge>}
       <div className="flex flex-wrap gap-x-2 gap-y-1">
         <button className={`${b} text-[#24508F]`} data-testid={`gpa-edit-${r.partner_id}`} onClick={onEdit}>Edit</button>
-        <button className={`${b} text-[#24508F]`} data-testid={`gpa-password-${r.partner_id}`} onClick={onPass}>Change password</button>
+        <button className={`${b} text-[#24508F]`} data-testid={`gpa-password-${r.partner_id}`} onClick={() => { setPw(null); onPass(); }}>Change password</button>
         <button className={`${b} text-[#24508F]`} data-testid={`gpa-view-password-${r.partner_id}`} onClick={view}>{pw !== null ? 'Hide password' : 'View password'}</button>
         <button className={`${b} ${r.is_active ? 'text-[#8A6100]' : 'text-[#1F7A33]'}`} data-testid={`gpa-active-${r.partner_id}`} onClick={onActive}>{r.is_active ? 'Deactivate' : 'Reactivate'}</button>
         <button className={`${b} text-[#A12B2B]`} data-testid={`gpa-delete-${r.partner_id}`} onClick={onDelete}>Delete</button>

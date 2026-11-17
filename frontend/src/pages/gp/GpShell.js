@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Navigate, Outlet, useLocation, useParams, NavLink } from 'react-router-dom';
+import { Navigate, Outlet, useLocation, useParams, NavLink, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { Card } from './ui';
 import { ShareTools } from './GpPortal';
@@ -48,7 +48,10 @@ const TASK_LINK = { profile: '/agent/partner-profile', kyc: '/agent/partner-prof
 
 export const GpTasksBanner = () => {
   const [me, setMe] = useState(null);
-  useEffect(() => { api.get('/gp/me').then(({ data }) => setMe(data)).catch(() => {}); }, []);
+  const nav = useNavigate();
+  useEffect(() => {
+    api.get('/gp/me').then(({ data }) => { setMe(data); if (data.status === 'Onboarding' && data.first_incomplete) nav('/gp/signup', { replace: true }); }).catch(() => {});
+  }, [nav]);
   if (!me?.tasks?.length) return null;
   return (
     <div className="mx-4 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3" data-testid="gp-tasks-banner">

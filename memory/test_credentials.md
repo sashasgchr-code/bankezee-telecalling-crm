@@ -120,3 +120,4 @@ Note: password reset by agent for testing the TL layer.
 |-------|----------|-------|
 | 8125832945 (test_ui_8125832945@example.com) | Partner@123 | New-flow GP, Active, code TEST9B4002D6 — sign in at /gp/login |
 | pinkynagulapally@gmail.com | Pinky@1234 | Legacy GP via /gp/login (stays Active) |
+| banothunithinnaik@gmail.com / mobile 9398249851 | MetaGp@2026 | Meta-enabled GP (preview password set for testing) |

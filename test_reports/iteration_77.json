@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 77: GP unified experience Round 1 (backend + frontend). On first load, /agent/files was BROKEN for every user. The cause was a bad edit in FilesDashboard.js line 126: (a) a trailing comment after the eslint-disable-line directive caused an eslint 'rule not found' compile overlay, and (b) a useEffect with deps [isGpRole] sat ~30 lines above `const isGpRole` → runtime ReferenceError 'Cannot access isGpRole before initialization'. T1 moved the effect to just after the isGpRole declaration and removed the comment. After that fix: backend 17/17 pytest pass; frontend flows pass, with one functional bug (the Add New File shortcut) and some minor issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/auth/login", "issue": "No brute-force lockout: 6 consecutive wrong passwords all return 401 (/api/gp/login does lock with 429 after 5 failures in 15 min). The main /login path is therefore unprotected for GP accounts."},
+      {"endpoint": "CORS / auth", "issue": "access-control-allow-origin '*' together with allow-credentials true. Auth is a Bearer token in localStorage, with no httpOnly auth cookie (playbook items 2/3 not met)."},
+      {"endpoint": "GET /api/files?gp_id=<other>", "issue": "A GP passing another GP's gp_id gets 0 rows. This is safe (no leak), but it is an intersection, not 'own scope'. Acceptable; noting it."},
+      {"endpoint": "admin partner mgmt", "issue": "plain_password is stored in users to support 'View password' (by design, but a security risk worth flagging)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "GpInsights shortcut 'Add New File'", "issue": "On /agent/files, clicking the shortcut changes the URL to /agent/files?new=1 but the add-file modal does NOT open. The ?new=1 effect in FilesDashboard has [] deps, so it only runs on mount. A direct visit from another page works. Fix: depend on location.search (useLocation) or call setShowAddFileModal directly.", "selector": "[data-testid='gp-shortcut-add-new-file']", "priority": "HIGH"},
+      {"component": "AdminGpProgramme ManageCell", "issue": "After 'Change password', an already-open password chip keeps showing the OLD password (was UiSet@2026, still shown after changing to UiSet@2027). Reset or refetch pw state after onPass succeeds.", "selector": "[data-testid^='gpa-password-value-']", "priority": "MEDIUM"},
+      {"component": "AdminGpProgramme RTable", "issue": "Each gpa-* testid renders twice (hidden mobile and desktop copies), so strict selectors fail. Use :visible, or make the testids unique per layout.", "selector": "[data-testid^='gpa-']", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Onboarding GP route guard", "issue": "A GP in onboarding is sent to /gp/signup only at login. Navigating directly to /agent/files still renders the dashboard (no guard).", "affected_selectors": []}
+    ],
+    "design_issues": [
+      {"screen": "File details (/agent/files/:id) at 390px", "issues": ["The header action button overflows past the right edge (cut-off 'E…' button next to the stars and score)"]},
+      {"screen": "/gp/signup Profile step", "issues": ["Date of birth uses the browser's native date picker (mm/dd/yyyy) instead of the shadcn calendar"]},
+      {"screen": "Marketing creatives fixture artwork", "issues": ["'Up to ₹25 Lakh' renders as '□25' (missing rupee glyph). Probably the fixture font, not the app; verify that the real artwork render path supports ₹."]},
+      {"screen": "GP /agent/creatives", "issues": ["Many TEST_/TEST_i77 creatives from earlier test runs are PUBLISHED and visible to real partners (TEST Placeholder, TEST Crowded, TEST Portrait, TEST Square, TEST_i77 square_clear). Hide or delete them before production."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter77_gp_unified.py", "/app/test_reports/pytest/iter77.xml"],
+  "action_items": [
+    "Fix the Add New File shortcut on /agent/files: react to ?new=1 on location change, not only on mount",
+    "Review T1's fix in FilesDashboard.js (the GP filter-reset useEffect was moved below the isGpRole declaration). Never put text after an eslint-disable-line directive.",
+    "AdminGpProgramme: clear or refetch the displayed password after Change password",
+    "Add brute-force lockout to /api/auth/login (same rule as /api/gp/login)",
+    "Optional: guard /agent/* for onboarding GPs (redirect to /gp/signup), fix the 390px overflow on the file-details header, and unpublish TEST creatives"
+  ],
+  "critical_code_review_comments": [
+    "FilesDashboard.js is 2400+ lines; split it (filters, add-file modal, GP view). The TDZ bug came from inserting a hook far from the state it depends on.",
+    "PolicyMaster canEditPolicies reads localStorage 'user' once per render. It works, but prefer useAuthStore.",
+    "App.js /agent/profile uses useAuthStore.getState() inside the route element, which is not reactive. It works today because App re-renders after login.",
+    "edit_partner/approve_partner duplicate the partner lookup logic (approve does not use admin_find_partner)",
+    "auth change-password requires min 6 characters, but admin set-password and the UI hint require 8. Make them consistent."
+  ],
+  "updated_files": ["/app/frontend/src/pages/files/FilesDashboard.js", "/app/backend/tests/test_iter77_gp_unified.py"],
+  "success_rate": {"backend": "100% (17/17)", "frontend": "~92% (1 functional bug in 13 flows, after T1's crash fix)"},
+  "seed_data_creation": "None kept. Temporary TEST users (signup / duplicate-mobile / dormant), a TEST policy, TEST creatives (pytest + 2 UI uploads square_clear/portrait_tiny_text) and a TEST file (TEST_Iter77 Customer, 7de86f6c…) were all deleted by id. TEST_UI Partner (8125832945) password was changed to Partner@456 and restored to Partner@123; it is still active. The admin approve test ran only on the TEST signup, which was then deleted.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Verified: both login paths give the same user id and the same files total (Meta GP id 6a43535269071f897aeeb626, 15 files); Meta CRM appears in the drawer only with meta_access; /meta redirects a non-meta GP to /agent/files; /api/meta/* returns 403 for a non-meta GP. All /gp/* redirects work, including ?tab=kyc. Staff dropdowns and Source filter are hidden for GPs. KPIs match the /api/gp/payouts summary (3500 under verification). Policy is View only plus API 403 for GP and ops; admin CRUD works. Profile tabs and change password work. Certificate PNG/PDF work for active GPs; onboarding GPs see certificate-not-issued with next steps. Bottom nav is Files + Profile only, at 1920 and 390. Admin manage (edit, 409 on duplicate, password set/view, deactivate/reactivate, approve with reason, delete 409 for a partner with files and then the deactivate dialog, delete allowed for a fresh partner) all work. Creatives upload returns immediately, analysis (source=ai) finishes in ~5s, and publishing makes the creative visible to GPs. Not tested: WhatsApp inbound and the Round 2 combined dashboard.",
+  "rca of the issue": "/agent/files crash: the latest edit replaced line 126 (formerly `const [sourceFilter...] // '', 'growth_partner' or 'unassigned'`) with a useEffect that kept the old trailing comment. The comment broke the eslint-disable-line directive (compile overlay). The effect's deps array [isGpRole] is evaluated during render before `const isGpRole` (line 159) → TDZ ReferenceError, which blanks /agent/files for every role. Mitigation applied by T1: moved the effect to directly after the isGpRole declaration."
+}

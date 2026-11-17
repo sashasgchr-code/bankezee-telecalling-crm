@@ -2,7 +2,7 @@
 Authentication routes
 """
 from fastapi import APIRouter, Depends, HTTPException
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from bson import ObjectId
 import re
 import uuid
@@ -154,6 +154,20 @@ async def login(credentials: UserLogin):
     # supplied password, preferring the active one, so a dormant legacy document can never be
     # selected. Email is matched case-insensitively because legacy imports vary in letter case.
     email = credentials.email.strip().lower()
+    since = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+    if await db.login_failures.count_documents({"key": email, "at": {"$gte": since}}) >= 5:
+        raise HTTPException(status_code=429, detail="Too many failed attempts — try again in 15 minutes")
+    try:
+        res = await _login(credentials, email)
+    except HTTPException as e:
+        if e.status_code == 401:
+            await db.login_failures.insert_one({"key": email, "at": datetime.now(timezone.utc).isoformat()})
+        raise
+    await db.login_failures.delete_many({"key": email})
+    return res
+
+
+async def _login(credentials: UserLogin, email: str):
     candidates = await db.users.find(
         {"email": {"$regex": f"^{re.escape(email)}$", "$options": "i"}}
     ).to_list(20)

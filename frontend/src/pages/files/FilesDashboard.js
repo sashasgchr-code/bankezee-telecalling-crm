@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   FileText, Search, ChevronDown, Eye, Trash2, Download, RefreshCw, 
   Clock, DollarSign, TrendingUp, CheckCircle, XCircle, LogIn, AlertTriangle,
@@ -121,9 +121,8 @@ const FilesDashboard = () => {
   const [managerFilter, setManagerFilter] = useState('');
   const [gpFilter, setGpFilter] = useState(''); // New: Growth Partner filter
   const [sourceFilter, setSourceFilter] = useState('');
-  useEffect(() => { if (new URLSearchParams(window.location.search).get('new') === '1') setShowAddFileModal(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Growth Partners never use staff scope filters: clear any stale/URL values (server enforces their own scope regardless).
-  useEffect(() => { if (isGpRole) { setManagerFilter(''); setTlFilter(''); setGpFilter(''); } }, [isGpRole]); // eslint-disable-line react-hooks/exhaustive-deps // '', 'growth_partner' or 'unassigned'
+  const { search: locSearch } = useLocation();
+  useEffect(() => { if (new URLSearchParams(locSearch).get('new') === '1') setShowAddFileModal(true); }, [locSearch]); // eslint-disable-line react-hooks/exhaustive-deps
   const [tlFilter, setTlFilter] = useState(''); // New: Team Lead filter
   const [starFilter, setStarFilter] = useState('');
   const [createdDateFilter, setCreatedDateFilter] = useState('all');
@@ -157,6 +156,8 @@ const FilesDashboard = () => {
   const isManager = user.role === 'manager';
   const isHr = user.role === 'hr';
   const isGpRole = ['growth_partner', 'telecaller', 'sales_agent', 'team_leader', 'partner'].includes(user.role);
+  // Growth Partners never use staff scope filters: clear any stale/URL values (server enforces their own scope regardless).
+  useEffect(() => { if (isGpRole) { setManagerFilter(''); setTlFilter(''); setGpFilter(''); } }, [isGpRole]); // eslint-disable-line react-hooks/exhaustive-deps
   const canAssignGp = isAdmin || isManager || user.role === 'ops' || user.is_tl;
   
   // Helper to get the correct base path for navigation

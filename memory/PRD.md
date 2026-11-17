@@ -2549,3 +2549,14 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Staff Files: Source filter (Growth Partner portal / Unassigned queue), GP badge; 12 earlier GP files left in place, tagged via startup backfill
 - GP payout on disbursed File (routes/gp_file_payout.py): auto from CSV rate (frozen rate snapshot), Manual Payout Required, Admin/Ops manual entry/override (% or ₹, reason, preview, audit), Restore Calculated Payout, review flag on amount change, Paid lock + adjustments, Reversed never auto-recreated; one record per file (unique file_key)
 - Backlog: shadcn date pickers in payout filters; CORS tightening; product-specific doc checklist if the business defines one
+
+## Unified GP dashboard + Round 1 (Nov 2026) — DONE & TESTED (iteration 77 + fixes)
+- Root cause (Meta CRM lost via /gp/login): /api/gp/login mobile lookup picked the first phone match (could be a dormant legacy duplicate with another email, no meta_access) and the old /gp portal shell had no Meta menu. Fixed: password-credential only, active preferred, ambiguous -> 409 + gp_login_review; both logins land on /agent/files (TelecallerLayout) via gpLanding()
+- /gp/* routes redirect to /agent/* (payouts, payout-structure, share, creatives, card, partner-profile, agreement, support); onboarding GPs redirected to /gp/signup
+- /agent/files for GPs: staff filters hidden + cleared, GpInsights (earnings/payout KPIs from /gp/payouts summary, file performance, 3 charts, shortcuts); Policy read-only (UI + server admin-only)
+- Profile page /agent/partner-profile (summary + Personal, KYC, Payout, Link & QR, Security/change password); hamburger drawer menu replaces More; Meta CRM only if meta_access
+- Certificate: modern Bankezee design (PIL image shared by preview PNG + PDF)
+- Admin GP mgmt: edit, change/view password, deactivate/reactivate, delete (blocked if files/payouts/signed agreement), Approve as Active
+- Creatives upload runs analysis in background; /api/auth/login lockout (5 fails / 15 min)
+- WhatsApp: customer-initiated chat creates Meta lead (WhatsApp Inbound) + sends welcome once
+- NEXT (Round 2): combined Connect Files + Meta Files dashboard for meta_access users (All/Connect/Meta selector, dedupe via existing links, status mapping)
