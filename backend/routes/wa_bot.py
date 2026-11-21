@@ -21,7 +21,7 @@ REGS_CAR = ["GST Registration", "Udyam Registration / Udyam Aadhaar", "Labour Li
 CAR_INTRO = ("Hi {name} 👋\n\nThank you for your loan enquiry with Bankezee.\nWe've received your request.\n\nTo help our loan advisor review your "
              "eligibility and available loan options, we'd like to collect a few details.\n\nYou can complete everything directly here on WhatsApp.\n\n"
              "Bankezee Loans Made Easy")
-CAR_RE = re.compile(r"\bcar", re.I)
+CAR_RE = re.compile(r"\bcars?\b", re.I)
 CIBIL_Q = ("Do you have your latest credit report?\n\nSharing your report helps our loan advisor review your existing loans, "
            "repayment history and outstanding balances without you having to enter every loan individually.")
 HELP_TEXT = ("You can get your credit report from:\n\nCIBIL:\nhttps://www.cibil.com/freecibilscore\n\nPaisabazaar:\n"
@@ -295,6 +295,8 @@ async def handle_inbound(conv: dict, m: dict, raw: dict):
             await SESS.update_one({"id": sess["id"]}, {"$set": {"status": "paused", "paused_reason": "expert_call"}})
         return
     if text in START_TEXTS and m.get("type") in ("button", "interactive", "text"):
+        if sess and sess.get("flow") == "car" and sess["status"] == "abandoned" and sess.get("step"):
+            return await _reactivate(sess)
         if not sess or sess["status"] in ("stopped", "abandoned"):
             return await _start(conv)
         if sess["status"] == "active":
@@ -302,8 +304,6 @@ async def handle_inbound(conv: dict, m: dict, raw: dict):
                 await _set(sess, {}, "employment")
                 return await _send(sess, "employment")
             return await _send(sess, sess["step"])
-        if sess.get("flow") == "car" and sess["status"] == "abandoned" and sess.get("step"):
-            return await _reactivate(sess)
         return
     if sess and sess.get("flow") == "car" and sess["status"] == "abandoned" and sess.get("step"):
         return await _reactivate(sess)  # Car Loans: resume an incomplete questionnaire from the last unanswered question

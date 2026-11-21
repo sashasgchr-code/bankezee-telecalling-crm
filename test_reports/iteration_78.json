@@ -1,0 +1,42 @@
+{
+  "summary": "Tested the Car Loans campaign changes. All WhatsApp sends were simulated. Backend: new pytest file tests/test_iter78_car_loans_webhook.py runs in-process and posts to POST /api/integrations/whatsapp/webhook (the real path; /api/whatsapp/webhook does not exist) with a valid HMAC signature, with _graph, log_outbound and send_whatsapp_for_lead mocked. 18 of 19 pass. Verified: template routing (car -> car_loans_welcome, non-car -> default, 'Scarlet'/'Scar' not car); duplicate prevention for inbound messages from existing car leads (no new meta_leads doc or conversation, car lead wins over a newer non-car lead, car template sent once); the full self-employed car flow (6-option registrations question, 'None of the Above' cannot be combined, invalid input re-asked, array stored on car_loan_profile, then Business Name and turnover questions, and resume after abandonment on any message other than 'Yes Continue'); 'None of the Above' stores []; Salaried and Other branches; minimal personal-loan regression; dynamic form answers with no truncation. One bug found: when a car session is abandoned and the customer sends 'Yes Continue', the questionnaire restarts from the intro and all saved answers are wiped. Frontend: the lead detail page (MetaFormAnswers) was checked for a TEST car lead with 15 answers, a TEST personal lead with 3, and a real car lead. It works: car badge, employment and registration chips, collapsed 'View All Details' with more than 8 answers, expand and collapse, grouped labels, a 400+ character value shown in full, no system columns, no page errors.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "wa_bot.handle_inbound (via POST /api/integrations/whatsapp/webhook)", "issue": "Car session abandoned mid-questionnaire, then the customer sends 'Yes Continue' (for example by tapping the template quick reply again): line 298 runs _start(), so the session goes back to car_intro and answers are reset to {}. lead.car_loan_profile.business_registrations and employment_type are overwritten with None. The resume branch at line 305 can never be reached. Repro: test_car_abandoned_then_yes_continue_should_resume_not_restart.", "priority": "HIGH"},
+      {"endpoint": "whatsapp.is_car_lead / wa_bot.CAR_RE / wa_inbox.welcome_on_inbound / meta_sync campaign_type", "issue": "The regex r'\\bcar' matches 'Credit Card ...', 'Career', 'Cargo' and 'Carry'. Checked: is_car_lead({'campaign_name':'Credit Card Balance Transfer'}) == True. A credit-card campaign (likely for a loan-consolidation business) would get the car_loans_welcome template, the car bot flow, campaign_type 'Car Loans', and inbound reuse of the car lead. Use r'\\bcars?\\b' in all 4 places.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "cc_templates car_loans_welcome", "issue": "The template status in the DB is PENDING. If it is not synced, template_for falls back to {'name':'car_loans_welcome'} with no language, body_vars or button metadata, and _graph_send_template assumes one URL button. A real send will fail if the approved template's parameters are different. Check approval and parameters before go-live."},
+      {"endpoint": "wa_inbox.welcome_on_inbound", "issue": "The car-lead reuse only runs when _send_configured() is true. When sending is not configured (as in this preview), get_conv links the conversation to the newest lead for that phone, which may not be the car lead. Also, the car lead always takes over the conversation, even when the customer later came in through a newer non-car campaign, so the newer lead never gets its welcome or bot flow. Confirm this is the intended behaviour."},
+      {"endpoint": "wa_bot se_regs_car parsing", "issue": "Each digit is read on its own ('10' -> [1], 'call me at 5pm' -> [5]). Typed option names such as 'GST, Udyam' are rejected and the question is asked again."},
+      {"endpoint": "meta_sync._form_answers", "issue": "_pretty() runs on any value containing '_'. This changes customer free text, for example 'john_doe@x.com' becomes 'john doe@x.com' and LONGVALUE_START becomes 'LONGVALUE START'."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Lead detail > Meta form answers", "issues": ["Labels come from the raw keys, so acronyms stay lowercase ('Do you have gst?', 'What's your cibil score?')", "'Whatsapp number' is grouped under 'Other Answers' instead of 'Customer Details' (the group regex has no 'whatsapp')"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_iter78_car_loans_webhook.py", "/app/test_reports/pytest/iter78_car_loans.xml"],
+  "action_items": [
+    "Fix wa_bot.handle_inbound: when a car session is abandoned (with a step set) and the customer sends 'Yes Continue', call _reactivate(sess) instead of _start(). Only restart when the session is stopped or missing. Then remove the dead branch at line 305.",
+    "Tighten the car detection regex to r'\\bcars?\\b' in whatsapp.is_car_lead, wa_bot.CAR_RE, wa_inbox line 285 ($regex) and meta_sync line 402.",
+    "Confirm car_loans_welcome is APPROVED and synced to cc_templates with the correct language, body variables and buttons.",
+    "Remove the TEST leads left behind by an earlier run of car_loans_flow_check.py: lead_TEST0a88bf29, lead_TESTd6248f00, lead_TESTb5c76621, plus their wa_conversations and wa_bot_sessions. The script only cleans up at the end, so a failed run leaves data behind; move cleanup into a try/finally."
+  ],
+  "critical_code_review_comments": [
+    "wa_bot.handle_inbound lines 297-307: abandoned is handled at 298, so 305 can never run.",
+    "The car regex is duplicated in 4 modules; use the single helper wa.is_car_lead everywhere.",
+    "_set() overwrites the whole car_loan_profile on every step. That is fine, but it is how the restart bug also wipes the CRM-visible registrations.",
+    "Other TEST_UI_* leads (TEST_UI_0_1f2764, TEST_UI_1_c5e055) from an older iteration still exist."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter78_car_loans_webhook.py"],
+  "success_rate": {"backend": "95% (18/19)", "frontend": "100%"},
+  "seed_data_creation": "The pytest module creates lead_TEST78* leads with random fake 918xxxxxxxxx numbers and deletes them, with their conversations, messages and sessions, by id at teardown (verified 0 left). The UI fixtures lead_TEST78UIcar and lead_TEST78UIpl were created and then deleted.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iter78_car_loans_webhook.py -p no:cacheprovider. It must create and set its own event loop before importing utils.database, because Motor binds to a loop. The preview has no META_WHATSAPP_ACCESS_TOKEN or APP_SECRET, so the public webhook always returns 401. Test in-process with the mocks in this file and never send through the public URL. Lead detail page: /meta/leads/{lead_id}; testids meta-form-answers, meta-form-answers-toggle, meta-form-answer, car-loan-profile, car-business-registrations.",
+  "rca of the issue": "Restart bug: in handle_inbound, the check `if not sess or sess['status'] in ('stopped','abandoned'): return await _start(conv)` comes before the car-specific resume check. _start upserts a new session with step=car_intro and answers equal to the prefill only, and _set then writes car_loan_profile with None values. Repro: car lead -> Yes Continue -> Yes Continue -> 2 -> '1,2' -> mark session abandoned -> send 'Yes Continue' -> step=car_intro, answers={}. Fix: for an abandoned car session with a step, call _reactivate before falling back to _start."
+}

@@ -217,7 +217,7 @@ def _form_answers(raw: dict) -> list:
         if not key or key.lower() in _SYSTEM_COLS or not val or val.lower() in ("nan", "none", "null"):
             continue
         label = re.sub(r"[_]+", " ", key).strip().rstrip("?").strip()
-        out.append({"key": key, "label": (label[:1].upper() + label[1:]) + ("?" if key.endswith("?") else ""), "value": _pretty(val) if "_" in val else val})
+        out.append({"key": key, "label": (label[:1].upper() + label[1:]) + ("?" if key.endswith("?") else ""), "value": _pretty(val) if "_" in val and not re.search(r"[\s@/.]", val) else val})
     return out
 
 
@@ -400,7 +400,7 @@ async def sync_leads_from_sheet() -> dict:
             "source_tab": (r.get("source_tab") or "").strip(),
             "sheet_status": sheet_status,
             "form_answers": r.get("form_answers") or [],
-            **({"campaign_type": "Car Loans"} if re.search(r"\bcar", r.get("campaign_name") or "", re.I) else {}),
+            **({"campaign_type": "Car Loans"} if re.search(r"\bcars?\b", r.get("campaign_name") or "", re.I) else {}),
         }
         if attr:
             base["meta_attr_latest"] = {k: attr[k] for k in ("campaign_name", "adset_name", "ad_name", "form_name")}

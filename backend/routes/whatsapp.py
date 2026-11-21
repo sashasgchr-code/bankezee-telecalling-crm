@@ -158,7 +158,7 @@ CAR_TEMPLATE = "car_loans_welcome"
 
 
 def is_car_lead(lead: dict) -> bool:
-    return bool(re.search(r"\bcar", (lead or {}).get("campaign_name") or "", re.I))
+    return bool(re.search(r"\bcars?\b", (lead or {}).get("campaign_name") or "", re.I))
 
 
 async def template_for(lead: dict) -> dict:
