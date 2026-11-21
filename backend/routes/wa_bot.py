@@ -21,6 +21,8 @@ REGS_CAR = ["GST Registration", "Udyam Registration / Udyam Aadhaar", "Labour Li
 CAR_INTRO = ("Hi {name} 👋\n\nThank you for your loan enquiry with Bankezee.\nWe've received your request.\n\nTo help our loan advisor review your "
              "eligibility and available loan options, we'd like to collect a few details.\n\nYou can complete everything directly here on WhatsApp.\n\n"
              "Bankezee Loans Made Easy")
+REG_WORDS = [("GST Registration", r"\bgst"), ("Udyam Registration / Udyam Aadhaar", r"udyam|udyog|msme"), ("Labour Licence", r"labou?r"),
+             ("Trade Licence", r"\btrade"), ("3 years ITRs", r"\bitrs?\b|income\s*tax|\b3\s*(years?|yrs?)\b"), ("None of the Above", r"\bnone\b|\bnothing\b|\bno\s+(registration|licen[cs]e)s?\b")]
 CAR_RE = re.compile(r"\bcars?\b", re.I)
 CIBIL_Q = ("Do you have your latest credit report?\n\nSharing your report helps our loan advisor review your existing loans, "
            "repayment history and outstanding balances without you having to enter every loan individually.")
@@ -40,9 +42,9 @@ STEPS = {
     "company": ("What's the name of your company?", None),
     "salary": ("What's your exact monthly take-home salary?", None),
     "se_regs": ("Which of these business registrations or licences do you have? Select all that apply.\n\n"
-                + "\n".join(f"{i}. {r}" for i, r in enumerate(REGS, 1)) + "\n\nReply with the numbers, e.g. 1,2,4", None),
+                + "\n".join(f"{i}. {r}" for i, r in enumerate(REGS, 1)) + "\n\nReply with the numbers or names, e.g. 1,2,4 or GST, Udyam", None),
     "se_regs_car": ("Which of these business registrations or licences do you have? Select all that apply.\n\n"
-                    + "\n".join(f"{i}. {r}" for i, r in enumerate(REGS_CAR, 1)) + "\n\nReply with the numbers, e.g. 1,2,4", None),
+                    + "\n".join(f"{i}. {r}" for i, r in enumerate(REGS_CAR, 1)) + "\n\nReply with the numbers or names, e.g. 1,2,4 or GST, Udyam", None),
     "car_intro": (CAR_INTRO, [("car_yes", "Yes Continue")]),
     "se_name": ("What's your business/company name?", None),
     "se_turnover": ("What's your approximate annual turnover?", None),
@@ -167,10 +169,42 @@ async def _save_doc(sess, m, kind):
     return {"documents": docs}
 
 
+def _parse_regs(t: str, regs: list) -> list:
+    """Option numbers ('1,2,4' / '124') and/or typed names ('GST, Udyam') -> sorted 1-based option numbers; [] if anything is invalid."""
+    nums = set()
+    for tok in re.findall(r"\d+", re.sub(r"\b3\s*(years?|yrs?)\b", "", t, flags=re.I)):
+        digits = [int(d) for d in tok]
+        if not all(1 <= d <= len(regs) for d in digits):
+            return []
+        nums.update(digits)
+    for name, pat in REG_WORDS:
+        if name in regs and re.search(pat, t, re.I):
+            nums.add(regs.index(name) + 1)
+    return sorted(nums)
+
+
+async def _take_payslip(sess: dict, m: dict):
+    """Idempotent payslip receipt: the first file completes the step and moves to the credit report question; later pages are only attached."""
+    doc = {"kind": "payslip", "msg_id": m["id"], "filename": (m.get("media") or {}).get("filename"), "mime": (m.get("media") or {}).get("mime"), "at": _now().isoformat()}
+    now = _now().isoformat()
+    first = await SESS.find_one_and_update(
+        {"id": sess["id"], "answers.payslip_uploaded": {"$ne": True}},
+        {"$set": {"answers.payslip_status": "uploaded", "answers.payslip_uploaded": True, "answers.payslip_question_completed": True,
+                  "step": "cibil_report", "updated_at": now}, "$push": {"documents": doc}})
+    if not first:
+        await SESS.update_one({"id": sess["id"], "documents.msg_id": {"$ne": m["id"]}}, {"$push": {"documents": doc}})
+        return
+    sess["answers"] = {**(sess.get("answers") or {}), "payslip_status": "uploaded", "payslip_uploaded": True, "payslip_question_completed": True}
+    await _set(sess, {}, "cibil_report")
+    return await _send(sess, "cibil_report")
+
+
 async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machine is easiest to audit
     step, t = sess.get("step"), (m.get("text") or "").strip()
     ans = dict(sess.get("answers") or {})
     has_media = m.get("type") in ("image", "document") and m.get("media")
+    if has_media and (step in ("payslip", "payslip_upload") or (ans.get("payslip_uploaded") and step != "report_upload")):
+        return await _take_payslip(sess, m)
 
     if step in ("employment", "payslip", "other_regular", "cibil_report", "report_choice"):
         c = _choice(m, step)
@@ -180,7 +214,8 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
             ans["employment_type"] = {"emp_sal": "Salaried", "emp_self": "Self-employed", "emp_other": "Other"}[c]
             nxt = {"emp_sal": "payslip", "emp_self": "se_regs_car" if sess.get("flow") == "car" else "se_regs", "emp_other": "other_cat"}[c]
         elif step == "payslip":
-            ans["payslip_status"] = {"ps_up": "awaiting_upload", "ps_no": "not_available", "ps_later": "share_later"}[c]
+            ans["payslip_status"] = {"ps_up": "pending_upload", "ps_no": "not_available", "ps_later": "share_later"}[c]
+            ans["payslip_uploaded"], ans["payslip_question_completed"] = False, c != "ps_up"
             nxt = "payslip_upload" if c == "ps_up" else await _after_employment_salaried({**sess, "answers": ans})
         elif step == "other_regular":
             ans["regular_monthly_income"] = c == "reg_yes"
@@ -197,12 +232,6 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
     if step in ("payslip_upload", "report_upload"):
         if not has_media:
             return await _send(sess, step)
-        if step == "payslip_upload":
-            ans["payslip_status"] = "received"
-            await _set(sess, {"answers": ans, **(await _save_doc(sess, m, "payslip"))}, None)
-            nxt = await _after_employment_salaried(sess)
-            await _set(sess, {}, nxt)
-            return await _send(sess, nxt)
         ans["credit_report_status"] = "received_pending_review"
         await _set(sess, {"answers": ans, **(await _save_doc(sess, m, "credit_report"))}, None)
         return await _complete(sess)
@@ -218,7 +247,7 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
         return await _send(sess, nxt)
 
     if step == "se_regs":
-        nums = sorted({int(x) for x in re.findall(r"\d", t) if 1 <= int(x) <= 5})
+        nums = _parse_regs(t, REGS)
         if not nums or (5 in nums and len(nums) > 1):
             return await _send(sess, step, STEPS[step][0] + ("\n\n\"None of the Above\" can't be combined with others." if 5 in nums else ""))
         ans["business_registrations"] = [] if nums == [5] else [REGS[n - 1] for n in nums]
@@ -226,10 +255,10 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
         return await _send(sess, "se_name")
 
     if step == "se_regs_car":
-        nums = sorted({int(x) for x in re.findall(r"\d", t) if 1 <= int(x) <= 6})
+        nums = _parse_regs(t, REGS_CAR)
         if not nums or (6 in nums and len(nums) > 1):
             return await _send(sess, step, STEPS[step][0] + ("\n\n\"None of the Above\" can't be combined with others." if 6 in nums else
-                                                             "\n\nPlease reply with one or more numbers from 1 to 6."))
+                                                             "\n\nPlease reply with one or more numbers from 1 to 6, or the names."))
         ans["business_registrations"] = [] if nums == [6] else [REGS_CAR[n - 1] for n in nums]
         await _set(sess, {"answers": ans}, "se_name")
         return await _send(sess, "se_name")
@@ -264,11 +293,13 @@ async def _start(conv: dict):
     prof = await db.meta_chatbot_qualifications.find_one({"crm_lead_ref": lead_id}) or {}
     q = prof.get("qualification") or {}
     answers = {k: q.get(k) for k in ("company_name", "net_monthly_salary") if q.get(k)}
+    prefilled = list(answers)
+    answers.update({"payslip_status": "not_asked", "payslip_uploaded": False, "payslip_question_completed": False})
     now = _now().isoformat()
     lead = await db.meta_leads.find_one({"lead_id": lead_id}, {"campaign_name": 1, "full_name": 1}) or {}
     car = bool(CAR_RE.search(lead.get("campaign_name") or ""))
     sess = {"id": uuid.uuid4().hex, "lead_id": lead_id, "conv_id": conv["id"], "wa_number": conv["wa_number"], "status": "active",
-            "step": "car_intro" if car else "employment", "answers": answers, "prefilled": list(answers), "documents": [], "source": "WhatsApp",
+            "step": "car_intro" if car else "employment", "answers": answers, "prefilled": prefilled, "documents": [], "source": "WhatsApp",
             "started_at": now, "updated_at": now, "flow": "car" if car else None}
     await SESS.update_one({"lead_id": lead_id}, {"$set": sess}, upsert=True)
     await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": {"whatsapp_qualification": {"status": "in_progress", "started_at": now}}})
