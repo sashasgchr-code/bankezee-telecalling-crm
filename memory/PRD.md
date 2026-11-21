@@ -2573,3 +2573,10 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Fix (routes/wa_bot.py `_report_waiting`): help-like text/questions/"Continue"/"Yes, Continue" -> HELP_TEXT + Upload Report/Continue Without (help_requested); unrelated text -> short reminder with same buttons (report_nudge); "no"/"Don't want to"/Continue Without -> not_provided -> CIBIL score; file at cibil_report/report_choice/report_upload -> atomic claim -> uploaded -> thank you & finish; extra/duplicate pages attached only.
 - Statuses: not_asked, awaiting_upload, help_requested, uploaded, not_provided, declined (Don't Want To). Old received_pending_review still counted in funnel stats.
 - Tests: tests/credit_report_flow_check.py (20/20), test_iter80 (24/24), test_iter79 (22/22), test_iter78 (19/19).
+
+## 2026-06 — Lead de-dup by mobile + bot answers in columns
+- utils/lead_merge.py: merge_chat_duplicates (chat-created source=whatsapp copies merged into the newest Meta/website entry with same phone_norm: conversations, messages, call logs, bot session, notes/activities, whatsapp status, partner moved; copy soft-deleted with merged_into), flag_duplicate (repeat applications get duplicate_of -> first entry, any time), sync_bot_fields (fill empty employment/salary/outstanding from bot answers), run_backfill at startup.
+- Hooks: meta_sync new insert -> merge + flag; manual add -> flag; wa_bot._set -> sync_bot_fields; sync updates never blank employment/salary/outstanding.
+- Car form "total outstanding on car loan" mapped to Outstanding.
+- UI: red "Duplicate" badge (list + cards) and "Duplicate of X (date)" on lead detail, click opens the first entry; green "WhatsApp" source badge for chat-created leads.
+- Test: tests/lead_dedup_check.py (10/10).

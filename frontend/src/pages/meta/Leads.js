@@ -9,6 +9,7 @@ import { ChatButton } from "../../components/inbox/ChatSheet";
 import { AdAttributionFilter } from "../../components/meta/perf/MetaAttribution";
 import { Search, RefreshCw, MapPin, Phone, MessageCircle, ChevronUp, ChevronDown, ChevronsUpDown, ChevronLeft, ChevronRight, Plus, X, PhoneCall } from "lucide-react";
 import ColumnFilterMenu, { MenuSortRow } from "../../components/meta/ColumnFilterMenu";
+import { DuplicateBadge } from "../../components/meta/DuplicateBadge";
 
 const LEADS_STATE_KEY = "metaLeadsState_v1";
 const COL_STATUSES = ["NEW", "CALL BACK", "NOT ANSWERING", "SWITCHED OFF", "NOT INTERESTED", "NOT QUALIFIED", "LEAD", "FILE"];
@@ -19,6 +20,7 @@ const SourceBadge = ({ lead }) => {
   const st = lead?.source_tab || "";
   let label, cls;
   if (st === "Website" || lead?.platform === "website") { label = "Website"; cls = "bg-sky-50 text-sky-700 border-sky-200"; }
+  else if (lead?.source === "whatsapp" || st === "WhatsApp Inbound") { label = "WhatsApp"; cls = "bg-green-50 text-green-700 border-green-200"; }
   else if (lead?.source === "manual" || st === "Manual Entry") { label = "Manual"; cls = "bg-amber-50 text-amber-700 border-amber-200"; }
   else { label = "Meta"; cls = "bg-indigo-50 text-indigo-700 border-indigo-200"; }
   return <span data-testid="meta-source-badge" className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold border ${cls}`}>{label}</span>;
@@ -546,7 +548,7 @@ export default function MetaLeads() {
                       </td>
                     )}
                     <td className="py-2.5 px-3 text-xs text-slate-500 whitespace-nowrap">{fmtDate(lead.created_time || lead.created_at)}</td>
-                    <td className="py-2.5 px-3"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><WantsCallBadge lead={lead} /></div><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p>{lead.meta_attr?.ad_name ? <p className="text-[10px] text-slate-400" data-testid={`lead-ad-name-${lead.lead_id}`}>Ad: {lead.meta_attr.ad_name.slice(0, 32)}{lead.meta_attr.adset_name && lead.meta_attr.adset_name !== lead.meta_attr.ad_name ? ` · Set: ${lead.meta_attr.adset_name.slice(0, 24)}` : ""}</p> : <p className="text-[10px] text-slate-300">Ad: Unknown / Not available</p>}</td>
+                    <td className="py-2.5 px-3"><div className="flex items-center gap-2"><p className="text-sm font-medium text-slate-800">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><DuplicateBadge lead={lead} /><WantsCallBadge lead={lead} /></div><p className="text-xs text-slate-400">{lead.campaign_name?.slice(0, 28)}</p>{lead.meta_attr?.ad_name ? <p className="text-[10px] text-slate-400" data-testid={`lead-ad-name-${lead.lead_id}`}>Ad: {lead.meta_attr.ad_name.slice(0, 32)}{lead.meta_attr.adset_name && lead.meta_attr.adset_name !== lead.meta_attr.ad_name ? ` · Set: ${lead.meta_attr.adset_name.slice(0, 24)}` : ""}</p> : <p className="text-[10px] text-slate-300">Ad: Unknown / Not available</p>}</td>
                     <td className="py-2.5 px-3" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center gap-2">
                         <a data-testid={`meta-call-link-${lead.lead_id}`} href={`tel:${lead.phone}`} onClick={() => openCall(lead)} className="h-7 w-7 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 flex items-center justify-center shrink-0" title="Call"><Phone size={14} /></a>
@@ -589,7 +591,7 @@ export default function MetaLeads() {
                 className="p-4 border-b-4 border-slate-200 last:border-b-0 hover:bg-slate-50/60 cursor-pointer">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2"><p className="text-base font-bold text-slate-900 truncate">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><WantsCallBadge lead={lead} tid="meta-card-wants-call" /></div>
+                    <div className="flex items-center gap-2"><p className="text-base font-bold text-slate-900 truncate">{lead.full_name || "—"}</p><SourceBadge lead={lead} /><DuplicateBadge lead={lead} tid="meta-card-duplicate-badge" /><WantsCallBadge lead={lead} tid="meta-card-wants-call" /></div>
                     {lead.campaign_name && <p className="text-xs text-slate-400 truncate">{lead.campaign_name}</p>}
                   </div>
                   <StatusPill status={lead.status} />

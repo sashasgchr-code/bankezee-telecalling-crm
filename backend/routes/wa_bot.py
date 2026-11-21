@@ -119,6 +119,9 @@ async def _set(sess, upd: dict, step: Optional[str]):
     upd = {**upd, "step": step, "updated_at": _now().isoformat()}
     await SESS.update_one({"id": sess["id"]}, {"$set": upd})
     sess.update(upd)
+    if "answers" in upd:
+        from utils.lead_merge import sync_bot_fields
+        await sync_bot_fields(sess["lead_id"])
     if sess.get("flow") == "car":
         ans = sess.get("answers") or {}
         await db.meta_leads.update_one({"lead_id": sess["lead_id"]}, {"$set": {

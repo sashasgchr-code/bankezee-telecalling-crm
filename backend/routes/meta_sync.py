@@ -173,7 +173,8 @@ _EMP_KEYS = ["please_select_your_current_employment_status", "are_you", "employm
 _SALARY_KEYS = ["what_is_your_current_monthly_take-home_salary?", "what's_your_net_monthly_salary?",
                 "whats_your_net_monthly_salary?", "monthly_salary"]
 _OUTSTANDING_KEYS = ["what_is_the_total_outstanding_amount_of_your_loans_and_credit_card_bills?",
-                     "what's_your_total_loan_outstanding?", "whats_your_total_loan_outstanding?", "outstanding_amount"]
+                     "what's_your_total_loan_outstanding?", "whats_your_total_loan_outstanding?", "outstanding_amount",
+                     "what's_the_total_outstanding_amount_on_your_car_loan?", "whats_the_total_outstanding_amount_on_your_car_loan?"]
 _CIBIL_KEYS = ["what's_your_cibil_score?", "whats_your_cibil_score?", "cibil_score", "credit_score"]
 
 
@@ -408,6 +409,9 @@ async def sync_leads_from_sheet() -> dict:
             extra = {}
             if attr and not existing.get("meta_attr"):  # backfill keyed by Meta lead ID (sheet row id) — never by name/phone
                 extra["meta_attr"] = {**attr, "crm_imported_at": existing.get("created_at"), "backfilled_at": now_iso()}
+            for k in ("employment_status", "monthly_salary", "monthly_salary_num", "outstanding_amount", "outstanding_amount_num"):
+                if base.get(k) in (None, ""):
+                    base.pop(k)  # never blank values filled from the WhatsApp bot or by staff
             await db.meta_leads.update_one({"sheet_id": sheet_id}, {"$set": {**base, **extra, "updated_at": now_iso()}})
             updated += 1
         else:
@@ -430,6 +434,13 @@ async def sync_leads_from_sheet() -> dict:
                 logger.warning(f"Meta sheet sync insert failed for {sheet_id}: {ie}")
                 continue
             imported += 1
+            try:
+                from utils.lead_merge import merge_chat_duplicates, flag_duplicate
+                if doc["phone_norm"] and await merge_chat_duplicates(doc["phone_norm"]):
+                    doc = await db.meta_leads.find_one({"lead_id": doc["lead_id"]}, {"_id": 0}) or doc
+                await flag_duplicate(doc)
+            except Exception as _m_e:
+                logger.warning(f"Lead dedup failed for {doc.get('lead_id')}: {_m_e}")
             # Fire-and-forget WhatsApp auto-send for new Meta lead-form leads (idempotent, never blocks sync).
             try:
                 from routes.whatsapp import maybe_autosend

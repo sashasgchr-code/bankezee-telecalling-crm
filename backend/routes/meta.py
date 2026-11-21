@@ -865,6 +865,8 @@ async def meta_create_lead(inp: MetaLeadCreateInput, user: dict = Depends(requir
         "updated_at": now,
     }
     await db.meta_leads.insert_one(doc)
+    from utils.lead_merge import flag_duplicate
+    await flag_duplicate(doc)
     return serialize_doc(doc)
 
 

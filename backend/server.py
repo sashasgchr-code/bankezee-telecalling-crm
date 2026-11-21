@@ -161,6 +161,8 @@ async def schedule_startup_tasks():
     asyncio.create_task(ad_perf_indexes())
     from routes.meta_sync import backfill_attribution
     asyncio.create_task(backfill_attribution())
+    from utils.lead_merge import run_backfill as lead_dedup_backfill
+    asyncio.create_task(lead_dedup_backfill())
     # One-time idempotent data migration: fix Rama's Connect<->Meta identity mapping.
     try:
         from migrations.rama_mapping import run as _run_rama_migration

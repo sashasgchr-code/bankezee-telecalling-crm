@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { useMetaUser, StatusPill, STATUS_LABEL, LEAD_STATUSES, PROC_STATUSES, fmtDur, BRAND, BRAND_DARK, wantsCall } from "./metaCommon";
 import MetaCallModal from "./MetaCallModal";
 import ChatbotQualificationCard from "./ChatbotQualificationCard";
+import { DuplicateBadge } from "../../components/meta/DuplicateBadge";
 import { openMetaWhatsApp } from "../../utils/whatsapp";
 import { ArrowLeft, Phone, PhoneCall, Mail, MapPin, Briefcase, Wallet, Megaphone, Send, MessageSquare, MessageCircle, Activity, UserCog, FolderOpen, Plus, Trash2, Save, Clock, Upload, Download, FileText, Gauge } from "lucide-react";
 
@@ -346,6 +347,7 @@ export default function MetaLeadDetail() {
         <button data-testid="meta-back-btn" onClick={() => navigate("/meta/leads")} className="text-slate-500 hover:text-slate-800 transition-colors"><ArrowLeft size={20} /></button>
         <h1 className="text-xl font-bold" style={{ color: BRAND_DARK }}>{lead.full_name || "Lead"}</h1>
         <StatusPill status={lead.status} />
+        <DuplicateBadge lead={lead} tid="meta-lead-duplicate-badge" full />
         {wantsCall(lead) && (
           <span data-testid="meta-lead-wants-call" title="Clears automatically when the status changes" className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold border bg-orange-50 text-orange-700 border-orange-200">
             <PhoneCall size={12} /> Wants a call · {new Date(lead.wants_call.requested_at).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
