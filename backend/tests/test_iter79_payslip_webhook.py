@@ -253,7 +253,7 @@ def test_credit_report_upload_after_payslip_completes():
         s = await SES(lid)
         kinds = [d["kind"] for d in s["documents"]]
         assert kinds == ["payslip", "credit_report"], kinds
-        assert s["status"] == "completed" and s["answers"]["credit_report_status"] == "received_pending_review"
+        assert s["status"] == "completed" and s["answers"]["credit_report_status"] == "uploaded"
     run(t())
 
 

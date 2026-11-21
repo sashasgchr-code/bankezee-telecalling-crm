@@ -31,6 +31,8 @@ HELP_TEXT = ("You can get your credit report from:\n\nCIBIL:\nhttps://www.cibil.
              "https://www.paisabazaar.com/cibil/\n\nGoodScore:\nhttps://goodscore.app/\n\nCIBIL offers one free score and report "
              "per calendar year. Other services and features may vary.\n\nDownload your report and share it here on WhatsApp.\n\n"
              "Would you like to upload your report or continue without it?")
+REPORT_HELP_RE = re.compile(r"\b(where|how|help|download|find|get|check|what\s+is|know|pdf|cibil|credit|score|report|link|site|website|app|"
+                            r"continue|yes|available|don'?t\s+have|dont\s+have)\b", re.I)
 THANKS = ("Thank you, {name}! ✅\n\nWe've received your information for an initial loan review.\n\nOur Bankezee loan advisor will "
           "review your details and contact you to discuss suitable options.\n\nNo loan application will be submitted to a bank or "
           "NBFC without your consent.\n\nBankezee — Loans Made Easy")
@@ -55,6 +57,8 @@ STEPS = {
     "cibil_report": (CIBIL_Q, [("cr_yes", "Yes, I'll Share"), ("cr_help", "Help Me Download"), ("cr_no", "Don't Want To")]),
     "report_choice": (HELP_TEXT, [("rc_up", "Upload Report"), ("rc_no", "Continue Without")]),
     "report_upload": ("Please upload your latest credit report here as a PDF or supported document.", None),
+    "report_nudge": ("Whenever you're ready, upload your latest credit report here as a PDF or supported document.",
+                     [("rc_up", "Upload Report"), ("rc_no", "Continue Without")]),
     "cibil_score": ("What's your CIBIL score?", None),
     "loans_count": ("How many existing loans do you have?", None),
     "cards_count": ("How many credit cards do you have?", None),
@@ -206,6 +210,23 @@ async def _take_payslip(sess: dict, m: dict):
     return await _send(sess, "cibil_report")
 
 
+async def _report_waiting(sess: dict, m: dict, ans: dict):
+    """Text while waiting for the credit report: buttons, download help, or a short reminder — never the bare upload prompt again."""
+    t = (m.get("text") or "").strip()
+    c = _choice(m, "report_choice")
+    if c == "rc_up":
+        return await _send(sess, "report_upload")
+    if c == "rc_no":
+        ans["credit_report_status"] = "not_provided"
+        await _set(sess, {"answers": ans}, "cibil_score")
+        return await _send(sess, "cibil_score")
+    if REPORT_HELP_RE.search(t) or t.endswith("?"):
+        ans["credit_report_status"] = "help_requested"
+        await _set(sess, {"answers": ans}, "report_choice")
+        return await _send(sess, "report_choice")
+    return await _send(sess, "report_nudge")
+
+
 async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machine is easiest to audit
     step, t = sess.get("step"), (m.get("text") or "").strip()
     ans = dict(sess.get("answers") or {})
@@ -230,19 +251,25 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
             ans["regular_monthly_income"] = c == "reg_yes"
             nxt = "other_income" if c == "reg_yes" else "cibil_report"
         elif step == "cibil_report":
-            ans["credit_report_status"] = {"cr_yes": "awaiting_upload", "cr_help": "needs_help", "cr_no": "declined"}[c]
+            ans["credit_report_status"] = {"cr_yes": "awaiting_upload", "cr_help": "help_requested", "cr_no": "declined"}[c]
             nxt = {"cr_yes": "report_upload", "cr_help": "report_choice", "cr_no": "cibil_score"}[c]
         else:
-            ans["credit_report_status"] = "awaiting_upload" if c == "rc_up" else "not_shared"
+            ans["credit_report_status"] = "awaiting_upload" if c == "rc_up" else "not_provided"
             nxt = "report_upload" if c == "rc_up" else "cibil_score"
         await _set(sess, {"answers": ans}, nxt)
         return await _send(sess, nxt)
 
-    if step in ("payslip_upload", "report_upload"):
-        if not has_media:
-            return await _send(sess, step)
-        ans["credit_report_status"] = "received_pending_review"
-        await _set(sess, {"answers": ans, **(await _save_doc(sess, m, "credit_report"))}, None)
+    if step == "payslip_upload" and not has_media:
+        return await _send(sess, step)
+    if step == "report_upload" and not has_media:
+        return await _report_waiting(sess, m, ans)
+    if step == "report_upload":
+        doc = (await _save_doc({"documents": []}, m, "credit_report"))["documents"][0]
+        claimed = await SESS.find_one_and_update({"id": sess["id"], "step": "report_upload"}, {
+            "$set": {"answers.credit_report_status": "uploaded", "step": None, "updated_at": _now().isoformat()}, "$push": {"documents": doc}})
+        if not claimed:  # a second page arriving at the same moment: attach only
+            return await SESS.update_one({"id": sess["id"], "documents.msg_id": {"$ne": m["id"]}}, {"$push": {"documents": doc}})
+        sess["answers"] = {**ans, "credit_report_status": "uploaded"}
         return await _complete(sess)
 
     if step in ("company", "se_name", "other_cat", "other_income"):
@@ -303,7 +330,7 @@ async def _start(conv: dict):
     q = prof.get("qualification") or {}
     answers = {k: q.get(k) for k in ("company_name", "net_monthly_salary") if q.get(k)}
     prefilled = list(answers)
-    answers.update({"payslip_status": "not_asked", "payslip_uploaded": False, "payslip_question_completed": False})
+    answers.update({"payslip_status": "not_asked", "payslip_uploaded": False, "payslip_question_completed": False, "credit_report_status": "not_asked"})
     now = _now().isoformat()
     lead = await db.meta_leads.find_one({"lead_id": lead_id}, {"campaign_name": 1, "full_name": 1}) or {}
     car = bool(CAR_RE.search(lead.get("campaign_name") or ""))
@@ -340,6 +367,8 @@ async def handle_inbound(conv: dict, m: dict, raw: dict):
         if not sess or sess["status"] in ("stopped", "abandoned"):
             return await _start(conv)
         if sess["status"] == "active":
+            if sess.get("step") == "report_upload":
+                return await _advance(sess, m)
             if sess.get("step") == "car_intro":
                 await _set(sess, {}, "employment")
                 return await _send(sess, "employment")
@@ -347,6 +376,9 @@ async def handle_inbound(conv: dict, m: dict, raw: dict):
         return
     if sess and sess.get("flow") == "car" and sess["status"] == "abandoned" and sess.get("step"):
         return await _reactivate(sess)  # Car Loans: resume an incomplete questionnaire from the last unanswered question
+    if sess and m.get("type") in ("image", "document") and m.get("media") and (sess.get("answers") or {}).get("credit_report_status") == "uploaded":
+        doc = (await _save_doc({"documents": []}, m, "credit_report"))["documents"][0]  # extra report page after completion: attach only
+        return await SESS.update_one({"id": sess["id"], "documents.msg_id": {"$ne": m["id"]}}, {"$push": {"documents": doc}})
     if not sess or sess["status"] != "active" or not sess.get("step"):
         return
     if sess.get("flow") == "car" and sess.get("step") == "car_intro":

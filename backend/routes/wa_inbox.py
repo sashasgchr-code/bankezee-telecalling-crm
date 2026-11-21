@@ -736,9 +736,9 @@ async def bot_funnel(user: dict = Depends(require_meta_access)):
         a, st = s.get("answers") or {}, s.get("status")
         c["started"] += 1
         c["employment"] += "employment_type" in a
-        c["details"] += "credit_report_status" in a or st == "completed"
-        c["report_q"] += a.get("credit_report_status") not in (None, "awaiting_upload", "needs_help")
-        c["report_uploaded"] += a.get("credit_report_status") == "received_pending_review"
+        c["details"] += a.get("credit_report_status") not in (None, "not_asked") or st == "completed"
+        c["report_q"] += a.get("credit_report_status") not in (None, "not_asked", "awaiting_upload", "needs_help", "help_requested")
+        c["report_uploaded"] += a.get("credit_report_status") in ("received_pending_review", "uploaded")
         c["cibil"] += "cibil_score" in a
         c["loans"] += "number_of_loans" in a
         c["completed"] += st == "completed"
