@@ -2560,3 +2560,10 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Creatives upload runs analysis in background; /api/auth/login lockout (5 fails / 15 min)
 - WhatsApp: customer-initiated chat creates Meta lead (WhatsApp Inbound) + sends welcome once
 - NEXT (Round 2): combined Connect Files + Meta Files dashboard for meta_access users (All/Connect/Meta selector, dedupe via existing links, status mapping)
+
+## 2026-06 — WhatsApp payslip flow fix + typed registrations
+- Root cause: after a payslip upload, the bot called the "missing company/salary" helper and asked Company Name & Salary; a file sent at the payslip question (without tapping Upload) failed button matching and re-sent the payslip question; extra pages/near-simultaneous files re-triggered questions.
+- Fix (routes/wa_bot.py): `_take_payslip` atomic, idempotent claim (find_one_and_update on answers.payslip_uploaded) -> step cibil_report (credit report question); extra pages within 3 min attached silently, de-duplicated by msg_id; session answers now track payslip_status (not_asked/pending_upload/uploaded/share_later/not_available), payslip_uploaded, payslip_question_completed.
+- Files sent at the credit report question (outside the 3-min page window) / Help screen are stored as the credit report.
+- Registrations question accepts typed names ("GST, Udyam", "3 years ITR", "None") plus numbers; "10" rejected.
+- Tests: tests/payslip_flow_check.py (22/22), tests/test_iter79_payslip_webhook.py (22/22), test_iter78 car loans (19/19).

@@ -13,6 +13,7 @@ from routes import wa_inbox as inbox
 logger = logging.getLogger(__name__)
 SESS = db.wa_bot_sessions
 RESUME_DAYS = 7
+PAGE_WINDOW_MIN = 3
 START_TEXTS = {"yes, continue", "yes continue"}
 STOP_WORDS = {"stop", "unsubscribe", "stop all", "opt out", "optout"}
 REGS = ["GST Registration", "Udyam Registration / Udyam Aadhaar", "Labour Licence", "Trade Licence", "None of the Above"]
@@ -183,6 +184,12 @@ def _parse_regs(t: str, regs: list) -> list:
     return sorted(nums)
 
 
+def _recent_payslip(sess: dict) -> bool:
+    """Extra payslip pages arrive within a few minutes of the previous page."""
+    docs = [d for d in sess.get("documents") or [] if d.get("kind") == "payslip"]
+    return bool(docs) and datetime.fromisoformat(docs[-1]["at"]) > _now() - timedelta(minutes=PAGE_WINDOW_MIN)
+
+
 async def _take_payslip(sess: dict, m: dict):
     """Idempotent payslip receipt: the first file completes the step and moves to the credit report question; later pages are only attached."""
     doc = {"kind": "payslip", "msg_id": m["id"], "filename": (m.get("media") or {}).get("filename"), "mime": (m.get("media") or {}).get("mime"), "at": _now().isoformat()}
@@ -203,8 +210,10 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
     step, t = sess.get("step"), (m.get("text") or "").strip()
     ans = dict(sess.get("answers") or {})
     has_media = m.get("type") in ("image", "document") and m.get("media")
-    if has_media and (step in ("payslip", "payslip_upload") or (ans.get("payslip_uploaded") and step != "report_upload")):
+    if has_media and (step in ("payslip", "payslip_upload") or (ans.get("payslip_uploaded") and step == "cibil_report" and _recent_payslip(sess))):
         return await _take_payslip(sess, m)
+    if has_media and step in ("cibil_report", "report_choice"):
+        step = "report_upload"  # a file sent at the credit report question is the credit report
 
     if step in ("employment", "payslip", "other_regular", "cibil_report", "report_choice"):
         c = _choice(m, step)

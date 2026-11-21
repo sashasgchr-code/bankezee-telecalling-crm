@@ -1,0 +1,28 @@
+{
+  "summary": "Webhook-level backend testing (in-process ASGI POST /api/integrations/whatsapp/webhook with valid HMAC; _graph, log_outbound, send_whatsapp_for_lead and _cache_media mocked, so no real WhatsApp sends or media downloads). New suite tests/test_iter79_payslip_webhook.py: 22/22 PASS. It covers Scenarios A-E, a document sent at the payslip question without tapping a button, the car-flow payslip, credit report upload after the payslip, and typed registrations in both flows. Regression test_iter78_car_loans_webhook.py: 19/19 PASS. Main agent's payslip_flow_check.py: 22/22 PASS. Two extra edge probes found one medium issue: a credit report sent as a file at the credit report question or the Help screen, after a payslip upload, is saved as a payslip page and the customer gets no reply.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/integrations/whatsapp/webhook -> wa_bot._advance (line ~206)", "issue": "MEDIUM: once payslip_uploaded=true, any image or document at any step except report_upload goes to _take_payslip. A salaried customer who answers 'Do you have your latest credit report?' (step cibil_report), or who taps 'Help Me Download' (step report_choice) and then sends the CIBIL PDF without tapping a button, has that file saved as kind=payslip with no bot reply. The customer is left waiting in silence and credit_report_status is never set. Reproduced in tests/test_iter79_edge_probe.py (2 tests fail by design). For non-payslip users at the same steps, the question is at least re-sent."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter79_payslip_webhook.py", "/app/backend/tests/test_iter79_edge_probe.py", "/app/test_reports/pytest/iter79.xml"],
+  "action_items": [
+    "In wa_bot._advance, limit the silent extra-page append to step payslip_upload, or to a short window or the first step after upload. At cibil_report or report_choice, either treat the file as the credit report (set credit_report_status=received_pending_review and continue) or at least re-send the current question so the customer is not left without a reply."
+  ],
+  "critical_code_review_comments": [
+    "_take_payslip: find_one_and_update guarded by payslip_uploaded != true is atomic. Tested: 3 concurrent pages produce exactly one credit report question and 3 stored docs.",
+    "_take_payslip calls _set(sess, {}, 'cibil_report') right after find_one_and_update has already set step. This is a redundant DB write, but it is needed for the car_loan_profile sync, so it is fine.",
+    "A file sent at the company or salary step after Share Later is not taken as the payslip; the question is re-sent. Acceptable per the spec, but the user might expect it to be accepted.",
+    "_parse_regs, non-car flow: 'GST, ITR' is accepted as [GST] with the ITR word silently ignored. Minor.",
+    "Exceptions in wa_bot are swallowed as logger.warning in on_inbound. Failures in the bot will be silent in production."
+  ],
+  "updated_files": ["/app/backend/tests/test_iter79_payslip_webhook.py", "/app/backend/tests/test_iter79_edge_probe.py"],
+  "success_rate": {"backend": "100% of requested scenarios (22/22 new, 19/19 regression); 2 extra edge probes fail", "frontend": "not tested (backend only)"},
+  "seed_data_creation": "None kept. Test leads are lead_TEST79* with fake 917xxxxxxxxx numbers; sessions, conversations and messages were deleted by the ids collected during the run (verified 0 left).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run: cd /app/backend && python -m pytest tests/test_iter79_payslip_webhook.py tests/test_iter78_car_loans_webhook.py -p no:xdist -q. test_iter79_edge_probe.py should pass once the credit-report-file issue is fixed.",
+  "rca of the issue": "The condition `has_media and (step in ('payslip','payslip_upload') or (ans.get('payslip_uploaded') and step != 'report_upload'))` sends every later file to _take_payslip. When first=None it only $pushes the doc and returns without sending anything. Repro: Salaried -> Upload Payslip -> send PDF -> credit report question -> send another PDF -> no reply, doc kind=payslip."
+}
