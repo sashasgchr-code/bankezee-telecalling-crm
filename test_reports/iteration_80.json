@@ -1,0 +1,33 @@
+{
+  "summary": "Backend-only webhook-level testing of the Loan Consolidation credit report step (in-process ASGI POST /api/integrations/whatsapp/webhook with valid HMAC; _graph/log_outbound/_cache_media/send_whatsapp_for_lead mocked, no real sends). New suite tests/test_iter80_credit_report_webhook.py: 22/24 PASS. All 8 acceptance scenarios pass: question with 3 unchanged buttons; Yes I'll Share -> upload prompt (awaiting_upload); 8 help-like texts incl. 'Yes, Continue' text and Yes Continue button -> HELP_TEXT + Upload Report/Continue Without (help_requested); Help Me Download -> same help; Upload Report -> prompt; Continue Without -> not_provided, CIBIL score, report never asked again through to completion; upload -> uploaded + one thank-you + completed; 'ok'/'tomorrow' -> short reminder with 2 buttons, never the bare prompt. Duplicate report wamid: no resend, 1 doc, 1 message. Extra pages after completion attached silently. Simultaneous pages: one thank-you, both saved. Car flow works. Regressions: test_iter79 22/22, test_iter78 19/19 (when run as separate pytest processes). Main agent credit_report_flow_check.py 20/20 PASS. 2 failures = one real bug: a credit report file sent at the question or the Help screen without tapping a button gets no reply and doesn't complete.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/integrations/whatsapp/webhook (wa_bot._advance report_upload branch)", "issue": "A credit report PDF sent at the credit report question (step cibil_report) or the Help screen (step report_choice) without tapping a button is saved, but the customer gets NO reply. Status stays not_asked/help_requested and the session never completes. RCA: line 237 changes only the local variable `step` to 'report_upload', but the claim at line 268 uses the filter {'step': 'report_upload'} against the DB, where step is still cibil_report/report_choice. The claim returns None, so the code goes to the 'attach only' branch and returns silently. Fix: claim with {'step': {'$in': ['report_upload','cibil_report','report_choice']}} (or set the DB step first).", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "wa_bot._advance payslip window", "issue": "Still open from iter79: when a payslip was uploaded less than 3 minutes earlier, a credit report file sent at cibil_report is saved as a payslip page with no reply (_recent_payslip only applies at cibil_report). At report_choice it is saved as credit_report but hits the bug above (0 replies, status help_requested)."},
+      {"endpoint": "wa_bot report_choice step", "issue": "Unrelated text ('ok') on the Help screen sends the full HELP_TEXT again rather than the short report_nudge. The spec says unrelated text -> short reminder. Consider routing step report_choice text through _report_waiting as well."},
+      {"endpoint": "wa_bot._report_waiting", "issue": "While waiting, 'I don't want to', \"Don't Want To\" and 'no' get the reminder, not Continue Without. 'will send tomorrow?' gets the full help because any text ending in '?' matches. REPORT_HELP_RE is very broad ('app', 'know', 'yes', 'get'). This is acceptable but could be tuned."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_iter80_credit_report_webhook.py", "/app/test_reports/pytest/iter80.xml"],
+  "action_items": [
+    "Fix the report_upload claim filter in wa_bot._advance (line ~268) so a file sent at cibil_report/report_choice completes with the thank-you",
+    "Decide whether a document at cibil_report within 3 minutes of the payslip should be the credit report (it is currently a silent payslip page)",
+    "Optionally send report_nudge instead of the full HELP_TEXT for unrelated text at report_choice",
+    "credit_report_flow_check.py inserts wa_conversations but never deletes them. 20 orphan conversations with lead_id ^lead_TESTCR remain; add conv cleanup by the ids it inserted"
+  ],
+  "critical_code_review_comments": [
+    "wa_bot._advance line 236-237: rewriting the local step without updating the DB step breaks the conditional claim at 268",
+    "wa_inbox funnel (line 739-741) handles the new statuses correctly: awaiting_upload/help_requested are excluded from report_q, and uploaded (plus legacy received_pending_review) counts as report_uploaded. not_provided/declined count as an answered question",
+    "Test modules each create their own module-level event loop, so running test_iter78 and test_iter79 in ONE pytest process fails 39 tests (Motor futures attached to a different loop). Run each file in a separate process"
+  ],
+  "updated_files": ["/app/backend/tests/test_iter80_credit_report_webhook.py"],
+  "success_rate": {"backend": "92% (22/24; 2 failures share one root cause)", "frontend": "not tested (backend only)"},
+  "seed_data_creation": "None persisted. TEST leads lead_TEST80* were cleaned up by id by the module fixture (0 left).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run each file separately: cd /app/backend && for f in test_iter80_credit_report_webhook test_iter79_payslip_webhook test_iter78_car_loans_webhook; do python -m pytest tests/$f.py -p no:xdist -q; done. After the fix, test_edge_file_at_credit_report_question_completes and test_edge_file_at_help_screen_completes should pass.",
+  "rca of the issue": "Repro: Salaried -> Share Later -> company -> salary -> credit report question -> send a PDF document. Expected: uploaded + thank-you + completed. Actual: document saved in session.documents, 0 outbound messages, step still cibil_report, status not_asked. Cause: the DB claim filter is step=='report_upload' but the DB step is cibil_report."
+}

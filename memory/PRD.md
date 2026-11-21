@@ -2567,3 +2567,9 @@ the file; API: exclude_snoozed hides it, default still returns it. Snooze store 
 - Files sent at the credit report question (outside the 3-min page window) / Help screen are stored as the credit report.
 - Registrations question accepts typed names ("GST, Udyam", "3 years ITR", "None") plus numbers; "10" rejected.
 - Tests: tests/payslip_flow_check.py (22/22), tests/test_iter79_payslip_webhook.py (22/22), test_iter78 car loans (19/19).
+
+## 2026-06 — Credit report upload assistance (Loan Consolidation bot)
+- Root cause: while waiting at report_upload, any non-file message re-sent the upload prompt; "Yes, Continue" also re-sent the current step's prompt.
+- Fix (routes/wa_bot.py `_report_waiting`): help-like text/questions/"Continue"/"Yes, Continue" -> HELP_TEXT + Upload Report/Continue Without (help_requested); unrelated text -> short reminder with same buttons (report_nudge); "no"/"Don't want to"/Continue Without -> not_provided -> CIBIL score; file at cibil_report/report_choice/report_upload -> atomic claim -> uploaded -> thank you & finish; extra/duplicate pages attached only.
+- Statuses: not_asked, awaiting_upload, help_requested, uploaded, not_provided, declined (Don't Want To). Old received_pending_review still counted in funnel stats.
+- Tests: tests/credit_report_flow_check.py (20/20), test_iter80 (24/24), test_iter79 (22/22), test_iter78 (19/19).

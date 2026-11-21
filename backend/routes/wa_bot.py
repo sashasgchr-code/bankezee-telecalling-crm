@@ -33,6 +33,7 @@ HELP_TEXT = ("You can get your credit report from:\n\nCIBIL:\nhttps://www.cibil.
              "Would you like to upload your report or continue without it?")
 REPORT_HELP_RE = re.compile(r"\b(where|how|help|download|find|get|check|what\s+is|know|pdf|cibil|credit|score|report|link|site|website|app|"
                             r"continue|yes|available|don'?t\s+have|dont\s+have)\b", re.I)
+SKIP_REPORT_RE = re.compile(r"^(no|nope|skip|continue without|i\s+)?(don'?t|do\s+not)?\s*want\s*to\.?$|^(no|nope|skip)\.?$", re.I)
 THANKS = ("Thank you, {name}! ✅\n\nWe've received your information for an initial loan review.\n\nOur Bankezee loan advisor will "
           "review your details and contact you to discuss suitable options.\n\nNo loan application will be submitted to a bank or "
           "NBFC without your consent.\n\nBankezee — Loans Made Easy")
@@ -216,7 +217,7 @@ async def _report_waiting(sess: dict, m: dict, ans: dict):
     c = _choice(m, "report_choice")
     if c == "rc_up":
         return await _send(sess, "report_upload")
-    if c == "rc_no":
+    if c == "rc_no" or SKIP_REPORT_RE.match(t):
         ans["credit_report_status"] = "not_provided"
         await _set(sess, {"answers": ans}, "cibil_score")
         return await _send(sess, "cibil_score")
@@ -238,6 +239,8 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
 
     if step in ("employment", "payslip", "other_regular", "cibil_report", "report_choice"):
         c = _choice(m, step)
+        if not c and step == "report_choice":
+            return await _report_waiting(sess, m, ans)
         if not c:
             return await _send(sess, step)
         if step == "employment":
@@ -265,7 +268,7 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
         return await _report_waiting(sess, m, ans)
     if step == "report_upload":
         doc = (await _save_doc({"documents": []}, m, "credit_report"))["documents"][0]
-        claimed = await SESS.find_one_and_update({"id": sess["id"], "step": "report_upload"}, {
+        claimed = await SESS.find_one_and_update({"id": sess["id"], "step": {"$in": ["report_upload", "cibil_report", "report_choice"]}}, {
             "$set": {"answers.credit_report_status": "uploaded", "step": None, "updated_at": _now().isoformat()}, "$push": {"documents": doc}})
         if not claimed:  # a second page arriving at the same moment: attach only
             return await SESS.update_one({"id": sess["id"], "documents.msg_id": {"$ne": m["id"]}}, {"$push": {"documents": doc}})
