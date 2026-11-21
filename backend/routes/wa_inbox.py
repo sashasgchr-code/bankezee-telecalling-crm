@@ -281,7 +281,12 @@ async def welcome_on_inbound(conv: dict, sender: str, profile: Optional[str], te
     from routes.wa_bot import STOP_WORDS
     if not wa._send_configured() or (text or "").strip().lower() in STOP_WORDS:
         return False
-    lead = await db.meta_leads.find_one({"lead_id": conv["lead_id"], **NOT_DELETED}) if conv.get("lead_id") else await _lead_for_number(sender)
+    # Car Loans: an existing car-campaign lead for this (normalized) number always wins, so no duplicate lead/conversation is created.
+    car = await db.meta_leads.find_one({"phone_norm": sender[-10:], "campaign_name": {"$regex": r"\bcar", "$options": "i"}, **NOT_DELETED}, sort=[("created_time", -1)])
+    lead = car or (await db.meta_leads.find_one({"lead_id": conv["lead_id"], **NOT_DELETED}) if conv.get("lead_id") else await _lead_for_number(sender))
+    if car and conv.get("lead_id") != car["lead_id"]:
+        await CONV.update_one({"id": conv["id"]}, {"$set": {"lead_id": car["lead_id"], "customer_name": car.get("full_name") or conv.get("customer_name")}})
+        conv["lead_id"] = car["lead_id"]
     if lead and (lead.get("whatsapp") or {}).get("wamid"):
         return False
     p10 = sender[-10:]

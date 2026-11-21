@@ -3,17 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid, Legend } from 'recharts';
 import { Wallet, CheckCircle2, Clock, PauseCircle, FolderOpen, TrendingUp, Banknote, Link2, Plus, Share2, Image as ImageIcon, Percent } from 'lucide-react';
 import api from '../../services/api';
+import { KpiCard } from '../../components/KpiCard';
 
 const inr = (v) => `₹${Number(v || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const CAT_COLOR = { initial: '#9AA39B', documents: '#E0A526', processing: '#3B82F6', underwriting: '#6366F1', bank: '#0EA5E9', approval: '#22A447', disbursal: '#1F7A33', rejection: '#DC2626' };
 const CAT_LABEL = { initial: 'New', documents: 'Documents', processing: 'Processing', underwriting: 'Underwriting', bank: 'With bank', approval: 'Approved', disbursal: 'Disbursed', rejection: 'Rejected' };
 
-const Kpi = ({ icon: I, label, value, note, tone = 'green', tid }) => (
-  <div className="bg-white rounded-xl border border-gray-200 p-3.5" data-testid={tid}>
-    <div className="flex items-center gap-2 text-xs text-gray-500"><span className={`w-7 h-7 rounded-lg flex items-center justify-center ${tone === 'green' ? 'bg-green-50 text-green-700' : tone === 'amber' ? 'bg-amber-50 text-amber-700' : tone === 'blue' ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-600'}`}><I size={15} /></span>{label}</div>
-    <p className="text-xl font-bold text-gray-900 mt-1.5">{value}</p>{note && <p className="text-[11px] text-gray-400 mt-0.5">{note}</p>}
-  </div>
-);
+const TONE_THEME = { green: 'green', amber: 'amber', blue: 'blue', gray: 'slate' };
+const Kpi = ({ icon, label, value, note, tone = 'green', theme, tid }) => <KpiCard icon={icon} label={label} value={value} sub={note} theme={theme || TONE_THEME[tone]} testid={tid} />;
 
 const Panel = ({ title, children, tid }) => (
   <div className="bg-white rounded-xl border border-gray-200 p-4" data-testid={tid}><p className="text-sm font-semibold text-gray-800 mb-2">{title}</p>{children}</div>
@@ -55,20 +52,20 @@ export const GpInsights = () => {
       <section>
         <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">Earnings & Payouts <span className="normal-case font-normal">— your commission, not loan amounts</span></h2>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Kpi icon={Wallet} label="Total earnings" value={inr(pay.earned)} note="Net payouts: verified, payable and paid" tid="gp-kpi-earned" />
-          <Kpi icon={CheckCircle2} label="Paid to you" value={inr(pay.paid)} tid="gp-kpi-paid" />
+          <Kpi icon={Wallet} label="Total earnings" value={inr(pay.earned)} note="Net payouts: verified, payable and paid" theme="emerald" tid="gp-kpi-earned" />
+          <Kpi icon={CheckCircle2} label="Paid to you" value={inr(pay.paid)} theme="green" tid="gp-kpi-paid" />
           <Kpi icon={Clock} label="Pending payout" value={inr(pending)} note="Under verification + payable" tone="amber" tid="gp-kpi-pending" />
-          <Kpi icon={PauseCircle} label="On hold" value={inr(pay.on_hold)} tone="gray" tid="gp-kpi-hold" />
+          <Kpi icon={PauseCircle} label="On hold" value={inr(pay.on_hold)} theme="rose" tid="gp-kpi-hold" />
         </div>
       </section>
       <section>
         <h2 className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-2">File Performance</h2>
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-          <Kpi icon={FolderOpen} label="Total files" value={stats.total} tone="blue" tid="gp-kpi-files" />
-          <Kpi icon={TrendingUp} label="In progress" value={stats.active} tone="blue" tid="gp-kpi-active" />
+          <Kpi icon={FolderOpen} label="Total files" value={stats.total} theme="indigo" tid="gp-kpi-files" />
+          <Kpi icon={TrendingUp} label="In progress" value={stats.active} theme="orange" tid="gp-kpi-active" />
           <Kpi icon={CheckCircle2} label="Disbursed files" value={stats.disbursed} note={stats.total ? `${Math.round((stats.disbursed / stats.total) * 100)}% conversion` : null} tid="gp-kpi-disbursed" />
-          <Kpi icon={Banknote} label="Loan amount disbursed" value={inr(stats.loanAmt)} note="Customers' loans — not your earnings" tone="gray" tid="gp-kpi-loan-amount" />
-          <Kpi icon={Link2} label="Via your link / QR" value={stats.viaLink} tone="gray" tid="gp-kpi-referrals" />
+          <Kpi icon={Banknote} label="Loan amount disbursed" value={inr(stats.loanAmt)} note="Customers' loans — not your earnings" theme="teal" tid="gp-kpi-loan-amount" />
+          <Kpi icon={Link2} label="Via your link / QR" value={stats.viaLink} theme="violet" tid="gp-kpi-referrals" />
         </div>
       </section>
       {stats.total === 0 ? (

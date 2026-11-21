@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import api from '../../services/api';
 import { GpInsights } from '../gp/GpInsights';
+import { KpiCard } from '../../components/KpiCard';
+import { FolderOpen, Sparkles, BadgeCheck, BadgeIndianRupee, Banknote } from 'lucide-react';
 import { toast } from 'sonner';
 import { FILE_STATUS_OPTIONS, getFileStatusLabel } from '../../components/file-detail/FileStatusCard';
 import { LOAN_TYPES as CANONICAL_LOAN_TYPES, CATEGORY_LABELS as CANONICAL_CATEGORY_LABELS } from '../../constants/loanTypes';
@@ -835,20 +837,13 @@ const FilesDashboard = () => {
     return { inProgress, loginTotal, interimRejects, finalRejections };
   }, [reports]);
 
-  const StatCard = ({ label, value, subLabel, color = 'text-gray-900', icon: Icon, amount }) => (
-    <div className="bg-white rounded-lg border border-gray-200 p-4 min-w-[140px]">
-      <div className="flex justify-between items-start">
-        <span className="text-sm text-gray-600">{label}</span>
-        {Icon && <Icon size={18} className="text-gray-400" />}
-      </div>
-      {amount ? (
-        <p className={`text-xl font-bold mt-1 ${color}`}>{formatCurrency(value, true)}</p>
-      ) : (
-        <p className={`text-2xl font-bold mt-1 ${color}`}>{value || 0}</p>
-      )}
-      {subLabel && <p className="text-xs text-gray-500 mt-0.5">{subLabel}</p>}
-    </div>
-  );
+  const STAT_THEME = { 'Total Files': ['indigo', FolderOpen], New: ['sky', Sparkles], 'In Progress': ['orange', Clock], Login: ['violet', LogIn], Approved: ['green', BadgeCheck],
+    'Total Approved': ['green', BadgeIndianRupee], Disbursed: ['emerald', CheckCircle], 'Total Disbursed': ['emerald', Banknote], 'Interim Rejects': ['amber', AlertTriangle],
+    'Final Rejections': ['rose', XCircle], 'Amt in Pipeline': ['blue', TrendingUp] };
+  const StatCard = ({ label, value, subLabel, icon, amount }) => {
+    const [theme, ThemeIcon] = STAT_THEME[label] || ['slate', icon];
+    return <KpiCard label={label} value={amount ? formatCurrency(value, true) : (value || 0)} sub={subLabel} icon={ThemeIcon || icon} theme={theme} testid={`stat-${label.toLowerCase().replace(/[^a-z]+/g, '-')}`} />;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">

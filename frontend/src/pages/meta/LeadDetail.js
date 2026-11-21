@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import MetaFormAnswers from "./MetaFormAnswers";
 import { useParams, useNavigate } from "react-router-dom";
 import api from "../../services/api";
 import { ChatButton } from "../../components/inbox/ChatSheet";
@@ -379,6 +380,7 @@ export default function MetaLeadDetail() {
               {lead.cibil_score ? <InfoRow icon={Gauge} label="CIBIL Score" value={lead.cibil_score} /> : null}
               <InfoRow icon={Megaphone} label="Campaign" value={lead.campaign_name} />
               <MetaAttribution lead={lead} />
+              <MetaFormAnswers lead={lead} />
             </div>
           </div>
 

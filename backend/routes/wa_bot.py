@@ -16,6 +16,12 @@ RESUME_DAYS = 7
 START_TEXTS = {"yes, continue", "yes continue"}
 STOP_WORDS = {"stop", "unsubscribe", "stop all", "opt out", "optout"}
 REGS = ["GST Registration", "Udyam Registration / Udyam Aadhaar", "Labour Licence", "Trade Licence", "None of the Above"]
+# Car Loans campaigns only (campaign name contains "car"): own intro + a 6-option registrations question.
+REGS_CAR = ["GST Registration", "Udyam Registration / Udyam Aadhaar", "Labour Licence", "Trade Licence", "3 years ITRs", "None of the Above"]
+CAR_INTRO = ("Hi {name} 👋\n\nThank you for your loan enquiry with Bankezee.\nWe've received your request.\n\nTo help our loan advisor review your "
+             "eligibility and available loan options, we'd like to collect a few details.\n\nYou can complete everything directly here on WhatsApp.\n\n"
+             "Bankezee Loans Made Easy")
+CAR_RE = re.compile(r"\bcar", re.I)
 CIBIL_Q = ("Do you have your latest credit report?\n\nSharing your report helps our loan advisor review your existing loans, "
            "repayment history and outstanding balances without you having to enter every loan individually.")
 HELP_TEXT = ("You can get your credit report from:\n\nCIBIL:\nhttps://www.cibil.com/freecibilscore\n\nPaisabazaar:\n"
@@ -35,6 +41,9 @@ STEPS = {
     "salary": ("What's your exact monthly take-home salary?", None),
     "se_regs": ("Which of these business registrations or licences do you have? Select all that apply.\n\n"
                 + "\n".join(f"{i}. {r}" for i, r in enumerate(REGS, 1)) + "\n\nReply with the numbers, e.g. 1,2,4", None),
+    "se_regs_car": ("Which of these business registrations or licences do you have? Select all that apply.\n\n"
+                    + "\n".join(f"{i}. {r}" for i, r in enumerate(REGS_CAR, 1)) + "\n\nReply with the numbers, e.g. 1,2,4", None),
+    "car_intro": (CAR_INTRO, [("car_yes", "Yes Continue")]),
     "se_name": ("What's your business/company name?", None),
     "se_turnover": ("What's your approximate annual turnover?", None),
     "other_cat": ("What's your employment or income category?", None),
@@ -102,6 +111,11 @@ async def _set(sess, upd: dict, step: Optional[str]):
     upd = {**upd, "step": step, "updated_at": _now().isoformat()}
     await SESS.update_one({"id": sess["id"]}, {"$set": upd})
     sess.update(upd)
+    if sess.get("flow") == "car":
+        ans = sess.get("answers") or {}
+        await db.meta_leads.update_one({"lead_id": sess["lead_id"]}, {"$set": {
+            "campaign_type": "Car Loans", "car_loan_profile": {"employment_type": ans.get("employment_type"), "business_registrations": ans.get("business_registrations"),
+                                                               "chatbot_status": sess.get("status"), "chatbot_step": step, "updated_at": upd["updated_at"]}}})
 
 
 def _a(sess, k):
@@ -164,7 +178,7 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
             return await _send(sess, step)
         if step == "employment":
             ans["employment_type"] = {"emp_sal": "Salaried", "emp_self": "Self-employed", "emp_other": "Other"}[c]
-            nxt = {"emp_sal": "payslip", "emp_self": "se_regs", "emp_other": "other_cat"}[c]
+            nxt = {"emp_sal": "payslip", "emp_self": "se_regs_car" if sess.get("flow") == "car" else "se_regs", "emp_other": "other_cat"}[c]
         elif step == "payslip":
             ans["payslip_status"] = {"ps_up": "awaiting_upload", "ps_no": "not_available", "ps_later": "share_later"}[c]
             nxt = "payslip_upload" if c == "ps_up" else await _after_employment_salaried({**sess, "answers": ans})
@@ -211,6 +225,15 @@ async def _advance(sess: dict, m: dict):  # noqa: C901 — one flat state machin
         await _set(sess, {"answers": ans}, "se_name")
         return await _send(sess, "se_name")
 
+    if step == "se_regs_car":
+        nums = sorted({int(x) for x in re.findall(r"\d", t) if 1 <= int(x) <= 6})
+        if not nums or (6 in nums and len(nums) > 1):
+            return await _send(sess, step, STEPS[step][0] + ("\n\n\"None of the Above\" can't be combined with others." if 6 in nums else
+                                                             "\n\nPlease reply with one or more numbers from 1 to 6."))
+        ans["business_registrations"] = [] if nums == [6] else [REGS_CAR[n - 1] for n in nums]
+        await _set(sess, {"answers": ans}, "se_name")
+        return await _send(sess, "se_name")
+
     if step == "cibil_score":
         if UNSURE.match(t.lower()):
             ans["cibil_score"] = "not_sure"
@@ -242,11 +265,16 @@ async def _start(conv: dict):
     q = prof.get("qualification") or {}
     answers = {k: q.get(k) for k in ("company_name", "net_monthly_salary") if q.get(k)}
     now = _now().isoformat()
+    lead = await db.meta_leads.find_one({"lead_id": lead_id}, {"campaign_name": 1, "full_name": 1}) or {}
+    car = bool(CAR_RE.search(lead.get("campaign_name") or ""))
     sess = {"id": uuid.uuid4().hex, "lead_id": lead_id, "conv_id": conv["id"], "wa_number": conv["wa_number"], "status": "active",
-            "step": "employment", "answers": answers, "prefilled": list(answers), "documents": [], "source": "WhatsApp",
-            "started_at": now, "updated_at": now}
+            "step": "car_intro" if car else "employment", "answers": answers, "prefilled": list(answers), "documents": [], "source": "WhatsApp",
+            "started_at": now, "updated_at": now, "flow": "car" if car else None}
     await SESS.update_one({"lead_id": lead_id}, {"$set": sess}, upsert=True)
     await db.meta_leads.update_one({"lead_id": lead_id}, {"$set": {"whatsapp_qualification": {"status": "in_progress", "started_at": now}}})
+    if car:
+        await _set(sess, {}, "car_intro")
+        return await _send(sess, "car_intro", CAR_INTRO.format(name=inbox.wa.clean_param(lead.get("full_name")) or "there"))
     await _send(sess, "employment")
 
 
@@ -270,14 +298,33 @@ async def handle_inbound(conv: dict, m: dict, raw: dict):
         if not sess or sess["status"] in ("stopped", "abandoned"):
             return await _start(conv)
         if sess["status"] == "active":
+            if sess.get("step") == "car_intro":
+                await _set(sess, {}, "employment")
+                return await _send(sess, "employment")
             return await _send(sess, sess["step"])
+        if sess.get("flow") == "car" and sess["status"] == "abandoned" and sess.get("step"):
+            return await _reactivate(sess)
         return
+    if sess and sess.get("flow") == "car" and sess["status"] == "abandoned" and sess.get("step"):
+        return await _reactivate(sess)  # Car Loans: resume an incomplete questionnaire from the last unanswered question
     if not sess or sess["status"] != "active" or not sess.get("step"):
         return
+    if sess.get("flow") == "car" and sess.get("step") == "car_intro":
+        return await _send(sess, "car_intro", CAR_INTRO.format(name=inbox.wa.clean_param((await db.meta_leads.find_one({"lead_id": sess["lead_id"]}, {"full_name": 1}) or {}).get("full_name")) or "there"))
+    if sess.get("flow") == "car" and datetime.fromisoformat(sess["updated_at"]) < _now() - timedelta(days=RESUME_DAYS):
+        return await _reactivate(sess)
     if datetime.fromisoformat(sess["updated_at"]) < _now() - timedelta(days=RESUME_DAYS):
         await SESS.update_one({"id": sess["id"]}, {"$set": {"status": "abandoned"}})
         return
     await _advance(sess, m)
+
+
+async def _reactivate(sess):
+    await SESS.update_one({"id": sess["id"]}, {"$set": {"status": "active", "updated_at": _now().isoformat()}})
+    sess["status"] = "active"
+    if sess["step"] == "car_intro":
+        await _set(sess, {}, "employment")
+    return await _send(sess, sess["step"])
 
 
 async def pause_for_staff(conv_id: str, user_name: str):

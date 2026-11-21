@@ -154,8 +154,22 @@ async def welcome_has_image(tpl: Optional[dict] = None) -> bool:
     return bool(HEADER_IMAGE_PATH) and tpl.get("header_type") in (None, "IMAGE")
 
 
-async def _graph_send_template(recipient: str, customer_name: str, url_token: str) -> dict:
-    tpl = await active_template()
+CAR_TEMPLATE = "car_loans_welcome"
+
+
+def is_car_lead(lead: dict) -> bool:
+    return bool(re.search(r"\bcar", (lead or {}).get("campaign_name") or "", re.I))
+
+
+async def template_for(lead: dict) -> dict:
+    """Car Loans campaigns use car_loans_welcome; every other campaign keeps the existing welcome."""
+    if is_car_lead(lead):
+        return await db.cc_templates.find_one({"name": CAR_TEMPLATE}, {"_id": 0}) or {"name": CAR_TEMPLATE}
+    return await active_template()
+
+
+async def _graph_send_template(recipient: str, customer_name: str, url_token: str, tpl: Optional[dict] = None) -> dict:
+    tpl = tpl or await active_template()
     body_param = (tpl.get("body_vars") or [TEMPLATE_BODY_PARAM])[0] if tpl.get("named_params", True) else TEMPLATE_BODY_PARAM
     header = []
     if await welcome_has_image(tpl):
@@ -246,8 +260,11 @@ async def send_whatsapp_for_lead(lead: dict, *, force_renew: bool = False, trigg
                     activity="WhatsApp not sent: no link token")
         return {"ok": False, "skipped": "no_token"}
 
-    res = await _graph_send_template(recipient, lead.get("full_name") or "Customer", token)
-    res["template"] = (await active_template())["name"]
+    tpl = await template_for(lead)
+    res = await _graph_send_template(recipient, lead.get("full_name") or "Customer", token, tpl)
+    res["template"] = tpl["name"]
+    if is_car_lead(lead):
+        await db.meta_leads.update_one({"lead_id": lead.get("lead_id")}, {"$set": {"campaign_type": "Car Loans"}})
     now = _now()
     if res.get("ok"):
         expires = now + timedelta(days=LINK_TTL_DAYS)

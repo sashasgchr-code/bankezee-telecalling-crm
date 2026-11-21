@@ -204,6 +204,23 @@ def _attribution(r: dict, sheet_id: str) -> Optional[dict]:
             "meta_created_time": r.get("created_time") or None, "import_source": "Google Sheet (Meta Lead Ads)"}
 
 
+_SYSTEM_COLS = {"id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name", "form_id", "form_name",
+                "is_organic", "platform", "lead_status", "lead id", "lead_id", "inbox_url", "retailer_item_id", "vehicle_id", "home_listing_id"}
+
+
+def _form_answers(raw: dict) -> list:
+    """Every customer-submitted column of the Meta form, with its original question label (future fields included)."""
+    out = []
+    for k, v in raw.items():
+        key = (k or "").strip()
+        val = "" if v is None else str(v).strip()
+        if not key or key.lower() in _SYSTEM_COLS or not val or val.lower() in ("nan", "none", "null"):
+            continue
+        label = re.sub(r"[_]+", " ", key).strip().rstrip("?").strip()
+        out.append({"key": key, "label": (label[:1].upper() + label[1:]) + ("?" if key.endswith("?") else ""), "value": _pretty(val) if "_" in val else val})
+    return out
+
+
 def _normalize_row(raw: dict, tab_name: str) -> dict:
     """Map one raw sheet row (any tab's header layout) into the canonical Meta lead schema."""
     row = {(k or "").strip().lower(): ("" if v is None else str(v).strip()) for k, v in raw.items()}
@@ -225,6 +242,7 @@ def _normalize_row(raw: dict, tab_name: str) -> dict:
         "is_organic": row.get("is_organic", ""),
         "cibil_score": _first_present(row, _CIBIL_KEYS),
         "source_tab": tab_name,
+        "form_answers": _form_answers(raw),
     }
 
 
@@ -381,6 +399,8 @@ async def sync_leads_from_sheet() -> dict:
             "cibil_score": (r.get("cibil_score") or "").strip(),
             "source_tab": (r.get("source_tab") or "").strip(),
             "sheet_status": sheet_status,
+            "form_answers": r.get("form_answers") or [],
+            **({"campaign_type": "Car Loans"} if re.search(r"\bcar", r.get("campaign_name") or "", re.I) else {}),
         }
         if attr:
             base["meta_attr_latest"] = {k: attr[k] for k in ("campaign_name", "adset_name", "ad_name", "form_name")}
